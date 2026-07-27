@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.codex import CodexCLIAgentCore
+from agent_runner.events import ResultEvent
 
 
 def _core() -> CodexCLIAgentCore:
@@ -93,7 +94,8 @@ def test_stream_event_prefers_turn_failure_after_pending_error():
 
     assert retry == []
     assert len(failed) == 1
-    assert failed[0].data["result"] == "request failed"
+    assert isinstance(failed[0], ResultEvent)
+    assert failed[0].result == "request failed"
 
 
 def test_stream_event_ignores_error_after_terminal_turn_failure():
@@ -107,7 +109,8 @@ def test_stream_event_ignores_error_after_terminal_turn_failure():
     )
 
     assert len(failed) == 1
-    assert failed[0].data["result"] == "request failed"
+    assert isinstance(failed[0], ResultEvent)
+    assert failed[0].result == "request failed"
     assert duplicate == []
 
 
@@ -124,9 +127,10 @@ def test_query_synthesizes_latest_error_when_process_exits_without_turn_failure(
     )
 
     assert [event.type for event in events] == ["result"]
-    assert events[0].data["result"] == "connection lost"
-    assert events[0].data["result_metadata"]["subtype"] == "stream_disconnected"
-    assert events[0].data["result_metadata"]["is_error"] is True
+    assert isinstance(events[0], ResultEvent)
+    assert events[0].result == "connection lost"
+    assert events[0].result_metadata.subtype == "stream_disconnected"
+    assert events[0].result_metadata.is_error is True
 
 
 def test_query_marks_clean_exit_without_terminal_turn_as_error():
@@ -141,9 +145,10 @@ def test_query_marks_clean_exit_without_terminal_turn_as_error():
         ]
     )
 
-    assert events[-1].data["result"] is None
-    assert events[-1].data["result_metadata"]["subtype"] == "missing_terminal_turn"
-    assert events[-1].data["result_metadata"]["is_error"] is True
+    assert isinstance(events[-1], ResultEvent)
+    assert events[-1].result is None
+    assert events[-1].result_metadata.subtype == "missing_terminal_turn"
+    assert events[-1].result_metadata.is_error is True
 
 
 def test_query_discards_retry_notice_after_successful_turn():
@@ -159,5 +164,6 @@ def test_query_discards_retry_notice_after_successful_turn():
     )
 
     assert [event.type for event in events] == ["text", "result"]
-    assert events[1].data["result"] == "recovered"
-    assert events[1].data["result_metadata"]["is_error"] is False
+    assert isinstance(events[1], ResultEvent)
+    assert events[1].result == "recovered"
+    assert events[1].result_metadata.is_error is False

@@ -15,6 +15,14 @@ from unittest.mock import patch
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.claude_cli import ClaudeCLIAgentCore
+from agent_runner.events import (
+    ResultEvent,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 
 
 def _core(session_id: str | None = None) -> ClaudeCLIAgentCore:
@@ -63,10 +71,10 @@ def test_user_tool_result_kept():
     events = _core().map_stream_line(obj)
     assert len(events) == 1
     e = events[0]
-    assert e.type == "tool_result"
-    assert e.data["tool_result_id"] == "t1"
-    assert e.data["tool_result_content"] == "ok"
-    assert e.data["tool_result_is_error"] is False
+    assert isinstance(e, ToolResultEvent)
+    assert e.tool_result_id == "t1"
+    assert e.tool_result_content == "ok"
+    assert e.tool_result_is_error is False
 
 
 def test_user_tool_result_list_content_json_encoded():
@@ -75,7 +83,8 @@ def test_user_tool_result_list_content_json_encoded():
         "message": {"content": [{"type": "tool_result", "tool_use_id": "t2", "content": [1, 2]}]},
     }
     (e,) = _core().map_stream_line(obj)
-    assert e.data["tool_result_content"] == "[1, 2]"
+    assert isinstance(e, ToolResultEvent)
+    assert e.tool_result_content == "[1, 2]"
 
 
 def test_user_mixed_blocks_only_tool_result_survives():
@@ -109,17 +118,20 @@ def test_assistant_all_block_types_in_order():
     }
     events = _core().map_stream_line(obj)
     assert [e.type for e in events] == ["thinking", "tool_use", "text"]
-    assert events[0].data["thinking"] == "hmm"
-    assert events[1].data["tool_name"] == "Bash"
-    assert events[1].data["tool_input"] == {"command": "ls"}
-    assert events[2].data["text"] == "done"
+    assert isinstance(events[0], ThinkingEvent)
+    assert isinstance(events[1], ToolUseEvent)
+    assert isinstance(events[2], TextEvent)
+    assert events[0].thinking == "hmm"
+    assert events[1].tool_name == "Bash"
+    assert events[1].tool_input == {"command": "ls"}
+    assert events[2].text == "done"
 
 
 def test_assistant_bare_string_coerced_to_text():
     obj = {"type": "assistant", "message": {"content": "plain reply"}}
     (e,) = _core().map_stream_line(obj)
-    assert e.type == "text"
-    assert e.data["text"] == "plain reply"
+    assert isinstance(e, TextEvent)
+    assert e.text == "plain reply"
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +144,8 @@ def test_system_init_captures_session_id():
     events = core.map_stream_line({"type": "system", "subtype": "init", "session_id": "sid-9"})
     assert core.session_id == "sid-9"
     assert len(events) == 1
-    assert events[0].type == "system"
-    assert events[0].data["system_subtype"] == "init"
+    assert isinstance(events[0], SystemEvent)
+    assert events[0].system_subtype == "init"
 
 
 def test_result_maps_metadata_and_updates_session_id():
@@ -148,10 +160,10 @@ def test_result_maps_metadata_and_updates_session_id():
         "result": "all done",
     }
     (e,) = core.map_stream_line(obj)
-    assert e.type == "result"
-    assert e.data["result"] == "all done"
-    assert e.data["result_metadata"]["subtype"] == "success"
-    assert e.data["result_metadata"]["session_id"] == "sid-r"
+    assert isinstance(e, ResultEvent)
+    assert e.result == "all done"
+    assert e.result_metadata.subtype == "success"
+    assert e.result_metadata.session_id == "sid-r"
     assert core.session_id == "sid-r"
 
 

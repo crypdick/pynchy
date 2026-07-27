@@ -19,7 +19,16 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.core import AgentCoreConfig
+from agent_runner.events import (
+    ResultEvent,
+    ResultMetadata,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 from agent_runner.host_direct import build_host_core_config
 from agent_runner.ipc import IpcMessage, drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
@@ -318,30 +327,24 @@ class TestEventToOutput:
     """Test AgentEvent to ContainerOutput conversion."""
 
     def test_thinking_event(self):
-        event = AgentEvent(type="thinking", data={"thinking": "hmm"})
+        event = ThinkingEvent(thinking="hmm")
         out = event_to_output(event, "sess-1")
         assert out.type == "thinking"
         assert out.thinking == "hmm"
         assert out.status == "success"
 
     def test_tool_use_event(self):
-        event = AgentEvent(
-            type="tool_use",
-            data={"tool_name": "bash", "tool_input": {"command": "ls"}},
-        )
+        event = ToolUseEvent(tool_name="bash", tool_input={"command": "ls"})
         out = event_to_output(event, None)
         assert out.type == "tool_use"
         assert out.tool_name == "bash"
         assert out.tool_input == {"command": "ls"}
 
     def test_tool_result_event(self):
-        event = AgentEvent(
-            type="tool_result",
-            data={
-                "tool_result_id": "tr-1",
-                "tool_result_content": "ok",
-                "tool_result_is_error": False,
-            },
+        event = ToolResultEvent(
+            tool_result_id="tr-1",
+            tool_result_content="ok",
+            tool_result_is_error=False,
         )
         out = event_to_output(event, None)
         assert out.type == "tool_result"
@@ -349,55 +352,48 @@ class TestEventToOutput:
         assert out.tool_result_is_error is False
 
     def test_text_event(self):
-        event = AgentEvent(type="text", data={"text": "hello"})
+        event = TextEvent(text="hello")
         out = event_to_output(event, None)
         assert out.type == "text"
         assert out.text == "hello"
 
     def test_system_event(self):
-        event = AgentEvent(
-            type="system",
-            data={"system_subtype": "init", "system_data": {"session_id": "s1"}},
-        )
+        event = SystemEvent(system_subtype="init", system_data={"session_id": "s1"})
         out = event_to_output(event, None)
         assert out.type == "system"
         assert out.system_subtype == "init"
         assert out.system_data == {"session_id": "s1"}
 
     def test_result_event_includes_session(self):
-        event = AgentEvent(
-            type="result",
-            data={"result": "Final answer", "result_metadata": {"cost": 0.01}},
+        event = ResultEvent(
+            result="Final answer",
+            result_metadata=ResultMetadata(subtype="result", is_error=False, extra={"cost": 0.01}),
         )
         out = event_to_output(event, "sess-42")
         assert out.type == "result"
         assert out.status == "success"
         assert out.result == "Final answer"
         assert out.new_session_id == "sess-42"
-        assert out.result_metadata == {"cost": 0.01}
+        assert out.result_metadata == {
+            "subtype": "result",
+            "is_error": False,
+            "session_id": None,
+            "cost": 0.01,
+        }
         assert out.error is None
 
     def test_result_event_with_is_error(self):
         """SDK is_error=True should produce status='error' with error field set."""
         error_text = 'API Error: 429 {"error":{"type":"rate_limit_error"}}'
-        event = AgentEvent(
-            type="result",
-            data={
-                "result": error_text,
-                "result_metadata": {"is_error": True, "num_turns": 0},
-            },
+        event = ResultEvent(
+            result=error_text,
+            result_metadata=ResultMetadata(subtype="error", is_error=True, extra={"num_turns": 0}),
         )
         out = event_to_output(event, "sess-99")
         assert out.status == "error"
         assert out.error == error_text
         assert out.result == error_text
         assert out.new_session_id == "sess-99"
-
-    def test_unknown_event_type(self):
-        event = AgentEvent(type="unknown_type", data={})
-        out = event_to_output(event, None)
-        assert out.type == "text"
-        assert out.status == "success"
 
 
 class TestCoreStartupErrors:
@@ -489,7 +485,10 @@ class TestScheduledReportFollowupContext:
                 else:
                     result = "The scheduled findings are missing."
                 self.history.extend((f"user: {prompt}", f"assistant: {result}"))
-                yield AgentEvent(type="result", data={"result": result})
+                yield ResultEvent(
+                    result=result,
+                    result_metadata=ResultMetadata(subtype="result", is_error=False),
+                )
 
             async def stop(self) -> None:
                 return None

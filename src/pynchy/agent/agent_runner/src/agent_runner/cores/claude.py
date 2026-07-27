@@ -23,7 +23,15 @@ from claude_agent_sdk.types import (
     SystemPromptPreset,
 )
 
-from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.events import (
+    ResultEvent,
+    ResultMetadata,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 from agent_runner.hooks import (
     AGNOSTIC_TO_CLAUDE,
     BeforeToolUseHook,
@@ -47,6 +55,9 @@ from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_runner.core import AgentCoreConfig
+    from agent_runner.events import AgentEvent
 
 _CLAUDE_CORE_NOT_STARTED = "ClaudeAgentCore not started (call start() first)"
 
@@ -267,13 +278,7 @@ class ClaudeAgentCore:
             if sid:
                 self._session_id = sid
                 _log(f"Session initialized: {sid}")
-        return AgentEvent(
-            type="system",
-            data={
-                "system_subtype": message.subtype,
-                "system_data": message.data,
-            },
-        )
+        return SystemEvent(system_subtype=message.subtype, system_data=message.data)
 
     @staticmethod
     def _tool_result_content(block: ClaudeToolResultBlock) -> str:
@@ -289,27 +294,24 @@ class ClaudeAgentCore:
         events: list[AgentEvent] = []
         for block in message.content:
             if isinstance(block, ClaudeThinkingBlock):
-                events.append(AgentEvent(type="thinking", data={"thinking": block.thinking}))
+                events.append(ThinkingEvent(thinking=block.thinking))
             elif isinstance(block, ClaudeToolUseBlock):
                 events.append(
-                    AgentEvent(
-                        type="tool_use",
-                        data={"tool_name": block.name, "tool_input": block.input},
+                    ToolUseEvent(
+                        tool_name=block.name,
+                        tool_input=block.input if isinstance(block.input, dict) else {},
                     )
                 )
             elif isinstance(block, ClaudeToolResultBlock):
                 events.append(
-                    AgentEvent(
-                        type="tool_result",
-                        data={
-                            "tool_result_id": block.tool_use_id,
-                            "tool_result_content": self._tool_result_content(block),
-                            "tool_result_is_error": block.is_error,
-                        },
+                    ToolResultEvent(
+                        tool_result_id=block.tool_use_id,
+                        tool_result_content=self._tool_result_content(block),
+                        tool_result_is_error=block.is_error,
                     )
                 )
             elif isinstance(block, ClaudeTextBlock):
-                events.append(AgentEvent(type="text", data={"text": block.text}))
+                events.append(TextEvent(text=block.text))
         return events
 
     def _result_event(self, message: ClaudeResultEvent) -> AgentEvent:
@@ -325,12 +327,18 @@ class ClaudeAgentCore:
             "total_cost_usd": message.total_cost_usd,
             "usage": message.usage,
         }
-        return AgentEvent(
-            type="result",
-            data={
-                "result": message.result,
-                "result_metadata": result_meta,
-            },
+        return ResultEvent(
+            result=message.result,
+            result_metadata=ResultMetadata(
+                subtype=message.subtype,
+                is_error=message.is_error,
+                session_id=message.session_id,
+                extra={
+                    key: value
+                    for key, value in result_meta.items()
+                    if key not in {"subtype", "is_error", "session_id"}
+                },
+            ),
         )
 
     def map_sdk_event(

@@ -31,12 +31,23 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.events import (
+    ResultEvent,
+    ResultMetadata,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 
 from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_runner.core import AgentCoreConfig
+    from agent_runner.events import AgentEvent
 
 # stream-json lines can carry large tool results; lift the asyncio reader limit
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.
@@ -251,19 +262,13 @@ class ClaudeCLIAgentCore:
             _log(
                 f"claude exited rc={return_code} with no result event; stderr: {stderr_text[:500]}"
             )
-            yield AgentEvent(
-                type="result",
-                data={
-                    "result": (
-                        f"claude CLI exited (code {return_code}) without a result. "
-                        f"{stderr_text[:500]}"
-                    ),
-                    "result_metadata": {
-                        "subtype": "error",
-                        "is_error": True,
-                        "session_id": self._session_id,
-                    },
-                },
+            yield ResultEvent(
+                result=(
+                    f"claude CLI exited (code {return_code}) without a result. {stderr_text[:500]}"
+                ),
+                result_metadata=ResultMetadata(
+                    subtype="error", is_error=True, session_id=self._session_id
+                ),
             )
 
     def map_stream_line(self, obj: dict[str, Any]) -> list[AgentEvent]:
@@ -296,7 +301,7 @@ class ClaudeCLIAgentCore:
             if sid:
                 self._session_id = sid
                 _log(f"session initialized: {sid}")
-        return [AgentEvent(type="system", data={"system_subtype": subtype, "system_data": obj})]
+        return [SystemEvent(system_subtype=str(subtype), system_data=obj)]
 
     def _map_message_line(self, msg_type: str, obj: dict[str, Any]) -> list[AgentEvent]:
         """Map assistant/user message content blocks into AgentEvents."""
@@ -328,35 +333,41 @@ class ClaudeCLIAgentCore:
         sid = obj.get("session_id")
         if sid:
             self._session_id = sid
-        return AgentEvent(
-            type="result",
-            data={
-                "result": obj.get("result"),
-                "result_metadata": {
-                    "subtype": obj.get("subtype"),
-                    "duration_ms": obj.get("duration_ms"),
-                    "duration_api_ms": obj.get("duration_api_ms"),
-                    "is_error": obj.get("is_error", False),
-                    "num_turns": obj.get("num_turns"),
-                    "session_id": sid,
-                    "total_cost_usd": obj.get("total_cost_usd"),
-                    "usage": obj.get("usage"),
+        result = obj.get("result")
+        return ResultEvent(
+            result=result if isinstance(result, str) else None,
+            result_metadata=ResultMetadata(
+                subtype=str(obj.get("subtype") or "result"),
+                is_error=bool(obj.get("is_error")),
+                session_id=sid if isinstance(sid, str) else None,
+                extra={
+                    key: obj[key]
+                    for key in (
+                        "duration_ms",
+                        "duration_api_ms",
+                        "num_turns",
+                        "total_cost_usd",
+                        "usage",
+                    )
+                    if key in obj
                 },
-            },
+            ),
         )
 
     def _map_block(self, block: dict[str, Any]) -> list[AgentEvent]:
         """Map one content block to an ``AgentEvent`` (mirrors cores/claude.py)."""
         btype = block.get("type")
         if btype == "thinking":
-            return [AgentEvent(type="thinking", data={"thinking": block.get("thinking", "")})]
+            return [ThinkingEvent(thinking=str(block.get("thinking", "")))]
         if btype == "text":
-            return [AgentEvent(type="text", data={"text": block.get("text", "")})]
+            return [TextEvent(text=str(block.get("text", "")))]
         if btype == "tool_use":
             return [
-                AgentEvent(
-                    type="tool_use",
-                    data={"tool_name": block.get("name", ""), "tool_input": block.get("input", {})},
+                ToolUseEvent(
+                    tool_name=str(block.get("name", "")),
+                    tool_input=(
+                        block.get("input", {}) if isinstance(block.get("input", {}), dict) else {}
+                    ),
                 )
             ]
         if btype == "tool_result":
@@ -366,13 +377,10 @@ class ClaudeCLIAgentCore:
             elif not isinstance(content, str):
                 content = ""
             return [
-                AgentEvent(
-                    type="tool_result",
-                    data={
-                        "tool_result_id": block.get("tool_use_id", ""),
-                        "tool_result_content": content,
-                        "tool_result_is_error": block.get("is_error", False),
-                    },
+                ToolResultEvent(
+                    tool_result_id=str(block.get("tool_use_id", "")),
+                    tool_result_content=content,
+                    tool_result_is_error=bool(block.get("is_error")),
                 )
             ]
         return []

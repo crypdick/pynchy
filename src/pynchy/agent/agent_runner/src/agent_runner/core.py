@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from agent_runner.events import AgentEvent
+
 
 @dataclass
 class AgentCoreConfig:
@@ -45,28 +47,6 @@ class AgentCoreConfig:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class AgentEvent:
-    """Event emitted during agent query execution.
-
-    The type field determines which data keys are relevant:
-
-    - "thinking": thinking (str)
-    - "tool_use": tool_name (str), tool_input (dict)
-    - "tool_result": tool_result_id (str), tool_result_content (str),
-                     tool_result_is_error (bool)
-    - "text": text (str)
-    - "system": system_subtype (str), system_data (dict)
-    - "result": result (str | None), result_metadata (dict)
-
-    Not all cores emit all event types. For example, non-Claude cores may not
-    emit "thinking" events unless using o1/o3 models.
-    """
-
-    type: str
-    data: dict[str, Any] = field(default_factory=dict)
-
-
 @runtime_checkable
 class AgentCore(Protocol):
     """Protocol for LLM agent framework implementations.
@@ -85,7 +65,7 @@ class AgentCore(Protocol):
         """Initialize the agent core (acquire resources, start clients, etc.)."""
         ...
 
-    async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
+    def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query and yield events.
 
         Args:
@@ -94,7 +74,7 @@ class AgentCore(Protocol):
         Yields:
             AgentEvent instances with type-specific data
 
-        Must yield at least one "result" event before returning.
+        Consumers validate the stream and require exactly one terminal result.
         """
         ...
 

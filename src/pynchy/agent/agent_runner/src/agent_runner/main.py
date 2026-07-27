@@ -15,7 +15,17 @@ import os
 import sys
 from typing import Any, TypedDict, Unpack
 
-from .core import AgentCore, AgentCoreConfig, AgentEvent
+from .core import AgentCore, AgentCoreConfig
+from .events import (
+    AgentEvent,
+    ResultEvent,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+    validate_agent_stream,
+)
 from .ipc import (
     IPC_INPUT_CLOSE_SENTINEL,
     IPC_INPUT_DIR,
@@ -222,11 +232,11 @@ def _success_output(output_type: str, **kwargs: Unpack[_SuccessOutputFields]) ->
     return ContainerOutput(status="success", type=output_type, **kwargs)
 
 
-def _result_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
+def _result_output(event: ResultEvent, session_id: str | None) -> ContainerOutput:
     """Build the terminal result output, including error propagation."""
-    meta = event.data.get("result_metadata") or {}
-    is_error = meta.get("is_error", False)
-    result_text = event.data.get("result")
+    meta = event.result_metadata.to_dict()
+    is_error = event.result_metadata.is_error
+    result_text = event.result
     return ContainerOutput(
         status="error" if is_error else "success",
         result=result_text,
@@ -238,35 +248,32 @@ def _result_output(event: AgentEvent, session_id: str | None) -> ContainerOutput
 
 def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutput:
     """Convert AgentEvent to ContainerOutput."""
-    match event.type:
-        case "thinking":
-            output = _success_output("thinking", thinking=event.data.get("thinking"))
-        case "tool_use":
+    match event:
+        case ThinkingEvent():
+            output = _success_output("thinking", thinking=event.thinking)
+        case ToolUseEvent():
             output = _success_output(
                 "tool_use",
-                tool_name=event.data.get("tool_name"),
-                tool_input=event.data.get("tool_input"),
+                tool_name=event.tool_name,
+                tool_input=dict(event.tool_input),
             )
-        case "tool_result":
+        case ToolResultEvent():
             output = _success_output(
                 "tool_result",
-                tool_result_id=event.data.get("tool_result_id"),
-                tool_result_content=event.data.get("tool_result_content"),
-                tool_result_is_error=event.data.get("tool_result_is_error"),
+                tool_result_id=event.tool_result_id,
+                tool_result_content=event.tool_result_content,
+                tool_result_is_error=event.tool_result_is_error,
             )
-        case "text":
-            output = _success_output("text", text=event.data.get("text"))
-        case "system":
+        case TextEvent():
+            output = _success_output("text", text=event.text)
+        case SystemEvent():
             output = _success_output(
                 "system",
-                system_subtype=event.data.get("system_subtype"),
-                system_data=event.data.get("system_data", {}),
+                system_subtype=event.system_subtype,
+                system_data=dict(event.system_data),
             )
-        case "result":
+        case ResultEvent():
             output = _result_output(event, session_id)
-        case _:
-            log(f"Unknown event type: {event.type}")
-            output = _success_output("text", text="")
     return output
 
 
@@ -390,7 +397,7 @@ async def _run_single_query(
     closed_during_query = False
     new_session_id: str | None = None
 
-    async for event in core.query(prompt):
+    async for event in validate_agent_stream(core.query(prompt)):
         # Check for close during query
         if should_close():
             log("Close sentinel detected during query")
@@ -398,16 +405,14 @@ async def _run_single_query(
             break
 
         # Track session ID from system init events
-        if event.type == "system":
-            subtype = event.data.get("system_subtype")
-            if subtype == "init":
-                sid = event.data.get("system_data", {}).get("session_id")
-                if sid:
-                    new_session_id = sid
-                    log(f"Session initialized: {new_session_id}")
+        if isinstance(event, SystemEvent) and event.system_subtype == "init":
+            sid = event.system_data.get("session_id")
+            if isinstance(sid, str) and sid:
+                new_session_id = sid
+                log(f"Session initialized: {new_session_id}")
 
         # Track results
-        if event.type == "result":
+        if isinstance(event, ResultEvent):
             result_count += 1
 
         # Convert event to output and write

@@ -12,6 +12,7 @@ import pytest
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.codex import CodexCLIAgentCore
+from agent_runner.events import ResultEvent, SystemEvent
 
 
 def _core(
@@ -359,7 +360,8 @@ def test_stream_event_maps_thread_started_and_exposes_session_id():
 
     assert [event.type for event in events] == ["system"]
     assert core.session_id == "codex:gpt-5.2-codex:thread-1"
-    assert events[0].data["system_data"]["session_id"] == "codex:gpt-5.2-codex:thread-1"
+    assert isinstance(events[0], SystemEvent)
+    assert events[0].system_data["session_id"] == "codex:gpt-5.2-codex:thread-1"
 
 
 def test_stream_event_maps_terminal_failure_to_error_result():
@@ -367,10 +369,10 @@ def test_stream_event_maps_terminal_failure_to_error_result():
         {"type": "turn.failed", "error": {"message": "auth failed", "code": "not_logged_in"}}
     )
 
-    assert event.type == "result"
-    assert event.data["result"] == "auth failed"
-    assert event.data["result_metadata"]["is_error"] is True
-    assert event.data["result_metadata"]["subtype"] == "not_logged_in"
+    assert isinstance(event, ResultEvent)
+    assert event.result == "auth failed"
+    assert event.result_metadata.is_error is True
+    assert event.result_metadata.subtype == "not_logged_in"
 
 
 def test_public_queries_reset_terminal_error_guard_between_turns():
@@ -406,8 +408,8 @@ def test_public_queries_reset_terminal_error_guard_between_turns():
 
     first, second = asyncio.run(run_queries())
 
-    assert [event.data["result"] for event in first] == ["first failed"]
-    assert [event.data["result"] for event in second] == ["second failed"]
+    assert [event.result for event in first if isinstance(event, ResultEvent)] == ["first failed"]
+    assert [event.result for event in second if isinstance(event, ResultEvent)] == ["second failed"]
 
 
 async def _start_active_query(core: CodexCLIAgentCore, proc: _FakeProc):
