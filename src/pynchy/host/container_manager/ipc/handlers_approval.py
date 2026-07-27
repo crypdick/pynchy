@@ -42,6 +42,9 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext as _ApprovalDecisionContext,
 )
 from pynchy.host.container_manager.ipc.approval_replay import (
+    approval_replay_gate,
+)
+from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error as _approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -167,11 +170,26 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         return
 
     try:
+
+        def current_replay_gate(
+            *,
+            require_resolved: bool,
+            request_corruption_tainted: bool,
+            request_secret_tainted: bool,
+        ) -> SecurityGate | None:
+            return approval_replay_gate(
+                s,
+                source_group,
+                require_resolved=require_resolved,
+                request_corruption_tainted=request_corruption_tainted,
+                request_secret_tainted=request_secret_tainted,
+            )
+
         context = _build_approval_decision_context(
             pending,
             decision,
             source_group=source_group,
-            settings=s,
+            replay_gate=current_replay_gate,
         )
     except (TypeError, ValueError) as exc:
         logger.error(

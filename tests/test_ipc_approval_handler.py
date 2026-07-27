@@ -133,7 +133,7 @@ class TestProcessApprovalDecision:
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
                 return_value=current_gate,
             ),
         ):
@@ -294,7 +294,7 @@ class TestProcessApprovalDecision:
                 return_value=make_host_action_catalog("my_tool", handler=handler),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
                 replay_gate,
             ),
         ):
@@ -384,7 +384,11 @@ class TestProcessApprovalDecision:
                 pending,
                 decision,
                 source_group="unconfigured-workspace",
-                settings=settings,
+                replay_gate=lambda **kwargs: approval_replay_gate(
+                    settings,
+                    "unconfigured-workspace",
+                    **kwargs,
+                ),
             )
 
         assert context.gate is not None
@@ -486,7 +490,7 @@ class TestProcessApprovalDecision:
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
                 return_value=current_gate,
             ),
         ):
