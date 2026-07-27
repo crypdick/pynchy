@@ -43,6 +43,9 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
     DirectCommandOutput,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    ScheduledExecutionLifecycle,
+)
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
@@ -67,6 +70,7 @@ from pynchy.state import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_router_state,
+    get_work_item_execution_for_task,
     save_router_state_batch,
     set_session,
     set_workspace_profile,
@@ -380,6 +384,19 @@ class PynchyApp(ThreadRouting):
                 "workspace_name": output.group.name,
                 "workspace_folder": output.group.folder,
             },
+        )
+
+    async def scheduled_execution_lifecycle(
+        self, task_id: str
+    ) -> ScheduledExecutionLifecycle | None:
+        """Adapt the durable work-item record to scheduled completion policy."""
+        execution = await get_work_item_execution_for_task(task_id)
+        if execution is None:
+            return None
+        return ScheduledExecutionLifecycle(
+            execution_id=execution.id,
+            status=execution.status.value,
+            has_explicit_outcome=execution.status.is_explicit_lifecycle_outcome,
         )
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:

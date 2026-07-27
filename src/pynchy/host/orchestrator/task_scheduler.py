@@ -200,15 +200,16 @@ async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | Non
     return scheduled_failure_decision(recent_failure_run(logs))
 
 
-async def _finish_scheduled_agent_run(
+async def _finish_scheduled_agent_run(  # noqa: PLR0913, RUF100 - scheduler completion needs its task, dependency port, and run record.
     task: ScheduledTask,
+    deps: SchedulerDependencies,
     *,
     start_time: datetime,
     result: str | None,
     error: str | None,
     turn_id: str | None = None,
 ) -> TurnOutcome:
-    outcome = await classify_scheduled_agent_outcome(task.id, result=result, error=error)
+    outcome = await classify_scheduled_agent_outcome(deps, task.id, result=result, error=error)
     logger.info(
         "Task completed",
         task_id=task.id,
@@ -268,6 +269,7 @@ async def resume_interrupted_scheduled_turn(
         return agent_run.terminal_outcome
     outcome = await _finish_scheduled_agent_run(
         task,
+        deps,
         start_time=start_time,
         result=agent_run.result,
         error=agent_run.error,
@@ -383,6 +385,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
     if deterministic is not None:
         return await _finish_scheduled_agent_run(
             task,
+            deps,
             start_time=start_time,
             result=deterministic.result,
             error=deterministic.error,
@@ -392,6 +395,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
     if prepared_task is None:
         return await _finish_scheduled_agent_run(
             task,
+            deps,
             start_time=start_time,
             result=skipped_result,
             error=None,
@@ -423,6 +427,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
         return TurnOutcome.RETRY
     return await _finish_scheduled_agent_run(
         task,
+        deps,
         start_time=start_time,
         result=agent_run.result,
         error=agent_run.error,

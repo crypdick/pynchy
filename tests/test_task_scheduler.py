@@ -29,6 +29,7 @@ from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.host.orchestrator.scheduler_deps import ScheduledExecutionLifecycle
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
@@ -250,6 +251,8 @@ class MockSchedulerDeps:
         self.thread_lookups: list[tuple[str, str]] = []
         self.reused_thread_participants: list[tuple[str, tuple[str, ...]]] = []
         self.thread_creation_supported = True
+        self.scheduled_execution: ScheduledExecutionLifecycle | None = None
+        self.scheduled_execution_queries: list[str] = []
         # Configurable return value for run_agent
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
@@ -257,6 +260,12 @@ class MockSchedulerDeps:
 
     async def save_state(self) -> None:
         return None
+
+    async def scheduled_execution_lifecycle(
+        self, task_id: str
+    ) -> ScheduledExecutionLifecycle | None:
+        self.scheduled_execution_queries.append(task_id)
+        return self.scheduled_execution
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:
@@ -2180,7 +2189,11 @@ class TestRunScheduledAgent:
             return "success"
 
         mock_deps._run_agent_side_effect = agent_response
-        execution = Mock(id="execution-1", status=execution_status)
+        mock_deps.scheduled_execution = ScheduledExecutionLifecycle(
+            execution_id="execution-1",
+            status=execution_status.value,
+            has_explicit_outcome=execution_status.is_explicit_lifecycle_outcome,
+        )
         logged_runs = []
         completions = []
 
@@ -2188,11 +2201,6 @@ class TestRunScheduledAgent:
             completions.append((task_id, last_result, completed))
 
         with (
-            patch(
-                "pynchy.host.orchestrator.scheduled_completion.get_work_item_execution_for_task",
-                new_callable=AsyncMock,
-                return_value=execution,
-            ),
             patch(
                 "pynchy.host.orchestrator.task_scheduler.log_task_run",
                 side_effect=logged_runs.append,
@@ -2208,6 +2216,7 @@ class TestRunScheduledAgent:
         assert completed is TurnOutcome.COMPLETED
         assert [run.status for run in logged_runs] == [expected_run_status]
         assert completions == [("task-1", expected_result, True)]
+        assert mock_deps.scheduled_execution_queries == ["task-1"]
 
     @pytest.mark.asyncio
     async def test_once_schedule_remains_active_for_temporal_retry_after_agent_error(
