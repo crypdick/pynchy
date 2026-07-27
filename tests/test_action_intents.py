@@ -30,6 +30,10 @@ from pynchy.capabilities import (
     IdempotencyMode,
 )
 from pynchy.config.merge import ResolvedWorkspaceConfig
+from pynchy.config.models import (
+    MatrixConnectionConfig,
+    MatrixEndpointConfig,
+)
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -53,10 +57,6 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     clear_active_matrix_routes,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRoute
-from pynchy.plugins.integrations.matrix_routing_config import (
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
-)
 from pynchy.state import (
     action_intent_to_dict,
     approve_action_intent,

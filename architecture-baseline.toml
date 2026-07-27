@@ -17,14 +17,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.canaries still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.config.models"
-target_component = "integration_adapter"
-kind = "runtime-import"
-count = 2
-imports = ["pynchy.plugins.integrations.linear_config", "pynchy.plugins.integrations.matrix_routing_config"]
-reason = "pynchy.config.models still has a runtime-import dependency on integration_adapter; Use an integration-neutral application port instead of importing this concrete integration."
-
-[[violations]]
 importer = "pynchy.google_mcp_canaries"
 target_component = "config"
 kind = "runtime-import"
