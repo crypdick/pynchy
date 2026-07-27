@@ -37,6 +37,8 @@ from pynchy.state import (
 )
 from pynchy.types import GroupFolder, WorkItemExecutionStatus
 
+_PROJECT_ASSIGNMENT_UPDATE_FIELDS = frozenset({"addedtoprojectat", "projectid", "updatedat"})
+
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     """Apply host-owned authorization and leasing before ordinary admission."""
@@ -49,6 +51,16 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     runtime_workspace = conversation.workspace
     if runtime_workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
+    if _is_project_assignment_only_update(event):
+        # Preparation already resolved the issue's durable workspace ownership.
+        # Project placement alone carries no agent work.
+        return replace(
+            event,
+            instructions=None,
+            external_context=None,
+            ignored_reason="issue_project_assignment_does_not_wake_agent",
+            conversation=None,
+        )
     controller_workspace = conversation.controller_workspace or runtime_workspace
     try:
         if await _controller_owns_event(event, controller_workspace):
@@ -73,6 +85,11 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     ) as exc:
         raise WebhookProcessingError(str(exc)) from exc
     return event
+
+
+def _is_project_assignment_only_update(event: WebhookEvent) -> bool:
+    changed_fields = frozenset(field.casefold() for field in event.changed_fields)
+    return "projectid" in changed_fields and changed_fields <= _PROJECT_ASSIGNMENT_UPDATE_FIELDS
 
 
 async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -> None:

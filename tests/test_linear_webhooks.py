@@ -876,7 +876,10 @@ async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
                 "title": "Authorized outcome",
                 "state": {"id": "state-progress", "name": "In Progress"},
             },
-            updated_from={"stateId": "state-awaiting-plan"},
+            updated_from={
+                "projectId": "old-project",
+                "stateId": "state-awaiting-plan",
+            },
         )
     )
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
@@ -1800,6 +1803,88 @@ async def test_agent_proposed_issue_creation_is_ignored_until_later_update(
     assert update_receipt.disposition == "routed"
     assert len(deps.ingested) == 1
     assert len(deps.channel.created) == 1
+
+
+async def test_project_assignment_only_update_resolves_ownership_without_waking_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    prepare_workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, _workspace_board()))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        prepare_workspace_issue,
+    )
+    process_client = Mock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        process_client,
+    )
+    route = replace(
+        _route(),
+        prepare_event=partial(
+            prepare_linear_webhook_event,
+            config=_config(),
+            public_source=False,
+        ),
+        process_event=process_linear_webhook_event,
+    )
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        status, body = await _post_linear_event(
+            client,
+            _payload(
+                now=datetime.now(UTC),
+                event_type="Issue",
+                action="update",
+                data={
+                    "id": "issue-1",
+                    "identifier": "PYN-1",
+                    "title": "Moved proposal",
+                    "state": {
+                        "id": "state-agent-proposed",
+                        "name": "Agent Proposed",
+                        "type": "backlog",
+                    },
+                },
+                updated_from={
+                    "addedToProjectAt": None,
+                    "projectId": "old-project",
+                    "updatedAt": "old-revision",
+                },
+                url="https://linear.app/acme/issue/PYN-1",
+            ),
+        )
+    finally:
+        await client.close()
+
+    receipt = await get_webhook_receipt("linear", "project", _DELIVERY_ID)
+    assert status == 200
+    assert body == {"status": "ignored", "duplicate": False}
+    assert receipt is not None
+    assert receipt.disposition == "ignored"
+    assert receipt.ignored_reason == "issue_project_assignment_does_not_wake_agent"
+    assert not deps.ingested
+    assert not deps.dispatched
+    assert not deps.channel.created
+    assert not await get_all_tasks()
+    prepare_workspace_issue.assert_awaited_once_with(ANY, "project", "issue-1")
+    process_client.assert_not_called()
+    assert (
+        await get_conversation_for_subject_key(
+            ConversationSubjectKey("issue-1"),
+            workspace=GroupFolder("project"),
+            namespace_suffix=":issue",
+        )
+        is not None
+    )
 
 
 async def test_in_progress_issue_creation_enters_one_routed_conversation(
