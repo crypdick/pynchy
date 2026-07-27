@@ -898,14 +898,6 @@ reason = "pynchy.host.orchestrator.messaging.sender still has a runtime-import d
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.turn_control"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.host.orchestrator.messaging.turn_control still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.turn_control"
 target_component = "learning_adapter"
 kind = "runtime-import"
 count = 1

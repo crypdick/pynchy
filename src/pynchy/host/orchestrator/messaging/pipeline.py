@@ -397,7 +397,7 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        s,
+        s.data_dir,
         TurnPreparationCallbacks(
             process_pending=lambda jid: process_group_messages(deps, jid),
             get_pending_messages=get_messages_since,
