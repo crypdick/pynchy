@@ -172,24 +172,25 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
-    service_installer.install_service()
+    settings = get_settings()
+    service_installer.install_service(settings.project_root)
 
     app.plugin_manager = get_plugin_manager(
-        {name: plugin.enabled for name, plugin in get_settings().plugins.items()}
+        {name: plugin.enabled for name, plugin in settings.plugins.items()}
     )
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     job_sources.configure_plugin_jobs(app.plugin_manager)
     system_checks.ensure_container_system_running(
-        OrphanReapAgeMs(get_settings().container.orphan_reap_age_ms),
+        OrphanReapAgeMs(settings.container.orphan_reap_age_ms),
         project_root=app.agent_execution_runtime.project_root,
         image=app.agent_execution_runtime.agent_image,
     )
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
-    await init_database(StateRuntimeConfig(database_path=get_settings().data_dir / "messages.db"))
+    await init_database(StateRuntimeConfig(database_path=settings.data_dir / "messages.db"))
     await prepare_conversation_runtime_ownership_recovery()
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.
@@ -201,7 +202,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     app.attach_observers(observer_plugins.attach_observers(app.event_bus))
 
     await app.set_memory_provider(
-        memory_plugins.get_memory_provider(get_settings().data_dir / "memories.db")
+        memory_plugins.get_memory_provider(settings.data_dir / "memories.db")
     )
     await app.load_state()
 

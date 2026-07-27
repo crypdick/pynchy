@@ -8,7 +8,6 @@ import subprocess  # noqa: S404, RUF100 - installer invokes fixed system manager
 import sys
 from pathlib import Path
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _LAUNCHCTL = "/bin/launchctl"
@@ -166,7 +165,7 @@ def _should_load_launchd_service(*, already_loaded: bool) -> bool:
     return already_loaded or is_launchd_managed()
 
 
-def install_service() -> None:
+def install_service(project_root: Path) -> None:
     """Install the platform service file so the process auto-restarts on exit.
 
     On macOS: copies plist to ~/Library/LaunchAgents/ and loads it into
@@ -180,15 +179,14 @@ def install_service() -> None:
         logger.info("Skipping service installation for ephemeral runtime")
         return
     if sys.platform == "darwin":
-        _install_launchd_service()
+        _install_launchd_service(project_root)
     elif sys.platform == "linux":
-        _install_systemd_service()
+        _install_systemd_service(project_root)
 
 
-def _install_launchd_service() -> None:
+def _install_launchd_service(project_root: Path) -> None:
     """Install macOS launchd service."""
     label = "com.pynchy"
-    project_root = get_settings().project_root
     src, dest = _launchd_paths(label, project_root)
     if not src.exists():
         logger.warning("launchd plist not found in repo, skipping service install")
@@ -217,7 +215,7 @@ def _install_launchd_service() -> None:
         )
 
 
-def _install_systemd_service() -> None:
+def _install_systemd_service(project_root: Path) -> None:
     """Install Linux systemd user service."""
     uv_path = shutil.which("uv")
     if not uv_path:
@@ -226,7 +224,6 @@ def _install_systemd_service() -> None:
     home = Path.home()
     # TODO: Uninstall cleanup — need a way to systemctl --user disable + rm
     # this service when the user wants to remove pynchy.
-    project_root = get_settings().project_root
     git_path = shutil.which("git") or "/usr/bin/git"
     unit = f"""\
 [Unit]
