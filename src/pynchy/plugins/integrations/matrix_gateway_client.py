@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from pynchy.utils import filtered_process_environment
+
 DEFAULT_GATEWAY_COMMAND = "pynchy-matrix-gateway"
 _MAX_LIST_LIMIT = 250
 
@@ -159,7 +161,7 @@ class MatrixGatewayClient:
         stdin: str | None = None,
         allow_empty: bool = False,
     ) -> str:
-        environment = os.environ.copy()
+        environment: dict[str, str] = {}
         if self._state_dir is not None:
             environment["PYNCHY_MATRIX_GATEWAY_DATA_DIR"] = str(self._state_dir)
         try:
@@ -168,7 +170,7 @@ class MatrixGatewayClient:
                 check=False,
                 capture_output=True,
                 input=stdin,
-                env=environment,
+                env=filtered_process_environment(environment),
                 text=True,
                 timeout=60,
             )

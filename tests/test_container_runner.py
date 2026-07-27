@@ -38,10 +38,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.container_manager import process as process_mod
 from pynchy.host.container_manager import session as session_mod
-from pynchy.host.container_manager.credentials import (
-    shell_quote,
-    write_env_file,
-)
+from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
@@ -97,7 +94,7 @@ from pynchy.types import (
     VolumeMount,
     WorkspaceProfile,
 )
-from pynchy.utils import ProgressTimeoutError
+from pynchy.utils import ProgressTimeoutError, filtered_process_environment
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -834,6 +831,46 @@ class TestOutputParsing:
 
 
 class TestContainerArgs:
+    def test_agent_environment_keeps_gateway_but_never_discovers_github(
+        self,
+        tmp_path: Path,
+    ):
+        gateway = _MockGateway(providers={"openai"})
+        with (
+            _patch_settings(tmp_path, secret_overrides={"gh_token": "legacy-token"}),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gateway),
+            patch(f"{_CR_CREDS}._read_gh_token") as read_gh_token,
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            environment = build_agent_env_vars(is_admin=True, group_folder="admin")
+
+        assert environment["OPENAI_BASE_URL"] == gateway.base_url
+        assert environment["OPENAI_API_KEY"] == gateway.key
+        assert "GH_TOKEN" not in environment
+        assert "GITHUB_TOKEN" not in environment
+        read_gh_token.assert_not_called()
+
+    def test_selected_environment_uses_names_in_argv_and_values_in_child_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setenv("UNRELATED_HOST_SECRET", "must-not-leak")
+        selected = {"LINEAR_API_KEY": "selected-value"}  # pragma: allowlist secret
+
+        args = build_container_args(
+            [],
+            "test-container",
+            memory_mb=2048,
+            image="pynchy-agent:latest",
+            env_names=tuple(selected),
+        )
+        child_env = filtered_process_environment(selected)
+
+        assert args[args.index("-e") : args.index("-e") + 2] == ["-e", "LINEAR_API_KEY"]
+        assert selected["LINEAR_API_KEY"] not in args
+        assert child_env["LINEAR_API_KEY"] == selected["LINEAR_API_KEY"]
+        assert "UNRELATED_HOST_SECRET" not in child_env
+
     def test_readonly_uses_mount_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=True)]
         args = build_container_args(
@@ -917,6 +954,13 @@ class TestContainerArgs:
 
 
 class TestMountBuilding:
+    def test_agent_environment_is_not_written_or_mounted(self, tmp_path: Path):
+        with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        assert all(m.container_path != "/workspace/env-dir" for m in mounts)
+        assert not (tmp_path / "data/env").exists()
+
     def test_ipc_mount_prepares_host_owned_response_directory(self, tmp_path: Path):
         """The host owns request-response IPC directories before containers start."""
         with _patch_settings(tmp_path):
@@ -1438,241 +1482,6 @@ class TestMountBuilding:
 # ---------------------------------------------------------------------------
 
 
-class TestWriteEnvFile:
-    """Tests for write_env_file with auto-discovery of Claude, GitHub, and git credentials."""
-
-    def _patch_env(self, tmp_path: Path, gh_token=None, git_name=None, git_email=None):
-        """Return a combined context manager patching dirs and subprocess auto-discovery."""
-        return contextlib.ExitStack()
-
-    def test_gateway_writes_anthropic_proxy_vars(self, tmp_path: Path):
-        """When gateway has anthropic, env gets ANTHROPIC_BASE_URL + AUTH_TOKEN."""
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
-            assert f"ANTHROPIC_AUTH_TOKEN='{gw.key}'" in content
-            # Real keys must never appear
-            assert "sk-ant" not in content
-            assert "oauth" not in content
-
-    def test_gateway_writes_openai_proxy_vars(self, tmp_path: Path):
-        """When gateway has openai, env gets OPENAI_BASE_URL + OPENAI_API_KEY."""
-        gw = _MockGateway(providers={"openai"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
-            assert f"OPENAI_API_KEY='{gw.key}'" in content
-
-    def test_env_file_includes_process_wide_agent_context(self, tmp_path: Path):
-        """Hook processes use the process env, not the built-in MCP server env."""
-        gw = _MockGateway(providers={"openai"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=False, group_folder="learning-review-pynchy-dev")
-
-        assert env_dir is not None
-        content = (env_dir / "env").read_text()
-        assert "PYNCHY_GROUP_FOLDER='learning-review-pynchy-dev'" in content
-        assert "PYNCHY_IS_ADMIN='0'" in content
-
-    def test_gateway_host_bypasses_container_proxy_vars(self, tmp_path: Path):
-        """Local gateway traffic must not route through explicit proxy variables."""
-        gw = _MockGateway(providers={"openai"}, base_url="http://192.168.64.1:4000")
-        proxy_env = {
-            "HTTP_PROXY": "http://proxy.internal:8080",
-            "HTTPS_PROXY": "http://proxy.internal:8080",
-            "NO_PROXY": "metadata.internal",
-        }
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(
-                is_admin=True,
-                group_folder="test",
-                extra_env_vars=proxy_env,
-            )
-
-        assert env_dir is not None
-        content = (env_dir / "env").read_text()
-        expected_hosts = (
-            "metadata.internal,localhost,127.0.0.1,::1,host.docker.internal,192.168.64.1"
-        )
-        assert "HTTP_PROXY='http://proxy.internal:8080'" in content
-        assert f"NO_PROXY='{expected_hosts}'" in content
-        assert f"no_proxy='{expected_hosts}'" in content
-
-    def test_returns_none_when_no_credentials(self, tmp_path: Path):
-        """No gateway providers and no non-LLM creds → returns None."""
-        gw = _MockGateway(providers=set())
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            assert write_env_file(is_admin=True, group_folder="test") is None
-
-    def test_auto_discovers_gh_token_for_admin(self, tmp_path: Path):
-        """GH_TOKEN is auto-discovered from gh CLI for admin containers."""
-        gw = _MockGateway(providers=set())
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GH_TOKEN='gho_abc123'" in content
-
-    def test_runtime_harness_does_not_discover_host_gh_token(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
-        """The hermetic runtime must not pass an ambient gh credential to its agent."""
-        gw = _MockGateway(providers={"openai"})
-        monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token") as read_gh_token,
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-
-        assert env_dir is not None
-        assert "GH_TOKEN" not in (env_dir / "env").read_text()
-        read_gh_token.assert_not_called()
-
-    def test_non_admin_excludes_gh_token(self, tmp_path: Path):
-        """Non-admin containers never receive GH_TOKEN, even when available."""
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=False, group_folder="untrusted")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GH_TOKEN" not in content
-            assert "ANTHROPIC_BASE_URL" in content
-
-    def test_settings_gh_token_overrides_auto_discovery(self, tmp_path: Path):
-        """Configured GH_TOKEN takes priority over gh CLI auto-discovery."""
-        gw = _MockGateway(providers=set())
-        with (
-            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GH_TOKEN='explicit-token'" in content
-            assert "auto-token" not in content
-
-    def test_auto_discovers_git_identity(self, tmp_path: Path):
-        """Git identity is auto-discovered and written as all four env vars."""
-        gw = _MockGateway(providers=set())
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(
-                f"{_CR_CREDS}._read_git_identity",
-                return_value=("Jane Doe", "jane@example.com"),
-            ),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GIT_AUTHOR_NAME='Jane Doe'" in content
-            assert "GIT_COMMITTER_NAME='Jane Doe'" in content
-            assert "GIT_AUTHOR_EMAIL='jane@example.com'" in content
-            assert "GIT_COMMITTER_EMAIL='jane@example.com'" in content
-
-    def test_all_credentials_combined(self, tmp_path: Path):
-        """Gateway LLM creds, GitHub, and git credentials are all written together."""
-        gw = _MockGateway(providers={"anthropic", "openai"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
-            patch(
-                f"{_CR_CREDS}._read_git_identity",
-                return_value=("Bob", "bob@test.com"),
-            ),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
-            assert f"ANTHROPIC_AUTH_TOKEN='{gw.key}'" in content
-            assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
-            assert f"OPENAI_API_KEY='{gw.key}'" in content
-            assert "GH_TOKEN='gho_xyz'" in content
-            assert "GIT_AUTHOR_NAME='Bob'" in content
-
-    def test_per_group_env_dirs_are_isolated(self, tmp_path: Path):
-        """Each group gets its own env directory."""
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            admin_dir = write_env_file(is_admin=True, group_folder="admin-group")
-            nonadmin_dir = write_env_file(is_admin=False, group_folder="other-group")
-            assert admin_dir != nonadmin_dir
-            assert "GH_TOKEN" in (admin_dir / "env").read_text()
-            assert "GH_TOKEN" not in (nonadmin_dir / "env").read_text()
-
-    def test_values_are_shell_quoted(self, tmp_path: Path):
-        """Names with spaces and apostrophes are safely shell-quoted."""
-        gw = _MockGateway(providers=set())
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
-            patch(
-                f"{_CR_CREDS}._read_git_identity",
-                return_value=("O'Brien Smith", None),
-            ),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            # Shell quoting escapes single quotes: O'Brien → 'O'\''Brien Smith'
-            assert "O" in content
-            assert "Brien" in content
-
-
 class TestReadGhToken:
     """gh-CLI token discovery, driven through the public get_repo_token().
 
@@ -1702,70 +1511,6 @@ class TestReadGhToken:
             assert get_repo_token("owner/repo") is None
 
 
-class TestReadGitIdentity:
-    """Git identity discovery, observed via the env file write_env_file writes.
-
-    A gateway provider is present so the env file is written; git config is
-    faked via subprocess.run so the GIT_* vars reflect the discovered identity.
-    """
-
-    def test_returns_name_and_email(self, tmp_path: Path):
-        def mock_run(cmd, **kwargs):
-            key = cmd[-1]
-            if key == "user.name":
-                return type("R", (), {"returncode": 0, "stdout": "Alice\n"})()
-            if key == "user.email":
-                return type("R", (), {"returncode": 0, "stdout": "alice@test.com\n"})()
-            return type("R", (), {"returncode": 1, "stdout": ""})()
-
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GIT_AUTHOR_NAME='Alice'" in content
-            assert "GIT_COMMITTER_NAME='Alice'" in content
-            assert "GIT_AUTHOR_EMAIL='alice@test.com'" in content
-            assert "GIT_COMMITTER_EMAIL='alice@test.com'" in content
-
-    def test_returns_none_when_not_configured(self, tmp_path: Path):
-        mock_result = type("R", (), {"returncode": 1, "stdout": ""})()
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GIT_AUTHOR_NAME" not in content
-            assert "GIT_AUTHOR_EMAIL" not in content
-
-    def test_returns_partial_when_only_name_set(self, tmp_path: Path):
-        def mock_run(cmd, **kwargs):
-            if cmd[-1] == "user.name":
-                return type("R", (), {"returncode": 0, "stdout": "Bob\n"})()
-            return type("R", (), {"returncode": 1, "stdout": ""})()
-
-        gw = _MockGateway(providers={"anthropic"})
-        with (
-            _patch_settings(tmp_path),
-            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
-            patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
-        ):
-            env_dir = write_env_file(is_admin=True, group_folder="test")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GIT_AUTHOR_NAME='Bob'" in content
-            assert "GIT_AUTHOR_EMAIL" not in content
-
-
-# ---------------------------------------------------------------------------
 # Snapshot tests
 # ---------------------------------------------------------------------------
 
@@ -3679,36 +3424,6 @@ class TestWriteSettingsJson:
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "stale" not in settings
         assert "env" in settings
-
-
-# ---------------------------------------------------------------------------
-# Shell quoting tests
-# ---------------------------------------------------------------------------
-
-
-class TestShellQuote:
-    """Test shell quoting for env file values."""
-
-    def test_simple_string(self):
-        assert shell_quote("hello") == "'hello'"
-
-    def test_string_with_spaces(self):
-        assert shell_quote("hello world") == "'hello world'"
-
-    def test_string_with_single_quotes(self):
-        # O'Brien → 'O'\''Brien'
-        result = shell_quote("O'Brien")
-        assert result == "'" + "O" + "'\\''" + "Brien" + "'"
-
-    def test_empty_string(self):
-        assert shell_quote("") == "''"
-
-    def test_string_with_special_chars(self):
-        """Special shell chars should be safely quoted."""
-        result = shell_quote("$HOME && rm -rf /")
-        assert result.startswith("'")
-        assert result.endswith("'")
-        assert "$HOME" in result
 
 
 # ---------------------------------------------------------------------------

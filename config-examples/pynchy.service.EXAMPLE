@@ -2,7 +2,7 @@
 # Source of truth: config-examples/pynchy.service.EXAMPLE in the pynchy repo.
 # Keep the deployed copy at ~/.config/systemd/user/pynchy.service in sync.
 #
-# Replace <PROJECT_DIR> and <USER_HOME> with actual values, then:
+# Replace <PROJECT_DIR> and <USER_HOME> with actual absolute paths, then:
 #   cp config-examples/pynchy.service.EXAMPLE ~/.config/systemd/user/pynchy.service
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now pynchy
@@ -18,7 +18,7 @@ WorkingDirectory=<PROJECT_DIR>
 ExecStartPre=/usr/bin/git -C <PROJECT_DIR> pull --ff-only
 ExecStartPre=<USER_HOME>/.local/bin/uv sync --all-extras
 ExecStartPre=<USER_HOME>/.local/bin/uv tool run prek install
-ExecStart=<USER_HOME>/.local/bin/uv run pynchy
+ExecStart=<PROJECT_DIR>/scripts/run_pynchy.sh
 Restart=always
 RestartSec=10
 Environment=HOME=<USER_HOME>

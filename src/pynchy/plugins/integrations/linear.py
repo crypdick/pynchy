@@ -98,13 +98,6 @@ class LinearMcpPlugin:
                     transport="streamable_http",
                     idle_timeout=600,
                     inject_workspace=True,
-                    # Empty static values prevent an account-specific process from
-                    # inheriting a different account's conventional host variables.
-                    env={"LINEAR_API_KEY": "", "LINEAR_TEAM_KEY": ""},
-                    env_forward={
-                        "LINEAR_API_KEY": account.config.api_key_env,
-                        "LINEAR_TEAM_KEY": account.config.team_key_env,
-                    },
                 ),
                 trust=ServiceTrustConfig(
                     public_source=account.config.public_source,

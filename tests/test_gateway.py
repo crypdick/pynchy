@@ -180,10 +180,14 @@ class TestCollectYamlEnvRefs:
 
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
 
-        calls: list[list[str]] = []
+        calls: list[tuple[list[str], dict[str, str]]] = []
 
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
-            calls.append(list(args))
+        def fake_docker(
+            *args: str,
+            environment: dict[str, str] | None = None,
+            **_kwargs,
+        ):
+            calls.append((list(args), dict(environment or {})))
             result = MagicMock()
             result.stdout = ""
             result.returncode = 0
@@ -201,8 +205,12 @@ class TestCollectYamlEnvRefs:
         ):
             await gw.start()
 
-        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
-        assert "OPENAI_API_KEY_TEST=sk-test" in litellm_run  # pragma: allowlist secret
+        litellm_args, litellm_environment = next(
+            call for call in calls if "LITELLM_MASTER_KEY" in call[0]
+        )
+        assert "OPENAI_API_KEY_TEST" in litellm_args
+        assert "sk-test" not in litellm_args
+        assert litellm_environment["OPENAI_API_KEY_TEST"] == "sk-test"  # pragma: allowlist secret
 
     @pytest.mark.asyncio
     async def test_start_pins_chatgpt_token_dir(self, tmp_path: Path):
@@ -216,10 +224,14 @@ class TestCollectYamlEnvRefs:
         )
 
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
-        calls: list[list[str]] = []
+        calls: list[tuple[list[str], dict[str, str]]] = []
 
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
-            calls.append(list(args))
+        def fake_docker(
+            *args: str,
+            environment: dict[str, str] | None = None,
+            **_kwargs,
+        ):
+            calls.append((list(args), dict(environment or {})))
             result = MagicMock()
             result.stdout = ""
             result.returncode = 0
@@ -237,8 +249,12 @@ class TestCollectYamlEnvRefs:
         ):
             await gw.start()
 
-        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
-        assert "CHATGPT_TOKEN_DIR=/app/data/chatgpt" in litellm_run
+        litellm_args, litellm_environment = next(
+            call for call in calls if "LITELLM_MASTER_KEY" in call[0]
+        )
+        assert "CHATGPT_TOKEN_DIR" in litellm_args
+        assert "/app/data/chatgpt" not in litellm_args
+        assert litellm_environment["CHATGPT_TOKEN_DIR"] == "/app/data/chatgpt"  # noqa: S105
 
     @pytest.mark.asyncio
     async def test_start_requires_phoenix_endpoint_when_callback_enabled(self, tmp_path: Path):
@@ -277,10 +293,14 @@ class TestCollectYamlEnvRefs:
         )
 
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
-        calls: list[list[str]] = []
+        calls: list[tuple[list[str], dict[str, str]]] = []
 
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
-            calls.append(list(args))
+        def fake_docker(
+            *args: str,
+            environment: dict[str, str] | None = None,
+            **_kwargs,
+        ):
+            calls.append((list(args), dict(environment or {})))
             result = MagicMock()
             result.stdout = ""
             result.returncode = 0
@@ -299,13 +319,19 @@ class TestCollectYamlEnvRefs:
         ):
             await gw.start()
 
-        litellm_run = " ".join(next(c for c in calls if "LITELLM_MASTER_KEY" in " ".join(c)))
-        assert (
-            "PHOENIX_COLLECTOR_HTTP_ENDPOINT=https://phoenix.example.test/v1/traces" in litellm_run
+        litellm_args, litellm_environment = next(
+            call for call in calls if "LITELLM_MASTER_KEY" in call[0]
         )
-        assert "PHOENIX_PROJECT_NAME=pynchy-test" in litellm_run
-        assert "LITELLM_OTEL_V2=true" in litellm_run
-        assert "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT" in litellm_run
+        assert "https://phoenix.example.test/v1/traces" not in litellm_args
+        assert litellm_environment["PHOENIX_COLLECTOR_HTTP_ENDPOINT"] == (
+            "https://phoenix.example.test/v1/traces"
+        )
+        assert litellm_environment["PHOENIX_PROJECT_NAME"] == "pynchy-test"
+        assert litellm_environment["LITELLM_OTEL_V2"] == "true"
+        assert (
+            litellm_environment["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"]
+            == "SPAN_AND_EVENT"
+        )
 
 
 class TestPrepareLiteLLMConfig:
@@ -365,9 +391,18 @@ class TestPrepareLiteLLMConfig:
 
 class TestLiteLLMGatewayStart:
     @staticmethod
-    def _fake_docker_recorder(calls: list[list[str]]):
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+    def _fake_docker_recorder(
+        calls: list[list[str]],
+        environments: list[dict[str, str]] | None = None,
+    ):
+        def fake_docker(
+            *args: str,
+            environment: dict[str, str] | None = None,
+            **_kwargs,
+        ):
             calls.append(list(args))
+            if environments is not None:
+                environments.append(dict(environment or {}))
             result = MagicMock()
             result.stdout = ""
             result.returncode = 0
@@ -397,9 +432,9 @@ class TestLiteLLMGatewayStart:
         )
 
         litellm_run = cls._litellm_run_command(flat_calls)
-        assert "DATABASE_URL=" in litellm_run
-        assert "postgresql://" in litellm_run
-        assert "LITELLM_SALT_KEY=" in litellm_run
+        assert "DATABASE_URL" in litellm_run
+        assert "postgresql://" not in litellm_run
+        assert "LITELLM_SALT_KEY" in litellm_run
         assert "--network pynchy-litellm-net" in litellm_run
         request = wait_healthy_mock.await_args.args[0]
         assert isinstance(request, HealthCheckRequest)
@@ -459,18 +494,19 @@ class TestLiteLLMGatewayStart:
             **_LITELLM_KWARGS,
         )
         calls: list[list[str]] = []
+        environments: list[dict[str, str]] = []
 
         with (
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
             patch(
                 f"{_LITELLM_MOD}.run_docker",
                 new_callable=AsyncMock,
-                side_effect=self._fake_docker_recorder(calls),
+                side_effect=self._fake_docker_recorder(calls, environments),
             ),
             patch(
                 f"{_DOCKER_MOD}.run_docker",
                 new_callable=AsyncMock,
-                side_effect=self._fake_docker_recorder(calls),
+                side_effect=self._fake_docker_recorder(calls, environments),
             ),
             patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
             patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
@@ -481,14 +517,19 @@ class TestLiteLLMGatewayStart:
 
         self._assert_start_calls(calls, wait_healthy_mock)
         litellm_run = self._litellm_run_command(self._joined_calls(calls))
-        assert "UI_USERNAME=dashboard-user" in litellm_run
-        assert "UI_PASSWORD=dashboard-password" in litellm_run
+        litellm_environment = next(
+            environment for environment in environments if "LITELLM_MASTER_KEY" in environment
+        )
+        assert "dashboard-user" not in litellm_run
+        assert "dashboard-password" not in litellm_run
+        assert litellm_environment["UI_USERNAME"] == "dashboard-user"
+        assert litellm_environment["UI_PASSWORD"] == "dashboard-password"  # noqa: S105  # pragma: allowlist secret
 
     @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):
         calls: list[list[str]] = []
 
-        def fake_docker(*args: str, check: bool = True, timeout: int = 30):
+        def fake_docker(*args: str, **_kwargs):
             calls.append(list(args))
             result = MagicMock()
             result.stdout = ""

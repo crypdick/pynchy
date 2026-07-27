@@ -50,6 +50,7 @@ def _settings(state_file: Path):
         tools={
             "proton-mail": McpTool(
                 type="mcp",
+                optional_env=["PYNCHY_PROTON_BRIDGE_IMAP_PORT"],
                 mcp=McpToolConfig(
                     runtime="script",
                     command="uv",
@@ -65,13 +66,16 @@ def _settings(state_file: Path):
 
 
 @pytest.mark.action("marketplace.health.read")
-def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path) -> None:
+def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path, monkeypatch) -> None:
     state_file = tmp_path / "pending_actions.json"
     _write_state(state_file)
     client = MagicMock()
     client.list_mailboxes.return_value = ProtonMailboxList(
         mailboxes=[ProtonMailbox(name="Private Mailbox", mailbox="PRIVATE")]
     )
+    create_client = MagicMock(return_value=client)
+    monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_IMAP_PORT", "2143")
+    monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
 
     with (
         patch(
@@ -80,7 +84,7 @@ def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path) -> None:
         ),
         patch(
             "pynchy.plugins.integrations.marketplace_health.create_proton_mail_client",
-            return_value=client,
+            create_client,
         ),
     ):
         snapshot = build_marketplace_health_snapshot(
@@ -92,6 +96,10 @@ def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path) -> None:
         "reader_health": {"status": "ready", "reason": "ready"},
     }
     assert "private" not in json.dumps(snapshot).casefold()
+    environment = create_client.call_args.kwargs["environment"]
+    assert environment["PYNCHY_PROTON_BRIDGE_USERNAME"] == "reader@example.test"
+    assert environment["PYNCHY_PROTON_BRIDGE_IMAP_PORT"] == "2143"
+    assert "UNRELATED_HOST_TOKEN" not in environment
     client.list_mailboxes.assert_called_once_with()
 
 

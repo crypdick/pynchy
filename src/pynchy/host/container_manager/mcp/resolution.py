@@ -18,6 +18,8 @@ from typing import Any
 
 from pynchy.config import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
+    apply_tool_access,
+    tool_process_environment,
 )
 from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
@@ -50,6 +52,7 @@ class McpInstance:
     container_name: str  # Docker container name (for type=docker)
     project_root: Path
     port: int | None = None  # host-side port (auto-assigned for host-process instances)
+    tool_environment: dict[str, str] = field(default_factory=dict)
     last_activity: float = 0.0  # monotonic timestamp
     process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script/stdio)
 
@@ -99,7 +102,10 @@ def _resolved_workspace_config(
     group_folder: str,
 ) -> ResolvedWorkspaceConfig | None:
     """Resolve workspace config before reading selected MCP tool declarations."""
-    return settings.resolved_workspace_config(group_folder)
+    resolved = settings.resolved_workspace_config(group_folder)
+    if resolved is None:
+        return None
+    return apply_tool_access(settings.tools, resolved)[0]
 
 
 def _mcp_runtime_updates(tool: McpTool) -> dict[str, Any]:
@@ -295,6 +301,7 @@ def resolve_all_instances(
 
             if iid not in state.instances:
                 container_name = runtime_container_name(f"mcp-{iid}")
+                tool = settings.tools.get(server_name)
                 offset = port_counters.get(server_name, 0)
                 base_port = server_config.port
                 instance_port = (base_port + offset) if base_port is not None else None
@@ -316,6 +323,7 @@ def resolve_all_instances(
                     container_name=container_name,
                     project_root=settings.project_root,
                     port=instance_port,
+                    tool_environment=tool_process_environment(tool) if tool is not None else {},
                 )
 
             instance_ids.append(iid)

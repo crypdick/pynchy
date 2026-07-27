@@ -65,6 +65,7 @@ SCRIPT_MCP_PORT_MESSAGE = "Script MCP tools require 'port'"
 STDIO_MCP_COMMAND_MESSAGE = "Stdio MCP tools require 'command'"
 STDIO_MCP_PORT_MESSAGE = "Stdio MCP tools require 'port'"
 STDIO_MCP_TRANSPORT_MESSAGE = "Stdio MCP tools require HTTP transport"
+ENV_NAME_MESSAGE = "tool environment names must use shell variable syntax"
 
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
@@ -103,6 +104,12 @@ def _validated_prompt_name(v: str) -> PromptName:
     return PromptName(v)
 
 
+def _validated_env_name(v: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v) is None:
+        raise ValueError(ENV_NAME_MESSAGE)
+    return v
+
+
 # AfterValidator runs after Pydantic coerces the input to str; for Optional fields it
 # is skipped on None. The validator returns the NewType so the field's static type
 # carries the parse result — no downstream re-validation.
@@ -114,6 +121,7 @@ ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
 ValidatedWorkspaceName = Annotated[WorkspaceName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 ValidatedPromptName = Annotated[PromptName, AfterValidator(_validated_prompt_name)]
+ValidatedEnvName = Annotated[str, AfterValidator(_validated_env_name)]
 CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 CopWireApi = Literal["messages", "responses"]
 
@@ -453,7 +461,6 @@ class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
     model: str | None = None
     chat: ValidatedChatRef | None = None
-    proton_pass_env_file: str | None = None
 
     threads: list[WorkspaceThreadConfig] = Field(default_factory=list)
     scopes: list[WorkspaceScopeConfig] = Field(default_factory=list)
@@ -464,18 +471,6 @@ class WorkspaceConfig(_StrictModel):
         if len(names) != len(set(names)):
             raise ValueError("workspace thread names must be unique ignoring case")
         return self
-
-    @field_validator("proton_pass_env_file")
-    @classmethod
-    def validate_proton_pass_env_file(cls, value: str | None) -> str | None:
-        """Keep secret-reference templates rooted in the Pynchy checkout."""
-        if value is None:
-            return None
-        path = Path(value)
-        if path.is_absolute() or ".." in path.parts or not value.strip():
-            msg = "proton_pass_env_file must be a non-empty relative path without '..'"
-            raise ValueError(msg)
-        return value
 
 
 class RouteConfig(_StrictModel):
@@ -520,8 +515,28 @@ class ReposConfig(_StrictModel):
         return v
 
 
-class _ToolTrustConfig(_StrictModel):
+class _ToolAccessConfig(_StrictModel):
     enabled: bool = True
+    skills: list[str] = Field(default_factory=list)
+    required_env: list[ValidatedEnvName] = Field(default_factory=list)
+    optional_env: list[ValidatedEnvName] = Field(default_factory=list)
+    expose_env_to_workspace: bool = False
+
+    @model_validator(mode="after")
+    def validate_environment_names(self) -> _ToolAccessConfig:
+        if len(self.required_env) != len(set(self.required_env)):
+            raise ValueError("tool required_env names must be unique")
+        if len(self.optional_env) != len(set(self.optional_env)):
+            raise ValueError("tool optional_env names must be unique")
+        overlap = sorted(set(self.required_env) & set(self.optional_env))
+        if overlap:
+            raise ValueError(
+                "tool environment names cannot be both required and optional: " + ", ".join(overlap)
+            )
+        return self
+
+
+class _ToolTrustConfig(_ToolAccessConfig):
     public_source: bool | Literal["forbidden"] = True
     secret_data: bool = True
     public_sink: bool | Literal["forbidden"] = True
@@ -542,17 +557,33 @@ class LinearTool(_ToolTrustConfig):
 
     type: Literal["linear"]
     workspace: str | None = None
-    api_key_env: str = "LINEAR_API_KEY"
-    team_key_env: str = "LINEAR_TEAM_KEY"
+    required_env: list[ValidatedEnvName] = Field(default_factory=lambda: ["LINEAR_API_KEY"])
+    optional_env: list[ValidatedEnvName] = Field(default_factory=lambda: ["LINEAR_TEAM_KEY"])
     project_per_workspace: bool | None = None
     project_name_template: str | None = None
 
-    @field_validator("api_key_env", "team_key_env")
-    @classmethod
-    def validate_linear_env_name(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Linear credential environment names cannot be empty")
-        return value
+    @model_validator(mode="after")
+    def validate_linear_environment_shape(self) -> LinearTool:
+        if len(self.required_env) != 1:
+            raise ValueError("Linear tools require exactly one required_env API key")
+        if len(self.optional_env) > 1:
+            raise ValueError("Linear tools accept at most one optional_env team key")
+        return self
+
+    @property
+    def api_key_env(self) -> str:
+        return self.required_env[0]
+
+    @property
+    def team_key_env(self) -> str:
+        return self.optional_env[0] if self.optional_env else "LINEAR_TEAM_KEY"
+
+
+class WorkspaceTool(_ToolAccessConfig):
+    """Agent-side capability with no host service or MCP runtime."""
+
+    type: Literal["workspace"]
+    expose_env_to_workspace: Literal[True] = True
 
 
 class McpToolConfig(_StrictModel):
@@ -568,7 +599,6 @@ class McpToolConfig(_StrictModel):
     idle_timeout: int = 600
     startup_timeout_seconds: Annotated[float, Field(gt=0)] = 5.0
     env: dict[str, str] = {}
-    env_forward: dict[str, str] = {}
     volumes: list[str] = []
     inject_workspace: bool = False
     url: str | None = None
@@ -664,7 +694,7 @@ class MatrixConnectionConfig(_StrictModel):
 
 
 ToolConfig = Annotated[
-    BuiltinTool | LinearTool | CalDAVTool | McpTool,
+    BuiltinTool | LinearTool | CalDAVTool | McpTool | WorkspaceTool,
     Field(discriminator="type"),
 ]
 

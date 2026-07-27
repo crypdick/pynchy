@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig
+from pynchy.config.models import BuiltinTool, ProfileConfig
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
@@ -82,8 +82,14 @@ def _settings_with_workspaces(
     profiles: dict[str, ProfileConfig] | None = None,
     workspaces: dict[str, WorkspaceConfig] | None = None,
 ):
+    configured_profiles = profiles or {}
     return make_settings(
-        profiles=profiles or {},
+        tools={
+            tool_name: BuiltinTool(type="builtin")
+            for profile in configured_profiles.values()
+            for tool_name in profile.tools
+        },
+        profiles=configured_profiles,
         workspaces=workspaces or {},
     )
 

@@ -22,7 +22,14 @@ from pynchy.capability_policy import (
     capability_pattern_matches,
     most_restrictive_capability_rule,
 )
-from pynchy.config import get_settings, reset_settings
+from pynchy.config import (
+    ResolvedToolAccess,
+    Settings,
+    apply_tool_access,
+    get_settings,
+    reset_settings,
+    resolve_tool_access,
+)
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
 )
@@ -139,19 +146,23 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
         _state.plugin_workspace_specs[spec.folder] = spec
 
 
-def _workspace_specs() -> dict[str, WorkspaceSpec]:
+def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpec]:
     """Return merged workspace specs from plugins and personalization.
 
     User config always wins when both sources define the same workspace folder.
     """
-    s = get_settings()
+    s = settings or get_settings()
     merged = dict(_state.plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
         merged[folder] = WorkspaceSpec(folder=folder, config=cfg)
     return merged
 
 
-def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
+def load_workspace_config(
+    group_folder: str,
+    *,
+    settings: Settings | None = None,
+) -> WorkspaceConfig | None:
     """Read workspace config for a group from Settings.
 
     Returns None if the group has no configured [workspaces.<name>] section.
@@ -161,7 +172,8 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
         # A persisted route workspace can outlive its route configuration.
         # Never let that stale registration fall back to the full parent policy.
         return None
-    specs = _workspace_specs()
+    effective_settings = settings or get_settings()
+    specs = _workspace_specs(effective_settings)
     parent_folder = (
         runtime_restriction.parent_workspace
         if runtime_restriction is not None
@@ -170,9 +182,11 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     policy_folder = parent_folder or group_folder
     spec = specs.get(policy_folder)
     if spec is None:
-        semantic = get_settings().workspace_config(policy_folder)
-        if semantic is not None:
-            return semantic
+        semantic_lookup = getattr(effective_settings, "workspace_config", None)
+        if semantic_lookup is not None:
+            semantic = cast("WorkspaceConfig | None", semantic_lookup(policy_folder))
+            if semantic is not None:
+                return semantic
     if spec is None:
         return None
     config = spec.config
@@ -185,15 +199,17 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     return config
 
 
-def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
-    """Load and merge the composable profiles for a workspace.
-
-    Returns None if the group has no config.
-    """
-    if load_workspace_config(group_folder) is None:
+def _load_declared_resolved_config(
+    group_folder: str,
+    *,
+    settings: Settings | None = None,
+) -> ResolvedWorkspaceConfig | None:
+    """Load merged policy and apply route restrictions before credential access."""
+    effective_settings = settings or get_settings()
+    if load_workspace_config(group_folder, settings=effective_settings) is None:
         return None
 
-    s = get_settings()
+    s = effective_settings
     runtime_restriction = _runtime_restrictions.get(group_folder)
     resolved = s.resolved_workspace_config(group_folder)
     base: ResolvedWorkspaceConfig | None
@@ -224,6 +240,32 @@ def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
             most_restrictive_capability_rule((*inherited, restriction)) or restriction
         )
     return replace(base, tools=restricted_tools, capabilities=capabilities)
+
+
+def load_resolved_tool_access(
+    group_folder: str,
+    *,
+    settings: Settings | None = None,
+) -> ResolvedToolAccess | None:
+    """Return selected tool availability without exposing requirement values."""
+    effective_settings = settings or get_settings()
+    resolved = _load_declared_resolved_config(group_folder, settings=effective_settings)
+    if resolved is None:
+        return None
+    return resolve_tool_access(effective_settings.tools, resolved)
+
+
+def load_resolved_config(
+    group_folder: str,
+    *,
+    settings: Settings | None = None,
+) -> ResolvedWorkspaceConfig | None:
+    """Load the effective workspace config after route and tool access policy."""
+    effective_settings = settings or get_settings()
+    resolved = _load_declared_resolved_config(group_folder, settings=effective_settings)
+    if resolved is None:
+        return None
+    return apply_tool_access(effective_settings.tools, resolved)[0]
 
 
 def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:

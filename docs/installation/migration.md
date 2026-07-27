@@ -13,13 +13,16 @@ git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
   data/personalization
 ```
 
-Then copy runtime data without replacing that nested repository, and copy the
-root `.env` when it contains gateway, channel, or provider secrets:
+Then copy runtime data without replacing that nested repository. Copy the root
+`.env` only for a local-development deployment that still uses it:
 
 ```bash
 rsync -a --exclude personalization OLD_PYNCHY/data/ NEW_PYNCHY/data/
 cp OLD_PYNCHY/.env NEW_PYNCHY/.env
 ```
+
+For production, configure the new service to materialize the declared names
+from Proton Pass instead of copying plaintext values.
 
 For an installation that still uses root `config.toml` and
 `litellm_config.yaml`, initialize a private personalization repository, move
@@ -28,6 +31,21 @@ their contents to `pynchy.toml` and `litellm.yaml`, and remove
 Move durable `[jobs.<name>]` declarations into
 `automations/<name>.toml` documents when convenient; the validator still
 accepts non-colliding `[jobs]` declarations during migration.
+
+Convert legacy credential delivery before starting the new service:
+
+- Move MCP `env_forward` names to the owning tool's `required_env` or
+  `optional_env`.
+- Replace `workspaces.<name>.proton_pass_env_file` with tool-owned
+  requirements.
+- Declare agent-side CLI credentials on a `type = "workspace"` tool instead of
+  relying on implicit GitHub injection.
+- Remove generated `data/env/` directories after stopping the old service.
+- Materialize production values into the new Pynchy host process through
+  Proton Pass.
+
+See [Tool access and secrets](../usage/tool-access.md) for the target
+configuration.
 
 Validate before the first start:
 

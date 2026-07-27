@@ -10,6 +10,7 @@ from pathlib import (
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
+from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mcp.startup import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
     McpStartupFailure,
 )
@@ -19,6 +20,7 @@ from pynchy.host.container_manager.serialization import input_to_dict
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
 )
+from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
 from pynchy.logger import logger
 from pynchy.plugins.agent_hooks import collect_agent_hook_specs, container_agent_hook_configs
 from pynchy.plugins.contracts import AgentCoreSpec
@@ -30,6 +32,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container 
     VolumeMount,
     WorkspaceProfile,
 )
+from pynchy.utils import filtered_process_environment
 
 # ---------------------------------------------------------------------------
 # Container timeout resolution
@@ -115,6 +118,24 @@ def write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     )
 
     write_json_atomic(input_dir / "initial.json", input_to_dict(input_data))
+
+
+def _container_agent_environment(
+    group: WorkspaceProfile,
+    input_data: ContainerInput,
+) -> dict[str, str]:
+    environment = build_agent_env_vars(
+        is_admin=input_data.is_admin,
+        group_folder=group.folder,
+    )
+    environment.update(
+        {
+            "PYNCHY_GROUP_FOLDER": group.folder,
+            "PYNCHY_IS_ADMIN": "1" if input_data.is_admin else "0",
+            "PYNCHY_SKILLS_ROOT": PERSONALIZATION_SKILLS_CONTAINER_PATH,
+        }
+    )
+    return environment
 
 
 # ---------------------------------------------------------------------------
@@ -239,12 +260,15 @@ async def _spawn_container(
             input_data.mcp_direct_servers = direct_configs
     mcp_ms = (time.monotonic() - phase_start) * 1000
 
+    agent_env = _container_agent_environment(group, input_data)
+
     # --- Build args ---
     container_args = build_container_args(
         mounts,
         container_name,
         memory_mb=runtime.agent_memory_mb,
         image=runtime.agent_image,
+        env_names=tuple(agent_env),
     )
 
     # --- Write initial input as file (container reads on startup) ---
@@ -272,6 +296,7 @@ async def _spawn_container(
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=filtered_process_environment(agent_env),
     )
 
     return proc, container_name, mounts, mcp_startup_failures

@@ -40,7 +40,7 @@ def _run() -> None:
         load_dotenv,
     )
 
-    load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
+    load_dotenv()  # Materialize host credentials for explicitly declared tool access.
 
     from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - startup validates deployment-owned configuration before app imports.
         LITELLM_FILENAME,

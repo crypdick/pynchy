@@ -35,11 +35,19 @@ bridge, so security gating, capability policy, approvals, and response
 fencing stay on the normal path.
 
 The bridge passes through only `HOME`, `PATH`, temporary-directory, and locale
-variables. Static `env` values and explicit `env_forward` mappings supplement
-that allowlist. This avoids exposing the Pynchy service environment to a host
-stdio command.
+variables. Static non-secret `mcp.env` values and the selected tool's
+`required_env` and `optional_env` declarations supplement that baseline. This
+avoids exposing the Pynchy service environment to a host stdio command.
 
-**Per-workspace access control.** Each workspace gets a LiteLLM team with a virtual key scoped to its allowed MCP servers. The agent container receives this key and uses it to authenticate with the LiteLLM MCP endpoint.
+Docker MCP commands receive value-free `-e NAME` flags. Pynchy supplies the
+values only in the Docker CLI subprocess environment, not in argv. Script
+runtimes use the same filtered process baseline. For the user-facing
+authorization model, see [Tool access and secrets](../usage/tool-access.md).
+
+**Per-workspace access control.** Each workspace gets a LiteLLM team with a
+virtual key scoped to its available MCP servers. A missing required environment
+variable removes only that tool before team provisioning. The agent container
+receives the key and uses it to authenticate with the LiteLLM MCP endpoint.
 
 ## Files
 

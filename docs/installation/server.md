@@ -7,8 +7,9 @@ fit the deployment.
 ## Prerequisites
 
 On the server, use Ubuntu or Debian with Docker, a reachable Temporal service,
-and [Tailscale](https://tailscale.com/download) when you need remote access. On
-your local machine, keep SSH access and GitHub CLI authentication when cloning a
+Proton Pass CLI authenticated for the service account, and
+[Tailscale](https://tailscale.com/download) when you need remote access. On your
+local machine, keep SSH access and GitHub CLI authentication when cloning a
 private repository.
 
 ## Install the server dependencies
@@ -42,9 +43,20 @@ sg docker -c './src/pynchy/agent/build.sh'
 ## Configure credentials and a channel
 
 Configure model routes and non-secret settings in the private
-`data/personalization/` checkout. Keep gateway, provider, and channel secrets
-in the Pynchy checkout's root `.env`. See
+`data/personalization/` checkout. Declare each tool's credential names in
+`pynchy.toml`, then materialize gateway, provider, channel, and selected tool
+values into the managed Pynchy process through Proton Pass. Keep the Pass
+reference template outside workspaces and source control. See
+[Tool access and secrets](../usage/tool-access.md#materialize-host-secrets) and
 [Personalization repository](../usage/personalization.md).
+
+Start from the reference-only template, replace its sample item paths, and add
+the remaining gateway and channel requirements:
+
+```bash
+mkdir -p data/proton-pass
+cp config-examples/proton-pass.env.EXAMPLE data/proton-pass/pynchy.env
+```
 
 Follow [Channels](../channels/index.md) for Slack or Discord setup. To
 use WhatsApp, authenticate from the server and scan its terminal QR code:
@@ -56,7 +68,7 @@ uv run pynchy-whatsapp-auth
 ## First run and service
 
 ```bash
-uv run pynchy
+scripts/run_pynchy.sh
 ```
 
 The first foreground run creates the initial workspace, installs the user
@@ -69,7 +81,10 @@ systemctl --user status pynchy
 journalctl --user -u pynchy -f
 ```
 
-Use `config-examples/pynchy.service.EXAMPLE` as the unit-file reference.
+Use `config-examples/pynchy.service.EXAMPLE` as the unit-file reference. Replace
+its path placeholders before enabling it. The unit starts
+`scripts/run_pynchy.sh`, which materializes
+`data/proton-pass/pynchy.env` through Proton Pass when that template exists.
 
 ## Maintain and update the server
 

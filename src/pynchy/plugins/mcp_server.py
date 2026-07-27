@@ -19,6 +19,7 @@ Example TOML::
 
     [tools.slack_mcp_acme]
     type = "mcp"
+    required_env = ["SLACK_MCP_XOXC_TOKEN", "SLACK_MCP_XOXD_TOKEN"]
 
     [tools.slack_mcp_acme.mcp]
     runtime = "docker"
@@ -26,8 +27,6 @@ Example TOML::
     port = 8080
     transport = "http"
     env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-    env_forward.SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME"
-    env_forward.SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME"
 
     [tools.some-remote-api]
     type = "mcp"
@@ -103,11 +102,7 @@ class McpServerConfig(BaseModel):
     # Bound on-demand readiness waits. A failed optional tool must not hold up
     # the agent launch behind the global container health-check timeout.
     startup_timeout_seconds: float = 5.0
-    env: dict[str, str] = {}  # static env vars passed to container via -e
-    # Env vars forwarded from host into container. Accepts:
-    #   list[str] — identity mapping (host var name = container var name)
-    #   dict[str, str] — explicit mapping {container_var: host_var}
-    env_forward: dict[str, str] = {}
+    env: dict[str, str] = {}  # static, non-secret runtime configuration
     # Volume mounts passed as -v flags. Each entry is "host_path:container_path".
     # Relative host paths are resolved from project_root.
     volumes: list[str] = []
@@ -116,14 +111,6 @@ class McpServerConfig(BaseModel):
     # This gives each workspace a separate server instance with workspace-scoped
     # args, without requiring per-workspace config in pynchy.toml.
     inject_workspace: bool = False
-
-    @field_validator("env_forward", mode="before")
-    @classmethod
-    def _normalize_env_forward(cls, v: list[str] | dict[str, str]) -> dict[str, str]:
-        """Accept list (identity mapping) or dict (explicit mapping)."""
-        if isinstance(v, list):
-            return {name: name for name in v}
-        return v
 
     @field_validator("startup_timeout_seconds")
     @classmethod

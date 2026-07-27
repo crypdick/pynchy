@@ -1,13 +1,14 @@
 # LiteLLM Proxy Configuration — EXAMPLE
 # =======================================
 # Copy this directory into your private personalization repository and fill in
-# the model routes. Secrets remain in Pynchy's root .env file.
+# the model routes. Secrets remain in the Pynchy host process environment.
 # This file is the single source of truth for LLM routing — pynchy reads
 # it but never modifies it.
 #
 # How env vars work:
 #   1. Reference API keys with os.environ/VARNAME in this file.
-#   2. Set the matching vars in .env.
+#   2. Materialize the matching vars into the Pynchy host process. A root .env
+#      works for local development; production uses Proton Pass.
 #   3. At startup pynchy scans this file, finds all os.environ/ references,
 #      looks them up on the host, and forwards them into the Docker container.
 #
@@ -17,7 +18,7 @@
 # This prevents zombie deployments from poisoning the router's health state.
 #
 # To add a second key for load balancing, just add another model_list entry
-# with a different os.environ/ var and set that var in .env — no code changes.
+# with a different os.environ/ var and materialize that host variable.
 #
 # Docs: https://docs.litellm.ai/docs/proxy/configs
 # Wildcard routing: https://docs.litellm.ai/docs/wildcard_routing

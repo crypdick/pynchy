@@ -26,6 +26,10 @@ They also carry security-relevant fields such as `is_admin`,
 scoped: it cannot select a tool marked `public_source = true`. See [Tool
 Trust](security.md) for that policy.
 
+Tool declarations own their required environment and companion skills. A
+profile selects the tool; it does not grant credentials by naming a skill.
+See [Tool access and secrets](tool-access.md).
+
 ## Bind a Workspace to a Chat
 
 Select the profile from a workspace and set `chat` when the workspace targets
@@ -79,6 +83,10 @@ idempotent lookup report the thread as blocked and receive no mutation.
 `reconcile_workspace_threads(..., dry_run=True)` returns the same proposed
 thread actions without creating threads or changing registrations. Use it from
 an operator integration before applying a large layout.
+
+Ordinary dynamic threads and scheduled agent jobs inherit the parent
+workspace's selected tools. A semantic child workspace resolves its own
+profiles and therefore its own tool access.
 
 ## Move Existing Roots Safely
 

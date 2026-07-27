@@ -9,9 +9,8 @@
     <string>com.pynchy</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$HOME/.local/bin/uv</string>
-        <string>run</string>
-        <string>pynchy</string>
+        <string>/bin/sh</string>
+        <string>$PYNCHY_PROJECT_ROOT/scripts/run_pynchy.sh</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$PYNCHY_PROJECT_ROOT</string>

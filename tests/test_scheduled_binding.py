@@ -12,7 +12,7 @@ from conftest import make_settings
 from linear_webhook_test_support import DiscordThreadChannel
 
 from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig
+from pynchy.config.models import BuiltinTool, ProfileConfig
 from pynchy.conversation.models import (
     Conversation,
     ConversationId,
@@ -409,6 +409,10 @@ async def test_scheduled_linear_binding_restores_webhook_conversation_repo_polic
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = make_settings(
+        tools={
+            "repo_read": BuiltinTool(type="builtin"),
+            "repo_write": BuiltinTool(type="builtin"),
+        },
         profiles={
             "owner": ProfileConfig(
                 repo="crypdick/pynchy",
