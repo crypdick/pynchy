@@ -21,7 +21,12 @@ from pynchy.conversation.models import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
+from pynchy.plugins.integrations.linear_board_payloads import norm_name
+from pynchy.plugins.integrations.linear_statuses import (
+    AGENT_PROPOSED_STATUS,
+    LINEAR_TODO_STATUSES,
+    TERMINAL_STATE_TYPES,
+)
 from pynchy.plugins.integrations.linear_webhook_config import (  # noqa: TC001, RUF100 - beartype resolves parser annotations at runtime.
     LinearWebhookRouteConfig,
 )
@@ -231,6 +236,17 @@ def _issue_state(payload: _LinearWebhookPayload) -> _LinearIssueState | None:
     return None
 
 
+def _is_agent_proposed_issue_creation(
+    payload: _LinearWebhookPayload,
+    state: _LinearIssueState | None,
+) -> bool:
+    return (
+        payload.action == "create"
+        and state is not None
+        and norm_name(state.name) == norm_name(LINEAR_TODO_STATUSES[AGENT_PROPOSED_STATUS].name)
+    )
+
+
 def _issue_state_name(payload: _LinearWebhookPayload) -> str:
     state = _issue_state(payload)
     return state.name if state is not None and state.name is not None else ""
@@ -369,7 +385,8 @@ def _issue_event(
 ) -> WebhookEvent:
     issue_id = _issue_id(payload)
     state = _issue_state(payload)
-    if payload.action == "create":
+    # The signed callback state is immutable; later Linear transitions are separate deliveries.
+    if _is_agent_proposed_issue_creation(payload, state):
         return _ignored_event(
             payload,
             delivery_id,

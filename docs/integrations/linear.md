@@ -218,8 +218,11 @@ See [Linear's webhook documentation](https://linear.app/developers/webhooks).
 
 Pynchy maps the issue's marked project to its workspace and uses the immutable
 issue ID for conversation identity. Deliveries for off-board issues are
-ignored. `Issue/create` is also ignored because creation is not authorization;
-this includes Pynchy-created `Agent Proposed` issues. Ordinary comments,
+ignored. Pynchy ignores an `Issue/create` callback only when its signed callback
+state matches the managed `Agent Proposed` state, because creating a proposal
+does not authorize work. Other issue creations follow the normal callback
+policy. Callback state stays immutable for that delivery, so a later state
+transition arrives as a separate `Issue/update` callback. Ordinary comments,
 nonterminal issue updates and removals, and messages in the corresponding
 Discord thread share one ordered conversation.
 
