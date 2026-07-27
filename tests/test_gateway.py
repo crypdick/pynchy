@@ -24,6 +24,7 @@ from pynchy.host.container_manager.gateway_builtin import (
     build_upstream_headers,
 )
 from pynchy.host.container_manager.gateway_litellm import (
+    LiteLLMGatewayCredentials,
     collect_litellm_yaml_environment,
     resolve_litellm_environment,
 )
@@ -446,8 +447,17 @@ class TestLiteLLMGatewayStart:
             await gw.start()
 
     @pytest.mark.asyncio
-    async def test_start_creates_network_and_postgres(self, gw: LiteLLMGateway):
+    async def test_start_creates_network_and_postgres(self, litellm_config: Path, tmp_path: Path):
         """Verify start creates network, Postgres, then LiteLLM."""
+        gw = LiteLLMGateway(
+            config_path=str(litellm_config),
+            data_dir=tmp_path,
+            ui_credentials=LiteLLMGatewayCredentials(
+                ui_username="dashboard-user",
+                ui_password="dashboard-password",  # noqa: S106  # pragma: allowlist secret
+            ),
+            **_LITELLM_KWARGS,
+        )
         calls: list[list[str]] = []
 
         with (
@@ -470,6 +480,9 @@ class TestLiteLLMGatewayStart:
             await gw.start()
 
         self._assert_start_calls(calls, wait_healthy_mock)
+        litellm_run = self._litellm_run_command(self._joined_calls(calls))
+        assert "UI_USERNAME=dashboard-user" in litellm_run
+        assert "UI_PASSWORD=dashboard-password" in litellm_run
 
     @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):
