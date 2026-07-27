@@ -225,16 +225,15 @@ Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "impor
 
 Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the Pynchy host, or via Tailscale at port 4000.
 
-Master key lookup: `ssh "$PYNCHY_HOST" "grep master_key '$PYNCHY_REMOTE_ROOT/config.toml'"`
-Pass as: `Authorization: Bearer <key>`
-
-If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
+Resolve the master key only through an approved secret mechanism into `$KEY`. Never echo, log, or paste it. Pass it only in the `Authorization: Bearer $KEY` header.
 
 Config: `$PYNCHY_REMOTE_ROOT/litellm_config.yaml`. Editing it triggers an automatic deploy on the next host git-sync poll (300 seconds by default). Do not manually restart containers.
 
 Dashboard: `http://$PYNCHY_HOST:4000/ui/`
 
-- **Diagnostics, spend tracking, failure analysis**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
+**Warning:** `/spend/logs` is quarantined for routine live diagnostics regardless of requested limit. Do not use it or `/global/spend/logs` as a substitute.
+
+- **Safe gateway diagnostics, readiness, and failure evidence**: [references/litellm-diagnostics.md](references/litellm-diagnostics.md)
 - **MCP server management API and gotchas**: [references/litellm-mcp-api.md](references/litellm-mcp-api.md)
 
 ## Zombie Processes (LiteLLM)
