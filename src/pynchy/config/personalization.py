@@ -333,16 +333,8 @@ def _is_inline_secret_key(key: str) -> bool:
 def _validate_skills(project_root: Path, personalization_root: Path) -> None:
     defaults_root = project_root / DEFAULTS_RELATIVE_DIR / SKILLS_DIRNAME
     personalized_root = personalization_root / SKILLS_DIRNAME
-    core_root = project_root / "src" / "pynchy" / "agent" / "skills"
-    defaults = _skill_names(defaults_root)
-    personalized = _skill_names(personalized_root)
-    core = _skill_names(core_root)
-    core_collisions = sorted((defaults | personalized) & core)
-    if core_collisions:
-        raise PersonalizationError(
-            "Configured skills cannot shadow code-coupled core skills: "
-            + ", ".join(core_collisions)
-        )
+    _skill_names(defaults_root)
+    _skill_names(personalized_root)
 
 
 def _skill_names(root: Path) -> set[str]:

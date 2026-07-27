@@ -75,11 +75,7 @@ class PlaywrightBrowserPlugin:
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:
         """Contribute the browser-control skill."""
-        # __file__ is src/pynchy/plugins/integrations/playwright_browser.py
-        # agent/ is two levels up and holds the browser-control skill.
-        skill_dir = (
-            Path(__file__).resolve().parent.parent.parent / "agent" / "skills" / "browser-control"
-        )
+        skill_dir = Path(__file__).resolve().parent / "skills" / "browser-control"
         if skill_dir.is_dir():
             return [str(skill_dir)]
         return []

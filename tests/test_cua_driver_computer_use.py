@@ -86,7 +86,7 @@ async def test_existing_actions_remain_available_through_cua_fallback(
             new=AsyncMock(side_effect=fake_exec),
         ),
         patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
+            "pynchy.plugins.integrations.computer_use._plugin.get_settings",
             return_value=make_settings(data_dir=tmp_path),
         ),
     ):
