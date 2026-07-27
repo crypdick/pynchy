@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -29,8 +30,26 @@ class StartupReadinessGate(Protocol):
     async def wait(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class ScheduledExecutionLifecycle:
+    """Lifecycle facts required to classify one scheduled execution."""
+
+    execution_id: str
+    status: str
+    has_explicit_outcome: bool
+
+
 @runtime_checkable
-class SchedulerDependencies(Protocol):
+class ScheduledCompletionDeps(Protocol):
+    """Read the lifecycle fact needed by scheduled completion policy."""
+
+    async def scheduled_execution_lifecycle(
+        self, task_id: str
+    ) -> ScheduledExecutionLifecycle | None: ...
+
+
+@runtime_checkable
+class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     """Dependencies shared by the task scheduler and Temporal activities."""
 
     @property

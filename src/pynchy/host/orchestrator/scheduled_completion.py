@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves completion annotations.
+    ScheduledCompletionDeps,
+)
 from pynchy.logger import logger
-from pynchy.state import get_work_item_execution_for_task
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,7 @@ class ScheduledAgentOutcome:
 
 
 async def classify_scheduled_agent_outcome(
+    deps: ScheduledCompletionDeps,
     task_id: str,
     *,
     result: str | None,
@@ -27,8 +30,8 @@ async def classify_scheduled_agent_outcome(
     if error is not None:
         return ScheduledAgentOutcome(status="error", summary=f"Error: {error}")
 
-    execution = await get_work_item_execution_for_task(task_id)
-    if execution is None or execution.status.is_explicit_lifecycle_outcome:
+    execution = await deps.scheduled_execution_lifecycle(task_id)
+    if execution is None or execution.has_explicit_outcome:
         return ScheduledAgentOutcome(
             status="success",
             summary=result[:200] if result else "Completed",
@@ -37,8 +40,8 @@ async def classify_scheduled_agent_outcome(
     logger.warning(
         "Linear task exited without an explicit lifecycle outcome",
         task_id=task_id,
-        execution_id=execution.id,
-        execution_status=execution.status.value,
+        execution_id=execution.execution_id,
+        execution_status=execution.status,
     )
     return ScheduledAgentOutcome(
         status="incomplete",
