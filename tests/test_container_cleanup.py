@@ -10,6 +10,10 @@ from pynchy.host.container_manager.cleanup import (
     cleanup_runtime_images,
     reap_orphaned_agent_containers,
 )
+from pynchy.types import OrphanReapAgeMs
+
+_IMMEDIATE_REAP = OrphanReapAgeMs(0)
+_SEVEN_DAYS = OrphanReapAgeMs(604800000)
 
 
 @dataclass
@@ -58,7 +62,7 @@ def test_reaps_stopped_agent_container_immediately() -> None:
     result = reap_orphaned_agent_containers(
         runtime=runtime,
         active_names=set(),
-        orphan_age_ms=604800000,
+        orphan_age_ms=_SEVEN_DAYS,
     )
 
     assert runtime.removed == ["pynchy-admin"]
@@ -79,7 +83,7 @@ def test_preserves_container_owned_by_active_session() -> None:
     result = reap_orphaned_agent_containers(
         runtime=runtime,
         active_names={"pynchy-admin"},
-        orphan_age_ms=0,
+        orphan_age_ms=_IMMEDIATE_REAP,
     )
 
     assert result == []
@@ -100,7 +104,7 @@ def test_preserves_recent_unowned_live_agent_container() -> None:
     result = reap_orphaned_agent_containers(
         runtime=runtime,
         active_names=set(),
-        orphan_age_ms=604800000,
+        orphan_age_ms=_SEVEN_DAYS,
     )
 
     assert result == []
@@ -121,7 +125,7 @@ def test_reaps_stale_unowned_live_agent_container() -> None:
     result = reap_orphaned_agent_containers(
         runtime=runtime,
         active_names=set(),
-        orphan_age_ms=604800000,
+        orphan_age_ms=_SEVEN_DAYS,
     )
 
     assert runtime.removed == ["pynchy-admin"]
@@ -144,7 +148,7 @@ def test_ignores_non_agent_pynchy_container() -> None:
     result = reap_orphaned_agent_containers(
         runtime=runtime,
         active_names=set(),
-        orphan_age_ms=0,
+        orphan_age_ms=_IMMEDIATE_REAP,
     )
 
     assert result == []
@@ -159,7 +163,7 @@ def test_runtime_list_timeout_does_not_break_orphan_reaper() -> None:
     result = reap_orphaned_agent_containers(
         runtime=TimedOutRuntime([]),
         active_names=set(),
-        orphan_age_ms=0,
+        orphan_age_ms=_IMMEDIATE_REAP,
     )
 
     assert result == []

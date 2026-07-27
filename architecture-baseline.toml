@@ -58,14 +58,6 @@ reason = "pynchy.host.container_manager.action_intents still has a runtime-impor
 
 [[violations]]
 importer = "pynchy.host.container_manager.cleanup"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.cleanup still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.cleanup"
 target_component = "runtime_adapter"
 kind = "runtime-import"
 count = 1

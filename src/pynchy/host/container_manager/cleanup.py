@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.runtime_names import runtime_namespace
 from pynchy.host.container_manager.session import active_session_container_names
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
+from pynchy.types import OrphanReapAgeMs  # noqa: TC001, RUF100 - public cleanup contract
 
 _LIVE_STATES = {"running", "paused", "restarting"}
 _DISPOSABLE_STATES = {"created", "dead", "exited", "stopped"}
@@ -126,18 +126,15 @@ def cleanup_runtime_build_state(runtime: object) -> bool:
 
 def reap_orphaned_agent_containers(
     *,
+    orphan_age_ms: OrphanReapAgeMs,
     runtime: object | None = None,
     active_names: set[str] | None = None,
-    orphan_age_ms: int | None = None,
 ) -> list[ReapedContainer]:
     """Remove agent containers that are not owned by a live session."""
 
     resolved_runtime = runtime if runtime is not None else get_runtime()
     protected = active_names if active_names is not None else active_session_container_names()
-    retention_ms = orphan_age_ms
-    if retention_ms is None:
-        retention_ms = get_settings().container.orphan_reap_age_ms
-    retention = timedelta(milliseconds=max(0, retention_ms))
+    retention = timedelta(milliseconds=max(0, orphan_age_ms))
     now = datetime.now(UTC)
 
     try:

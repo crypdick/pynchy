@@ -70,7 +70,7 @@ from pynchy.state import (
     store_chat_metadata,
 )
 from pynchy.state.connection import StateRuntimeConfig
-from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
+from pynchy.types import NewMessage, OrphanReapAgeMs, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
 # ---------------------------------------------------------------------------
@@ -175,7 +175,9 @@ async def _initialize_core(app: PynchyApp) -> None:
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     job_sources.configure_plugin_jobs(app.plugin_manager)
-    system_checks.ensure_container_system_running()
+    system_checks.ensure_container_system_running(
+        OrphanReapAgeMs(get_settings().container.orphan_reap_age_ms)
+    )
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 

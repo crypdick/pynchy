@@ -17,6 +17,9 @@ from pynchy.plugins.runtimes.system_checks import (
     ensure_agent_image_available,
     ensure_container_system_running,
 )
+from pynchy.types import OrphanReapAgeMs
+
+_DEFAULT_ORPHAN_REAP_AGE = OrphanReapAgeMs(604800000)
 
 # ---------------------------------------------------------------------------
 # ensure_container_system_running
@@ -68,7 +71,7 @@ class TestEnsureContainerSystemRunning:
                 side_effect=inspect_image,
             ) as run,
         ):
-            ensure_container_system_running()
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
 
         mock_runtime.ensure_running.assert_called_once()
         mock_runtime.cleanup_builder.assert_called_once()
@@ -120,7 +123,7 @@ class TestEnsureContainerSystemRunning:
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
             patch("pynchy.plugins.runtimes.system_checks.subprocess.run") as run,
         ):
-            ensure_container_system_running()
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
 
         mock_runtime.ensure_running.assert_called_once()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
@@ -145,7 +148,7 @@ class TestEnsureContainerSystemRunning:
             ),
             pytest.raises(RuntimeError, match="not found"),
         ):
-            ensure_container_system_running()
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
 
     def test_build_failure_raises(self, mock_runtime, tmp_path):
         """Image build fails — should raise RuntimeError."""
@@ -169,7 +172,7 @@ class TestEnsureContainerSystemRunning:
             ),
             pytest.raises(RuntimeError, match="Failed to build"),
         ):
-            ensure_container_system_running()
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
 
         mock_runtime.cleanup_builder.assert_called()
         mock_runtime.prune_images.assert_called_with(all_images=False)
@@ -237,14 +240,35 @@ class TestEnsureContainerSystemRunning:
                 return_value=image_inspect,
             ),
             patch(
-                "pynchy.host.container_manager.session.active_session_container_names",
+                "pynchy.host.container_manager.cleanup.active_session_container_names",
                 return_value=set(),
             ),
         ):
-            ensure_container_system_running()
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
 
         mock_runtime.remove_container.assert_any_call("pynchy-group-a", force=True)
         mock_runtime.remove_container.assert_any_call("pynchy-group-b", force=True)
+
+    def test_configured_orphan_age_controls_live_container_reaping(self, mock_runtime):
+        """The startup contract should carry retention into orphan cleanup."""
+        mock_runtime.list_containers.return_value = [
+            FakeContainer("pynchy-group-a", "running", created_at=datetime.now(UTC)),
+        ]
+
+        with (
+            patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run",
+                return_value=MagicMock(returncode=0),
+            ),
+            patch(
+                "pynchy.host.container_manager.cleanup.active_session_container_names",
+                return_value=set(),
+            ),
+        ):
+            ensure_container_system_running(OrphanReapAgeMs(0))
+
+        mock_runtime.remove_container.assert_called_once_with("pynchy-group-a", force=True)
 
     def test_orphan_reap_failure_suppressed(self, mock_runtime):
         """Errors removing orphaned agent containers should not propagate."""
@@ -260,8 +284,8 @@ class TestEnsureContainerSystemRunning:
                 return_value=MagicMock(returncode=0),
             ),
             patch(
-                "pynchy.host.container_manager.session.active_session_container_names",
+                "pynchy.host.container_manager.cleanup.active_session_container_names",
                 return_value=set(),
             ),
         ):
-            ensure_container_system_running()  # Should not raise
+            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)  # Should not raise
