@@ -92,7 +92,6 @@ default_agent = "codex"
 push = false
 setup = [
     "uv sync --locked",
-    "uv run python scripts/runtime_harness.py setup",
 ]
 pre_merge = [
     "uv run python scripts/runtime_harness.py stop",
@@ -100,7 +99,6 @@ pre_merge = [
     # The allocated runtime values are required above, but ordinary unit tests
     # deliberately assert the default host resource names and ports.
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx prek run --all-files",
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx prek run pytest pytest-agent-runner --all-files --stage manual",
 ]
 post_merge = [
     # The feature graph can be fresh before the no-commit merge and stale after

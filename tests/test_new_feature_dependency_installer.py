@@ -30,7 +30,7 @@ def _fake_tool_commands(monkeypatch: pytest.MonkeyPatch) -> None:
                 command, 0, stdout="temporal version 1.8.0\n", stderr=""
             )
         if command[-1] == "--version" and Path(command[0]).name == "new-feature":
-            return subprocess.CompletedProcess(command, 0, stdout="new-feature 1.1.6\n", stderr="")
+            return subprocess.CompletedProcess(command, 0, stdout="new-feature 1.1.14\n", stderr="")
         raise AssertionError(f"Unexpected dependency command: {command}")
 
     monkeypatch.setattr(installer.shutil, "which", command_exists)
