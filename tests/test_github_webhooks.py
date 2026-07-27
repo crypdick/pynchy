@@ -9,13 +9,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.conversation.models import (
     ConversationSubject,
     ConversationSubjectKey,
@@ -27,8 +25,7 @@ from pynchy.host.orchestrator.http_control import (
     RequestRateLimiter,
 )
 from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.integrations.github import GitHubWebhookPlugin
+from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubWebhookRouteConfig,
@@ -233,21 +230,11 @@ def test_rejects_bad_signatures_and_repositories_before_notification() -> None:
         parse_github_webhook(wrong_raw_body, wrong_headers, _SIGNING_KEY, now, config=_config())
 
 
-def test_plugin_routes_bind_each_repository_to_its_workspace() -> None:
-    settings = make_settings(
-        plugins={
-            "github": PluginConfig(
-                options={
-                    "webhook_routes": [
-                        {"name": "project", "workspace": "project", "repository": _REPOSITORY}
-                    ]
-                }
-            )
-        }
+def test_routes_bind_each_repository_to_its_workspace() -> None:
+    options = GitHubPluginOptions.model_validate(
+        {"webhook_routes": [{"name": "project", "workspace": "project", "repository": _REPOSITORY}]}
     )
-
-    with patch("pynchy.plugins.integrations.github_webhooks.get_settings", return_value=settings):
-        routes = github_webhook_routes()
+    routes = github_webhook_routes(options.webhook_routes)
 
     assert [(route.path, route.workspace) for route in routes] == [
         ("/webhooks/github/project", "project")
@@ -451,10 +438,3 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     assert "linear_find_issues_by_attachment_url" in task.prompt
     assert "https://github.com/example/project/pull/42" in task.prompt
     assert not deps.host_messages
-
-
-def test_builtin_plugin_is_registered() -> None:
-    with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
-        plugin = get_plugin_manager().get_plugin("builtin-github")
-
-    assert isinstance(plugin, GitHubWebhookPlugin)

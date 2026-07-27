@@ -53,7 +53,7 @@ from pynchy.host.orchestrator.webhook_ingress import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
-from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes
+from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes, validate_webhook_routes
 from pynchy.state import (
     action_intent_to_dict,
     get_recent_canary_runs,
@@ -384,9 +384,12 @@ async def prepare_http_server(
     *,
     runtime: ControlPlaneRuntime,
     status_deps: StatusDeps | None = None,
+    github_webhook_routes: tuple[WebhookRoute, ...] = (),
 ) -> PreparedHttpServer:
     """Prepare routes and cleanup hooks without opening a listener."""
-    webhook_routes = collect_webhook_routes(cast("Any", deps.get_plugin_manager()))
+    webhook_routes = validate_webhook_routes(
+        (*collect_webhook_routes(cast("Any", deps.get_plugin_manager())), *github_webhook_routes)
+    )
     app = create_http_app(
         deps,
         status_deps=status_deps,

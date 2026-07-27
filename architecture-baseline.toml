@@ -1713,14 +1713,6 @@ imports = ["pynchy.host.container_manager.gateway"]
 reason = "pynchy.plugins.integrations.desktop_screenshot still has a runtime-import dependency on container_adapter; Use a use-case-owned execution or container capability port and wire this adapter at composition."
 
 [[violations]]
-importer = "pynchy.plugins.integrations.github_webhooks"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.integrations.github_webhooks still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.integrations.gog._client"
 target_component = "config"
 kind = "runtime-import"
