@@ -336049,34 +336049,12 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_approval_decision_context",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L9",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
       "target": "pynchy_host_container_manager_security_approval",
       "relation": "imports_from",
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
       "source_location": "L14",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_approval_replay",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/approval_replay.py",
-      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336202,28 +336180,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_mcp_manager",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/mcp/manager.py",
-      "source_location": "L28",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_mcp_resolution",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/mcp/resolution.py",
-      "source_location": "L16",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_container_manager_orchestrator",
       "target": "pynchy_plugins_runtimes_system_checks",
       "relation": "imports_from",
@@ -336257,17 +336213,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_security_gate",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/security/gate.py",
-      "source_location": "L23",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_git_ops_utils",
       "target": "pynchy_host_git_ops_repo",
       "relation": "imports_from",
@@ -336275,17 +336220,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/git_ops/utils.py",
       "source_location": "L123",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_git_ops_worktree",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/git_ops/worktree.py",
-      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336418,17 +336352,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/app.py",
       "source_location": "L53",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_capability_status",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/capability_status.py",
-      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336902,17 +336825,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/desktop_screenshot.py",
       "source_location": "L33",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_accounts",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
-      "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -383449,30 +383361,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_capability_status_resolve_workspace_capabilities",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/host/orchestrator/capability_status.py",
-      "source_location": "L50",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_capability_status_collect_capability_status",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/host/orchestrator/capability_status.py",
-      "source_location": "L90",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_orchestrator_concurrency_groupqueue_init",
       "target": "pynchy_host_orchestrator_runtime_registry_runtimeregistry",
       "relation": "calls",
@@ -387037,7 +386925,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_setup_start",
       "relation": "indirect_call",
       "context": "collection",
@@ -387049,7 +386937,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_setup_complete",
       "relation": "indirect_call",
       "context": "collection",
@@ -387061,7 +386949,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_search",
       "relation": "indirect_call",
       "context": "collection",
@@ -387073,7 +386961,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_get",
       "relation": "indirect_call",
       "context": "collection",
@@ -387085,7 +386973,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_create_draft",
       "relation": "indirect_call",
       "context": "collection",
@@ -387097,7 +386985,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_send_draft",
       "relation": "indirect_call",
       "context": "collection",
@@ -387109,7 +386997,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_send",
       "relation": "indirect_call",
       "context": "collection",
@@ -387121,7 +387009,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_contacts_search",
       "relation": "indirect_call",
       "context": "collection",
@@ -387133,7 +387021,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_docs_read",
       "relation": "indirect_call",
       "context": "collection",
@@ -387145,7 +387033,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_docs_export",
       "relation": "indirect_call",
       "context": "collection",
@@ -387157,7 +387045,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_sheets_get",
       "relation": "indirect_call",
       "context": "collection",
@@ -387169,7 +387057,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
+      "source": "pynchy_plugins_integrations_gog_plugin",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_sheets_update",
       "relation": "indirect_call",
       "context": "collection",
@@ -387345,42 +387233,6 @@
       "confidence_score": 0.8,
       "source_file": "pynchy/plugins/integrations/linear.py",
       "source_location": "L342",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_accounts_configured_linear_accounts",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
-      "source_location": "L32",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_accounts_linear_account",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
-      "source_location": "L42",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_accounts_linear_account_for_workspace",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
-      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -388765,7 +388617,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_setup_x_session",
       "relation": "indirect_call",
       "context": "collection",
@@ -388777,7 +388629,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_post",
       "relation": "indirect_call",
       "context": "collection",
@@ -388789,7 +388641,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_like",
       "relation": "indirect_call",
       "context": "collection",
@@ -388801,7 +388653,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_reply",
       "relation": "indirect_call",
       "context": "collection",
@@ -388813,7 +388665,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_retweet",
       "relation": "indirect_call",
       "context": "collection",
@@ -388825,7 +388677,7 @@
       "_origin": "ast"
     },
     {
-      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
+      "source": "pynchy_plugins_integrations_x_integration_plugin",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_quote",
       "relation": "indirect_call",
       "context": "collection",
