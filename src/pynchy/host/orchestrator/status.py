@@ -37,7 +37,7 @@ from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
     get_messaging_stats,

@@ -39,7 +39,7 @@ from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
-from pynchy.state import clear_session
+from pynchy.state.api import clear_session
 from pynchy.types import (
     AgentExecutionRuntime,
     ContainerInput,

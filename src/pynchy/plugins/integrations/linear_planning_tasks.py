@@ -16,7 +16,7 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     ensure_task_active,
     linear_issue_conversation_id,
 )
-from pynchy.state import get_all_tasks
+from pynchy.state.api import get_all_tasks
 from pynchy.types import ScheduledTask, SessionPolicy
 
 _PLANNING_CONTRACT = (

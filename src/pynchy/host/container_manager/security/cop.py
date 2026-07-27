@@ -29,7 +29,7 @@ from pynchy.host.container_manager.security.cop_prompts import (
 )
 from pynchy.host.container_manager.security.llm_redaction import RedactionSession
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     RecentSecurityContext,
     SecurityExecutionAuthority,  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
     load_recent_security_context,

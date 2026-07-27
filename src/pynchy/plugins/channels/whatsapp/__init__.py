@@ -1,7 +1,7 @@
-"""pynchy WhatsApp channel plugin."""
+"""Built-in WhatsApp channel plugin.
 
-from pynchy.logger import logger as logger
+Import its public surface from :mod:`pynchy.plugins.channels.whatsapp.api`.
+"""
 
-from ._plugin import WhatsAppPlugin as WhatsAppPlugin
-from .ask_user import resolve_ask_user_answer as resolve_ask_user_answer
-from .channel import WhatsAppChannel as WhatsAppChannel
+from .api import *  # noqa: F403
+from .api import __all__ as __all__

@@ -8,7 +8,7 @@ from pynchy.conversation.models import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     get_conversation_for_subject_key,
     get_unfinished_work_item_execution,
     resolve_conversation,

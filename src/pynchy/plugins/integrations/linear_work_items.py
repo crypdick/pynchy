@@ -21,7 +21,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     update_issue_state,
     workspace_issue,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemTransitionRequest,
     bind_work_item_execution_to_turn,
     get_active_work_item_execution,

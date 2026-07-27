@@ -62,7 +62,7 @@ from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     clear_session,
     complete_conversation_delivery,
     conversation_control_state_matches,

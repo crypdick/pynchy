@@ -124,7 +124,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     claim_deployment,
     clear_pending_deployment,
     clear_unclaimed_in_flight_turn_for_task,

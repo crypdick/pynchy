@@ -26,7 +26,7 @@ from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
-from pynchy.state import get_chat_jids_by_name
+from pynchy.state.api import get_chat_jids_by_name
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     InboundFetchResult,
     NewMessage,

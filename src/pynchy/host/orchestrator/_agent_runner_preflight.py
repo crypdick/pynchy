@@ -20,7 +20,7 @@ from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.prompt_loading import read_prompts
-from pynchy.state import (
+from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
     get_conversation,

@@ -88,7 +88,7 @@ class TestObserverPluginRuntimeTypes:
         observer = SqliteEventObserver()
         observer.subscribe(bus)
 
-        with patch("pynchy.state.store_event", new_callable=AsyncMock) as mock_store:
+        with patch("pynchy.state.api.store_event", new_callable=AsyncMock) as mock_store:
             bus.emit(
                 AgentTraceEvent(
                     chat_jid="g@g.us",

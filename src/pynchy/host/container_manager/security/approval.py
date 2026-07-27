@@ -40,7 +40,7 @@ from pynchy.host.container_manager.security.identity import (
     request_payload_hash,
 )
 from pynchy.logger import logger
-from pynchy.state import expire_action_intent
+from pynchy.state.api import expire_action_intent
 from pynchy.types import OutboundEvent, OutboundEventType
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
