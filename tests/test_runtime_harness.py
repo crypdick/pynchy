@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import json
 import stat
@@ -173,6 +174,53 @@ def test_setup_agent_identity_ignores_local_python_bytecode(
     with_bytecode = harness.setup(_spec(bytecode_root))
 
     assert with_bytecode["agent_source_digest"] == initial["agent_source_digest"]
+
+
+def test_fresh_setup_removes_only_runtime_database_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _runtime_root(tmp_path)
+    data_dir = root / "data"
+    data_dir.mkdir()
+    for name in ("messages.db", "memories.db", "temporal.db"):
+        for suffix in ("", "-shm", "-wal"):
+            data_dir.joinpath(f"{name}{suffix}").write_text("stale")
+    data_dir.joinpath("keep.txt").write_text("unrelated")
+    _setup_without_starting_services(monkeypatch)
+
+    harness.setup(_spec(root))
+
+    assert not any(
+        data_dir.joinpath(f"{name}{suffix}").exists()
+        for name in ("messages.db", "memories.db", "temporal.db")
+        for suffix in ("", "-shm", "-wal")
+    )
+    assert data_dir.joinpath("keep.txt").read_text() == "unrelated"
+
+
+def test_restart_preserves_runtime_database_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _runtime_root(tmp_path)
+    spec = _spec(root)
+    database = root / "data" / "messages.db"
+    database.parent.mkdir()
+    database.write_text("preserve")
+    _write_runtime_state(
+        spec,
+        {
+            "namespace": spec.namespace,
+            "server_port": spec.server_port,
+            "gateway_port": spec.gateway_port,
+            "temporal_port": spec.temporal_port,
+        },
+    )
+    monkeypatch.setattr(harness, "stop", lambda _root: spec.state_path.unlink())
+    _setup_without_starting_services(monkeypatch)
+
+    harness.restart(root, argparse.Namespace())
+
+    assert database.read_text() == "preserve"
 
 
 def test_setup_builds_the_runtime_agent_from_pinned_inputs(
