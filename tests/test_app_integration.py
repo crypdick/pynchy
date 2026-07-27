@@ -122,7 +122,7 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.session_prep",
             "pynchy.host.container_manager.orchestrator",
             "pynchy.host.container_manager.session",
-            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.orchestrator._agent_runner_preflight",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
         ):

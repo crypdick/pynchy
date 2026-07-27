@@ -7,13 +7,14 @@ containers that may read them at any time during warm-path queries.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot paths at runtime.
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
 
 
 def write_tasks_snapshot(
+    data_dir: Path,
     folder: str,
     tasks: list[dict[str, Any]],
     *,
@@ -32,11 +33,12 @@ def write_tasks_snapshot(
     if host_jobs and is_admin:
         filtered = [*filtered, *host_jobs]
 
-    path = get_settings().data_dir / "ipc" / folder / "current_tasks.json"
+    path = data_dir / "ipc" / folder / "current_tasks.json"
     write_json_atomic(path, filtered, indent=2)
 
 
 def write_groups_snapshot(
+    data_dir: Path,
     folder: str,
     groups: list[dict[str, Any]],
     _registered_jids: set[str],
@@ -51,5 +53,5 @@ def write_groups_snapshot(
         "lastSync": datetime.now(UTC).isoformat(),
     }
 
-    path = get_settings().data_dir / "ipc" / folder / "available_groups.json"
+    path = data_dir / "ipc" / folder / "available_groups.json"
     write_json_atomic(path, payload, indent=2)

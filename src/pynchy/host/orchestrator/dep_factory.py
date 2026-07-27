@@ -1,12 +1,8 @@
-"""Dependency adapter factories — compose subsystem dependencies from app state.
-
-Extracted from app.py to keep the orchestrator focused on wiring.
-These factory functions are called once during app startup to build
-the composite dependency objects that subsystems require.
-"""
+"""Dependency adapter factories compose subsystem dependencies from app state."""
 
 from __future__ import annotations
 
+# allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
 from collections.abc import (
     Sequence,  # noqa: TC003, RUF100 - beartype resolves channel collections at runtime.
 )
@@ -312,6 +308,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
+    snapshot_data_dir = get_settings().data_dir
     broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
         app.workspaces, app.register_workspace, app.send_clear_confirmation
@@ -327,7 +324,23 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         register_workspace = registration_manager.register_workspace
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
-        write_groups_snapshot = staticmethod(_write_groups_snapshot)
+
+        def write_groups_snapshot(
+            self,
+            group_folder: str,
+            available_groups: list[Any],
+            registered_jids: set[str],
+            *,
+            is_admin: bool,
+        ) -> None:
+            _write_groups_snapshot(
+                snapshot_data_dir,
+                group_folder,
+                available_groups,
+                registered_jids,
+                is_admin=is_admin,
+            )
+
         has_active_session = session_manager.has_active_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
