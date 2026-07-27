@@ -60,8 +60,8 @@ reason = "pynchy.host.container_manager.credentials still has a runtime-import d
 importer = "pynchy.host.container_manager.gateway"
 target_component = "config"
 kind = "runtime-import"
-count = 3
-imports = ["pynchy.config", "pynchy.config.mcp", "pynchy.config.models"]
+count = 2
+imports = ["pynchy.config", "pynchy.config.models"]
 reason = "pynchy.host.container_manager.gateway still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -220,8 +220,8 @@ reason = "pynchy.host.container_manager.ipc.write still has a runtime-import dep
 importer = "pynchy.host.container_manager.mcp.lifecycle"
 target_component = "config"
 kind = "runtime-import"
-count = 2
-imports = ["pynchy.config", "pynchy.config.mcp"]
+count = 1
+imports = ["pynchy.config"]
 reason = "pynchy.host.container_manager.mcp.lifecycle still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -236,16 +236,16 @@ reason = "pynchy.host.container_manager.mcp.manager still has a runtime-import d
 importer = "pynchy.host.container_manager.mcp.manager"
 target_component = "config"
 kind = "runtime-import"
-count = 2
-imports = ["pynchy.config", "pynchy.config.mcp"]
+count = 1
+imports = ["pynchy.config"]
 reason = "pynchy.host.container_manager.mcp.manager still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mcp.resolution"
 target_component = "config"
 kind = "runtime-import"
-count = 4
-imports = ["pynchy.config", "pynchy.config.mcp", "pynchy.config.merge", "pynchy.config.models"]
+count = 3
+imports = ["pynchy.config", "pynchy.config.merge", "pynchy.config.models"]
 reason = "pynchy.host.container_manager.mcp.resolution still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -1612,8 +1612,8 @@ reason = "pynchy.plugins.channels.whatsapp.channel still has a runtime-import de
 importer = "pynchy.plugins.contracts"
 target_component = "config"
 kind = "runtime-import"
-count = 3
-imports = ["pynchy.config.jobs", "pynchy.config.mcp", "pynchy.config.models"]
+count = 2
+imports = ["pynchy.config.jobs", "pynchy.config.models"]
 reason = "pynchy.plugins.contracts still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -1724,16 +1724,16 @@ reason = "pynchy.plugins.integrations.google_setup._paths still has a runtime-im
 importer = "pynchy.plugins.integrations.google_setup._plugin"
 target_component = "config"
 kind = "runtime-import"
-count = 2
-imports = ["pynchy.config", "pynchy.config.mcp"]
+count = 1
+imports = ["pynchy.config"]
 reason = "pynchy.plugins.integrations.google_setup._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.integrations.linear"
 target_component = "config"
 kind = "runtime-import"
-count = 2
-imports = ["pynchy.config", "pynchy.config.mcp"]
+count = 1
+imports = ["pynchy.config"]
 reason = "pynchy.plugins.integrations.linear still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -1961,14 +1961,6 @@ imports = ["pynchy.config.settings"]
 reason = "pynchy.plugins.integrations.matrix_route_resolution still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.plugins.integrations.notebook_server._plugin"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.mcp"]
-reason = "pynchy.plugins.integrations.notebook_server._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.integrations.peekaboo"
 target_component = "computer_use_adapter"
 kind = "runtime-import"
@@ -1983,22 +1975,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.config"]
 reason = "pynchy.plugins.integrations.peekaboo still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.playwright_browser._plugin"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.mcp"]
-reason = "pynchy.plugins.integrations.playwright_browser._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.proton_mail"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.mcp"]
-reason = "pynchy.plugins.integrations.proton_mail still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.observers.sqlite_observer.observer"

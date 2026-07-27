@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp import litellm
 from pynchy.host.container_manager.mcp.manager import (
@@ -16,6 +15,7 @@ from pynchy.host.container_manager.mcp.manager import (
     build_direct_server_configs,
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
+from pynchy.plugins.mcp_server import McpServerConfig
 
 
 def _make_instance(

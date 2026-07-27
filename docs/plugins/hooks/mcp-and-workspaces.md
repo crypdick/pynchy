@@ -6,7 +6,7 @@ Provide validated MCP server templates. Plugin templates merge with user
 configuration; user definitions with the same name override plugin defaults.
 
 ```python
-from pynchy.config.mcp import McpServerConfig
+from pynchy.plugins.mcp_server import McpServerConfig
 from pynchy.plugins.contracts import McpServerSpec
 from pynchy.types import ServiceTrustConfig
 
