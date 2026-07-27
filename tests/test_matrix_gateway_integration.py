@@ -143,16 +143,10 @@ def _route_registry() -> None:
     clear_active_matrix_routes()
 
 
-def test_canonical_connections_and_routes_config_resolves_matrix_runtime(tmp_path: Path) -> None:
+def test_canonical_connections_and_routes_config_resolves_matrix_runtime() -> None:
     settings = validate_settings_mapping(_canonical_config())
 
-    with (
-        patch.object(matrix_gateway, "get_settings", return_value=settings),
-        patch(
-            "pynchy.plugins.integrations.matrix_connection.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-    ):
+    with patch.object(matrix_gateway, "get_settings", return_value=settings):
         runtimes = matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
 
     assert settings.connections["personal-chats"].type == "matrix"

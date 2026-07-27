@@ -1826,14 +1826,6 @@ reason = "pynchy.plugins.integrations.matrix_connection still has a runtime-impo
 
 [[violations]]
 importer = "pynchy.plugins.integrations.matrix_connection"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.integrations.matrix_connection still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_connection"
 target_component = "state_adapter"
 kind = "runtime-import"
 count = 1

@@ -8,9 +8,11 @@ import json
 import os
 import secrets
 from datetime import UTC, datetime
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves Matrix runtime annotations at runtime.
+)
 from typing import TYPE_CHECKING
 
-from pynchy.config import get_settings
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationId,
@@ -46,7 +48,6 @@ from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixSyncBatch,
     MatrixSyncEvent,
     create_matrix_gateway_client,
-    matrix_connection_state_dir,
 )
 from pynchy.plugins.integrations.matrix_route_registry import (
     ActiveMatrixRoute,
@@ -120,6 +121,7 @@ class MatrixConnectionRuntime:
         routes: tuple[ResolvedMatrixRoute, ...],
         *,
         poll_interval_seconds: float,
+        state_dir: Path,
         client: MatrixConnectionGateway | None = None,
     ) -> None:
         if not routes:
@@ -131,7 +133,6 @@ class MatrixConnectionRuntime:
         if client is None:
             command_env = routes[0].connection.gateway_command_env
             command = os.environ.get(command_env)
-            state_dir = matrix_connection_state_dir(get_settings().data_dir, connection_name)
             client = create_matrix_gateway_client(command, state_dir=state_dir)
         self._client = client
         self._context: ConnectionRuntimeContext | None = None
