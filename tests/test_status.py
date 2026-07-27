@@ -21,6 +21,7 @@ from pynchy.canaries import declared_canary_scenarios
 from pynchy.config.models import RepoConfig, ReposConfig
 from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
@@ -47,6 +48,19 @@ _EMPTY_STATS = {
     "last_sent_at": None,
     "pending_deliveries": 0,
 }
+
+
+def _runtime() -> ControlPlaneRuntime:
+    return ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=8484,
+        unix_socket=None,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+    )
 
 
 def _status_settings(*, repos: dict[str, RepoConfig] | None = None):
@@ -209,6 +223,9 @@ class MockStatusDeps:
 
 class MockHttpDeps:
     """Inert HTTP dependencies for exercising route registration."""
+
+    data_dir = None
+    project_root = None
 
     async def broadcast_host_message(self, _jid: str, _text: str) -> None:
         return None
@@ -1121,7 +1138,7 @@ class TestStatusEndpoint(AioHTTPTestCase):
             workspace_count=3,
             active_sessions=1,
         )
-        return create_http_app(MockHttpDeps(), status_deps=self.mock_deps)
+        return create_http_app(MockHttpDeps(), runtime=_runtime(), status_deps=self.mock_deps)
 
     async def test_status_returns_200(self):
         """GET /status returns 200 with structured JSON."""
