@@ -4,24 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.orchestrator import adapters
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.logger import logger
-
-
-async def start_deploy_workflow(request: DeployRequest) -> None:
-    """Start deploy workflow lazily so IPC imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - keep scheduler import lazy for IPC startup.
-        start_deploy_workflow as _start_deploy_workflow,
-    )
-
-    await _start_deploy_workflow(request)
 
 
 async def _handle_deploy(
@@ -43,38 +30,12 @@ async def _handle_deploy(
         )
         return
 
-    rebuild_container = data.get("rebuildContainer", False)
-    resume_prompt = data.get(
-        "resumePrompt",
-        "Deploy complete. Verifying service health.",
-    )
-    head_sha = data.get("headSha", "")
-    chat_jid = data.get("chatJid", "")
-
-    if not chat_jid:
-        groups = deps.workspaces()
-
-        chat_jid = adapters.resolve_admin_notification_jid(
-            groups, get_settings().notifications.admin_workspace
-        )
-        if not chat_jid:
-            logger.error("Deploy request missing chatJid and no notification target resolved")
-            return
-        logger.warning(
-            "Deploy request missing chatJid, resolved notification target",
-            chat_jid=chat_jid,
-        )
-
-    await start_deploy_workflow(
-        DeployRequest(
-            chat_jid=chat_jid,
-            commit_sha=head_sha,
-            config_hash=get_deploy_config_hash(),
-            previous_sha=head_sha,
-            resume_prompt=resume_prompt,
-            rebuild=bool(rebuild_container),
-            reason="ipc",
-        )
+    chat_jid = data.get("chatJid")
+    await deps.request_deploy(
+        chat_jid=chat_jid if isinstance(chat_jid, str) and chat_jid else None,
+        commit_sha=str(data.get("headSha", "")),
+        rebuild=bool(data.get("rebuildContainer")),
+        resume_prompt=str(data.get("resumePrompt", "Deploy complete. Verifying service health.")),
     )
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
@@ -62,6 +62,7 @@ class MockDeps(NullIpcDeps):
         self.cleared_sessions: list[str] = []
         self.cleared_chats: list[str] = []
         self.enqueued_checks: list[str] = []
+        self.requested_deploys: list[tuple[str | None, str, bool, str]] = []
 
     async def broadcast_to_channels(self, jid: str, event: object) -> None:
         content = event.content if hasattr(event, "content") else str(event)
@@ -95,6 +96,16 @@ class MockDeps(NullIpcDeps):
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
+
+    async def request_deploy(
+        self,
+        *,
+        chat_jid: str | None,
+        commit_sha: str,
+        rebuild: bool,
+        resume_prompt: str,
+    ) -> None:
+        self.requested_deploys.append((chat_jid, commit_sha, rebuild, resume_prompt))
 
 
 @pytest.fixture
@@ -834,32 +845,24 @@ class TestDeployAuth:
             False,
             deps,
         )
-        # No host messages sent (deploy was blocked)
-        assert len(deps.host_messages) == 0
+        assert not deps.requested_deploys
 
     async def test_admin_deploy_starts_temporal_workflow(self, deps):
-        """God deploy with valid data starts the Temporal deploy workflow."""
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "resumePrompt": "Deploy complete.",
-                    "headSha": "abc123",
-                    "sessionId": "sess-1",
-                    "chatJid": "admin-1@g.us",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-            mock_start.assert_awaited_once()
-            request = mock_start.await_args.args[0]
-            assert request.chat_jid == "admin-1@g.us"
-            assert not hasattr(request, "session_id")
+        """An admin deploy delegates a fully parsed request to composition."""
+        await dispatch(
+            {
+                "type": "deploy",
+                "rebuildContainer": False,
+                "resumePrompt": "Deploy complete.",
+                "headSha": "abc123",
+                "sessionId": "sess-1",
+                "chatJid": "admin-1@g.us",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+        assert deps.requested_deploys == [("admin-1@g.us", "abc123", False, "Deploy complete.")]
 
 
 # --- reset_context execution ---

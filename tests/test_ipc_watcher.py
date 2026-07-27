@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
-from pynchy.config.models import NotificationsConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
     recover_ipc_runtime,
@@ -293,71 +292,6 @@ class TestIpcTaskFileEdgeCases:
     async def test_empty_data_dict_is_ignored(self, deps):
         """An empty data dict should not crash the processor."""
         await dispatch({}, "admin-1", True, deps)
-
-
-# ---------------------------------------------------------------------------
-# IPC deploy — edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestIpcDeployEdgeCases:
-    """Tests for deploy command edge cases in the IPC handler."""
-
-    async def test_deploy_without_chat_jid_uses_configured_notification_workspace(self, deps):
-        """Deploy request missing chatJid uses the configured notification workspace."""
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.get_settings",
-                return_value=make_settings(
-                    notifications=NotificationsConfig(admin_workspace="admin-1")
-                ),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-                new_callable=AsyncMock,
-            ) as mock_start,
-        ):
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "resumePrompt": "Done.",
-                    "headSha": "abc123",
-                    # chatJid intentionally missing
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-            mock_start.assert_awaited_once()
-            request = mock_start.await_args.args[0]
-            assert request.chat_jid == "admin-1@g.us"
-
-    async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
-        """Deploy request with no chatJid and no admin group should not finalize."""
-        # Remove admin group from deps
-        no_admin_deps = MockDeps(
-            {
-                "other@g.us": OTHER_GROUP,
-            }
-        )
-        await init_test_database()
-
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "headSha": "abc123",
-                },
-                "admin-1",
-                True,
-                no_admin_deps,
-            )
-            mock_start.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

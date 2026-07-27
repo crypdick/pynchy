@@ -16,6 +16,7 @@ import pytest
 from conftest import NullChannel, make_settings
 
 from pynchy import state
+from pynchy.config.models import NotificationsConfig
 from pynchy.host.container_manager import serialization
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
@@ -400,6 +401,38 @@ async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> Non
     clear.assert_awaited_once_with("test-group")
     assert "test-group" not in app.sessions
     assert "test-group" in app.session_cleared
+
+
+async def test_ipc_deploy_resolves_missing_notification_target(app: PynchyApp) -> None:
+    app.workspaces["group@g.us"].is_admin = True
+    with (
+        patch(
+            "pynchy.host.orchestrator.dep_factory.get_settings",
+            return_value=make_settings(
+                notifications=NotificationsConfig(admin_workspace="test-group")
+            ),
+        ),
+        patch(
+            "pynchy.host.orchestrator.dep_factory.get_deploy_config_hash",
+            return_value="config-hash",
+        ),
+        patch(
+            "pynchy.host.orchestrator.dep_factory.start_deploy_workflow",
+            new_callable=AsyncMock,
+        ) as start_deploy,
+    ):
+        await make_ipc_deps(app).request_deploy(
+            chat_jid=None,
+            commit_sha="abc123",
+            rebuild=False,
+            resume_prompt="Done.",
+        )
+
+    request = start_deploy.await_args.args[0]
+    assert request.chat_jid == "group@g.us"
+    assert request.commit_sha == request.previous_sha == "abc123"
+    assert request.config_hash == "config-hash"
+    assert request.resume_prompt == "Done."
 
 
 class TestFirstRunBootstrap:
