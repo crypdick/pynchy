@@ -63,7 +63,20 @@ from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import create_task, get_all_host_jobs, get_all_tasks, get_task_run_logs
+from pynchy.state import (
+    create_host_job,
+    create_task,
+    delete_host_job,
+    delete_task,
+    get_all_host_jobs,
+    get_all_tasks,
+    get_host_job_by_id,
+    get_task_by_id,
+    get_task_run_logs,
+    resume_task,
+    update_host_job,
+    update_task,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
     HostJob,
@@ -122,6 +135,20 @@ class _PendingQuestionStore:
     create = staticmethod(pending_questions.create_pending_question)
     update_message_id = staticmethod(pending_questions.update_message_id)
     resolve = staticmethod(pending_questions.resolve_pending_question)
+
+
+class _ScheduledWorkStore:
+    """Adapter for the application-owned scheduled-work persistence."""
+
+    create_task = staticmethod(create_task)
+    create_host_job = staticmethod(create_host_job)
+    get_task_by_id = staticmethod(get_task_by_id)
+    get_host_job_by_id = staticmethod(get_host_job_by_id)
+    update_task = staticmethod(update_task)
+    update_host_job = staticmethod(update_host_job)
+    resume_task = staticmethod(resume_task)
+    delete_task = staticmethod(delete_task)
+    delete_host_job = staticmethod(delete_host_job)
 
 
 async def _scheduled_work_status(
@@ -304,6 +331,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
         pending_question_store = staticmethod(_PendingQuestionStore)
+        scheduled_work_store = staticmethod(_ScheduledWorkStore)
 
         async def clear_session(self, group_folder: str) -> None:
             group = next(
