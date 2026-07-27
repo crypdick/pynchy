@@ -28,11 +28,12 @@ def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
     )
 ```
 
-`McpServerConfig` supports `docker`, `script`, and `url` servers, plus image,
-Dockerfile, command, arguments, ports, transport, idle timeout, environment,
-and volume fields. Optional `ServiceTrustConfig` declares the template's trust
-defaults separately from its runtime configuration. Users create instances
-through their tool configuration; see [MCP servers](../../usage/mcp.md).
+`McpServerConfig` supports `docker`, `script`, `stdio`, and `url` servers,
+plus image, Dockerfile, command, arguments, ports, transport, idle timeout,
+environment, and volume fields. `stdio` wraps a trusted host command in a
+loopback HTTP bridge. Optional `ServiceTrustConfig` declares the template's
+trust defaults separately from its runtime configuration. Users create
+instances through their tool configuration; see [MCP servers](../../usage/mcp.md).
 
 ## `pynchy_workspace_spec`
 

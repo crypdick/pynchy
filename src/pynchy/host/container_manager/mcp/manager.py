@@ -1,8 +1,8 @@
-"""MCP server lifecycle manager — Docker/script on-demand, idle timeout, LiteLLM sync.
+"""MCP server lifecycle manager — Docker/host-process on-demand, idle timeout, LiteLLM sync.
 
 Personalized desired state is the source of truth. At boot, :meth:`McpManager.sync`
-pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
-script-based MCP subprocesses start on-demand when an agent first needs them
+pushes MCP state to LiteLLM via its HTTP API.  Docker MCP containers and host
+MCP subprocesses start on-demand when an agent first needs them
 and stop after an idle timeout.
 
 Adding an MCP is done through a ``[tools.<name>]`` declaration with
@@ -39,6 +39,7 @@ from pynchy.host.container_manager.gateway import LiteLLMGateway, resolve_contai
 from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
     ensure_script_running,
+    ensure_stdio_running,
     terminate_process,
     warm_image_cache,
 )
@@ -125,7 +126,7 @@ class McpManager:
     """Manages MCP servers: LiteLLM sync, runtime lifecycle, team provisioning.
 
     Personalized settings are the source of truth. At boot, this class syncs state to
-    LiteLLM via HTTP API. Docker containers and script subprocesses start
+    LiteLLM via HTTP API. Docker containers and host subprocesses start
     on-demand and stop on idle; URL servers are registered without a local
     lifecycle.
 
@@ -393,6 +394,8 @@ class McpManager:
 
         if instance.server_config.type == "script":
             await ensure_script_running(instance)
+        elif instance.server_config.type == "stdio":
+            await ensure_stdio_running(instance)
         else:
             await ensure_docker_running(instance)
 
@@ -406,9 +409,9 @@ class McpManager:
             )
 
     async def stop_idle(self) -> None:
-        """Stop Docker/script instances that exceeded their idle_timeout."""
+        """Stop Docker and host-process instances that exceeded their idle_timeout."""
         for instance in list(self._instances.values()):
-            if instance.server_config.type not in ("docker", "script"):
+            if instance.server_config.type not in ("docker", "script", "stdio"):
                 continue
             if instance.server_config.idle_timeout == 0:
                 continue  # Never auto-stop
@@ -421,11 +424,11 @@ class McpManager:
                 if elapsed <= instance.server_config.idle_timeout:
                     continue
 
-                if instance.server_config.type == "script":
+                if instance.server_config.type in ("script", "stdio"):
                     if instance.process is None or instance.process.poll() is not None:
                         continue  # not running
                     logger.info(
-                        "Stopping idle MCP script",
+                        "Stopping idle MCP host process",
                         instance_id=instance.instance_id,
                         idle_seconds=int(elapsed),
                     )
@@ -441,7 +444,7 @@ class McpManager:
                     await stop_container(instance.container_name)
 
     async def stop_all(self) -> None:
-        """Shutdown: stop all managed Docker containers and script subprocesses."""
+        """Shutdown: stop all managed Docker containers and host subprocesses."""
         await self._proxy.stop()
 
         if self._idle_task is not None:
@@ -452,7 +455,7 @@ class McpManager:
             self._warm_task = None
 
         for instance in self._instances.values():
-            if instance.server_config.type == "script":
+            if instance.server_config.type in ("script", "stdio"):
                 terminate_process(instance)
             elif instance.server_config.type == "docker":
                 await stop_container(instance.container_name)

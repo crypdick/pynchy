@@ -14,6 +14,7 @@ import os
 import re
 import signal
 import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
+import sys
 from pathlib import Path
 
 import pynchy.config as pynchy_config
@@ -115,6 +116,49 @@ async def ensure_script_running(instance: McpInstance) -> None:
         raise
 
     logger.info("MCP script ready", instance_id=instance.instance_id)
+
+
+# ---------------------------------------------------------------------------
+# Stdio lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def ensure_stdio_running(instance: McpInstance) -> None:
+    """Start a loopback HTTP bridge for a configured stdio MCP server."""
+    if instance.process is not None and instance.process.poll() is None:
+        return
+
+    if instance.port is None:
+        raise RuntimeError(f"Stdio MCP has no host port: {instance.instance_id}")
+
+    cmd = _stdio_bridge_command(instance)
+    logger.info(
+        "Starting MCP stdio bridge on-demand",
+        instance_id=instance.instance_id,
+        command=cmd,
+    )
+    instance.process = await asyncio.to_thread(
+        _start_script_process,
+        cmd,
+        build_stdio_env(instance.server_config),
+    )
+
+    try:
+        await wait_healthy(
+            HealthCheckRequest(
+                container_name=instance.instance_id,
+                url=f"http://localhost:{instance.port}",
+                any_non_5xx=True,
+                process=instance.process,
+                health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+            )
+        )
+    except (TimeoutError, RuntimeError):
+        logger.error("MCP stdio bridge failed health check", instance_id=instance.instance_id)
+        await asyncio.to_thread(terminate_process, instance)
+        raise
+
+    logger.info("MCP stdio bridge ready", instance_id=instance.instance_id)
 
 
 def _start_script_process(
@@ -344,6 +388,39 @@ def resolve_env_forward(env_forward: dict[str, str]) -> dict[str, str]:
             continue
         resolved[container_var] = value
     return resolved
+
+
+def build_stdio_env(config: McpServerConfig) -> dict[str, str]:
+    """Return the intentionally small host environment for a stdio bridge.
+
+    Unlike HTTP script MCPs, this starts arbitrary stdio tooling such as
+    ``npx``.  Do not inherit the Pynchy service environment (which can carry
+    provider credentials); an operator can forward an additional variable
+    explicitly through ``env_forward``.
+    """
+    passthrough = ("HOME", "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL")
+    env = {name: os.environ[name] for name in passthrough if name in os.environ}
+    env.update(config.env)
+    env.update(resolve_env_forward(config.env_forward))
+    return env
+
+
+def _stdio_bridge_command(instance: McpInstance) -> list[str]:
+    if instance.port is None:
+        raise RuntimeError(f"Stdio MCP has no host port: {instance.instance_id}")
+    placeholders = _build_placeholders(instance)
+    args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
+    return [
+        sys.executable,
+        "-m",
+        "pynchy.host.container_manager.mcp.stdio_bridge",
+        "--port",
+        str(instance.port),
+        "--",
+        instance.server_config.command or "",
+        *args,
+        *kwargs_to_args(instance.kwargs),
+    ]
 
 
 def build_env_args(

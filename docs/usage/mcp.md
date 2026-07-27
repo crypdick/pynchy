@@ -43,6 +43,36 @@ profiles = ["browser"]
 
 MCP runtime details come from plugins and server-specific setup flows. The profile controls which MCP-backed tool names a workspace may use, while the trust fields control security gating.
 
+## Host stdio servers
+
+Use `runtime = "stdio"` for a trusted host command that implements MCP over
+standard input and output. Pynchy exposes it only through a loopback
+Streamable HTTP bridge; the agent still reaches it through Pynchy's security
+proxy.
+
+```toml
+[tools.android]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = true
+
+[tools.android.mcp]
+runtime = "stdio"
+command = "/path/to/npx"
+args = ["-y", "scrcpy-mcp"]
+port = 8932
+transport = "streamable_http"
+env = { ADB_PATH = "/path/to/adb" }
+```
+
+`dangerous_writes = true` keeps every tool call subject to the normal human
+approval flow. The bridge receives only a small host environment. Add a needed
+host variable explicitly with `env` or `env_forward`.
+
+For the lifecycle and routing details, see [MCP management architecture](../architecture/mcp-management.md#host-stdio-servers).
+
 ## Multi-tenant Servers
 
 For multiple accounts, define one tool per account and compose the right tool names into profiles:
