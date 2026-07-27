@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
 from typing import Any
 
 import pynchy.types as types
-from pynchy.config.settings import Settings  # noqa: TC001, RUF100 - beartype resolves annotations.
 from pynchy.event_bus import AgentActivityEvent
 from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.execution_outcomes import (
@@ -119,7 +119,7 @@ async def prepare_agent_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
     group: types.WorkspaceProfile,
-    settings: Settings,
+    data_dir: Path,
     callbacks: TurnPreparationCallbacks,
 ) -> AgentBatch | TurnOutcome:
     """Resume durable work or prepare pending messages for an interactive turn."""
@@ -132,8 +132,8 @@ async def prepare_agent_batch(
     if resumed is not None:
         return resumed
 
-    reset_file = settings.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    if await handle_reset_handoff(deps, chat_jid, group, reset_file, settings.data_dir) is False:
+    reset_file = data_dir / "ipc" / group.folder / "reset_prompt.json"
+    if await handle_reset_handoff(deps, chat_jid, group, reset_file, data_dir) is False:
         return TurnOutcome.RETRY
 
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
@@ -152,7 +152,7 @@ async def prepare_agent_batch(
         return TurnOutcome.COMPLETED
 
     messages, reset_system_notices = prepare_message_context(
-        settings.data_dir,
+        data_dir,
         group,
         missed_messages,
         is_admin_group=group.is_admin,
