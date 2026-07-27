@@ -18,7 +18,6 @@ from typing import Any, Protocol, cast, runtime_checkable
 from temporalio.client import Client
 
 from pynchy.canaries import get_canary_report
-from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
@@ -82,6 +81,11 @@ def get_temporal_scheduler_status() -> dict[str, Any]:
 class StatusDeps(Protocol):
     """Dependencies injected from app state for status collection."""
 
+    repo_slugs: tuple[str, ...]
+    temporal_address: str
+    temporal_namespace: str
+    temporal_task_queue: str
+
     def is_shutting_down(self) -> bool: ...
     def get_channel_status(self) -> dict[str, bool]: ...
     def get_connection_status(self) -> dict[str, bool]: ...
@@ -128,11 +132,15 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         speech,
     ) = await asyncio.gather(
         _collect_deploy(),
-        asyncio.to_thread(_collect_repos),
+        asyncio.to_thread(_collect_repos, deps.repo_slugs),
         _collect_messages(),
-        _collect_scheduled_work(),
+        _collect_scheduled_work(deps.temporal_address, deps.temporal_namespace),
         _collect_gateway(deps.get_gateway_info()),
-        _collect_temporal(),
+        _collect_temporal(
+            deps.temporal_address,
+            deps.temporal_namespace,
+            deps.temporal_task_queue,
+        ),
         get_canary_report(history_limit=10),
         _collect_speech(deps.get_speech_synthesizer()),
     )
@@ -198,38 +206,20 @@ async def _collect_deploy() -> dict[str, Any]:
     }
 
 
-def _collect_repos() -> dict[str, Any]:
+def _collect_repos(repo_slugs: tuple[str, ...]) -> dict[str, Any]:
     """Repo and worktree status — blocking git subprocesses.
 
     Called inside asyncio.to_thread() by the orchestrator.
     """
     result: dict[str, Any] = {}
 
-    for slug in _configured_repo_slugs():
+    for slug in repo_slugs:
         repo_ctx = get_repo_context(slug)
         if repo_ctx is None or not repo_ctx.root.exists():
             continue
         result[slug] = _repo_status(repo_ctx)
 
     return result
-
-
-def _configured_repo_slugs() -> list[str]:
-    s = get_settings()
-    slugs: list[str] = []
-    seen: set[str] = set()
-
-    def add(slug: str) -> None:
-        if slug not in seen:
-            seen.add(slug)
-            slugs.append(slug)
-
-    for slug in getattr(s.repos, "overrides", {}):
-        add(slug)
-    for profile in getattr(s, "profiles", {}).values():
-        for slug in profile.repo:
-            add(slug)
-    return slugs
 
 
 def _repo_status(repo_ctx: RepoContext) -> dict[str, Any]:
@@ -295,33 +285,45 @@ async def _collect_messages() -> dict[str, Any]:
     return await get_messaging_stats()
 
 
-async def _collect_scheduled_work() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+async def _collect_scheduled_work(
+    temporal_address: str,
+    temporal_namespace: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return await collect_scheduled_work(
         get_all_tasks,
         get_all_host_jobs,
         lambda task_id: get_task_run_logs(task_id, limit=5),
         _get_temporal_orchestration_states,
+        (temporal_address, temporal_namespace),
     )
 
 
 async def _get_temporal_orchestration_states(
-    tasks: list[ScheduledTask], jobs: list[HostJob]
+    tasks: list[ScheduledTask],
+    jobs: list[HostJob],
+    temporal_address: str,
+    temporal_namespace: str,
 ) -> dict[tuple[str, str], dict[str, Any]]:
     """Preserve an injection seam around Temporal-backed scheduled-work status."""
-    return await get_temporal_orchestration_states(tasks, jobs)
+    return await get_temporal_orchestration_states(
+        tasks, jobs, temporal_address, temporal_namespace
+    )
 
 
-async def _collect_temporal() -> dict[str, Any]:
+async def _collect_temporal(
+    temporal_address: str,
+    temporal_namespace: str,
+    temporal_task_queue: str,
+) -> dict[str, Any]:
     """Temporal scheduler status — config, cluster health, and worker state."""
-    scheduler = get_settings().scheduler
     cluster = await _check_temporal_cluster_health(
-        scheduler.temporal_address,
-        scheduler.temporal_namespace,
+        temporal_address,
+        temporal_namespace,
     )
     return {
-        "address": scheduler.temporal_address,
-        "namespace": scheduler.temporal_namespace,
-        "task_queue": scheduler.temporal_task_queue,
+        "address": temporal_address,
+        "namespace": temporal_namespace,
+        "task_queue": temporal_task_queue,
         "cluster_healthy": cluster["healthy"],
         "cluster_error": cluster["error"],
         **get_temporal_scheduler_status(),

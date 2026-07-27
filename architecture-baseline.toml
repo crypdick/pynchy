@@ -1090,14 +1090,6 @@ reason = "pynchy.host.orchestrator.status still has a runtime-import dependency 
 
 [[violations]]
 importer = "pynchy.host.orchestrator.status"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.status still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
 target_component = "container_adapter"
 kind = "runtime-import"
 count = 2
@@ -1359,14 +1351,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.config"]
 reason = "pynchy.host.orchestrator.temporal.schedules still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.status"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.temporal.status still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.workflows"

@@ -160,11 +160,13 @@ async def _scheduled_work_status(
     async def visible_host_jobs() -> list[HostJob]:
         return await get_all_host_jobs() if is_admin else []
 
+    scheduler = get_settings().scheduler
     return await collect_scheduled_work(
         visible_tasks,
         visible_host_jobs,
         lambda task_id: get_task_run_logs(task_id, limit=5),
         get_temporal_orchestration_states,
+        (scheduler.temporal_address, scheduler.temporal_namespace),
     )
 
 
@@ -493,8 +495,22 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
+    settings = get_settings()
+    configured_repo_slugs = tuple(
+        dict.fromkeys(
+            [
+                *settings.repos.overrides,
+                *(slug for profile in settings.profiles.values() for slug in profile.repo),
+            ]
+        )
+    )
 
     class _StatusDeps:
+        repo_slugs = configured_repo_slugs
+        temporal_address = settings.scheduler.temporal_address
+        temporal_namespace = settings.scheduler.temporal_namespace
+        temporal_task_queue = settings.scheduler.temporal_task_queue
+
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()
 
@@ -509,7 +525,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             meta = raw.pop("_meta", {})
             return {
                 "active_containers": meta.get("active_count", 0),
-                "max_concurrent": get_settings().container.max_concurrent,
+                "max_concurrent": settings.container.max_concurrent,
                 "groups_waiting": meta.get("waiting_count", 0),
                 "per_group": raw,
             }
