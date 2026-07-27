@@ -20,7 +20,11 @@ if TYPE_CHECKING:
 @contextlib.contextmanager
 def _server(response_text: str = "fixed answer") -> Iterator[str]:
     server = DeterministicOpenAIServer(("127.0.0.1", 0), response_text)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": 0.01},
+        daemon=True,
+    )
     thread.start()
     host, port = server.server_address
     try:
