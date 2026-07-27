@@ -20,7 +20,6 @@ from pynchy.conversation.models import (
     ExternalDeliveryIdentity,
     ExternalProvider,
     ExternalRoute,
-    TerminalConversationRetirement,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.app import PynchyApp
@@ -28,7 +27,7 @@ from pynchy.host.orchestrator.dep_factory import make_http_deps
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import TemporalRuntimeUnavailableError
 from pynchy.host.orchestrator.webhook_conversations import ConversationWebhookDeps
-from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_conversation
+from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_lifecycle
 from pynchy.plugins.integrations.linear_work_item_completion import complete_reviewed_work_item
 from pynchy.plugins.webhooks import WebhookLifecycleDelivery
@@ -37,6 +36,7 @@ from pynchy.state import (
     WorkItemTransitionResolution,
     admit_conversation_delivery,
     admit_webhook_receipt,
+    apply_conversation_control_state,
     begin_in_flight_turn,
     begin_work_item_transition,
     bind_work_item_execution_to_task,
@@ -56,7 +56,6 @@ from pynchy.state import (
     resolve_work_item_transition,
     resolve_work_item_transition_if_lifecycle_current,
     retire_conversation_for_terminal,
-    set_conversation_control_closed,
     set_session,
     set_workspace_profile,
 )
@@ -163,19 +162,6 @@ class _RuntimeRetirementDeps:
         return await conversation_control_state_matches(
             conversation_id,
             closed=closed,
-            control_state_revision=control_state_revision,
-        )
-
-    async def retire_conversation_for_terminal(
-        self,
-        conversation_id: ConversationId,
-        *,
-        preserve_delivery: ExternalDeliveryIdentity,
-        control_state_revision: str | None,
-    ) -> TerminalConversationRetirement:
-        return await retire_conversation_for_terminal(
-            conversation_id,
-            preserve_delivery=preserve_delivery,
             control_state_revision=control_state_revision,
         )
 
@@ -442,12 +428,16 @@ async def test_terminal_retirement_stops_runtime_from_prior_workspace() -> None:
     assert admission is not None
     deps = _RuntimeRetirementDeps()
 
-    await retire_terminal_conversation(
+    retirement = await retire_conversation_for_terminal(
+        conversation.id,
+        preserve_delivery=identity,
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+    await retire_terminal_runtime(
         deps,
         conversation.id,
-        identity,
+        retirement,
         set(),
-        "2026-07-27T00:00:01+00:00",
     )
 
     assert old_folder in deps.retired_folders
@@ -506,7 +496,7 @@ async def test_newer_cancelled_terminal_blocks_claimed_done_settlement() -> None
         assert admission is not None
 
     await admit_lifecycle(old_identity)
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation_id,
         closed=True,
         control_state_revision=old_revision,
@@ -609,14 +599,14 @@ async def test_reopened_conversation_blocks_stale_done_transition_creation(
     )
     assert admission is not None
     old_revision = "2026-07-27T00:00:00+00:00"
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation_id,
         closed=True,
         control_state_revision=old_revision,
     )
     claim_id = ConversationClaimId("old-done-claim")
     assert await claim_next_conversation_delivery(conversation_id, claim_id)
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation_id,
         closed=False,
         control_state_revision="2026-07-27T00:00:01+00:00",

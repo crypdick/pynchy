@@ -20,14 +20,6 @@ from pynchy.types import GroupFolder  # noqa: TC001, RUF100 - beartype resolves 
 class TerminalConversationRetirementDeps(Protocol):
     """Host operations required to stop a terminal routed conversation."""
 
-    async def retire_conversation_for_terminal(
-        self,
-        conversation_id: ConversationId,
-        *,
-        preserve_delivery: ExternalDeliveryIdentity,
-        control_state_revision: str | None,
-    ) -> TerminalConversationRetirement: ...
-
     async def unregister_workspace(self, jid: str) -> None: ...
 
     async def retire_conversation_runtime(self, folder: GroupFolder) -> None: ...
@@ -55,27 +47,6 @@ class TerminalConversationRecoveryDeps(TerminalConversationRetirementDeps, Proto
     ) -> TerminalConversationRetirement | None: ...
 
 
-async def retire_terminal_conversation(
-    deps: TerminalConversationRetirementDeps,
-    conversation_id: ConversationId,
-    lifecycle_identity: ExternalDeliveryIdentity,
-    runtime_workspace_folders: set[str],
-    control_state_revision: str | None,
-) -> bool:
-    """Stop local work while preserving terminal lifecycle delivery for completion."""
-    retirement = await deps.retire_conversation_for_terminal(
-        conversation_id,
-        preserve_delivery=lifecycle_identity,
-        control_state_revision=control_state_revision,
-    )
-    return await _retire_terminal_runtime(
-        deps,
-        conversation_id,
-        retirement,
-        runtime_workspace_folders,
-    )
-
-
 async def recover_terminal_conversation(
     deps: TerminalConversationRecoveryDeps,
     conversation_id: ConversationId,
@@ -85,7 +56,7 @@ async def recover_terminal_conversation(
     retirement = await deps.get_terminal_conversation_retirement(conversation_id)
     if retirement is None:
         return False
-    return await _retire_terminal_runtime(
+    return await retire_terminal_runtime(
         deps,
         conversation_id,
         retirement,
@@ -93,7 +64,7 @@ async def recover_terminal_conversation(
     )
 
 
-async def _retire_terminal_runtime(
+async def retire_terminal_runtime(
     deps: TerminalConversationRetirementDeps,
     conversation_id: ConversationId,
     retirement: TerminalConversationRetirement,
@@ -118,10 +89,7 @@ async def _retire_terminal_runtime(
         for runtime_folder in sorted(runtime_folders):
             await deps.retire_conversation_runtime(runtime_folder)
         await deps.retire_conversation_tasks(conversation_id)
-        workspace_jids = set(retirement.runtime_workspace_jids)
-        if retirement.control_thread_jid is not None:
-            workspace_jids.add(retirement.control_thread_jid)
-        for workspace_jid in workspace_jids:
+        for workspace_jid in retirement.runtime_workspace_jids:
             await deps.unregister_workspace(workspace_jid)
         for runtime_folder in runtime_folders:
             unregister_runtime_workspace_restriction(runtime_folder)

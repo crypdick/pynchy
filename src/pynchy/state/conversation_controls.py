@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from aiosqlite import Connection  # noqa: TC002 - beartype resolves state annotations at runtime.
+
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationClaimId,
@@ -94,16 +96,6 @@ async def list_idle_conversation_ids(
     return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
 
 
-async def close_conversation_control(conversation_id: ConversationId) -> bool:
-    """Close a conversation's durable control intent.
-
-    Lifecycle deliveries may be retried after a process interruption.  The
-    conditional update gives the close transition exactly-once durable state
-    semantics while leaving control presentation and workspace ownership intact.
-    """
-    return await set_conversation_control_closed(conversation_id, closed=True)
-
-
 def _normalized_control_state_revision(value: str | None) -> str | None:
     if value is None:
         return None
@@ -114,6 +106,20 @@ def _normalized_control_state_revision(value: str | None) -> str | None:
     if parsed.tzinfo is None:
         raise ValueError("Conversation control revision must include a timezone")
     return parsed.astimezone(UTC).isoformat()
+
+
+def _provider_state_is_current(
+    *,
+    current_closed: bool,
+    current_revision: str | None,
+    observed_closed: bool,
+    observed_revision: str | None,
+) -> bool:
+    if observed_revision is None:
+        return current_revision is None
+    if current_revision is None or observed_revision > current_revision:
+        return True
+    return observed_revision == current_revision and observed_closed is current_closed
 
 
 async def apply_conversation_control_state(
@@ -128,49 +134,62 @@ async def apply_conversation_control_state(
     ordering, but cannot override a state ordered by a provider revision.
     The boolean result distinguishes an accepted current observation from stale input.
     """
-    expected_revision = _normalized_control_state_revision(control_state_revision)
     async with atomic_write() as database:
-        cursor = await database.execute(
-            "SELECT control_closed, control_state_revision FROM routed_conversations WHERE id = ?",
-            (conversation_id,),
+        return await _apply_conversation_control_state(
+            database,
+            conversation_id,
+            closed=closed,
+            control_state_revision=control_state_revision,
         )
-        conversation = await cursor.fetchone()
-        if conversation is None:
-            raise ValueError(f"Unknown conversation: {conversation_id}")
-        current_closed = bool(conversation["control_closed"])
-        current_revision = _normalized_control_state_revision(
-            conversation["control_state_revision"]
-        )
-        if expected_revision is None:
-            if current_revision is not None:
-                return False
-        elif current_revision is not None and (
-            expected_revision < current_revision
-            or (expected_revision == current_revision and current_closed is not closed)
-        ):
-            return False
 
-        effective_revision = expected_revision or current_revision
-        if current_closed is closed and current_revision == effective_revision:
-            return True
-        now = datetime.now(UTC).isoformat()
-        await database.execute(
-            """
-            UPDATE routed_conversations
-            SET control_closed = ?, control_state_revision = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (closed, effective_revision, now, conversation_id),
-        )
-        await database.execute(
-            """
-            UPDATE conversation_control_bindings
-            SET closed = ?, updated_at = ?
-            WHERE conversation_id = ? AND closed != ?
-            """,
-            (closed, now, conversation_id, closed),
-        )
+
+async def _apply_conversation_control_state(
+    database: Connection,
+    conversation_id: ConversationId,
+    *,
+    closed: bool,
+    control_state_revision: str | None,
+) -> bool:
+    """Apply provider control state inside the caller's write transaction."""
+    expected_revision = _normalized_control_state_revision(control_state_revision)
+    cursor = await database.execute(
+        "SELECT control_closed, control_state_revision FROM routed_conversations WHERE id = ?",
+        (conversation_id,),
+    )
+    conversation = await cursor.fetchone()
+    if conversation is None:
+        raise ValueError(f"Unknown conversation: {conversation_id}")
+    current_closed = bool(conversation["control_closed"])
+    current_revision = _normalized_control_state_revision(conversation["control_state_revision"])
+    if not _provider_state_is_current(
+        current_closed=current_closed,
+        current_revision=current_revision,
+        observed_closed=closed,
+        observed_revision=expected_revision,
+    ):
+        return False
+
+    effective_revision = expected_revision or current_revision
+    if current_closed is closed and current_revision == effective_revision:
         return True
+    now = datetime.now(UTC).isoformat()
+    await database.execute(
+        """
+        UPDATE routed_conversations
+        SET control_closed = ?, control_state_revision = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (closed, effective_revision, now, conversation_id),
+    )
+    await database.execute(
+        """
+        UPDATE conversation_control_bindings
+        SET closed = ?, updated_at = ?
+        WHERE conversation_id = ? AND closed != ?
+        """,
+        (closed, now, conversation_id, closed),
+    )
+    return True
 
 
 async def conversation_control_state_matches(
@@ -219,61 +238,6 @@ async def conversation_control_state_matches(
         return await claim_cursor.fetchone() is not None
 
 
-async def set_conversation_control_closed(
-    conversation_id: ConversationId,
-    *,
-    closed: bool,
-    control_state_revision: str | None = None,
-) -> bool:
-    """Persist a conversation lifecycle intent and project it to its binding."""
-    expected_revision = _normalized_control_state_revision(control_state_revision)
-    async with atomic_write() as database:
-        cursor = await database.execute(
-            "SELECT control_closed, control_state_revision FROM routed_conversations WHERE id = ?",
-            (conversation_id,),
-        )
-        conversation = await cursor.fetchone()
-        if conversation is None:
-            raise ValueError(f"Unknown conversation: {conversation_id}")
-        current_closed = bool(conversation["control_closed"])
-        current_revision = _normalized_control_state_revision(
-            conversation["control_state_revision"]
-        )
-        if expected_revision is not None:
-            if current_revision is not None and expected_revision < current_revision:
-                return False
-            if current_revision == expected_revision and current_closed is not closed:
-                return False
-        elif not closed and current_closed and current_revision is not None:
-            # Only a newer provider observation may reopen a terminal control.
-            return False
-
-        changed = current_closed is not closed or current_revision != expected_revision
-        if changed:
-            await database.execute(
-                """
-                UPDATE routed_conversations
-                SET control_closed = ?, control_state_revision = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    closed,
-                    expected_revision or current_revision,
-                    datetime.now(UTC).isoformat(),
-                    conversation_id,
-                ),
-            )
-            await database.execute(
-                """
-                UPDATE conversation_control_bindings
-                SET closed = ?, updated_at = ?
-                WHERE conversation_id = ? AND closed != ?
-                """,
-                (closed, datetime.now(UTC).isoformat(), conversation_id, closed),
-            )
-        return changed
-
-
 async def retire_conversation_for_terminal(
     conversation_id: ConversationId,
     *,
@@ -281,124 +245,130 @@ async def retire_conversation_for_terminal(
     control_state_revision: str | None = None,
 ) -> TerminalConversationRetirement:
     """Terminally retire earlier routed work while retaining one lifecycle delivery."""
-    now = datetime.now(UTC).isoformat()
-    expected_revision = _normalized_control_state_revision(control_state_revision)
     async with atomic_write() as database:
-        cursor = await database.execute(
-            """
-            SELECT workspace, session_id, control_closed, control_state_revision
-            FROM routed_conversations
-            WHERE id = ?
-            """,
-            (conversation_id,),
-        )
-        conversation = await cursor.fetchone()
-        if conversation is None:
-            raise ValueError(f"Unknown conversation: {conversation_id}")
-        binding_cursor = await database.execute(
-            """
-            SELECT parent_workspace, thread_jid
-            FROM conversation_control_bindings
-            WHERE conversation_id = ?
-            """,
-            (conversation_id,),
-        )
-        binding = await binding_cursor.fetchone()
-        folders, workspace_jids = await terminal_runtime_resources(
+        return await _retire_conversation_for_terminal(
             database,
             conversation_id,
-            conversation["workspace"],
-            binding,
+            preserve_delivery=preserve_delivery,
+            control_state_revision=control_state_revision,
         )
-        current_revision = _normalized_control_state_revision(
-            conversation["control_state_revision"]
-        )
-        current_closed = bool(conversation["control_closed"])
-        stale_terminal = (
-            expected_revision is not None
-            and current_revision is not None
-            and (
-                expected_revision < current_revision
-                or (expected_revision == current_revision and not current_closed)
-            )
-        )
-        # A terminal callback without a provider revision cannot supersede any
-        # versioned state, including an already-closed newer terminal state.
-        unversioned_terminal_conflicts = expected_revision is None and current_revision is not None
-        effective_revision = expected_revision or current_revision
-        if stale_terminal or unversioned_terminal_conflicts:
-            await database.execute(
-                """
-                UPDATE conversation_deliveries
-                SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
-                WHERE provider = ? AND route = ? AND delivery_id = ?
-                  AND status != 'completed'
-                """,
-                (
-                    now,
-                    preserve_delivery.provider,
-                    preserve_delivery.route,
-                    preserve_delivery.delivery_id,
-                ),
-            )
-            return TerminalConversationRetirement(
-                runtime_folders=tuple(sorted(folders)),
-                control_thread_jid=ChatJid(binding["thread_jid"]) if binding is not None else None,
-                control_state_revision=current_revision,
-                is_current=False,
-                runtime_workspace_jids=tuple(sorted(workspace_jids)),
-            )
 
-        if (
-            not current_closed
-            or conversation["session_id"] is not None
-            or current_revision != effective_revision
-        ):
-            await database.execute(
-                """
-                UPDATE routed_conversations
-                SET control_closed = 1, control_state_revision = ?, session_id = NULL,
-                    updated_at = ?
-                WHERE id = ?
-                """,
-                (effective_revision, now, conversation_id),
-            )
-        await database.execute(
-            """
-            UPDATE conversation_control_bindings
-            SET closed = 1, updated_at = ?
-            WHERE conversation_id = ? AND closed = 0
-            """,
-            (now, conversation_id),
-        )
+
+async def _retire_conversation_for_terminal(
+    database: Connection,
+    conversation_id: ConversationId,
+    *,
+    preserve_delivery: ExternalDeliveryIdentity,
+    control_state_revision: str | None = None,
+) -> TerminalConversationRetirement:
+    """Retire durable conversation work inside the caller's write transaction."""
+    now = datetime.now(UTC).isoformat()
+    expected_revision = _normalized_control_state_revision(control_state_revision)
+    cursor = await database.execute(
+        """
+        SELECT workspace, session_id, control_closed, control_state_revision
+        FROM routed_conversations
+        WHERE id = ?
+        """,
+        (conversation_id,),
+    )
+    conversation = await cursor.fetchone()
+    if conversation is None:
+        raise ValueError(f"Unknown conversation: {conversation_id}")
+    binding_cursor = await database.execute(
+        """
+        SELECT parent_workspace, thread_jid
+        FROM conversation_control_bindings
+        WHERE conversation_id = ?
+        """,
+        (conversation_id,),
+    )
+    binding = await binding_cursor.fetchone()
+    folders, workspace_jids = await terminal_runtime_resources(
+        database,
+        conversation_id,
+        conversation["workspace"],
+        binding,
+    )
+    current_revision = _normalized_control_state_revision(conversation["control_state_revision"])
+    current_closed = bool(conversation["control_closed"])
+    effective_revision = expected_revision or current_revision
+    if not _provider_state_is_current(
+        current_closed=current_closed,
+        current_revision=current_revision,
+        observed_closed=True,
+        observed_revision=expected_revision,
+    ):
         await database.execute(
             """
             UPDATE conversation_deliveries
             SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
-            WHERE conversation_id = ? AND status != 'completed'
-              AND NOT (provider = ? AND route = ? AND delivery_id = ?)
+            WHERE provider = ? AND route = ? AND delivery_id = ?
+              AND status != 'completed'
             """,
             (
                 now,
-                conversation_id,
                 preserve_delivery.provider,
                 preserve_delivery.route,
                 preserve_delivery.delivery_id,
             ),
         )
-        for folder in folders:
-            await database.execute("DELETE FROM in_flight_turns WHERE group_folder = ?", (folder,))
-            await database.execute("DELETE FROM sessions WHERE group_folder = ?", (folder,))
-            await database.execute(
-                "DELETE FROM session_security_taint WHERE group_folder = ?",
-                (folder,),
-            )
         return TerminalConversationRetirement(
             runtime_folders=tuple(sorted(folders)),
-            control_thread_jid=ChatJid(binding["thread_jid"]) if binding is not None else None,
-            control_state_revision=effective_revision,
             runtime_workspace_jids=tuple(sorted(workspace_jids)),
+            control_state_revision=current_revision,
+            is_current=False,
         )
+
+    if (
+        not current_closed
+        or conversation["session_id"] is not None
+        or current_revision != effective_revision
+    ):
+        await database.execute(
+            """
+            UPDATE routed_conversations
+            SET control_closed = 1, control_state_revision = ?, session_id = NULL,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (effective_revision, now, conversation_id),
+        )
+    await database.execute(
+        """
+        UPDATE conversation_control_bindings
+        SET closed = 1, updated_at = ?
+        WHERE conversation_id = ? AND closed = 0
+        """,
+        (now, conversation_id),
+    )
+    await database.execute(
+        """
+        UPDATE conversation_deliveries
+        SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
+        WHERE conversation_id = ? AND status != 'completed'
+          AND NOT (provider = ? AND route = ? AND delivery_id = ?)
+        """,
+        (
+            now,
+            conversation_id,
+            preserve_delivery.provider,
+            preserve_delivery.route,
+            preserve_delivery.delivery_id,
+        ),
+    )
+    for folder in folders:
+        await database.execute("DELETE FROM in_flight_turns WHERE group_folder = ?", (folder,))
+        await database.execute("DELETE FROM sessions WHERE group_folder = ?", (folder,))
+        await database.execute(
+            "DELETE FROM session_security_taint WHERE group_folder = ?",
+            (folder,),
+        )
+    return TerminalConversationRetirement(
+        runtime_folders=tuple(sorted(folders)),
+        runtime_workspace_jids=tuple(sorted(workspace_jids)),
+        control_state_revision=effective_revision,
+    )
 
 
 async def set_conversation_control_binding(

@@ -76,6 +76,8 @@ def conversation_admission_request(
         subject=target.subject,
         workspace=GroupFolder(workspace),
         payload=payload,
+        control_closed=target.control_closed,
+        control_state_revision=target.control_state_revision,
     )
 
 

@@ -117,6 +117,7 @@ class ConversationDeliveryAdmission:
     conversation: Conversation
     delivery: ConversationDelivery
     created: bool
+    terminal_retirement: TerminalConversationRetirement | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +163,6 @@ class TerminalConversationRetirement:
     """Durable resources released while retaining a terminal lifecycle delivery."""
 
     runtime_folders: tuple[GroupFolder, ...]
-    control_thread_jid: ChatJid | None
+    runtime_workspace_jids: tuple[ChatJid, ...]
     control_state_revision: str | None = None
     is_current: bool = True
-    runtime_workspace_jids: tuple[ChatJid, ...] = ()

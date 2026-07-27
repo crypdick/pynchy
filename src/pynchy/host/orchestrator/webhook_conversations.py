@@ -16,7 +16,6 @@ from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDelivery,
     ConversationDeliveryCompletion,
-    ConversationDeliveryStatus,
     ConversationId,
     ExternalProvider,
     ExternalRoute,
@@ -37,7 +36,7 @@ from pynchy.host.orchestrator.webhook_delivery_processing import (
 from pynchy.host.orchestrator.webhook_terminal_retirement import (
     TerminalConversationRecoveryDeps,
     recover_terminal_conversation,
-    retire_terminal_conversation,
+    retire_terminal_runtime,
 )
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
@@ -52,7 +51,6 @@ from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves
 from pynchy.state import (
     WebhookAdmission,
     WebhookReceipt,
-    admit_conversation_delivery,
     admit_webhook_conversation,
     apply_conversation_control_state,
     claim_next_conversation_delivery,
@@ -145,63 +143,14 @@ class WebhookConversationDispatcher:
         if workspace is None:
             raise RuntimeError("Routed webhook conversation has no workspace owner")
         conversation = await resolve_conversation(target.subject, GroupFolder(workspace))
-        if await self._apply_admitted_control_state(event, conversation.id):
+        if await apply_conversation_control_state(
+            conversation.id,
+            closed=False,
+            control_state_revision=target.control_state_revision,
+        ):
+            self._terminal_cleanup_conversations.discard(conversation.id)
             return conversation.id
         return None
-
-    async def _apply_admitted_control_state(
-        self,
-        event: WebhookEvent,
-        conversation_id: ConversationId,
-    ) -> bool:
-        """CAS one admitted provider snapshot before runtime effects lock."""
-        target = event.conversation
-        if target is None or target.control_closed is None:
-            return True
-        applied = await apply_conversation_control_state(
-            conversation_id,
-            closed=target.control_closed,
-            control_state_revision=target.control_state_revision,
-        )
-        if applied and target.control_closed is False:
-            self._terminal_cleanup_conversations.discard(conversation_id)
-        return applied
-
-    async def admit(
-        self,
-        route: WebhookRoute,
-        event: WebhookEvent,
-        prompt: str | None,
-    ) -> ConversationId | None:
-        """Idempotently link one routed event to its immutable subject."""
-        request = conversation_admission_request(route, event, prompt)
-        if request is None:
-            return None
-        admission = await admit_conversation_delivery(
-            request.identity,
-            request.subject,
-            request.workspace,
-            payload=request.payload,
-        )
-        if admission is None:
-            return None
-        control_is_current = await self._apply_admitted_control_state(
-            event,
-            admission.conversation.id,
-        )
-        if (
-            control_is_current
-            and event.lifecycle is not None
-            and admission.delivery.status is not ConversationDeliveryStatus.COMPLETED
-        ) and await retire_terminal_conversation(
-            self.deps,
-            admission.conversation.id,
-            admission.delivery.identity,
-            self._runtime_workspace_folders,
-            event.conversation.control_state_revision,
-        ):
-            self._terminal_cleanup_conversations.add(admission.conversation.id)
-        return admission.conversation.id
 
     async def admit_webhook(
         self,
@@ -229,23 +178,15 @@ class WebhookConversationDispatcher:
         conversation_id = (
             admission.conversation.conversation.id if admission.conversation is not None else None
         )
-        control_is_current = True
-        if admission.conversation is not None:
-            control_is_current = await self._apply_admitted_control_state(
-                event,
-                admission.conversation.conversation.id,
-            )
         if (
-            control_is_current
-            and event.lifecycle is not None
-            and admission.conversation is not None
-            and admission.conversation.delivery.status is not ConversationDeliveryStatus.COMPLETED
-        ) and await retire_terminal_conversation(
-            self.deps,
-            admission.conversation.conversation.id,
-            admission.conversation.delivery.identity,
-            self._runtime_workspace_folders,
-            event.conversation.control_state_revision,
+            admission.conversation is not None
+            and admission.conversation.terminal_retirement is not None
+            and await retire_terminal_runtime(
+                self.deps,
+                admission.conversation.conversation.id,
+                admission.conversation.terminal_retirement,
+                self._runtime_workspace_folders,
+            )
         ):
             self._terminal_cleanup_conversations.add(admission.conversation.conversation.id)
         return admission.webhook, conversation_id

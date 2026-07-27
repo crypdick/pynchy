@@ -57,10 +57,7 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_scheduled_agent_task_workflow,
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
-from pynchy.host.orchestrator.terminal_task_retirement import (
-    retire_conversation_tasks,
-    retire_terminal_conversation,
-)
+from pynchy.host.orchestrator.terminal_task_retirement import retire_conversation_tasks
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
@@ -336,7 +333,6 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             await clear_session(folder)
 
         retire_conversation_tasks = staticmethod(retire_conversation_tasks)
-        retire_conversation_for_terminal = staticmethod(retire_terminal_conversation)
 
         async def ingest_message(self, jid: str, message: NewMessage) -> None:
             await app.on_inbound(jid, message)

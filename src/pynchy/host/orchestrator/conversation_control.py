@@ -28,7 +28,6 @@ from pynchy.state import (
     get_conversation_for_subject,
     get_workspace_profile,
     set_conversation_control_binding,
-    set_conversation_control_closed,
 )
 from pynchy.types import Channel, ChatJid, GroupFolder, SessionId, WorkspaceProfile
 
@@ -42,8 +41,6 @@ class ConversationControlRequest:
     parent_jid: ChatJid
     title: str
     owner_workspace: GroupFolder | None = None
-    closed: bool | None = None
-    control_state_revision: str | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -93,7 +90,7 @@ def _workspace_shape(profile: WorkspaceProfile) -> tuple[object, ...]:
     )
 
 
-async def ensure_conversation_control(  # noqa: PLR0912, RUF100 - control reconciliation intentionally handles creation, ownership, and terminal state together.
+async def ensure_conversation_control(
     channels: list[Channel],
     request: ConversationControlRequest,
 ) -> EnsuredConversationControl:
@@ -115,16 +112,6 @@ async def ensure_conversation_control(  # noqa: PLR0912, RUF100 - control reconc
         or parent_workspace_name(parent.folder) is not None
     ):
         raise ValueError("Conversation control parent must be a registered workspace root")
-
-    if request.closed is not None:
-        await set_conversation_control_closed(
-            request.conversation_id,
-            closed=request.closed,
-            control_state_revision=request.control_state_revision,
-        )
-        conversation = await get_conversation(request.conversation_id)
-        if conversation is None:
-            raise RuntimeError("Conversation disappeared while updating its control state")
 
     current_binding = await get_conversation_control_binding(request.conversation_id)
     if conversation.control_closed:

@@ -98,6 +98,7 @@ from pynchy.plugins.webhooks import (
 )
 from pynchy.state import (
     WorkItemClaimRequest,
+    apply_conversation_control_state,
     create_work_item_claim,
     get_active_work_item_execution,
     get_all_tasks,
@@ -111,7 +112,6 @@ from pynchy.state import (
     resolve_conversation,
     resolve_work_item_transition,
     set_conversation_control_binding,
-    set_conversation_control_closed,
     set_conversation_session,
 )
 from pynchy.types import (
@@ -525,7 +525,11 @@ async def test_preparation_ignores_stale_terminal_callback_after_current_state_r
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     assert event.conversation is not None
     conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
-    await set_conversation_control_closed(conversation.id, closed=True)
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
 
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhooks.linear_client",
@@ -628,7 +632,7 @@ async def test_stale_nonterminal_control_snapshot_is_not_routed_after_terminal_r
         ),
     )
     conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation.id,
         closed=True,
         control_state_revision="2026-07-27T00:00:01+00:00",
@@ -658,7 +662,7 @@ async def test_current_nonterminal_comment_reopens_a_terminal_control(
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     assert event.conversation is not None
     conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation.id,
         closed=True,
         control_state_revision="2026-07-27T00:00:01+00:00",
@@ -724,7 +728,7 @@ async def test_controller_work_waits_for_terminal_fence_after_reopen_cas(
         ),
     )
     conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation.id,
         closed=True,
         control_state_revision="2026-07-27T00:00:01+00:00",

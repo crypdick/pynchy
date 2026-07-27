@@ -64,7 +64,6 @@ from pynchy.state import (
     retire_conversation_for_terminal,
     set_chat_cleared_at,
     set_conversation_control_binding,
-    set_conversation_control_closed,
     set_conversation_session,
     set_session,
     set_workspace_profile,
@@ -477,7 +476,7 @@ async def test_terminal_retirement_clears_legacy_folders_and_rejects_session_rev
     late_session = await set_conversation_session(conversation.id, SessionId("late-session"))
 
     assert set(retirement.runtime_folders) == set(folders)
-    assert retirement.control_thread_jid == thread_jid
+    assert thread_jid in retirement.runtime_workspace_jids
     assert retired is not None
     assert retired.control_closed is True
     assert retired.session_id is None
@@ -493,7 +492,7 @@ async def test_unversioned_terminal_cannot_retire_a_versioned_terminal_state() -
         _subject("issue-versioned-terminal"),
         GroupFolder("owner"),
     )
-    await set_conversation_control_closed(
+    await apply_conversation_control_state(
         conversation.id,
         closed=True,
         control_state_revision="2026-07-27T00:00:02+00:00",
@@ -517,7 +516,11 @@ async def test_unversioned_open_intent_reopens_an_unversioned_terminal_control()
         _subject("issue-unversioned-reopen"),
         GroupFolder("owner"),
     )
-    await set_conversation_control_closed(conversation.id, closed=True)
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
 
     applied = await apply_conversation_control_state(
         conversation.id,

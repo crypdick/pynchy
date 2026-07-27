@@ -5,8 +5,6 @@ from __future__ import annotations
 from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
     Conversation,
     ConversationId,
-    ExternalDeliveryIdentity,
-    TerminalConversationRetirement,
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
@@ -18,7 +16,6 @@ from pynchy.state import (
     get_unfinished_work_item_execution,
     get_work_item_execution_for_task,
 )
-from pynchy.state import retire_conversation_for_terminal as _retire_terminal_conversation_state
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
     ScheduledTask,
     WorkItemExecution,
@@ -50,20 +47,6 @@ async def retire_conversation_tasks(conversation_id: ConversationId) -> None:
         await cancel_scheduled_agent_workflow(workflow_id)
     for task in tasks:
         await cancel_task_and_checkpoint(task.id)
-
-
-async def retire_terminal_conversation(
-    conversation_id: ConversationId,
-    *,
-    preserve_delivery: ExternalDeliveryIdentity,
-    control_state_revision: str | None,
-) -> TerminalConversationRetirement:
-    """Adapt the atomic state retirement transaction for webhook runtime cleanup."""
-    return await _retire_terminal_conversation_state(
-        conversation_id,
-        preserve_delivery=preserve_delivery,
-        control_state_revision=control_state_revision,
-    )
 
 
 async def _unfinished_linear_execution_for_conversation(

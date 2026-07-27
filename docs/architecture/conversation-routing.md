@@ -180,12 +180,11 @@ item. Deleting the issue or moving it off the managed board cannot change this
 persisted decision.
 
 Webhook admission commits the immutable receipt, effect candidates, parsed
-delivery envelope, and initial FIFO state in one SQLite transaction. A crash
-cannot leave a receipt that depends on replaying mutable provider preparation to
-recover its FIFO entry. Duplicate delivery IDs reuse the transaction's existing
-receipt and entry. Separate issue subjects can hold claims concurrently;
-deliveries for one issue wait behind its oldest non-completed FIFO head,
-including a held head.
+delivery envelope, initial FIFO state, and any terminal retirement in one SQLite
+transaction. A crash cannot leave a receipt without its FIFO entry or terminal
+state. Duplicate delivery IDs reuse the transaction's existing receipt and
+entry. Separate issue subjects can hold claims concurrently; deliveries for one
+issue wait behind its oldest non-completed FIFO head, including a held head.
 
 Before a host-owned Linear comment or nonterminal workflow-state mutation starts,
 Pynchy records a provider-neutral outbound-effect intent. A callback with the

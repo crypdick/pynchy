@@ -229,9 +229,6 @@ async def prepare_webhook_message(
                     parent_jid=ChatJid(placement.control_parent.jid),
                     title=title,
                     owner_workspace=conversation.workspace,
-                    # Provider state was already CAS-applied before admission. A
-                    # queued delivery only projects current durable intent.
-                    closed=None,
                 ),
             )
         except ConversationControlWorkspaceChangedError:

@@ -122,7 +122,6 @@ async def get_terminal_conversation_retirement(
     )
     return TerminalConversationRetirement(
         runtime_folders=tuple(sorted(folders)),
-        control_thread_jid=ChatJid(binding["thread_jid"]) if binding is not None else None,
-        control_state_revision=conversation["control_state_revision"],
         runtime_workspace_jids=tuple(sorted(workspace_jids)),
+        control_state_revision=conversation["control_state_revision"],
     )

@@ -38,6 +38,7 @@ from pynchy.host.orchestrator.webhook_delivery_admission import (
     WebhookDeliveryAdmissionRequest,
     admit_prepared_event,
 )
+from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
 from pynchy.plugins.webhooks import (
     WebhookConversation,
     WebhookEvent,
@@ -47,7 +48,6 @@ from pynchy.plugins.webhooks import (
 )
 from pynchy.state import (
     WebhookReceipt,
-    admit_webhook_receipt,
     claim_next_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
@@ -169,7 +169,21 @@ async def _admit(
     route: WebhookRoute,
     event: WebhookEvent,
 ) -> str:
-    receipt = WebhookReceipt(
+    receipt = _receipt(route, event)
+    admission, conversation_id = await dispatcher.admit_webhook(
+        route,
+        event,
+        None if event.lifecycle is not None else "Routed webhook prompt",
+        receipt,
+        defer_process_event=False,
+    )
+    assert admission.created is True
+    assert conversation_id is not None
+    return conversation_id
+
+
+def _receipt(route: WebhookRoute, event: WebhookEvent) -> WebhookReceipt:
+    return WebhookReceipt(
         provider=route.provider,
         route=route.name,
         delivery_id=event.delivery_id,
@@ -184,15 +198,6 @@ async def _admit(
         occurred_at=event.occurred_at,
         received_at=_NOW,
     )
-    admission = await admit_webhook_receipt(receipt, None)
-    assert admission.created is True
-    conversation_id = await dispatcher.admit(
-        route,
-        event,
-        None if event.lifecycle is not None else "Routed webhook prompt",
-    )
-    assert conversation_id is not None
-    return conversation_id
 
 
 async def test_dispatcher_preparation_defers_pending_delivery_domain_work() -> None:
@@ -215,53 +220,36 @@ async def test_dispatcher_preparation_defers_pending_delivery_domain_work() -> N
         dispatcher.close()
 
 
-async def test_open_control_sync_retries_after_receipt_replay(
+async def test_terminal_admission_rolls_back_when_retirement_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     harness = LinearWebhookHarness()
     route = _route()
+    event = _lifecycle_event("terminal-rollback")
     dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
-    event = replace(
-        _message_event("reopen-after-sync-failure"),
-        instructions=None,
-        external_context=None,
-        ignored_reason="stale_terminal_issue_state",
-    )
-    receipt = WebhookReceipt(
-        provider=route.provider,
-        route=route.name,
-        delivery_id=event.delivery_id,
-        workspace="project",
-        event_type=event.event_type,
-        event_action=event.action,
-        subject_id=event.subject_id,
-        payload_sha256="sha-reopen-after-sync-failure",
-        disposition="ignored",
-        ignored_reason="stale_terminal_issue_state",
-        task_id=None,
-        occurred_at=event.occurred_at,
-        received_at=_NOW,
-    )
-    sync_control = AsyncMock(side_effect=[RuntimeError("Discord unavailable"), None])
+
+    async def fail_retirement(  # noqa: RUF029 - injected state callback is async.
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        raise RuntimeError("retirement failed")
+
     monkeypatch.setattr(
-        "pynchy.host.orchestrator.webhook_delivery_admission"
-        ".sync_existing_open_conversation_control",
-        sync_control,
-    )
-    request = WebhookDeliveryAdmissionRequest(
-        receipt=receipt,
-        task=None,
-        defer_process_event=False,
+        "pynchy.state.webhooks._retire_conversation_for_terminal",
+        fail_retirement,
     )
 
-    with pytest.raises(RuntimeError, match="Discord unavailable"):
-        await admit_prepared_event(dispatcher, route, event, request)
+    with pytest.raises(RuntimeError, match="retirement failed"):
+        await dispatcher.admit_webhook(
+            route,
+            event,
+            None,
+            _receipt(route, event),
+            defer_process_event=False,
+        )
 
-    admission, conversation_id = await admit_prepared_event(dispatcher, route, event, request)
-
-    assert admission.created is False
-    assert conversation_id is None
-    assert sync_control.await_count == 2
+    assert await get_webhook_receipt(route.provider, route.name, event.delivery_id) is None
+    assert await get_conversation_delivery(_delivery_identity(route, event.delivery_id)) is None
 
 
 async def test_ignored_open_reopen_restores_existing_thread_runtime() -> None:
@@ -408,150 +396,6 @@ async def test_deferred_controller_event_reopens_control_without_agent_turn() ->
         dispatcher.close()
 
 
-async def test_ignored_open_control_sync_waits_for_terminal_archive(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    harness = LinearWebhookHarness()
-    await harness.persist_parent()
-    route = _route()
-    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
-    dispatcher.prepare()
-    open_sync_entered = asyncio.Event()
-    release_open_sync = asyncio.Event()
-    terminal_retirement_ready = asyncio.Event()
-    runtime_cleanup_started = asyncio.Event()
-    try:
-        conversation_id = await _admit(
-            dispatcher,
-            route,
-            _message_event(
-                "message-before-ignored-open-sync",
-                revision="2026-07-27T00:00:00+00:00",
-            ),
-        )
-        await dispatcher.wake(conversation_id)
-        binding = await get_conversation_control_binding(conversation_id)
-        assert binding is not None
-
-        original_set_thread_closed = harness.channel.set_thread_closed
-        held_open_sync = False
-
-        async def hold_open_sync(thread_jid: str, *, closed: bool) -> None:
-            nonlocal held_open_sync
-            if thread_jid == binding.thread_jid and not closed and not held_open_sync:
-                held_open_sync = True
-                open_sync_entered.set()
-                await release_open_sync.wait()
-            await original_set_thread_closed(thread_jid, closed=closed)
-
-        monkeypatch.setattr(harness.channel, "set_thread_closed", hold_open_sync)
-        original_terminal_retirement = harness.retire_conversation_for_terminal
-        original_runtime_retirement = harness.retire_conversation_runtime
-
-        async def record_terminal_retirement(
-            terminal_conversation_id: ConversationId,
-            *,
-            preserve_delivery: ExternalDeliveryIdentity,
-            control_state_revision: str | None,
-        ) -> TerminalConversationRetirement:
-            retirement = await original_terminal_retirement(
-                terminal_conversation_id,
-                preserve_delivery=preserve_delivery,
-                control_state_revision=control_state_revision,
-            )
-            terminal_retirement_ready.set()
-            return retirement
-
-        async def record_runtime_retirement(folder: str) -> None:
-            runtime_cleanup_started.set()
-            await original_runtime_retirement(folder)
-
-        monkeypatch.setattr(
-            harness,
-            "retire_conversation_for_terminal",
-            record_terminal_retirement,
-        )
-        monkeypatch.setattr(
-            harness,
-            "retire_conversation_runtime",
-            record_runtime_retirement,
-        )
-        monkeypatch.setattr(
-            harness,
-            "conversation_control_state_matches",
-            AsyncMock(return_value=True),
-        )
-
-        ignored_event = replace(
-            _message_event(
-                "ignored-open-sync",
-                revision="2026-07-27T00:00:00+00:00",
-            ),
-            instructions=None,
-            external_context=None,
-            ignored_reason="stale_terminal_issue_state",
-        )
-        ignored_receipt = WebhookReceipt(
-            provider=route.provider,
-            route=route.name,
-            delivery_id=ignored_event.delivery_id,
-            workspace="project",
-            event_type=ignored_event.event_type,
-            event_action=ignored_event.action,
-            subject_id=ignored_event.subject_id,
-            payload_sha256="sha-ignored-open-sync",
-            disposition="ignored",
-            ignored_reason=ignored_event.ignored_reason,
-            task_id=None,
-            occurred_at=ignored_event.occurred_at,
-            received_at=_NOW,
-        )
-        open_sync = asyncio.create_task(
-            admit_prepared_event(
-                dispatcher,
-                route,
-                ignored_event,
-                WebhookDeliveryAdmissionRequest(
-                    receipt=ignored_receipt,
-                    task=None,
-                    defer_process_event=False,
-                ),
-            )
-        )
-        terminal: asyncio.Task[str] | None = None
-        try:
-            await asyncio.wait_for(open_sync_entered.wait(), timeout=1)
-
-            terminal = asyncio.create_task(
-                _admit(
-                    dispatcher,
-                    route,
-                    _lifecycle_event(
-                        "terminal-during-ignored-open-sync",
-                        revision="2026-07-27T00:00:01+00:00",
-                    ),
-                )
-            )
-            await asyncio.wait_for(terminal_retirement_ready.wait(), timeout=1)
-            await asyncio.sleep(0)
-            assert not runtime_cleanup_started.is_set()
-
-            release_open_sync.set()
-            _, ignored_conversation_id = await open_sync
-            assert ignored_conversation_id is None
-            await terminal
-            await dispatcher.wake(conversation_id)
-
-            assert harness.channel.closed[binding.thread_jid] is True
-        finally:
-            release_open_sync.set()
-            await open_sync
-            if terminal is not None:
-                await terminal
-    finally:
-        dispatcher.close()
-
-
 async def test_lifecycle_retires_older_turn_immediately_and_suppresses_its_sibling() -> None:
     harness = LinearWebhookHarness()
     await harness.persist_parent()
@@ -629,7 +473,15 @@ async def test_lifecycle_retires_older_turn_immediately_and_suppresses_its_sibli
         assert after_close.title == before_close.title
         assert harness.channel.closed[before_close.thread_jid] is True
 
-        await dispatcher.admit(route, terminal_event, None)
+        replay, replay_conversation_id = await dispatcher.admit_webhook(
+            route,
+            terminal_event,
+            None,
+            _receipt(route, terminal_event),
+            defer_process_event=False,
+        )
+        assert replay.created is False
+        assert replay_conversation_id == conversation_id
         await dispatcher.wake(conversation_id)
         assert len(seen_lifecycles) == 1
     finally:
@@ -655,26 +507,23 @@ async def test_newer_terminal_suppresses_a_claimed_superseded_lifecycle_callback
     release = asyncio.Event()
     newer_terminal_retired = asyncio.Event()
 
-    original_terminal_retirement = harness.retire_conversation_for_terminal
-
     async def record_newer_terminal_retirement(
+        deps: LinearWebhookHarness,
         conversation_id: ConversationId,
-        *,
-        preserve_delivery: ExternalDeliveryIdentity,
-        control_state_revision: str | None,
-    ) -> TerminalConversationRetirement:
-        retirement = await original_terminal_retirement(
-            conversation_id,
-            preserve_delivery=preserve_delivery,
-            control_state_revision=control_state_revision,
-        )
-        if control_state_revision == "2026-07-27T00:00:01+00:00":
+        retirement: TerminalConversationRetirement,
+        runtime_workspace_folders: set[str],
+    ) -> bool:
+        if retirement.control_state_revision == "2026-07-27T00:00:01+00:00":
             newer_terminal_retired.set()
-        return retirement
+        return await retire_terminal_runtime(
+            deps,
+            conversation_id,
+            retirement,
+            runtime_workspace_folders,
+        )
 
     monkeypatch.setattr(
-        harness,
-        "retire_conversation_for_terminal",
+        "pynchy.host.orchestrator.webhook_conversations.retire_terminal_runtime",
         record_newer_terminal_retirement,
     )
 
@@ -774,142 +623,6 @@ async def test_terminal_retirement_suppresses_claimed_stale_nonterminal_delivery
         dispatcher.close()
 
 
-async def test_runtime_workspace_recovery_holds_conversation_lock(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    harness = LinearWebhookHarness()
-    await harness.persist_parent()
-    route = _route()
-    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
-    dispatcher.prepare()
-    entered = asyncio.Event()
-    release = asyncio.Event()
-    terminal_retired = asyncio.Event()
-    cleanup_started = asyncio.Event()
-    try:
-        conversation_id = await _admit(dispatcher, route, _message_event("restore-open"))
-        await dispatcher.wake(conversation_id)
-
-        original_ensure = ensure_conversation_workspace
-
-        async def hold_runtime_workspace(
-            context: ConversationWorkspaceContext,
-            request: ConversationControlRequest,
-        ) -> EnsuredConversationWorkspace:
-            entered.set()
-            await release.wait()
-            return await original_ensure(context, request)
-
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.webhook_delivery_processing.ensure_conversation_workspace",
-            hold_runtime_workspace,
-        )
-
-        original_terminal_retirement = harness.retire_conversation_for_terminal
-
-        async def record_terminal_retirement(
-            conversation_id: ConversationId,
-            *,
-            preserve_delivery: ExternalDeliveryIdentity,
-            control_state_revision: str | None,
-        ) -> TerminalConversationRetirement:
-            retirement = await original_terminal_retirement(
-                conversation_id,
-                preserve_delivery=preserve_delivery,
-                control_state_revision=control_state_revision,
-            )
-            terminal_retired.set()
-            return retirement
-
-        async def record_runtime_cleanup(  # noqa: RUF029 - retirement dependency is async.
-            folder: str,
-        ) -> None:
-            del folder
-            cleanup_started.set()
-
-        harness.retire_conversation_for_terminal = record_terminal_retirement
-        harness.retire_conversation_runtime = record_runtime_cleanup
-
-        recovery = asyncio.create_task(dispatcher.recover_pending())
-        await asyncio.wait_for(entered.wait(), timeout=1)
-
-        terminal = asyncio.create_task(
-            _admit(
-                dispatcher,
-                route,
-                _lifecycle_event("restore-terminal", revision="2026-07-27T00:00:01+00:00"),
-            )
-        )
-        await asyncio.wait_for(terminal_retired.wait(), timeout=1)
-        assert not cleanup_started.is_set()
-
-        release.set()
-        await recovery
-        await terminal
-        assert cleanup_started.is_set()
-    finally:
-        release.set()
-        dispatcher.close()
-
-
-async def test_newer_open_control_survives_terminal_runtime_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    harness = LinearWebhookHarness()
-    await harness.persist_parent()
-    route = _route()
-    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
-    dispatcher.prepare()
-    cleanup_entered = asyncio.Event()
-    release_cleanup = asyncio.Event()
-    original_runtime_retirement = harness.retire_conversation_runtime
-
-    async def hold_runtime_retirement(folder: str) -> None:
-        cleanup_entered.set()
-        await release_cleanup.wait()
-        await original_runtime_retirement(folder)
-
-    monkeypatch.setattr(harness, "retire_conversation_runtime", hold_runtime_retirement)
-    try:
-        conversation_id = await _admit(
-            dispatcher,
-            route,
-            _message_event("before-terminal", revision="2026-07-27T00:00:00+00:00"),
-        )
-        await dispatcher.wake(conversation_id)
-
-        terminal = asyncio.create_task(
-            _admit(
-                dispatcher,
-                route,
-                _lifecycle_event("terminal-old", revision="2026-07-27T00:00:01+00:00"),
-            )
-        )
-        await asyncio.wait_for(cleanup_entered.wait(), timeout=1)
-
-        reopened_id = await _admit(
-            dispatcher,
-            route,
-            _message_event("reopen-new", revision="2026-07-27T00:00:02+00:00"),
-        )
-        reopened = await get_conversation(reopened_id)
-        assert reopened is not None
-        assert reopened.control_closed is False
-        assert reopened.control_state_revision == "2026-07-27T00:00:02+00:00"
-
-        release_cleanup.set()
-        await terminal
-        await dispatcher.wake(conversation_id)
-
-        assert [message.id for message in harness.ingested] == [
-            "before-terminal",
-            "reopen-new",
-        ]
-    finally:
-        release_cleanup.set()
-        dispatcher.close()
-
-
 async def test_terminal_cleanup_serializes_new_nonterminal_runtime_projection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1001,40 +714,6 @@ async def test_terminal_cleanup_serializes_new_nonterminal_runtime_projection(
         dispatcher.close()
 
 
-async def test_lifecycle_delivery_does_not_create_a_message_or_runtime_workspace() -> None:
-    harness = LinearWebhookHarness()
-    await harness.persist_parent()
-    seen_lifecycles: list[WebhookLifecycleDelivery] = []
-
-    async def handle_lifecycle(delivery: WebhookLifecycleDelivery) -> None:
-        claimed = await get_conversation_delivery(delivery.identity)
-        assert claimed is not None
-        assert claimed.status is ConversationDeliveryStatus.CLAIMED
-        seen_lifecycles.append(delivery)
-
-    route = _route(handle_lifecycle)
-    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
-    await dispatcher.start()
-    try:
-        conversation_id = await _admit(dispatcher, route, _lifecycle_event("terminal-alone"))
-        conversation = await get_conversation(conversation_id)
-        assert conversation is not None
-        assert conversation.control_closed is True
-        assert conversation.session_id is None
-        assert harness.retired_folders == [
-            f"project__thread_conversation-{conversation_id}",
-        ]
-        assert harness.retired_task_conversations == [str(conversation_id)]
-        await dispatcher.wake(conversation_id)
-
-        assert len(seen_lifecycles) == 1
-        assert not harness.ingested
-        assert not harness.channel.created
-        assert set(harness.workspace_map) == {harness.workspace.jid}
-    finally:
-        dispatcher.close()
-
-
 async def test_startup_recovers_terminal_cleanup_after_ingress_state_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1049,22 +728,17 @@ async def test_startup_recovers_terminal_cleanup_after_ingress_state_commit(
         runtime_jid = harness.ingested[0].chat_jid
         assert runtime_jid in harness.workspace_map
 
-        async def persist_terminal_state(
+        async def persist_terminal_state(  # noqa: RUF029 - runtime callback contract is async.
             deps: LinearWebhookHarness,
             terminal_conversation_id: ConversationId,
-            lifecycle_identity: ExternalDeliveryIdentity,
+            retirement: TerminalConversationRetirement,
             runtime_workspace_folders: set[str],
-            control_state_revision: str | None,
-        ) -> None:
-            del runtime_workspace_folders
-            await deps.retire_conversation_for_terminal(
-                terminal_conversation_id,
-                preserve_delivery=lifecycle_identity,
-                control_state_revision=control_state_revision,
-            )
+        ) -> bool:
+            del deps, terminal_conversation_id, retirement, runtime_workspace_folders
+            return False
 
         monkeypatch.setattr(
-            "pynchy.host.orchestrator.webhook_conversations.retire_terminal_conversation",
+            "pynchy.host.orchestrator.webhook_conversations.retire_terminal_runtime",
             persist_terminal_state,
         )
         await _admit(dispatcher, route, _lifecycle_event("terminal-after-crash"))

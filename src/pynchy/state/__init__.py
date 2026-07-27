@@ -61,14 +61,12 @@ from pynchy.state.conversation_admission import admit_conversation_delivery
 from pynchy.state.conversation_controls import (
     ConversationControlWorkspaceChangedError,
     apply_conversation_control_state,
-    close_conversation_control,
     conversation_control_state_matches,
     get_conversation_control_binding,
     get_conversation_control_by_thread,
     list_idle_conversation_ids,
     retire_conversation_for_terminal,
     set_conversation_control_binding,
-    set_conversation_control_closed,
 )
 from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
@@ -293,7 +291,6 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "ConversationControlWorkspaceChangedError",
     "claim_next_conversation_delivery",
     "complete_conversation_delivery",
-    "close_conversation_control",
     "conversation_control_state_matches",
     "get_conversation",
     "get_conversation_control_binding",
@@ -312,7 +309,6 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "retire_conversation_for_terminal",
     "resolve_conversation",
     "set_conversation_control_binding",
-    "set_conversation_control_closed",
     "set_conversation_session",
     # deployments
     "advance_deployment_baseline",

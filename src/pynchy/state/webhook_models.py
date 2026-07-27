@@ -82,3 +82,5 @@ class WebhookConversationRequest:
     subject: ConversationSubject
     workspace: GroupFolder
     payload: dict[str, object]
+    control_closed: bool | None = None
+    control_state_revision: str | None = None

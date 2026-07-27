@@ -220,7 +220,7 @@ async def test_warm_handoff_suppresses_ipc_when_terminal_boundary_rejects_proces
             "pynchy.host.orchestrator.agent_runner.mcp_manager.get_mcp_manager",
             return_value=None,
         ),
-        patch("pynchy.host.orchestrator.agent_runner.refresh_learned_agent_skills"),
+        patch("pynchy.host.orchestrator.agent_runner.refresh_personalized_agent_skills"),
         patch(
             "pynchy.host.orchestrator.agent_runner._await_query",
             new=AsyncMock(return_value="success"),

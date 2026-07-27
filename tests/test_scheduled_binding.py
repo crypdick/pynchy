@@ -23,7 +23,6 @@ from pynchy.conversation.models import (
     ExternalDeliveryIdentity,
     ExternalProvider,
     ExternalRoute,
-    TerminalConversationRetirement,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.git_ops.repo import resolve_repos_for_group
@@ -39,7 +38,7 @@ from pynchy.host.orchestrator.scheduled_binding import (
     ensure_scheduled_task_binding,
 )
 from pynchy.host.orchestrator.threads import EnsuredThread
-from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_conversation
+from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
     clear_runtime_workspace_restrictions,
@@ -49,6 +48,7 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
 from pynchy.plugins.webhooks import WebhookConversation, WebhookEvent
 from pynchy.state import (
+    apply_conversation_control_state,
     begin_in_flight_turn,
     cancel_task_and_checkpoint,
     conversation_control_state_matches,
@@ -61,7 +61,6 @@ from pynchy.state import (
     init_test_database,
     resolve_conversation,
     retire_conversation_for_terminal,
-    set_conversation_control_closed,
     set_workspace_profile,
     update_task,
 )
@@ -175,21 +174,6 @@ class _RetirementBindingDeps(_BindingDeps):
             control_state_revision=control_state_revision,
         )
 
-    async def retire_conversation_for_terminal(
-        self,
-        conversation_id: ConversationId,
-        *,
-        preserve_delivery: ExternalDeliveryIdentity,
-        control_state_revision: str | None,
-    ) -> TerminalConversationRetirement:
-        retirement = await retire_conversation_for_terminal(
-            conversation_id,
-            preserve_delivery=preserve_delivery,
-            control_state_revision=control_state_revision,
-        )
-        self.terminal_persisted.set()
-        return retirement
-
     async def retire_conversation_runtime(self, folder: str) -> None:
         del folder
 
@@ -267,7 +251,11 @@ async def test_terminal_routed_task_cancels_task_and_checkpoint_before_binding()
         ),
         GroupFolder("owner"),
     )
-    await set_conversation_control_closed(conversation.id, closed=True)
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
     task = replace(
         _task(),
         conversation_id=str(conversation.id),
@@ -339,17 +327,23 @@ async def test_routed_binding_rejects_terminal_intent_after_workspace_registrati
     terminal: asyncio.Task[None] | None = None
     try:
         await asyncio.wait_for(workspace_registered.wait(), timeout=1)
+        identity = ExternalDeliveryIdentity(
+            provider=ExternalProvider("linear"),
+            route=ExternalRoute("project"),
+            delivery_id=ExternalDeliveryId("terminal-binding-race"),
+        )
+        retirement = await retire_conversation_for_terminal(
+            conversation.id,
+            preserve_delivery=identity,
+            control_state_revision="2026-07-27T00:00:01+00:00",
+        )
+        deps.terminal_persisted.set()
         terminal = asyncio.create_task(
-            retire_terminal_conversation(
+            retire_terminal_runtime(
                 deps,
                 conversation.id,
-                ExternalDeliveryIdentity(
-                    provider=ExternalProvider("linear"),
-                    route=ExternalRoute("project"),
-                    delivery_id=ExternalDeliveryId("terminal-binding-race"),
-                ),
+                retirement,
                 set(),
-                "2026-07-27T00:00:01+00:00",
             )
         )
         await asyncio.wait_for(deps.terminal_persisted.wait(), timeout=1)
