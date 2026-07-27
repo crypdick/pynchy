@@ -178,7 +178,6 @@ _SETTINGS_MODULES = [
     "pynchy.host.container_manager.mounts",
     "pynchy.host.container_manager.session_prep",
     "pynchy.host.learning.paths",
-    "pynchy.host.learning.mirror",
     "pynchy.host.learning.skills",
     "pynchy.host.learning.skill_activation",
     "pynchy.host.orchestrator.workspace_config",

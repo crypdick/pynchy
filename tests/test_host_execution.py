@@ -118,6 +118,8 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
         global_skills_root=tmp_path / "systems" / "pynchy" / "skills",
         profile_root=tmp_path / "profiles" / "default",
         memory_root=tmp_path / "profiles" / "default" / "memory",
+        vault_mirror_root=tmp_path / "data" / "learning" / "vault-mirrors" / "default",
+        host_vault_mirror_root=tmp_path / "data" / "learning" / "host-vault-mirrors" / "default",
         mounted_profile_root="/workspace/vault/profiles/default",
         mounted_memory_root="/workspace/vault/profiles/default/memory",
     )
