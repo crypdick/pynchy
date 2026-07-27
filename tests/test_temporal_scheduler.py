@@ -39,7 +39,7 @@ from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
-from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
@@ -85,7 +85,11 @@ def _ready_startup() -> StartupReadiness:
 class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
 
-    queue: GroupQueue = field(default_factory=GroupQueue)
+    queue: GroupQueue = field(
+        default_factory=lambda: GroupQueue(
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+        )
+    )
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
     last_agent_timestamp: dict[str, str] = field(default_factory=dict)
     startup_readiness: StartupReadiness = field(default_factory=_ready_startup)
@@ -2151,7 +2155,7 @@ class TestTemporalSchedulerRuntime:
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task)
 
-        def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps, **_kwargs):
             raise AssertionError(PAUSED_TASK_RUN_MESSAGE)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
@@ -2398,13 +2402,18 @@ class TestTemporalSchedulerRuntime:
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task if task_id == temporal_task.id else None)
 
-        def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps, **_kwargs):
             called["task_id"] = task.id
             called["deps"] = runner_deps
             return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "ensure_scheduled_task_binding",
+            AsyncMock(return_value=temporal_task),
+        )
         temporal_scheduler.bind_scheduler_deps(deps)
 
         env = await WorkflowEnvironment.start_time_skipping()
