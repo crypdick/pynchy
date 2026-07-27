@@ -275,7 +275,7 @@ async def _maybe_require_cop_approval(
     settings = get_settings()
 
     tool = settings.tools.get(request.tool_name)
-    if not isinstance(tool, McpTool) or tool.mcp.runtime != "script":
+    if not isinstance(tool, McpTool) or tool.mcp.runtime not in ("script", "stdio"):
         return True
 
     operation = f"script_mcp:{request.tool_name}"
@@ -294,7 +294,7 @@ async def _maybe_require_cop_approval(
         {k: v for k, v in data.items() if k not in ("type", "request_id", "source_group")},
         default=str,
     )[:1000]
-    summary = f"script MCP tool: {request.tool_name}\nargs: {args_preview}"
+    summary = f"host MCP tool: {request.tool_name}\nargs: {args_preview}"
     return await cop_gate_module.cop_gate(
         operation,
         summary,

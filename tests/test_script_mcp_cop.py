@@ -1,7 +1,7 @@
-"""Tests for script-type MCP auto-classification as host-mutating.
+"""Tests for host-process MCP auto-classification as host-mutating.
 
-Script-type MCP servers run as host subprocesses, so any tool call targeting
-them is implicitly host-mutating and must go through the Cop gate.
+Script and stdio MCP servers run as host subprocesses, so any tool call
+targeting them is implicitly host-mutating and must go through the Cop gate.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def _register_safe_gate(tool_name: str) -> None:
 
 def _make_settings_with_mcp(
     tool_name: str,
-    mcp_type: Literal["script", "docker", "url"] = "script",
+    mcp_type: Literal["script", "stdio", "docker", "url"] = "script",
     *,
     tmp_path=None,
 ) -> MagicMock:
@@ -90,6 +90,12 @@ def _make_settings_with_mcp(
     mock_s = MagicMock()
     mcp_config = {
         "script": {"runtime": "script", "command": "uv", "port": 8474},
+        "stdio": {
+            "runtime": "stdio",
+            "command": "npx",
+            "port": 8474,
+            "transport": "streamable_http",
+        },
         "docker": {"runtime": "docker", "image": "mcp/example:latest", "port": 8080},
         "url": {"runtime": "url", "url": "https://example.com/mcp"},
     }[mcp_type]
@@ -117,13 +123,14 @@ def _make_action_catalog(*tool_names: str, handler_fn=None):
 
 
 @pytest.mark.asyncio
-async def test_script_mcp_triggers_cop_gate(tmp_path):
-    """A service request targeting a script-type MCP should invoke cop_gate."""
+@pytest.mark.parametrize("mcp_type", ["script", "stdio"])
+async def test_host_mcp_triggers_cop_gate(tmp_path, mcp_type):
+    """A service request targeting a host-process MCP should invoke cop_gate."""
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
     catalog = _make_action_catalog(tool, handler_fn=mock_handler)
-    settings = _make_settings_with_mcp(tool, "script", tmp_path=tmp_path)
+    settings = _make_settings_with_mcp(tool, mcp_type, tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
     with (

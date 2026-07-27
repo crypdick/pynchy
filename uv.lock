@@ -3176,14 +3176,17 @@ dependencies = [
     { name = "beartype" },
     { name = "croniter" },
     { name = "detect-secrets" },
+    { name = "mcp" },
     { name = "pluggy" },
     { name = "pydantic" },
     { name = "pydantic-settings", extra = ["toml"] },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "starlette" },
     { name = "structlog" },
     { name = "temporalio" },
     { name = "tomlkit" },
+    { name = "uvicorn" },
     { name = "watchdog" },
 ]
 
@@ -3280,6 +3283,7 @@ requires-dist = [
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.30" },
     { name = "jupyter-client", marker = "extra == 'notebook'", specifier = ">=8.6" },
     { name = "jupyterlab", marker = "extra == 'notebook'", specifier = ">=4.0" },
+    { name = "mcp", specifier = ">=1.26.0" },
     { name = "nbformat", marker = "extra == 'notebook'", specifier = ">=5.10" },
     { name = "neonize", marker = "extra == 'whatsapp'", specifier = ">=0.3.14.post0" },
     { name = "pillow", marker = "extra == 'notebook'", specifier = ">=11.0" },
@@ -3292,10 +3296,12 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "qrcode", marker = "extra == 'whatsapp'", specifier = ">=8.2" },
     { name = "slack-bolt", marker = "extra == 'slack'", specifier = ">=1.27.0" },
+    { name = "starlette", specifier = ">=0.52.0" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "temporalio", specifier = ">=1.30.0" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "ubuntu-namer", marker = "extra == 'notebook'", specifier = ">=1.1" },
+    { name = "uvicorn", specifier = ">=0.41.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
 provides-extras = ["whatsapp", "slack", "discord", "caldav", "browser", "all", "notebook", "voice"]
