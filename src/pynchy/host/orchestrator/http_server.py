@@ -110,6 +110,11 @@ class HttpDeps(Protocol):
 
     def admin_chat_jid(self) -> str: ...
 
+
+@runtime_checkable
+class DeployHttpDeps(HttpDeps, Protocol):
+    """Concrete filesystem paths needed only by the deploy endpoint."""
+
     data_dir: Path
     project_root: Path
 
@@ -121,7 +126,7 @@ class RuntimeHarnessIngress(Protocol):
     async def ingest_runtime_harness_message(self, jid: str, content: str) -> None: ...
 
 
-class HttpServerDeps(HttpDeps, WebhookIngressDeps, Protocol):
+class HttpServerDeps(DeployHttpDeps, WebhookIngressDeps, Protocol):
     """Full process dependencies used while starting the HTTP server."""
 
     def get_plugin_manager(self) -> object: ...
@@ -134,7 +139,7 @@ async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029,
 
 
 async def _handle_deploy(request: web.Request) -> web.Response:
-    deps: HttpDeps = request.app[deps_key]
+    deps = cast("DeployHttpDeps", request.app[deps_key])
     old_sha = get_head_sha()
 
     # 1. Push any local commits before pulling (prevents divergence)
