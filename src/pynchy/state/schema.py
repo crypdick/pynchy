@@ -17,6 +17,10 @@ import aiosqlite
 
 from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
+from pynchy.state.chat_parents import backfill_missing_chat_parents
+from pynchy.state.conversation_identity_migrations import (
+    retire_duplicate_linear_conversations,
+)
 from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
 from pynchy.state.in_flight_turn_schema import IN_FLIGHT_TURN_SCHEMA
 from pynchy.state.in_flight_turn_schema_migrations import (
@@ -34,6 +38,7 @@ from pynchy.state.work_item_schema_migrations import (
 )
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
+_FOREIGN_KEY_VIOLATION_ERROR = "SQLite foreign-key violation remains after migration"
 
 _SCHEMA = (
     """\
@@ -434,11 +439,39 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
         logger.info("Seeded channel_cursors from last_agent_timestamp", count=len(seen))
 
 
+async def _repair_runtime_integrity(database: aiosqlite.Connection) -> None:
+    await database.execute("BEGIN IMMEDIATE")
+    try:
+        chat_parents = await backfill_missing_chat_parents(database)
+        retired_conversations = await retire_duplicate_linear_conversations(database)
+        await database.commit()
+    finally:
+        if database.in_transaction:
+            await database.rollback()
+    if chat_parents or retired_conversations:
+        logger.info(
+            "Repaired runtime database integrity",
+            chat_parents=chat_parents,
+            retired_conversations=retired_conversations,
+        )
+
+
+async def _assert_foreign_key_integrity(database: aiosqlite.Connection) -> None:
+    cursor = await database.execute("PRAGMA foreign_key_check")
+    violation = await cursor.fetchone()
+    if violation is not None:
+        raise RuntimeError(
+            f"{_FOREIGN_KEY_VIOLATION_ERROR}: "
+            f"table={violation[0]} rowid={violation[1]} parent={violation[2]}"
+        )
+
+
 async def create_schema(database: aiosqlite.Connection) -> None:
     """Apply schema DDL and run all migrations."""
     await database.executescript(_SCHEMA)
     await _rename_conversation_event_trace_ref(database)
     await _ensure_columns(database)
+    await _repair_runtime_integrity(database)
     await drop_legacy_scheduled_runtime_metadata(database)
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
@@ -449,3 +482,4 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await migrate_work_item_outcome_projection(database)
     await clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)
+    await _assert_foreign_key_integrity(database)

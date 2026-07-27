@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
+from pynchy.state.chat_parents import ensure_chat_parent
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ChannelName,
@@ -77,6 +78,7 @@ async def record_outbound_deliveries(
     """Write outbound content with explicit per-channel mutation semantics."""
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as db:
+        await ensure_chat_parent(db, chat_jid, now)
         cursor = await db.execute(
             "INSERT INTO outbound_ledger (chat_jid, content, timestamp, source)"
             " VALUES (?, ?, ?, ?)",
