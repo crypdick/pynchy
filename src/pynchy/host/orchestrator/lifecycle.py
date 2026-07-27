@@ -232,6 +232,7 @@ async def _setup_channels(app: PynchyApp) -> None:
             name="on-approval-decision",
         )
 
+    settings = get_settings()
     context = ChannelPluginContext(
         on_message_callback=dispatch_inbound,
         on_chat_metadata_callback=dispatch_chat_metadata,
@@ -241,6 +242,12 @@ async def _setup_channels(app: PynchyApp) -> None:
         on_ask_user_answer_callback=dispatch_ask_user_answer,
         on_approval_decision_callback=dispatch_approval_decision,
         speech_synthesizer=app.get_speech_synthesizer(),
+        discord_connections={
+            name: config.to_runtime_settings()
+            for name, config in settings.connections.items()
+            if config.type == "discord"
+        },
+        discord_audio_cache_dir=settings.data_dir / "media" / "discord",
     )
     plugin_manager = _require_plugin_manager(app, "_setup_channels")
     app.channels = load_channels(plugin_manager, context)

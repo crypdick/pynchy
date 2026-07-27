@@ -13,11 +13,11 @@ from dataclasses import replace
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves this constructor annotation at runtime.
 )
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import discord
 
-from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
+from pynchy.discord import DiscordChatTarget, DiscordConnectionSettings, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.base import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     RenderedMessage,
 )
@@ -57,11 +57,6 @@ from ._provisioning import create_discord_group
 from ._targets import configured_channel_kind, resolve_configured_channel_jid
 from ._voice import DiscordVoiceManager
 
-if TYPE_CHECKING:
-    from pynchy.config.models import DiscordConnectionConfig
-else:
-    DiscordConnectionConfig = object
-
 _TYPING_REFRESH_SECONDS = 8.0
 _DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
 _DISCORD_MESSAGE_TOO_LONG = "Discord message exceeds 2000 chars; falling back to chunked send"
@@ -88,7 +83,7 @@ class DiscordChannel:
     def __init__(  # noqa: PLR0913, RUF100 - channel constructor is a boundary surface for plugin wiring.
         self,
         connection_name: str,
-        config: DiscordConnectionConfig,
+        config: DiscordConnectionSettings,
         bot_token: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
@@ -125,7 +120,7 @@ class DiscordChannel:
         self.lifecycle = DiscordLifecycle(self)
 
     @property
-    def config(self) -> DiscordConnectionConfig:
+    def config(self) -> DiscordConnectionSettings:
         return self._config
 
     @property

@@ -3,22 +3,17 @@
 from __future__ import annotations
 
 import os
-import sys
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves this plugin factory annotation at runtime.
 )
-from typing import cast
 
 import pluggy
 
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves plugin config annotations at runtime.
-    DiscordConnectionConfig,
-)
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    DiscordConnectionSettings,
 )
 from pynchy.logger import logger
 from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
@@ -37,10 +32,6 @@ from ._channel import DiscordChannel
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 __all__ = ["DiscordChannel", "DiscordChannelPlugin"]
-
-
-def _public_module() -> object:
-    return sys.modules[__package__]
 
 
 def _channel_context(
@@ -74,7 +65,7 @@ def _channel_context(
 def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiring explicit.
     *,
     name: str,
-    cfg: DiscordConnectionConfig,
+    cfg: DiscordConnectionSettings,
     on_message: Callable[[str, NewMessage], None],
     on_metadata: Callable[[str, str, str | None], None],
     on_reaction: Callable[[str, str, str, str], None] | None,
@@ -125,10 +116,9 @@ class DiscordChannelPlugin:
     def pynchy_create_channel(
         self, context: ChannelPluginContext | None
     ) -> list[DiscordChannel] | None:
-        public = _public_module()
-        get_settings = cast("Callable[[], Settings]", public.get_settings)
-        settings = get_settings()
-        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "discord"}
+        if context is None:
+            return None
+        configs = context.discord_connections
         if not configs:
             logger.debug("Discord channel skipped — no connections configured")
             return None
@@ -147,6 +137,9 @@ class DiscordChannelPlugin:
         ) = callbacks
 
         channels: list[DiscordChannel] = []
+        audio_cache_dir = context.discord_audio_cache_dir
+        if audio_cache_dir is None:
+            raise RuntimeError("Discord channel requires an audio cache directory")
         for name, cfg in configs.items():
             channel = _build_channel(
                 name=name,
@@ -158,7 +151,7 @@ class DiscordChannelPlugin:
                 on_approval_decision=on_approval_decision,
                 workspaces=workspaces,
                 speech_synthesizer=speech_synthesizer,
-                audio_cache_dir=settings.data_dir / "media" / "discord",
+                audio_cache_dir=audio_cache_dir,
             )
             if channel is not None:
                 channels.append(channel)
