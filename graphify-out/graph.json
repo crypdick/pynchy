@@ -17976,7 +17976,7 @@
       "label": "ApprovalDecision",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L22",
+      "source_location": "L21",
       "_origin": "ast"
     },
     {
@@ -17984,7 +17984,31 @@
       "label": ".parse()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L34",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "label": "ApprovalReplayGateResolver",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L88",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_py_protocol",
+      "label": "Protocol",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver_call",
+      "label": ".__call__()",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L91",
       "_origin": "ast"
     },
     {
@@ -17992,7 +18016,7 @@
       "label": "build_approval_decision_context()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "_origin": "ast"
     },
     {
@@ -18008,7 +18032,7 @@
       "label": "_required_nonempty_string()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L162",
+      "source_location": "L172",
       "_origin": "ast"
     },
     {
@@ -18016,7 +18040,7 @@
       "label": "_persisted_taint()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L169",
+      "source_location": "L179",
       "_origin": "ast"
     },
     {
@@ -18028,35 +18052,43 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_23",
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_22",
       "label": "Strict host-written human decision.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L23",
+      "source_location": "L22",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_35",
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_34",
       "label": "Parse a decision without truthy or identity fallbacks.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L35",
+      "source_location": "L34",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_95",
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_89",
+      "label": "Build the current approval gate for one already-bound source group.",
+      "file_type": "rationale",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L89",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_107",
       "label": "Build replay context from validated host-owned durable state.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L95",
+      "source_location": "L107",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_170",
+      "id": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_180",
       "label": "Fail closed when durable request-time taint evidence is missing or malformed.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L170",
+      "source_location": "L180",
       "_origin": "ast"
     },
     {
@@ -18600,7 +18632,7 @@
       "label": "_ApprovedServiceContext",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L65",
+      "source_location": "L68",
       "_origin": "ast"
     },
     {
@@ -18608,7 +18640,7 @@
       "label": "_read_json_file()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L75",
+      "source_location": "L78",
       "_origin": "ast"
     },
     {
@@ -18624,7 +18656,7 @@
       "label": "_path_exists()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L79",
+      "source_location": "L82",
       "_origin": "ast"
     },
     {
@@ -18632,7 +18664,7 @@
       "label": "_paths_match()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "_origin": "ast"
     },
     {
@@ -18640,7 +18672,7 @@
       "label": "_unlink_missing_ok()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L87",
+      "source_location": "L90",
       "_origin": "ast"
     },
     {
@@ -18648,7 +18680,7 @@
       "label": "_unlink_all_missing_ok()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L91",
+      "source_location": "L94",
       "_origin": "ast"
     },
     {
@@ -18656,7 +18688,7 @@
       "label": "process_approval_decision()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L96",
+      "source_location": "L99",
       "_origin": "ast"
     },
     {
@@ -18664,7 +18696,7 @@
       "label": "_reject_invalid_approval_binding()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L188",
+      "source_location": "L206",
       "_origin": "ast"
     },
     {
@@ -18680,7 +18712,7 @@
       "label": "_dispatch_approval_decision()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L213",
+      "source_location": "L231",
       "_origin": "ast"
     },
     {
@@ -18688,7 +18720,7 @@
       "label": "_resolve_mcp_proxy_approval()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L225",
+      "source_location": "L243",
       "_origin": "ast"
     },
     {
@@ -18696,7 +18728,7 @@
       "label": "_dispatch_approved_request()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L246",
+      "source_location": "L264",
       "_origin": "ast"
     },
     {
@@ -18704,7 +18736,7 @@
       "label": "_dispatch_denied_request()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L319",
+      "source_location": "L337",
       "_origin": "ast"
     },
     {
@@ -18712,7 +18744,7 @@
       "label": "_execute_service_approval()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L337",
+      "source_location": "L355",
       "_origin": "ast"
     },
     {
@@ -18724,27 +18756,27 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_99",
+      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_102",
       "label": "Process an approval decision file \u2014 execute or deny the pending request.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L99",
+      "source_location": "L102",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_226",
+      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_244",
       "label": "Resolve an in-process proxy request without re-dispatching it.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L226",
+      "source_location": "L244",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_340",
+      "id": "pynchy_host_container_manager_ipc_handlers_approval_rationale_358",
       "label": "Dispatch an approved service request through plugin handlers.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L340",
+      "source_location": "L358",
       "_origin": "ast"
     },
     {
@@ -124774,7 +124806,7 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_approval_decision_context",
-      "target": "pynchy_config",
+      "target": "pynchy_conversation_models",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -124785,23 +124817,12 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_approval_decision_context",
-      "target": "pynchy_conversation_models",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L12",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
       "target": "pynchy_host_container_manager_ipc_approval_replay",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L13",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124812,7 +124833,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L17",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124823,7 +124844,18 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L18",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
+      "target": "pynchy_host_container_manager_security_gate",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124833,7 +124865,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L22",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124843,7 +124875,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L34",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124854,7 +124886,48 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L34",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
+      "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "target": "pynchy_host_container_manager_ipc_approval_decision_context_py_protocol",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver_call",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L91",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver_call",
+      "target": "pynchy_host_container_manager_security_gate_securitygate",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124864,7 +124937,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124875,7 +124948,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124886,18 +124959,18 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_container_manager_ipc_approval_decision_context_build_approval_decision_context",
-      "target": "pynchy_config_settings_settings",
+      "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
       "relation": "references",
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124908,7 +124981,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L88",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124918,7 +124991,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L162",
+      "source_location": "L172",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124929,7 +125002,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L162",
+      "source_location": "L172",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124939,7 +125012,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L169",
+      "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124950,7 +125023,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L169",
+      "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124961,7 +125034,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L96",
+      "source_location": "L108",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124972,7 +125045,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L125",
+      "source_location": "L135",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124983,7 +125056,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L132",
+      "source_location": "L142",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -124998,42 +125071,52 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_23",
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_22",
       "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvaldecision",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L23",
+      "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_35",
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_34",
       "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvaldecision_parse",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L35",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_95",
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_89",
+      "target": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L89",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_107",
       "target": "pynchy_host_container_manager_ipc_approval_decision_context_build_approval_decision_context",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L95",
+      "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_170",
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_rationale_180",
       "target": "pynchy_host_container_manager_ipc_approval_decision_context_persisted_taint",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L170",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126386,7 +126469,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L47",
+      "source_location": "L50",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126397,7 +126480,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L48",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126408,7 +126491,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126419,7 +126502,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L50",
+      "source_location": "L53",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126430,7 +126513,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L51",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126441,7 +126524,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L52",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126452,7 +126535,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L56",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126463,7 +126546,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L57",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126473,7 +126556,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L65",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126483,7 +126566,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L75",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126494,7 +126577,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L75",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126504,7 +126587,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L79",
+      "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126515,7 +126598,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L79",
+      "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126525,7 +126608,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126536,7 +126619,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126546,7 +126629,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L87",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126557,7 +126640,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L87",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126567,7 +126650,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L91",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126578,7 +126661,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L91",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126588,7 +126671,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L96",
+      "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126599,7 +126682,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L96",
+      "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126609,7 +126692,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L188",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126620,7 +126703,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L188",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126630,7 +126713,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L213",
+      "source_location": "L231",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126641,7 +126724,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L213",
+      "source_location": "L231",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126651,7 +126734,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L225",
+      "source_location": "L243",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126662,7 +126745,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L225",
+      "source_location": "L243",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126672,7 +126755,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L246",
+      "source_location": "L264",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126683,7 +126766,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L246",
+      "source_location": "L264",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126693,7 +126776,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L319",
+      "source_location": "L337",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126704,7 +126787,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L319",
+      "source_location": "L337",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126714,7 +126797,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L337",
+      "source_location": "L355",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126725,7 +126808,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L337",
+      "source_location": "L355",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126736,7 +126819,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L101",
+      "source_location": "L104",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126747,7 +126830,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L105",
+      "source_location": "L108",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126758,7 +126841,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L113",
+      "source_location": "L116",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126769,7 +126852,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L125",
+      "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126780,7 +126863,7 @@
       "context": "argument",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L134",
+      "source_location": "L137",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126791,7 +126874,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L160",
+      "source_location": "L163",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126802,7 +126885,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L184",
+      "source_location": "L202",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126813,7 +126896,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L217",
+      "source_location": "L235",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126824,7 +126907,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L220",
+      "source_location": "L238",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126835,7 +126918,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L222",
+      "source_location": "L240",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126846,7 +126929,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L297",
+      "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126857,7 +126940,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L298",
+      "source_location": "L316",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126872,32 +126955,32 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_99",
+      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_102",
       "target": "pynchy_host_container_manager_ipc_handlers_approval_process_approval_decision",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L99",
+      "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_226",
+      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_244",
       "target": "pynchy_host_container_manager_ipc_handlers_approval_resolve_mcp_proxy_approval",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L226",
+      "source_location": "L244",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_340",
+      "source": "pynchy_host_container_manager_ipc_handlers_approval_rationale_358",
       "target": "pynchy_host_container_manager_ipc_handlers_approval_execute_service_approval",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L340",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305501,18 +305584,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L13",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
-      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_gate",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L13",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305523,7 +305595,18 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L17",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
+      "target": "pynchy_host_container_manager_security_gate_securitygate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305749,7 +305832,7 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_handlers_approval",
-      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_validation_error",
+      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_gate",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -305760,40 +305843,18 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_handlers_approval",
+      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_validation_error",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_handlers_approval",
       "target": "pynchy_host_container_manager_ipc_write_ipc_response_path",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L47",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval",
-      "target": "pynchy_host_container_manager_ipc_write_write_ipc_response",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L47",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval",
-      "target": "pynchy_host_container_manager_security_approval_binding_approval_binding_error",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L49",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_approval",
-      "target": "pynchy_host_container_manager_security_approved_ipc_execute_approved_ipc",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -305804,12 +305865,45 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_handlers_approval",
+      "target": "pynchy_host_container_manager_ipc_write_write_ipc_response",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_handlers_approval",
+      "target": "pynchy_host_container_manager_security_approval_binding_approval_binding_error",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
+      "source_location": "L52",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_handlers_approval",
+      "target": "pynchy_host_container_manager_security_approved_ipc_execute_approved_ipc",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_handlers_approval",
       "target": "pynchy_host_container_manager_security_audit_record_security_event",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L51",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305820,7 +305914,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L52",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305831,7 +305925,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L52",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305842,7 +305936,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L57",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305853,7 +305947,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L57",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -305864,7 +305958,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L57",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -335971,7 +336065,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L18",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336004,7 +336098,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L48",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338303,18 +338397,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L110",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_approval_decision_context_build_approval_decision_context",
-      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_gate",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L121",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338413,7 +338496,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L153",
+      "source_location": "L156",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_handlers_approval_process_approval_decision",
+      "target": "pynchy_host_container_manager_ipc_approval_replay_approval_replay_gate",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338424,7 +338518,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L170",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338435,7 +338529,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L197",
+      "source_location": "L215",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338446,7 +338540,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L200",
+      "source_location": "L218",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338457,7 +338551,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L203",
+      "source_location": "L221",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338468,7 +338562,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L235",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338479,7 +338573,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L249",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338490,7 +338584,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L251",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338501,7 +338595,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L254",
+      "source_location": "L272",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338512,7 +338606,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L257",
+      "source_location": "L275",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338523,7 +338617,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L280",
+      "source_location": "L298",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338534,7 +338628,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L291",
+      "source_location": "L309",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338545,7 +338639,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L320",
+      "source_location": "L338",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338556,7 +338650,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L323",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338567,7 +338661,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L326",
+      "source_location": "L344",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338578,7 +338672,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L343",
+      "source_location": "L361",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338589,7 +338683,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L350",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338600,7 +338694,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L353",
+      "source_location": "L371",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338611,7 +338705,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L362",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338622,7 +338716,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L365",
+      "source_location": "L383",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338633,7 +338727,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L389",
+      "source_location": "L407",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -358256,7 +358350,37 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
-      "source_location": "L13",
+      "source_location": "L10",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "target": "pynchy_host_container_manager_ipc_approval_replay_approvaldecisioncontext",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L10",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvaldecision",
+      "target": "pynchy_host_container_manager_security_gate_securitygate",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L15",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context_approvalreplaygateresolver",
+      "target": "pynchy_host_container_manager_security_gate_securitygate",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L15",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -358356,7 +358480,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L52",
+      "source_location": "L55",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -382312,7 +382436,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L199",
+      "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -382324,7 +382448,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L253",
+      "source_location": "L271",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -382336,7 +382460,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L322",
+      "source_location": "L340",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -382348,7 +382472,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L349",
+      "source_location": "L367",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -389524,7 +389648,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L196",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -389536,7 +389660,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_approval.py",
-      "source_location": "L227",
+      "source_location": "L245",
       "weight": 1.0,
       "_origin": "ast"
     },

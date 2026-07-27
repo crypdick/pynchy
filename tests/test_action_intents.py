@@ -285,7 +285,7 @@ async def _process_matrix_approval(
             return_value=HostActionCatalog(actions=(action,)),
         ),
         patch(
-            "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+            "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
             return_value=SecurityGate(WorkspaceSecurity()) if policy_available else None,
         ),
         patch(
