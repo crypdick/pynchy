@@ -14,10 +14,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Literal
 
-from pynchy.config.source_health import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    MessagingSourceHealthConfig,
-)
-
 PersonalProvider = Literal["whatsapp", "signal", "google_messages"]
 
 PERSONAL_PROVIDERS: tuple[PersonalProvider, ...] = (
@@ -170,12 +166,13 @@ def _project_state(
 
 async def project_personal_source(
     provider: PersonalProvider,
-    config: MessagingSourceHealthConfig,
     *,
+    data_dir: Path | None,
+    stale_after_hours: int,
     now: datetime | None = None,
 ) -> dict[str, object]:
     """Return a Pynchy-owned, body-free health projection for one source."""
-    if config.data_dir is None:
+    if data_dir is None:
         return _unavailable(
             provider,
             "Pynchy's host-local aggregate projection is not configured.",
@@ -186,12 +183,12 @@ async def project_personal_source(
             "No body-free durable projection covers the complete Google Messages source.",
         )
 
-    database = config.data_dir / provider / "messages.db"
+    database = data_dir / provider / "messages.db"
     reader = _read_signal if provider == "signal" else _read_whatsapp
     state = await asyncio.to_thread(reader, database)
     return _project_state(
         provider,
         state,
         now=now or datetime.now(UTC),
-        stale_after_hours=config.stale_after_hours,
+        stale_after_hours=stale_after_hours,
     )
