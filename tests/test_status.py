@@ -15,11 +15,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase
-from conftest import make_settings
 
 from pynchy.canaries import declared_canary_scenarios
-from pynchy.config.models import RepoConfig, ReposConfig
-from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import create_http_app
@@ -63,14 +60,7 @@ def _runtime() -> ControlPlaneRuntime:
     )
 
 
-def _status_settings(*, repos: dict[str, RepoConfig] | None = None):
-    return make_settings(
-        repos=ReposConfig(overrides=repos or {}),
-        scheduler=SchedulerConfig(),
-    )
-
-
-def _inert_orchestration_states(tasks, jobs):
+def _inert_orchestration_states(tasks, jobs, _address, _namespace):
     """Return Temporal-shaped state without opening a Temporal connection."""
     return {
         **{
@@ -117,10 +107,6 @@ def _inert_status():
         p("count_unpushed_commits", return_value=0)
         p("get_head_commit_message", return_value="")
         p("get_router_state", new_callable=AsyncMock, return_value=None)
-        p(
-            "get_settings",
-            return_value=_status_settings(),
-        )
         p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
         p(
             "get_canary_report",
@@ -182,6 +168,10 @@ class MockStatusDeps:
         active_sessions: int = 0,
         workspace_count: int = 0,
         speech_synthesizer: Any | None = None,
+        repo_slugs: tuple[str, ...] = (),
+        temporal_address: str = "localhost:7233",
+        temporal_namespace: str = "default",
+        temporal_task_queue: str = "pynchy-scheduler",
     ):
         self._shutting_down = shutting_down
         self._channels = channels or {"whatsapp": True}
@@ -195,6 +185,10 @@ class MockStatusDeps:
         self._active_sessions = active_sessions
         self._workspace_count = workspace_count
         self._speech_synthesizer = speech_synthesizer
+        self.repo_slugs = repo_slugs
+        self.temporal_address = temporal_address
+        self.temporal_namespace = temporal_namespace
+        self.temporal_task_queue = temporal_task_queue
 
     def is_shutting_down(self) -> bool:
         return self._shutting_down
@@ -248,7 +242,7 @@ class MockHttpDeps:
 class TestCollectService:
     @pytest.mark.asyncio
     async def test_ok_status(self):
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
         with _inert_status():
             result = await collect_status(deps, time.monotonic() - 60)
         assert result["service"]["status"] == "ok"
@@ -340,14 +334,10 @@ class TestCollectRepos:
         """A tracked repo surfaces its head/dirty/unpushed status."""
 
         ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
 
         with (
             _inert_status(),
-            patch(
-                f"{_S}.get_settings",
-                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
-            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="def456"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -371,14 +361,10 @@ class TestCollectRepos:
         ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=wt_dir)
         mock_git = Mock(returncode=0, stdout="3\n")
         mock_git_dir = Mock(returncode=0, stdout=str(tmp_path / ".git/worktrees/code-improver"))
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
 
         with (
             _inert_status(),
-            patch(
-                f"{_S}.get_settings",
-                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
-            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="aaa111"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -422,14 +408,10 @@ class TestWorktreeStatus:
         mock_ahead = Mock(returncode=0, stdout="1\n")
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
 
         with (
             _inert_status(),
-            patch(
-                f"{_S}.get_settings",
-                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
-            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="bbb222"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -456,14 +438,10 @@ class TestWorktreeStatus:
         mock_ahead = Mock(returncode=0, stdout="0\n")
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
 
         with (
             _inert_status(),
-            patch(
-                f"{_S}.get_settings",
-                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
-            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ccc333"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -483,14 +461,10 @@ class TestWorktreeStatus:
         mock_ahead = Mock(returncode=0, stdout="0\n")
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=1, stdout="")
-        deps = MockStatusDeps()
+        deps = MockStatusDeps(repo_slugs=("owner/repo",))
 
         with (
             _inert_status(),
-            patch(
-                f"{_S}.get_settings",
-                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
-            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ddd444"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -768,13 +742,10 @@ class TestCollectHostJobs:
 class TestCollectTemporal:
     @pytest.mark.asyncio
     async def test_surfaces_config_cluster_health_and_worker_state(self):
-        settings = make_settings(
-            repos=ReposConfig(),
-            scheduler=SchedulerConfig(
-                temporal_address="temporal.internal:7233",
-                temporal_namespace="pynchy",
-                temporal_task_queue="pynchy-scheduler-prod",
-            ),
+        deps = MockStatusDeps(
+            temporal_address="temporal.internal:7233",
+            temporal_namespace="pynchy",
+            temporal_task_queue="pynchy-scheduler-prod",
         )
         worker = {
             "worker_running": True,
@@ -785,11 +756,8 @@ class TestCollectTemporal:
             "last_completed_at": "2026-07-07T17:30:05+00:00",
             "last_error": None,
         }
-        deps = MockStatusDeps()
-
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=settings),
             patch(f"{_S}.get_temporal_scheduler_status", create=True, return_value=worker),
             patch(
                 f"{_S}._check_temporal_cluster_health",
