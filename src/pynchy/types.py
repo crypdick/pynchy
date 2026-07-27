@@ -44,6 +44,8 @@ class AgentExecutionRuntime:
     project_root: Path
     groups_dir: Path
     data_dir: Path
+    mount_allowlist_path: Path
+    blocked_mount_patterns: tuple[str, ...]
     agent_image: str
     agent_memory_mb: int
     container_timeout: float

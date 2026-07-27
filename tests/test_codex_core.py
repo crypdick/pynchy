@@ -87,6 +87,8 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
             groups_dir=settings.groups_dir,
             data_dir=settings.data_dir,
             project_root=settings.project_root,
+            mount_allowlist_path=settings.mount_allowlist_path,
+            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
         )
 
     codex_mount = next(m for m in mounts if m.container_path == "/home/agent/.codex")
@@ -123,6 +125,8 @@ def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> No
             groups_dir=settings.groups_dir,
             data_dir=settings.data_dir,
             project_root=settings.project_root,
+            mount_allowlist_path=settings.mount_allowlist_path,
+            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
         )
 
     group_auth = tmp_path / "data" / "sessions" / "codex-group" / ".codex" / "auth.json"

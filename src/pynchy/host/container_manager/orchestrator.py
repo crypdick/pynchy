@@ -206,6 +206,8 @@ async def _spawn_container(
         groups_dir=runtime.groups_dir,
         data_dir=runtime.data_dir,
         project_root=runtime.project_root,
+        mount_allowlist_path=runtime.mount_allowlist_path,
+        blocked_mount_patterns=runtime.blocked_mount_patterns,
         plugin_manager=plugin_manager,
         repo_mounts=repo_mounts,
         agent_hooks=agent_hooks,

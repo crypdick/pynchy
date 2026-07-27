@@ -201,6 +201,8 @@ def build_volume_mounts(group, **kwargs):
         groups_dir=settings.groups_dir,
         data_dir=settings.data_dir,
         project_root=settings.project_root,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
         **kwargs,
     )
 
@@ -210,6 +212,8 @@ def _agent_runtime(settings: object) -> AgentExecutionRuntime:
         project_root=settings.project_root,
         groups_dir=settings.groups_dir,
         data_dir=settings.data_dir,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
         agent_image=settings.container.image,
         agent_memory_mb=settings.container.memory_mb,
         container_timeout=settings.container_timeout,
