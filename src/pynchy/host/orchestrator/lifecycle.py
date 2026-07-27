@@ -180,7 +180,9 @@ async def _initialize_core(app: PynchyApp) -> None:
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     job_sources.configure_plugin_jobs(app.plugin_manager)
     system_checks.ensure_container_system_running(
-        OrphanReapAgeMs(get_settings().container.orphan_reap_age_ms)
+        OrphanReapAgeMs(get_settings().container.orphan_reap_age_ms),
+        project_root=app.agent_execution_runtime.project_root,
+        image=app.agent_execution_runtime.agent_image,
     )
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
