@@ -53,7 +53,7 @@ from pynchy.host.orchestrator.messaging.turn_control import (
 )
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     clear_in_flight_turn,
     get_messages_since,
     release_in_flight_turn_claim,

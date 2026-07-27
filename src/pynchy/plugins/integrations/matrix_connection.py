@@ -58,7 +58,7 @@ from pynchy.plugins.integrations.matrix_route_registry import (
 from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves runtime route annotations.
     ResolvedMatrixRoute,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
     claim_next_conversation_delivery,

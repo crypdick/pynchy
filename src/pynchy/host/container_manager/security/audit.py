@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
 from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
-from pynchy.state import prune_messages_by_sender, store_message_direct
+from pynchy.state.api import prune_messages_by_sender, store_message_direct
 
 _SENSITIVE_VALUE = re.compile(
     r"(?i)\b(token|secret|password|api[_-]?key|authorization)\b\s*[:=]\s*\S+"

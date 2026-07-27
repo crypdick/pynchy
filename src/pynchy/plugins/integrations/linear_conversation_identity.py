@@ -8,9 +8,9 @@ from pynchy.conversation.models import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.state import (
-    get_active_work_item_execution,
+from pynchy.state.api import (
     get_conversation_for_subject_key,
+    get_unfinished_work_item_execution,
     resolve_conversation,
 )
 from pynchy.types import GroupFolder
@@ -21,8 +21,8 @@ async def resolve_linear_issue_conversation(
     workspace: str,
     account_name: str,
 ) -> Conversation:
-    """Return one issue runtime, pinned to any active execution's workspace."""
-    execution = await get_active_work_item_execution(issue_id)
+    """Return one issue runtime, pinned to any unfinished execution's workspace."""
+    execution = await get_unfinished_work_item_execution(issue_id)
     owner_workspace = execution.workspace if execution is not None else workspace
     group_folder = GroupFolder(owner_workspace)
     existing = await get_conversation_for_subject_key(

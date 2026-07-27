@@ -55,10 +55,10 @@ when the host effect transfers execution ownership to another durable subsystem.
 
 Set `routes_conversations=True` when actionable events target durable subjects.
 Return a `WebhookConversation` with an immutable `ConversationSubject` and a
-readable control title. `control_closed=True` requests a closed control after
-the routed turn completes, `False` requests an open control, and `None` preserves
-the conversation's persisted lifecycle intent. The channel owns the native
-mapping; Discord maps closed controls to archived threads.
+readable control title. `control_closed=True` marks terminal control intent for
+a lifecycle-only event, `False` explicitly reopens normal conversation handling,
+and `None` preserves current terminal intent. The channel owns the native
+mapping; Discord maps terminal controls to archived threads.
 
 ## Lifecycle-only callbacks
 
@@ -70,16 +70,16 @@ provider-owned data rather than prompt content.
 
 Set `WebhookRoute.process_lifecycle` to an async callback that accepts a
 `WebhookLifecycleDelivery`. The host persists a `lifecycle` receipt and joins the
-delivery to the subject's FIFO. At the FIFO head, it closes only an existing
-control binding, preserves conversation workspace placement, invokes the route
-callback with the immutable delivery identity, subject, workspace, and context,
-then completes the delivery and wakes the next sibling. A lifecycle-only delivery
-does not construct a `NewMessage`, an agent turn, a runtime workspace, or a
-first-time control thread.
+delivery to the subject's FIFO. At ingress, it records terminal intent, retires
+older routed work and runtime ownership, clears the routed session, and archives
+an existing control. It invokes the route callback with the immutable delivery
+identity, subject, workspace, and context, then completes the delivery. A
+lifecycle-only delivery does not construct a `NewMessage`, an agent turn, a
+runtime workspace, or a first-time control thread.
 
-Lifecycle callbacks have at-least-once delivery. If the callback fails, or the
-host stops after the callback but before delivery completion, recovery retries
-the same FIFO head before later deliveries run. Make provider effects idempotent
-with `WebhookLifecycleDelivery.identity`; do not depend on a callback running
-exactly once. A callback must also tolerate a control that already closed during
-an earlier attempt.
+Lifecycle callbacks have at-least-once delivery. If archiving or the callback
+fails, or the host stops after the callback but before delivery completion,
+recovery retries the lifecycle delivery. Make provider effects idempotent with
+`WebhookLifecycleDelivery.identity`; do not depend on a callback running exactly
+once. A callback must also tolerate a control that already closed during an
+earlier attempt.

@@ -414,3 +414,17 @@ async def test_missing_routed_claim_rolls_back_turn_and_cursor_completion() -> N
 
     assert await get_in_flight_turn("turn-1") is not None
     assert await get_router_state("last_agent_timestamp") is None
+
+
+@pytest.mark.asyncio
+async def test_retired_turn_completion_is_a_noop() -> None:
+    await init_test_database()
+
+    completed = await complete_in_flight_turn(
+        "terminally-retired-turn",
+        last_agent_timestamps={"slack:C123": "new"},
+        conversation_claim_id="retired-claim",
+    )
+
+    assert completed is None
+    assert await get_router_state("last_agent_timestamp") is None

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundary annotations at runtime.
     Connection,
     Row,
 )
 
+from pynchy.conversation.models import ConversationDeliveryStatus
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.state.conversation_controls import (
+    _apply_conversation_control_state,
+    _retire_conversation_for_terminal,
+)
 from pynchy.state.conversation_routing import _admit_conversation_delivery
 from pynchy.state.webhook_effect_admission import admit_webhook_effect_delivery
 from pynchy.state.webhook_models import (
@@ -317,6 +324,27 @@ async def admit_webhook_conversation(
             request.workspace,
             payload=request.payload,
         )
+        if (
+            conversation is not None
+            and conversation.delivery.status is not ConversationDeliveryStatus.COMPLETED
+        ):
+            if webhook.receipt.disposition == "lifecycle":
+                conversation = replace(
+                    conversation,
+                    terminal_retirement=await _retire_conversation_for_terminal(
+                        database,
+                        conversation.conversation.id,
+                        preserve_delivery=conversation.delivery.identity,
+                        control_state_revision=request.control_state_revision,
+                    ),
+                )
+            elif request.control_closed is not None:
+                await _apply_conversation_control_state(
+                    database,
+                    conversation.conversation.id,
+                    closed=request.control_closed,
+                    control_state_revision=request.control_state_revision,
+                )
         return WebhookConversationAdmission(
             webhook=webhook,
             conversation=conversation,

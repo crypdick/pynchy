@@ -7,11 +7,11 @@ import importlib.util
 from dataclasses import dataclass
 
 from scripts.prek_hooks.architecture_policy import (
-    Component,
     Diagnostic,
+    Package,
     Policy,
     SourceModule,
-    matching_components,
+    owning_package,
 )
 
 
@@ -19,7 +19,20 @@ from scripts.prek_hooks.architecture_policy import (
 class Dependency:
     importer: str
     imported: str
-    target_component: str
+    target_package: str
+    target_role: str
+    kind: str
+    path: str
+    line: int
+
+
+@dataclass(frozen=True)
+class Violation:
+    importer: str
+    imported: str
+    target_package: str
+    target_role: str
+    rule: str
     kind: str
     path: str
     line: int
@@ -126,7 +139,8 @@ class _ImportVisitor(ast.NodeVisitor):
 
 def collect_dependencies(
     modules: dict[str, SourceModule],
-    classified: dict[str, Component],
+    classified: dict[str, Package],
+    packages: tuple[Package, ...],
     policy: Policy,
 ) -> tuple[list[Dependency], list[Diagnostic]]:
     dependencies: list[Dependency] = []
@@ -145,17 +159,14 @@ def collect_dependencies(
         visitor = _ImportVisitor(module, set(modules), first_party_roots)
         visitor.visit(tree)
         for imported, kind, line in visitor.dependencies:
-            target_matches = matching_components(imported, policy)
-            if len(target_matches) != 1:
+            target_package = owning_package(imported, packages)
+            if target_package is None:
                 diagnostics.append(
                     Diagnostic(
                         module.path.as_posix(),
                         line,
                         "architecture-import",
-                        (
-                            f"first-party import {imported!r} resolves to "
-                            f"{len(target_matches)} components"
-                        ),
+                        f"first-party import {imported!r} resolves to no package",
                     )
                 )
                 continue
@@ -163,7 +174,8 @@ def collect_dependencies(
                 Dependency(
                     importer=module.name,
                     imported=imported,
-                    target_component=target_matches[0].name,
+                    target_package=target_package.root,
+                    target_role=target_package.role,
                     kind=kind,
                     path=module.path.as_posix(),
                     line=line,
@@ -172,18 +184,37 @@ def collect_dependencies(
     return dependencies, diagnostics
 
 
-def invalid_dependencies(
+def dependency_violations(
     dependencies: list[Dependency],
-    classified: dict[str, Component],
+    classified: dict[str, Package],
+    packages: tuple[Package, ...],
     policy: Policy,
-) -> list[Dependency]:
+) -> list[Violation]:
+    packages_by_root = {package.root: package for package in packages}
+    roles = {role.name: role for role in policy.roles}
+    violations: list[Violation] = []
+    for dependency in dependencies:
+        if dependency.importer in policy.composition_roots:
+            continue
+        importer_package = classified[dependency.importer]
+        if dependency.target_package == importer_package.root:
+            continue
+        target_package = packages_by_root[dependency.target_package]
+        if dependency.imported not in target_package.public_modules:
+            violations.append(
+                Violation(
+                    **dependency.__dict__,
+                    rule="visibility",
+                )
+            )
+        if dependency.target_role not in roles[importer_package.role].allowed:
+            violations.append(
+                Violation(
+                    **dependency.__dict__,
+                    rule="direction",
+                )
+            )
     return sorted(
-        (
-            dependency
-            for dependency in dependencies
-            if dependency.importer not in policy.composition_roots
-            and dependency.target_component != classified[dependency.importer].name
-            and dependency.target_component not in classified[dependency.importer].allowed
-        ),
-        key=lambda item: (item.path, item.line, item.imported, item.kind),
+        violations,
+        key=lambda item: (item.path, item.line, item.imported, item.kind, item.rule),
     )

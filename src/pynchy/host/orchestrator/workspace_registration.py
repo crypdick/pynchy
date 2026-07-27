@@ -21,7 +21,7 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.state import rebind_workspace_profile, set_workspace_profile
+from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     Channel,
     RuntimeId,

@@ -28,7 +28,7 @@ from pynchy.host.orchestrator.scheduled_turn_deps import (  # noqa: TC001, RUF10
     ScheduledTurnDeps,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     clear_in_flight_turn,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,

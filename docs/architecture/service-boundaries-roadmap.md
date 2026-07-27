@@ -13,6 +13,11 @@ Use a direct import inside a cohesive subsystem when one module clearly owns
 the behavior, the dependency follows that ownership, and the import does not
 cross a protected runtime or trust boundary.
 
+Reusable implementation can live in an inward shared package when the behavior
+has one stable meaning and multiple packages genuinely use it. Give that
+package an explicit role and public surface. Do not hide adapter-to-adapter
+coupling behind a generic helpers package.
+
 Introduce a contract when it does at least one concrete job:
 
 - keeps the host and agent runner separated by their serialized wire protocol;
@@ -58,10 +63,35 @@ runtime behavior behind these invariants.
 
 ## Dependency enforcement
 
-`architecture.toml` defines the protected dependency graph.
-`architecture-baseline.toml` records exact current exceptions. The blocking
-`check-architecture-boundaries` prek and CI steps reject a new exception, a
-larger exception, or a stale baseline entry.
+`architecture.toml` defines roles, owned package roots, and exact public
+modules. Every cross-package import must pass two independent checks:
+
+1. **Visibility:** The imported module appears in the target package's
+   `public_modules` allowlist.
+2. **Direction:** The importer's role lists the target role in
+   `allowed_dependencies`.
+
+Imports within one owned package remain implementation details. Packages with
+the same role do not receive automatic permission to depend on each other.
+Named composition-root modules may import private implementations to construct
+and wire them.
+
+Prefer one package-local `api.py` when a package needs a façade. The façade
+provides encapsulation, not dependency inversion: use an application-owned port
+when lifecycle, transaction, trust, or implementation ownership requires the
+dependency to point inward. The built-in SQLite package exposes
+`pynchy.state.api` as its public surface.
+
+`package_families` removes repeated declarations for deliberately extensible
+namespaces. A family pattern ends in one-level `.*`; for example,
+`pynchy.plugins.channels.*` creates one owned package for each direct channel
+plugin and exposes only its `{root}.api`. Nested helper packages remain
+implementation details of that plugin. Recursive family patterns are invalid.
+
+`architecture-baseline.toml` records exact current exceptions separately for
+visibility and direction. The blocking `check-architecture-boundaries` prek and
+CI steps reject a new exception, a larger exception, or a stale baseline entry.
+Do not regenerate the baseline as a fix.
 
 Treat the baseline as an exception inventory, not an automatically authorized
 refactoring queue. Zero entries is not a completion criterion. When a touched
@@ -69,7 +99,7 @@ dependency needs review, choose the smallest accurate outcome:
 
 1. remove or move a dependency that crosses real ownership;
 2. reuse or introduce a contract for a real boundary;
-3. reclassify a module whose policy role is wrong; or
+3. reclassify a package whose policy role is wrong; or
 4. allow a stable monolith dependency in the policy and remove its baseline
    entry.
 

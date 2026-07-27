@@ -22,7 +22,7 @@ from pynchy.state import (
     init_test_database,
     initialize_deployment_state,
 )
-from pynchy.types import DeploymentState, DeployRevision, NewMessage, WorkspaceProfile
+from pynchy.types import DeploymentState, DeployRevision, NewMessage, SessionId, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -107,6 +107,23 @@ async def test_pynchyapp_startup_annotations_resolve() -> None:
     await app.set_memory_provider(None)
 
     assert app.session_cleared == {"admin"}
+
+
+@pytest.mark.asyncio
+async def test_terminal_session_clear_blocks_delayed_routed_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    folder = "project__thread_conversation-conv_terminal"
+    app.session_cleared.add(folder)
+    persist_session = AsyncMock()
+
+    monkeypatch.setattr("pynchy.host.orchestrator.app.set_session", persist_session)
+
+    await app.bind_routed_session(folder, SessionId("late-session"))
+
+    assert app.sessions == {}
+    persist_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -7,25 +7,31 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context
     Awaitable,
     Callable,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
+from pynchy.conversation.dispatch import conversation_runtime_lock
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
     ConversationId,
+    ConversationSubject,
 )
 from pynchy.conversation.workspaces import parent_workspace_name, routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.state import (
+from pynchy.state.api import (
+    ConversationControlWorkspaceChangedError,
     get_conversation,
     get_conversation_control_binding,
     get_conversation_control_by_thread,
+    get_conversation_for_subject,
     get_workspace_profile,
     set_conversation_control_binding,
 )
 from pynchy.types import Channel, ChatJid, GroupFolder, SessionId, WorkspaceProfile
+
+_DISCORD_THREAD_TITLE_MAX_LENGTH = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,11 +43,14 @@ class ConversationControlRequest:
     parent_jid: ChatJid
     title: str
     owner_workspace: GroupFolder | None = None
-    closed: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():
             raise ValueError("Conversation control title must not be empty")
+
+
+class ConversationControlClosedError(RuntimeError):
+    """A terminal conversation has no control thread to reopen."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,17 +116,23 @@ async def ensure_conversation_control(
         raise ValueError("Conversation control parent must be a registered workspace root")
 
     current_binding = await get_conversation_control_binding(request.conversation_id)
-    closed = (
-        request.closed
-        if request.closed is not None
-        else current_binding.closed
-        if current_binding is not None
-        else False
-    )
+    if conversation.control_closed:
+        if current_binding is None:
+            raise ConversationControlClosedError(
+                f"Conversation control is closed: {request.conversation_id}"
+            )
+        # Discord's name lookup reopens archived threads, so a terminal control
+        # returns its durable binding without attempting lookup or creation.
+        return EnsuredConversationControl(
+            binding=replace(current_binding, closed=True),
+            created=False,
+        )
 
+    base_title = request.title.strip()
     index = 1
     while True:
-        title = request.title if index == 1 else f"{request.title} ({index})"
+        suffix = "" if index == 1 else f" ({index})"
+        title = f"{base_title[: _DISCORD_THREAD_TITLE_MAX_LENGTH - len(suffix)].rstrip()}{suffix}"
         ensured = await ensure_thread(
             channels,
             request.parent_jid,
@@ -139,12 +154,13 @@ async def ensure_conversation_control(
             thread_jid=thread_jid,
             title=title,
             updated_at=datetime.now(UTC).isoformat(),
-            closed=closed,
+            closed=False,
         )
         try:
-            await set_conversation_control_binding(
+            binding = await set_conversation_control_binding(
                 binding,
                 owner_workspace=request.owner_workspace or request.parent_workspace,
+                expected_workspace=conversation.workspace,
             )
         except sqlite3.IntegrityError:
             # Another connection runtime may have claimed this readable name
@@ -155,6 +171,8 @@ async def ensure_conversation_control(
                 raise
             index += 1
             continue
+        if binding.closed:
+            await set_thread_closed(channels, binding.thread_jid, closed=True)
         return EnsuredConversationControl(binding=binding, created=ensured.created)
 
 
@@ -163,9 +181,28 @@ async def sync_conversation_control_state(
     conversation_id: ConversationId,
 ) -> None:
     """Apply a conversation's durable lifecycle intent to its current thread."""
+    conversation = await get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Unknown conversation: {conversation_id}")
     binding = await get_conversation_control_binding(conversation_id)
     if binding is not None:
-        await set_thread_closed(channels, binding.thread_jid, closed=binding.closed)
+        await set_thread_closed(channels, binding.thread_jid, closed=conversation.control_closed)
+
+
+async def sync_existing_open_conversation_control(
+    channels: list[Channel],
+    subject: ConversationSubject,
+) -> None:
+    """Apply provider-confirmed open intent without creating an absent control."""
+    conversation = await get_conversation_for_subject(subject)
+    if conversation is None:
+        return
+    async with conversation_runtime_lock(conversation.id):
+        # Terminal retirement uses this fence too. Re-read after acquiring it
+        # so a stale ignored callback cannot reopen an archived Discord thread.
+        conversation = await get_conversation(conversation.id)
+        if conversation is not None and not conversation.control_closed:
+            await sync_conversation_control_state(channels, conversation.id)
 
 
 async def ensure_conversation_workspace(
@@ -191,9 +228,21 @@ async def ensure_conversation_workspace(
     owner = placement.owner
 
     control = await ensure_conversation_control(context.channels(), request)
+    if control.binding.closed:
+        raise ConversationControlClosedError(
+            f"Conversation control is closed: {request.conversation_id}"
+        )
     conversation = await get_conversation(request.conversation_id)
     if conversation is None:
         raise RuntimeError("Conversation disappeared while placing its workspace")
+    if conversation.control_closed:
+        raise ConversationControlClosedError(
+            f"Conversation control is closed: {request.conversation_id}"
+        )
+    if conversation.workspace != owner_folder:
+        raise ConversationControlWorkspaceChangedError(
+            f"Conversation workspace changed from {owner_folder} to {conversation.workspace}"
+        )
     folder = routed_conversation_folder(owner_folder, conversation.id)
 
     profile = WorkspaceProfile(

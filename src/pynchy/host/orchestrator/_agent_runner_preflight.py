@@ -18,10 +18,12 @@ from pynchy.host.container_manager import (
 from pynchy.host.container_manager.orchestrator import resolve_container_timeout
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
+from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.prompt_loading import read_prompts
-from pynchy.state import (
+from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
+    get_conversation,
     get_conversation_control_by_thread,
     get_session_security_taint,
     mark_session_security_taint,
@@ -154,6 +156,14 @@ def session_id_from_output(output: ContainerOutput) -> str | None:
 
 async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
+    if request.chat_jid.startswith("discord:") and (
+        binding := await get_conversation_control_by_thread(ChatJid(request.chat_jid))
+    ):
+        conversation = await get_conversation(binding.conversation_id)
+        if conversation is not None and conversation.control_closed:
+            raise ConversationControlClosedError(
+                f"Conversation control is closed: {binding.conversation_id}"
+            )
     folder = GroupFolder(request.group.folder)
     public_source = request.input_source.startswith(("webhook:", "external:"))
     secret_source = request.input_source == "external:matrix"

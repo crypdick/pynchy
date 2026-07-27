@@ -45,7 +45,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_work_item_lease,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemClaimConflictError,
     bind_work_item_execution_to_task,
     create_task_if_absent,

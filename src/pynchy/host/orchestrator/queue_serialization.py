@@ -22,9 +22,10 @@ from pynchy.host.orchestrator.runtime_target import (  # noqa: TC001, RUF100 - b
 from pynchy.types import RuntimeId  # noqa: TC001, RUF100 - beartype resolves callback annotations.
 
 
-async def await_queued_task[ResultT](
+async def await_queued_task[ResultT](  # noqa: PLR0913, RUF100 - queue adapters keep individual lifecycle controls explicit.
     enqueue_task: Callable[[RuntimeTarget, QueuedTask], bool],
     cancel_task: Callable[[RuntimeId, QueuedTask], bool],
+    stop_active_process: Callable[[RuntimeId], Awaitable[None]],
     target: RuntimeTarget,
     task_id: str,
     fn: Callable[[], Awaitable[ResultT]],
@@ -61,7 +62,10 @@ async def await_queued_task[ResultT](
         future.cancel()
         cancel_task(target.id, task)
         if runner is not None:
-            runner.cancel()
+            try:
+                await stop_active_process(target.id)
+            finally:
+                runner.cancel()
         raise
 
 

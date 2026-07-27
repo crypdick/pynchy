@@ -202,6 +202,21 @@ async def get_tasks_for_group(group_folder: str) -> list[ScheduledTask]:
     return [_row_to_task(row) for row in rows]
 
 
+async def get_tasks_for_conversation(conversation_id: str) -> list[ScheduledTask]:
+    """Return scheduled work still owned by one routed conversation."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM scheduled_tasks
+        WHERE conversation_id = ? AND status IN ('active', 'paused')
+        ORDER BY created_at DESC
+        """,
+        (conversation_id,),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task(row) for row in rows]
+
+
 async def get_all_tasks() -> list[ScheduledTask]:
     """Get all tasks, ordered by creation date."""
     db = _get_db()

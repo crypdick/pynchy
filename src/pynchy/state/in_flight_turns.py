@@ -294,14 +294,9 @@ async def complete_in_flight_turn(
 ) -> ConversationDeliveryCompletion | None:
     """Finalize a turn atomically with its cursor and routed-delivery claim."""
     async with atomic_write() as db:
-        if last_agent_timestamps is not None:
-            await db.execute(
-                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-                ("last_agent_timestamp", json.dumps(last_agent_timestamps)),
-            )
-        await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
-        completed: ConversationDeliveryCompletion | None = None
-        if conversation_claim_id is not None:
+        turn = await _get_in_flight_turn_in_transaction(db, turn_id)
+        claimed: Row | None = None
+        if turn is None and conversation_claim_id is not None:
             claimed_cursor = await db.execute(
                 """
                 SELECT provider, route, delivery_id, conversation_id
@@ -311,6 +306,27 @@ async def complete_in_flight_turn(
                 (conversation_claim_id,),
             )
             claimed = await claimed_cursor.fetchone()
+        if turn is None and claimed is None:
+            # Terminal lifecycle retirement may win a race with agent cleanup.
+            return None
+        if last_agent_timestamps is not None:
+            await db.execute(
+                "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+                ("last_agent_timestamp", json.dumps(last_agent_timestamps)),
+            )
+        await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
+        completed: ConversationDeliveryCompletion | None = None
+        if conversation_claim_id is not None:
+            if claimed is None:
+                claimed_cursor = await db.execute(
+                    """
+                    SELECT provider, route, delivery_id, conversation_id
+                    FROM conversation_deliveries
+                    WHERE claim_id = ? AND status = 'claimed'
+                    """,
+                    (conversation_claim_id,),
+                )
+                claimed = await claimed_cursor.fetchone()
             if claimed is None:
                 raise ValueError("Conversation delivery claim disappeared before turn completion")
             cursor = await db.execute(

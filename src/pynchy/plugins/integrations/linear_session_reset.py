@@ -15,7 +15,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     transition_linked_work_item,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemTransitionRequest,
     cancel_task_and_checkpoint,
     cancel_work_item_execution,

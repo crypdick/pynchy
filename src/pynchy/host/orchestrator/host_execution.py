@@ -216,14 +216,15 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
     """Run a host turn while exposing its process to inbound message routing."""
     lease = request.queue.acquire_host_process(request.target)
 
-    def register_spawned_process(proc: asyncio.subprocess.Process) -> None:
-        if not request.queue.register_host_process(
-            lease,
-            proc,
-            "host-agent-runner",
-            request.input_data.invocation_ts,
-        ):
-            raise RuntimeError("Host process lease expired before process registration")
+    def register_spawned_process(proc: asyncio.subprocess.Process) -> bool:
+        return bool(
+            request.queue.register_host_process(
+                lease,
+                proc,
+                "host-agent-runner",
+                request.input_data.invocation_ts,
+            )
+        )
 
     try:
         result = await run_host_input(

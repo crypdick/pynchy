@@ -35,8 +35,8 @@ class RuntimeProcessControl:
         invocation_ts: float = 0.0,
         *,
         is_host_process: bool = False,
-    ) -> None:
-        self._registry.require(runtime_id).register_process(
+    ) -> bool:
+        return self._registry.require(runtime_id).register_process(
             proc,
             container_name,
             invocation_ts,

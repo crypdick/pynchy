@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, overload
 
 import aiohttp
 
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ConversationLifecycleFence,
+)
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
     LinearAccount,
@@ -27,16 +30,18 @@ from pynchy.plugins.integrations.linear_self_echoes import (
 from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_APPROVED_STATUS,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
     begin_work_item_transition,
     create_work_item_claim,
     get_active_work_item_execution,
     get_work_item_execution,
     get_work_item_transition_by_request,
     resolve_work_item_transition,
+    resolve_work_item_transition_if_lifecycle_current,
 )
 from pynchy.types import (
     WorkItemExecution,
@@ -315,16 +320,40 @@ async def transition_linked_work_item(
     )
 
 
+@overload
 async def reconcile_work_item(
     client: LinearClient,
     workspace: str,
     issue_id: str,
     transition: WorkItemTransition,
-) -> WorkItemExecution:
+    *,
+    lifecycle_fence: None = None,
+) -> WorkItemExecution: ...
+
+
+@overload
+async def reconcile_work_item(
+    client: LinearClient,
+    workspace: str,
+    issue_id: str,
+    transition: WorkItemTransition,
+    *,
+    lifecycle_fence: ConversationLifecycleFence,
+) -> WorkItemExecution | None: ...
+
+
+async def reconcile_work_item(
+    client: LinearClient,
+    workspace: str,
+    issue_id: str,
+    transition: WorkItemTransition,
+    *,
+    lifecycle_fence: ConversationLifecycleFence | None = None,
+) -> WorkItemExecution | None:
     """Resolve an unknown provider receipt from Linear's observed current state."""
     issue, board = await workspace_issue(client, workspace, issue_id)
     matches_target = state_id(issue) == state_id(board.states[transition.target_status])
-    return await resolve_work_item_transition(
+    resolution = WorkItemTransitionResolution(
         transition=transition,
         execution_status=(
             transition.result_execution_status if matches_target else WorkItemExecutionStatus.FAILED
@@ -336,6 +365,18 @@ async def reconcile_work_item(
         ),
         issue=issue,
         error=None if matches_target else "Linear state differs from the intended transition",
+    )
+    if lifecycle_fence is not None:
+        return await resolve_work_item_transition_if_lifecycle_current(
+            resolution,
+            lifecycle_fence=lifecycle_fence,
+        )
+    return await resolve_work_item_transition(
+        transition=resolution.transition,
+        execution_status=resolution.execution_status,
+        transition_status=resolution.transition_status,
+        issue=resolution.issue,
+        error=resolution.error,
     )
 
 

@@ -18,7 +18,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     is_stale_database_host_job_once_workflow,
 )
 from pynchy.logger import logger
-from pynchy.state import get_host_job_by_id, record_host_job_completion
+from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 from pynchy.types import (
     HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
 )

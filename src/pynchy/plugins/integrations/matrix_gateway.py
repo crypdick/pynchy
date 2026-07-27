@@ -51,7 +51,7 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     get_active_matrix_route,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import resolve_matrix_routes
-from pynchy.state import get_conversation_control_binding
+from pynchy.state.api import get_conversation_control_binding
 from pynchy.types import is_matrix_connection
 
 hookimpl = pluggy.HookimplMarker("pynchy")

@@ -35,7 +35,7 @@ from pynchy.plugins.webhooks import (
     WebhookRoute,
     validate_webhook_routes,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     get_webhook_receipt,
@@ -382,6 +382,8 @@ async def handle_webhook(request: web.Request) -> web.Response:
     disposition: Literal["accepted", "routed", "lifecycle", "notified", "ignored"]
     if task is not None:
         disposition = "accepted"
+    elif event.ignored_reason is not None:
+        disposition = "ignored"
     elif event.lifecycle is not None:
         disposition = "lifecycle"
     elif event.conversation is not None:

@@ -39,7 +39,7 @@ from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
-from pynchy.state import clear_session
+from pynchy.state.api import clear_session
 from pynchy.types import (
     AgentExecutionRuntime,
     ContainerInput,
@@ -213,12 +213,15 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         idle_timeout=request.idle_timeout,
         invocation_ts=request.input_data.invocation_ts,
     )
-    request.deps.queue.register_process(
+    registered = request.deps.queue.register_process(
         RuntimeId(request.group.folder),
         proc,
         container_name,
         request.input_data.invocation_ts,
     )
+    if not registered:
+        await destroy_session(request.group.folder)
+        return "interrupted"
     session.set_output_handler(
         request.ctx.wrapped_on_output,
         query_id=request.input_data.query_id,
@@ -248,11 +251,13 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
             )
 
     # Register the session's process so send_message() works for follow-ups
-    request.deps.queue.register_process(
+    registered = request.deps.queue.register_process(
         RuntimeId(request.group.folder),
         request.session.proc,
         request.session.container_name,
     )
+    if not registered:
+        return "interrupted"
 
     # Bind output/progress to this query before sending its IPC message.
     turn_id = request.ctx.turn_id or new_turn_id()

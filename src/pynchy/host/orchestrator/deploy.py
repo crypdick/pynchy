@@ -15,10 +15,10 @@ from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves deploy path annotations at runtime.
 )
 
-from pynchy import state as pynchy_state
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha, run_git
 from pynchy.logger import logger
+from pynchy.state import api as pynchy_state
 from pynchy.types import DeployChangeKind, DeployRevision
 from pynchy.utils import write_json_atomic
 

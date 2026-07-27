@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -18,14 +19,26 @@ from pynchy.conversation.models import (
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.git_ops.repo import resolve_repos_for_group
+from pynchy.host.orchestrator.conversation_control import (
+    ConversationControlRequest,
+    ConversationWorkspaceContext,
+    EnsuredConversationWorkspace,
+    ensure_conversation_workspace,
+)
 from pynchy.host.orchestrator.scheduled_binding import (
     ScheduledTaskOwnershipError,
+    ScheduledTaskTerminalError,
     ensure_scheduled_task_binding,
 )
 from pynchy.host.orchestrator.threads import EnsuredThread
+from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
     clear_runtime_workspace_restrictions,
@@ -35,15 +48,32 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
 from pynchy.plugins.webhooks import WebhookConversation, WebhookEvent
 from pynchy.state import (
+    apply_conversation_control_state,
+    begin_in_flight_turn,
+    cancel_task_and_checkpoint,
+    conversation_control_state_matches,
     create_task,
+    create_task_if_absent,
     get_conversation,
     get_conversation_for_subject,
+    get_in_flight_turn_for_task,
     get_task_by_id,
     init_test_database,
+    resolve_conversation,
+    retire_conversation_for_terminal,
     set_workspace_profile,
     update_task,
 )
-from pynchy.types import CapabilityRule, ScheduledTask, SessionId, SessionPolicy, WorkspaceProfile
+from pynchy.types import (
+    CapabilityRule,
+    GroupFolder,
+    InFlightTurn,
+    InFlightWorkKind,
+    ScheduledTask,
+    SessionId,
+    SessionPolicy,
+    WorkspaceProfile,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -122,6 +152,35 @@ class _BindingDeps:
         self.scheduled_task_updates.append((task_id, updates))
         await update_task(task_id, updates)
 
+    async def cancel_scheduled_task(self, task_id: str) -> None:
+        await cancel_task_and_checkpoint(task_id)
+
+
+@dataclass
+class _RetirementBindingDeps(_BindingDeps):
+    terminal_persisted: asyncio.Event = field(default_factory=asyncio.Event)
+    retired_conversations: list[ConversationId] = field(default_factory=list)
+
+    async def conversation_control_state_matches(
+        self,
+        conversation_id: ConversationId,
+        *,
+        closed: bool,
+        control_state_revision: str | None,
+    ) -> bool:
+        return await conversation_control_state_matches(
+            conversation_id,
+            closed=closed,
+            control_state_revision=control_state_revision,
+        )
+
+    async def retire_conversation_runtime(self, folder: str) -> None:
+        del folder
+
+    async def retire_conversation_tasks(self, conversation_id: ConversationId) -> None:
+        self.retired_conversations.append(conversation_id)
+        await self.cancel_scheduled_task("task-1")
+
 
 async def test_unnamed_task_gets_persistent_child_thread_binding(tmp_path) -> None:
     owner = _profile()
@@ -184,7 +243,138 @@ async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> 
         await ensure_scheduled_task_binding(task, deps)
 
 
+async def test_terminal_routed_task_cancels_task_and_checkpoint_before_binding() -> None:
+    conversation = await resolve_conversation(
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:project:issue"),
+            key=ConversationSubjectKey("issue-1"),
+        ),
+        GroupFolder("owner"),
+    )
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
+    task = replace(
+        _task(),
+        conversation_id=str(conversation.id),
+        next_run="2026-07-27T05:00:00+00:00",
+    )
+    assert await create_task_if_absent(task)
+    before = await get_task_by_id(task.id)
+    assert before is not None
+    assert before.next_run == task.next_run
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="terminal-task-turn",
+            chat_jid=task.chat_jid,
+            group_folder=task.group_folder,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-07-27T04:00:00+00:00",
+            task_id=task.id,
+        )
+    )
+
+    with pytest.raises(ScheduledTaskTerminalError, match="terminal conversation"):
+        await ensure_scheduled_task_binding(task, _BindingDeps({}))
+
+    persisted = await get_task_by_id(task.id)
+    assert persisted is not None
+    assert persisted.status == "cancelled"
+    assert persisted.next_run is None
+    assert await get_in_flight_turn_for_task(task.id) is None
+
+
+async def test_routed_binding_rejects_terminal_intent_after_workspace_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = _profile()
+    await set_workspace_profile(owner)
+    conversation = await resolve_conversation(
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:project:issue"),
+            key=ConversationSubjectKey("issue-race"),
+        ),
+        GroupFolder(owner.folder),
+    )
+    task = replace(_task(), conversation_id=str(conversation.id))
+    await create_task(task)
+    deps = _RetirementBindingDeps(
+        {owner.jid: owner},
+        channels=[DiscordThreadChannel()],
+    )
+    workspace_registered = asyncio.Event()
+    original_ensure = ensure_conversation_workspace
+
+    async def pause_after_workspace_registration(
+        context: ConversationWorkspaceContext,
+        request: ConversationControlRequest,
+    ) -> EnsuredConversationWorkspace:
+        ensured = await original_ensure(context, request)
+        workspace_registered.set()
+        await deps.terminal_persisted.wait()
+        return ensured
+
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.scheduled_binding.ensure_conversation_workspace",
+        pause_after_workspace_registration,
+    )
+    binding = asyncio.create_task(ensure_scheduled_task_binding(task, deps))
+    terminal: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(workspace_registered.wait(), timeout=1)
+        identity = ExternalDeliveryIdentity(
+            provider=ExternalProvider("linear"),
+            route=ExternalRoute("project"),
+            delivery_id=ExternalDeliveryId("terminal-binding-race"),
+        )
+        retirement = await retire_conversation_for_terminal(
+            conversation.id,
+            preserve_delivery=identity,
+            control_state_revision="2026-07-27T00:00:01+00:00",
+        )
+        deps.terminal_persisted.set()
+        terminal = asyncio.create_task(
+            retire_terminal_runtime(
+                deps,
+                conversation.id,
+                retirement,
+                set(),
+            )
+        )
+        await asyncio.wait_for(deps.terminal_persisted.wait(), timeout=1)
+
+        with pytest.raises(ScheduledTaskTerminalError, match="terminal conversation"):
+            await binding
+        await terminal
+
+        persisted = await get_task_by_id(task.id)
+        assert persisted is not None
+        assert persisted.status == "cancelled"
+        assert deps.retired_conversations == [conversation.id]
+        assert all(
+            profile.folder != routed_conversation_folder(owner.folder, conversation.id)
+            for profile in deps.workspaces.values()
+        )
+    finally:
+        if not binding.done():
+            binding.cancel()
+        if terminal is not None and not terminal.done():
+            await terminal
+
+
 async def test_existing_linear_task_is_migrated_to_continue_before_execution() -> None:
+    conversation = await resolve_conversation(
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:project:issue"),
+            key=ConversationSubjectKey("issue-1"),
+        ),
+        GroupFolder("owner"),
+    )
     owner = _profile()
     routed = _profile(
         jid="discord:channel:linear-thread",
@@ -194,7 +384,7 @@ async def test_existing_linear_task_is_migrated_to_continue_before_execution() -
     task = replace(
         _task(),
         input_source="external:linear:human_approved",
-        conversation_id="conv-1",
+        conversation_id=str(conversation.id),
     )
     await create_task(task)
 
@@ -261,7 +451,7 @@ async def test_scheduled_linear_binding_restores_webhook_conversation_repo_polic
     processed = await process_linear_webhook_event(event)
     conversation = await get_conversation_for_subject(subject)
 
-    assert processed.conversation is None
+    assert processed.conversation is not None
     assert conversation is not None
     folder = routed_conversation_folder(conversation.workspace, conversation.id)
     assert load_resolved_config(folder) is None

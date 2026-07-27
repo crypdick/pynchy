@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from pynchy import state
 from pynchy.logger import logger
+from pynchy.state import api as state
 from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
 
 

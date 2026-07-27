@@ -19,7 +19,6 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
-from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.host.orchestrator.webhook_ingress import recover_webhook_conversations
@@ -137,7 +136,7 @@ async def test_terminal_first_callback_creates_no_discord_thread_or_agent_turn(
         await client.close()
 
 
-async def test_startup_restores_closed_existing_control_without_waking_an_agent(
+async def test_startup_keeps_closed_control_unbound_without_waking_an_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
@@ -179,11 +178,8 @@ async def test_startup_restores_closed_existing_control_without_waking_an_agent(
         assert restarted_harness.ingested == []
         assert restarted_harness.channel.closed[binding.thread_jid] is True
         restored = restarted_harness.workspace_map.get(binding.thread_jid)
-        assert restored is not None
-        assert restored.folder == routed_conversation_folder(
-            "project",
-            message.metadata["conversation_id"],
-        )
-        assert await get_workspace_profile(binding.thread_jid) == restored
+        assert restored is None
+        assert restarted_harness.bound_sessions == []
+        assert await get_workspace_profile(binding.thread_jid) is None
     finally:
         await restarted_client.close()

@@ -305,6 +305,24 @@ async def _ensure_columns(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
+async def _migrate_conversation_control_intent(database: aiosqlite.Connection) -> None:
+    """Promote closed bindings into the conversation-level lifecycle intent."""
+    await database.execute(
+        """
+        UPDATE routed_conversations AS conversation
+        SET control_closed = 1
+        WHERE control_closed = 0
+          AND EXISTS (
+              SELECT 1
+              FROM conversation_control_bindings AS binding
+              WHERE binding.conversation_id = conversation.id
+                AND binding.closed = 1
+          )
+        """
+    )
+    await database.commit()
+
+
 async def _rename_conversation_event_trace_ref(database: aiosqlite.Connection) -> None:
     """Rename the provider-specific projection ref column after the Phoenix rollback."""
     cursor = await database.execute("PRAGMA table_info(conversation_events)")
@@ -472,6 +490,7 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await _rename_conversation_event_trace_ref(database)
     await _ensure_columns(database)
     await _repair_runtime_integrity(database)
+    await _migrate_conversation_control_intent(database)
     await drop_legacy_scheduled_runtime_metadata(database)
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)

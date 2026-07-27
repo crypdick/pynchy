@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -51,11 +52,14 @@ from linear_webhook_test_support import (
 
 from pynchy.config import PluginConfig
 from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.conversation.dispatch import conversation_runtime_lock
 from pynchy.conversation.models import (
     ControlSurface,
     Conversation,
+    ConversationClaimId,
     ConversationControlBinding,
     ConversationId,
+    ConversationLifecycleFence,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -94,6 +98,7 @@ from pynchy.plugins.webhooks import (
 )
 from pynchy.state import (
     WorkItemClaimRequest,
+    apply_conversation_control_state,
     create_work_item_claim,
     get_active_work_item_execution,
     get_all_tasks,
@@ -445,8 +450,324 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     workspace_issue.assert_awaited_once()
 
 
+async def test_preparation_uses_current_terminal_state_over_stale_nonterminal_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Stale callback",
+                "state": {"id": "state-started", "name": "In Progress", "type": "started"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {
+                    "id": "issue-1",
+                    "updatedAt": "2026-07-27T00:00:01+00:00",
+                    "state": {
+                        "id": "state-canceled",
+                        "name": "Canceled",
+                        "type": "canceled",
+                    },
+                },
+                _workspace_board(),
+            )
+        ),
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.instructions is None
+    assert prepared.external_context is None
+    assert prepared.lifecycle is not None
+    assert prepared.lifecycle.context == {
+        "linear_state_id": "state-canceled",
+        "linear_managed_done_state_id": "state-done",
+        "linear_controller_workspace": "project",
+    }
+    assert prepared.conversation is not None
+    assert prepared.conversation.control_closed is True
+
+
+async def test_preparation_ignores_stale_terminal_callback_after_current_state_reopens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Stale terminal callback",
+                "state": {"id": "state-done", "name": "Done", "type": "completed"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {
+                    "id": "issue-1",
+                    "updatedAt": "2026-07-27T00:00:02+00:00",
+                    "state": {
+                        "id": "state-started",
+                        "name": "In Progress",
+                        "type": "started",
+                    },
+                },
+                _workspace_board(),
+            )
+        ),
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.instructions is None
+    assert prepared.external_context is None
+    assert prepared.lifecycle is None
+    assert prepared.conversation is not None
+    assert prepared.conversation.control_closed is False
+    assert prepared.ignored_reason == "stale_terminal_issue_state"
+
+    processed = await process_linear_webhook_event(prepared)
+    assert processed.conversation is not None
+    reopened = await get_conversation(conversation.id)
+    assert reopened is not None
+    assert reopened.control_closed is False
+
+
+async def test_preparation_marks_current_nonterminal_issue_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {
+                    "id": "issue-1",
+                    "updatedAt": "2026-07-27T00:00:03+00:00",
+                    "state": {
+                        "id": "state-started",
+                        "name": "In Progress",
+                        "type": "started",
+                    },
+                },
+                _workspace_board(),
+            )
+        ),
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.conversation is not None
+    assert prepared.conversation.control_closed is False
+
+
+async def test_stale_nonterminal_control_snapshot_is_not_routed_after_terminal_retirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Stale nonterminal callback",
+                "state": {"id": "state-started", "name": "In Progress", "type": "started"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(
+        event,
+        conversation=replace(
+            event.conversation,
+            workspace="project",
+            control_state_revision="2026-07-27T00:00:00+00:00",
+        ),
+    )
+    conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+    controller = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects._controller_owns_event",
+        controller,
+    )
+
+    processed = await process_linear_webhook_event(event)
+
+    retired = await get_conversation(conversation.id)
+    assert retired is not None
+    assert retired.control_closed is True
+    assert retired.control_state_revision == "2026-07-27T00:00:01+00:00"
+    assert processed.conversation is None
+    assert processed.ignored_reason == "stale_linear_control_state"
+    controller.assert_not_awaited()
+
+
+async def test_current_nonterminal_comment_reopens_a_terminal_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {
+                    "id": "issue-1",
+                    "updatedAt": "2026-07-27T00:00:02+00:00",
+                    "state": {
+                        "id": "state-started",
+                        "name": "In Progress",
+                        "type": "started",
+                    },
+                },
+                _workspace_board(),
+            )
+        ),
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+    processed = await process_linear_webhook_event(prepared)
+    reopened = await get_conversation(conversation.id)
+
+    assert processed.conversation is not None
+    assert reopened is not None
+    assert reopened.control_closed is False
+    assert reopened.control_state_revision == "2026-07-27T00:00:02+00:00"
+
+
+async def test_controller_work_waits_for_terminal_fence_after_reopen_cas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Resume controller work",
+                "state": {"id": "state-started", "name": "In Progress", "type": "started"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(
+        event,
+        conversation=replace(
+            event.conversation,
+            workspace="project",
+            control_closed=False,
+            control_state_revision="2026-07-27T00:00:02+00:00",
+        ),
+    )
+    conversation = await resolve_conversation(event.conversation.subject, GroupFolder("project"))
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+    controller = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects._controller_owns_event",
+        controller,
+    )
+
+    async with conversation_runtime_lock(conversation.id):
+        task = asyncio.create_task(process_linear_webhook_event(event))
+        for _ in range(50):
+            reopened = await get_conversation(conversation.id)
+            if (
+                reopened is not None
+                and not reopened.control_closed
+                and reopened.control_state_revision == "2026-07-27T00:00:02+00:00"
+            ):
+                break
+            await asyncio.sleep(0)
+        else:
+            pytest.fail("nonterminal control state was not committed before controller work")
+        controller.assert_not_awaited()
+        assert not task.done()
+
+    processed = await task
+    reopened = await get_conversation(conversation.id)
+
+    assert processed.conversation is not None
+    assert reopened is not None
+    assert reopened.control_closed is False
+    controller.assert_awaited_once_with(event, "project")
+
+
 async def _seed_moved_active_issue(
     deps: _WebhookDeps,
+    *,
+    execution_status: WorkItemExecutionStatus = WorkItemExecutionStatus.IN_PROGRESS,
 ) -> tuple[Conversation, WorkspaceProfile]:
     destination = WorkspaceProfile(
         jid="discord:channel:destination",
@@ -497,11 +818,18 @@ async def _seed_moved_active_issue(
     )
     transition = await get_work_item_transition_by_request("pyn-1-lease")
     assert transition is not None
+    state_names = {
+        WorkItemExecutionStatus.IN_PROGRESS: ("state-progress", "In Progress"),
+        WorkItemExecutionStatus.AWAITING_REVIEW: ("state-review", "Awaiting Review"),
+        WorkItemExecutionStatus.FOLLOW_UPS: ("state-follow-ups", "Follow-ups"),
+        WorkItemExecutionStatus.BLOCKED: ("state-blocked", "Blocked"),
+    }
+    state_id, state_name = state_names[execution_status]
     await resolve_work_item_transition(
         transition=transition,
-        execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+        execution_status=execution_status,
         transition_status=WorkItemTransitionStatus.SUCCEEDED,
-        issue={**issue, "state": {"id": "state-progress", "name": "In Progress"}},
+        issue={**issue, "state": {"id": state_id, "name": state_name}},
     )
     return original, destination
 
@@ -568,6 +896,7 @@ async def test_moved_active_issue_update_uses_destination_board_and_original_run
     deps = _WebhookDeps()
     await deps.persist_parent()
     original, destination = await _seed_moved_active_issue(deps)
+    revision = datetime.now(UTC).isoformat()
     board = LinearWorkspaceBoard(
         team={"id": "team-1"},
         project={"id": "destination-project"},
@@ -578,7 +907,20 @@ async def test_moved_active_issue_update_uses_destination_board_and_original_run
             "in_progress": {"id": "state-progress"},
         },
     )
-    prepare_workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, board))
+    prepare_workspace_issue = AsyncMock(
+        return_value=(
+            {
+                "id": "issue-1",
+                "updatedAt": revision,
+                "state": {
+                    "id": "state-progress",
+                    "name": "In Progress",
+                    "type": "started",
+                },
+            },
+            board,
+        )
+    )
     process_workspace_issue = AsyncMock(return_value=({"state": {"id": "state-progress"}}, board))
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhooks.linear_client",
@@ -622,7 +964,7 @@ async def test_moved_active_issue_update_uses_destination_board_and_original_run
                     "id": "issue-1",
                     "identifier": "PYN-1",
                     "title": "Moved active work",
-                    "updatedAt": datetime.now(UTC).isoformat(),
+                    "updatedAt": revision,
                     "state": {
                         "id": "state-progress",
                         "name": "In Progress",
@@ -656,13 +998,26 @@ async def test_moved_active_issue_update_uses_destination_board_and_original_run
     assert preserved.session_id == SessionId("original-session")
 
 
-async def test_moved_active_issue_done_reconciles_against_destination_board(
+@pytest.mark.parametrize(
+    "execution_status",
+    [
+        WorkItemExecutionStatus.IN_PROGRESS,
+        WorkItemExecutionStatus.AWAITING_REVIEW,
+        WorkItemExecutionStatus.FOLLOW_UPS,
+        WorkItemExecutionStatus.BLOCKED,
+    ],
+)
+async def test_moved_unfinished_issue_done_reconciles_against_destination_board(
     monkeypatch: pytest.MonkeyPatch,
+    execution_status: WorkItemExecutionStatus,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
     deps = _WebhookDeps()
     await deps.persist_parent()
-    original, destination = await _seed_moved_active_issue(deps)
+    original, destination = await _seed_moved_active_issue(
+        deps,
+        execution_status=execution_status,
+    )
     destination_board = _workspace_board()
     prepare_workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, destination_board))
     complete_workspace_issue = AsyncMock(
@@ -786,6 +1141,50 @@ async def test_managed_done_lifecycle_completes_reviewed_execution(
     )
 
 
+async def test_managed_done_lifecycle_forwards_current_fence_to_controller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    complete = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
+        complete,
+    )
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("linear"),
+        route=ExternalRoute("project"),
+        delivery_id=ExternalDeliveryId(_DELIVERY_ID),
+    )
+    fence = ConversationLifecycleFence(
+        conversation_id=ConversationId("conversation-1"),
+        identity=identity,
+        claim_id=ConversationClaimId("claim-1"),
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+
+    await process_linear_webhook_lifecycle(
+        WebhookLifecycleDelivery(
+            identity=identity,
+            conversation_id=ConversationId("conversation-1"),
+            subject_id="issue-1",
+            workspace=GroupFolder("runtime"),
+            context={
+                "linear_state_id": "state-done",
+                "linear_managed_done_state_id": "state-done",
+                "linear_controller_workspace": "controller",
+            },
+            lifecycle_fence=fence,
+        )
+    )
+
+    complete.assert_awaited_once_with(
+        "runtime",
+        "issue-1",
+        _DELIVERY_ID,
+        lifecycle_fence=fence,
+        controller_workspace="controller",
+    )
+
+
 @pytest.mark.parametrize("terminal_state_id", ["state-duplicate", "state-custom-canceled"])
 async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_execution(
     monkeypatch: pytest.MonkeyPatch,
@@ -858,7 +1257,7 @@ async def test_human_approved_issue_waits_for_periodic_controller_admission(
     processed = await process_linear_webhook_event(event)
 
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
-    assert processed.conversation is None
+    assert processed.conversation is not None
 
 
 async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
@@ -918,7 +1317,7 @@ async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
     assert request.issue_id == "issue-1"
     assert request.initiated_by == (f"linear-webhook:{_DELIVERY_ID}:user:user-1")
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
-    assert processed.conversation is None
+    assert processed.conversation is not None
 
 
 @pytest.mark.parametrize(
@@ -979,7 +1378,7 @@ async def test_unproven_in_progress_update_is_suppressed_without_authorizing_wor
 
     acquire_started.assert_not_awaited()
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
-    assert processed.conversation is None
+    assert processed.conversation is not None
 
 
 @pytest.mark.parametrize(
@@ -1033,7 +1432,7 @@ async def test_planning_issue_updates_do_not_race_the_temporal_controller(
     processed = await process_linear_webhook_event(event)
 
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
-    assert processed.conversation is None
+    assert processed.conversation is not None
 
 
 def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:

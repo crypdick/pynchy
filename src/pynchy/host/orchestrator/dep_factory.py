@@ -21,6 +21,7 @@ from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartyp
 from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     CreatePeriodicAgentRequest,
 )
+from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
 )
@@ -56,28 +57,37 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_scheduled_agent_task_workflow,
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
+from pynchy.host.orchestrator.terminal_task_retirement import retire_conversation_tasks
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import (
+from pynchy.state.api import (
+    clear_session,
+    complete_conversation_delivery,
+    conversation_control_state_matches,
     create_host_job,
     create_task,
     delete_host_job,
     delete_task,
     get_all_host_jobs,
     get_all_tasks,
+    get_conversation,
+    get_conversation_control_binding,
     get_host_job_by_id,
     get_task_by_id,
     get_task_run_logs,
+    get_terminal_conversation_retirement,
     resume_task,
     update_host_job,
     update_task,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
+    GroupFolder,
     HostJob,
     NewMessage,
+    RuntimeId,
     ScheduledTask,
     SessionId,
     SessionPolicy,
@@ -247,6 +257,11 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
+        complete_conversation_delivery = staticmethod(complete_conversation_delivery)
+        conversation_control_state_matches = staticmethod(conversation_control_state_matches)
+        get_conversation = staticmethod(get_conversation)
+        get_conversation_control_binding = staticmethod(get_conversation_control_binding)
+        get_terminal_conversation_retirement = staticmethod(get_terminal_conversation_retirement)
         data_dir = settings.data_dir
         project_root = settings.project_root
 
@@ -304,6 +319,20 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
         async def bind_session(self, folder: str, session_id: SessionId) -> None:
             await app.bind_routed_session(folder, session_id)
+
+        async def retire_conversation_runtime(self, folder: GroupFolder) -> None:
+            """Stop local-only routed work without invoking Linear reset behavior."""
+            runtime_id = RuntimeId(folder)
+            app.queue.clear_pending_tasks(runtime_id)
+            app.queue.clear_pending_messages(runtime_id)
+            await app.queue.stop_active_process_for_control(runtime_id)
+            app.queue.clear_pending_messages(runtime_id)
+            await destroy_session(folder)
+            app.sessions.pop(folder, None)
+            app.session_cleared.add(folder)
+            await clear_session(folder)
+
+        retire_conversation_tasks = staticmethod(retire_conversation_tasks)
 
         async def ingest_message(self, jid: str, message: NewMessage) -> None:
             await app.on_inbound(jid, message)

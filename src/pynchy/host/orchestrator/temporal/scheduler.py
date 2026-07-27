@@ -37,7 +37,11 @@ from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100
     TurnOutcome,
 )
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.host.orchestrator.scheduled_binding import ensure_scheduled_task_binding
+from pynchy.host.orchestrator.scheduled_binding import (
+    ScheduledTaskTerminalError,
+    ensure_scheduled_task_binding,
+    ensure_scheduled_task_conversation_open,
+)
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     run_scheduled_agent,
@@ -120,7 +124,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     claim_deployment,
     clear_pending_deployment,
     clear_unclaimed_in_flight_turn_for_task,
@@ -268,6 +272,10 @@ async def run_scheduled_agent_task(task_id: str) -> str:
 
     try:
         completed = await _run_bound_scheduled_agent_task(task)
+    except ScheduledTaskTerminalError:
+        logger.info("Terminal conversation scheduled task skipped", task_id=task_id)
+        _record_activity_result(task_id, "skipped")
+        return "skipped"
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
@@ -289,6 +297,8 @@ async def _run_bound_scheduled_agent_task(
     temporal = parse_temporal_activity_info(activity.info())
 
     async def run_bound_task() -> TurnOutcome:
+        if task.conversation_id is not None:
+            await ensure_scheduled_task_conversation_open(task, cast("Any", deps))
         return await run_scheduled_agent(
             task,
             deps,
