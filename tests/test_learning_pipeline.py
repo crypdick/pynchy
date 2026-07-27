@@ -26,7 +26,6 @@ _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_co
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_LEARNING_START = "pynchy.host.learning.capture.start_completed_turn_learning_review"
 _P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"
-_P_LEARNING_SETTINGS = "pynchy.host.learning.packets.get_settings"
 _P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
 _P_TEMPORAL_LEARNING_START = (
     "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow"
@@ -169,7 +168,11 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
     )
     assert args[4].final_answer == "Remembered."
     assert args[4].tool_counts == {"Bash": 1}
-    assert mock_start.await_args.kwargs == {"enabled": True, "review_after_turn": True}
+    assert mock_start.await_args.kwargs == {
+        "enabled": True,
+        "review_after_turn": True,
+        "packet_max_chars": 12000,
+    }
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
 
 
@@ -194,7 +197,6 @@ async def test_enabled_learning_logs_capture_attempt(
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_SETTINGS) as learning_settings,
         patch(_P_LEARNING_PATH_SETTINGS) as learning_path_settings,
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock),
     ):
@@ -206,7 +208,6 @@ async def test_enabled_learning_logs_capture_attempt(
             ),
         )
         settings.return_value = enabled_settings
-        learning_settings.return_value = enabled_settings
         learning_path_settings.return_value = enabled_settings
         result = await process_group_messages(deps, "g@g.us")
 
@@ -255,7 +256,6 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
 
     with (
         patch(_P_SETTINGS, return_value=settings),
-        patch(_P_LEARNING_SETTINGS, return_value=settings),
         patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
@@ -310,7 +310,6 @@ async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
 
     with (
         patch(_P_SETTINGS, return_value=settings),
-        patch(_P_LEARNING_SETTINGS, return_value=settings),
         patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),

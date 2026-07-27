@@ -274,6 +274,7 @@ async def _finalize_cursor_and_retry(
         get_messages_since,
         enabled=request.s.learning.enabled,
         review_after_turn=request.s.learning.review_after_turn,
+        packet_max_chars=request.s.learning.packet_max_chars,
     )
 
     return TurnOutcome.COMPLETED
