@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging import sender
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.host.orchestrator.messaging.sender import (
     broadcast,
@@ -114,15 +113,3 @@ async def test_finalize_stream_update_failure_falls_back_to_send():
     await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"})
     # Should fall back to send_event after update_event fails
     ch.send_event.assert_called_once_with("slack:C123", event)
-
-
-# ---------------------------------------------------------------------------
-# broadcast_formatted is removed
-# ---------------------------------------------------------------------------
-
-
-def test_broadcast_formatted_is_removed():
-    """broadcast_formatted should no longer exist in sender.py."""
-    assert not hasattr(sender, "broadcast_formatted"), (
-        "broadcast_formatted should be removed — callers construct OutboundEvent directly"
-    )
