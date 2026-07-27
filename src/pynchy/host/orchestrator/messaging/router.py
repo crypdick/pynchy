@@ -155,7 +155,11 @@ async def broadcast_agent_input(
         "ipc_forward": "Forwarded",
     }
 
-    if source == "hidden_learning_review":
+    if source in {
+        "hidden_learning_review",
+        "hidden_plan_review",
+        "external:hidden_plan_review",
+    }:
         return
 
     # An inbound prompt is an explicit boundary even when the channel already

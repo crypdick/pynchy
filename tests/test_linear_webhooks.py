@@ -417,7 +417,7 @@ async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_executi
     complete.assert_not_awaited()
 
 
-async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
+async def test_human_approved_issue_waits_for_periodic_controller_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
@@ -447,7 +447,6 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
             "in_progress": {"id": "state-progress"},
         },
     )
-    acquire = AsyncMock(return_value=_LeaseResult(status=WorkItemExecutionStatus.IN_PROGRESS))
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
         lambda **_kwargs: _linear_client_context(),
@@ -456,17 +455,9 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
         "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
         AsyncMock(return_value=({"state": {"id": "state-approved"}}, board)),
     )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.acquire_work_item_lease",
-        acquire,
-    )
 
     processed = await process_linear_webhook_event(event)
 
-    request = acquire.await_args.args[1]
-    assert request.workspace == "project"
-    assert request.issue_id == "issue-1"
-    assert request.initiated_by == f"linear-webhook:{_DELIVERY_ID}"
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     assert processed.conversation is None
 
@@ -505,7 +496,6 @@ async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
     acquire_started = AsyncMock(
         return_value=_LeaseResult(status=WorkItemExecutionStatus.IN_PROGRESS)
     )
-    acquire_approved = AsyncMock()
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
         lambda **_kwargs: _linear_client_context(),
@@ -518,10 +508,6 @@ async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
         "pynchy.plugins.integrations.linear_webhook_effects.acquire_human_started_work_item_lease",
         acquire_started,
     )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.acquire_work_item_lease",
-        acquire_approved,
-    )
 
     processed = await process_linear_webhook_event(event)
 
@@ -529,7 +515,6 @@ async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
     assert request.workspace == "project"
     assert request.issue_id == "issue-1"
     assert request.initiated_by == (f"linear-webhook:{_DELIVERY_ID}:user:user-1")
-    acquire_approved.assert_not_awaited()
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     assert processed.conversation is None
 

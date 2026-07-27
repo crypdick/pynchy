@@ -100,7 +100,15 @@ def _get_broadcast_content(deps: MagicMock) -> str:
 
 
 @pytest.mark.asyncio
-async def test_hidden_learning_review_input_is_not_broadcast_or_traced():
+@pytest.mark.parametrize(
+    "source",
+    [
+        "hidden_learning_review",
+        "hidden_plan_review",
+        "external:hidden_plan_review",
+    ],
+)
+async def test_hidden_review_input_is_not_broadcast_or_traced(source: str):
     deps = _make_deps()
     messages = [{"role": "user", "content": "hidden reviewer prompt"}]
 
@@ -108,7 +116,7 @@ async def test_hidden_learning_review_input_is_not_broadcast_or_traced():
         deps,
         "learning-review:default",
         messages,
-        source="hidden_learning_review",
+        source=source,
     )
 
     deps.broadcast_to_channels.assert_not_awaited()

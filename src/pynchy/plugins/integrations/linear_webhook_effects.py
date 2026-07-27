@@ -20,7 +20,6 @@ from pynchy.plugins.integrations.linear_work_item_completion import (
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_human_started_work_item_lease,
-    acquire_work_item_lease,
     linear_client,
     state_id,
     workspace_issue,
@@ -132,41 +131,32 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
             # A context reset deliberately leaves this issue dormant. Only a
             # later Human Approved transition may acquire a fresh execution.
             return True
-        if current_state_id == in_progress_state_id:
-            actor = event.actor
-            if not _is_human_state_transition(event) or actor is None:
-                # In Progress is controller-owned even when its lease invariant
-                # is broken. Routing this update to an ordinary conversation
-                # would start competing work and could resume an unrelated
-                # interactive provider session.
-                logger.warning(
-                    "Unleased Linear In Progress update lacks human transition provenance",
-                    workspace=workspace,
-                    issue_id=event.subject_id,
-                    delivery_id=event.delivery_id,
-                )
-                return True
-            execution = await acquire_human_started_work_item_lease(
-                client,
-                WorkItemLeaseRequest(
-                    workspace=workspace,
-                    issue_id=event.subject_id,
-                    request_id=f"linear-webhook:{event.delivery_id}:lease",
-                    initiated_by=(f"linear-webhook:{event.delivery_id}:user:{actor.id}"),
-                ),
+        if current_state_id != in_progress_state_id:
+            # The periodic controller reviews any stored plan before it leases
+            # approved work. Webhook admission must not bypass that boundary.
+            return current_state_id == approved_state_id
+        actor = event.actor
+        if not _is_human_state_transition(event) or actor is None:
+            # In Progress is controller-owned even when its lease invariant
+            # is broken. Routing this update to an ordinary conversation
+            # would start competing work and could resume an unrelated
+            # interactive provider session.
+            logger.warning(
+                "Unleased Linear In Progress update lacks human transition provenance",
+                workspace=workspace,
+                issue_id=event.subject_id,
+                delivery_id=event.delivery_id,
             )
-        elif current_state_id == approved_state_id:
-            execution = await acquire_work_item_lease(
-                client,
-                WorkItemLeaseRequest(
-                    workspace=workspace,
-                    issue_id=event.subject_id,
-                    request_id=f"linear-webhook:{event.delivery_id}:lease",
-                    initiated_by=f"linear-webhook:{event.delivery_id}",
-                ),
-            )
-        else:
-            return False
+            return True
+        execution = await acquire_human_started_work_item_lease(
+            client,
+            WorkItemLeaseRequest(
+                workspace=workspace,
+                issue_id=event.subject_id,
+                request_id=f"linear-webhook:{event.delivery_id}:lease",
+                initiated_by=(f"linear-webhook:{event.delivery_id}:user:{actor.id}"),
+            ),
+        )
     if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         raise WebhookProcessingError("Linear execution lease did not become active")
     return True

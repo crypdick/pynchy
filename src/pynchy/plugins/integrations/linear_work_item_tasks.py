@@ -23,9 +23,18 @@ from pynchy.plugins.integrations.linear_legacy_work_items import (
     LegacyAdoptionRequest,
     adopt_legacy_in_progress_execution,
 )
+from pynchy.plugins.integrations.linear_plan_admission import (
+    LinearPlanReviewer,
+    review_approved_plan,
+)
+from pynchy.plugins.integrations.linear_plans import PLAN_START
 from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
+)
+from pynchy.plugins.integrations.linear_work_item_prompts import (
+    EXECUTION_CONTRACT,
+    FOLLOW_UPS_CONTRACT,
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
@@ -54,24 +63,6 @@ if TYPE_CHECKING:
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" aligned with this policy.
 _ORPHAN_RETRY_GRACE = timedelta(minutes=5)
 _ORPHAN_RUN_LIMIT = 3
-_EXECUTION_CONTRACT = (
-    "Objective: deliver the Human Approved Linear work item below.\n"
-    "Authority: the host verified approval and acquired the execution lease.\n"
-    "Success: leave the issue state, comments, and attachments accurately reflecting the "
-    "outcome. If the work produces pull requests, attach every PR to the issue with "
-    "linear_create_attachment before requesting review. Use your judgment to move the issue "
-    "through Awaiting Review, Follow-ups, and Done. Follow-ups are for final operational work "
-    "such as deployment verification, preserving useful logs before teardown, cleaning feature "
-    "resources, and updating or unblocking related issues."
-)
-_FOLLOW_UPS_CONTRACT = (
-    "Objective: finish the Follow-ups for the Linear work item below.\n"
-    "Authority: the underlying work was already Human Approved.\n"
-    "Success: use your judgment to finish the whole job. Verify delivery or deployment, "
-    "preserve useful logs before teardown, clean feature resources, and update or unblock "
-    "related issues when relevant. Record useful context and move the item to Done when it is "
-    "genuinely finished, or Blocked when it needs outside help."
-)
 _CONTROLLER_INITIATOR = "linear-work-item-controller"
 
 
@@ -83,6 +74,9 @@ class LinearDecisionClient(Protocol):
     async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
         """Return one issue by its durable provider ID."""
 
+    async def create_comment(self, issue_id: str, body: str) -> dict[str, Any]:
+        """Add one durable issue comment."""
+
 
 @dataclass(frozen=True)
 class DecisionIssue:
@@ -90,6 +84,7 @@ class DecisionIssue:
     identifier: str
     title: str
     url: str
+    description: str
     updated_at: str
     state_id: str
     project_id: str
@@ -111,6 +106,7 @@ class DecisionIssue:
             identifier=_text(payload, "identifier"),
             title=_text(payload, "title"),
             url=_text(payload, "url"),
+            description=str(payload.get("description") or ""),
             updated_at=_text(payload, "updatedAt"),
             state_id=_text(state, "id"),
             project_id=_text(project, "id"),
@@ -129,6 +125,7 @@ class DecisionAdmission:
     client: LinearDecisionClient
     observed_at: datetime
     public_source: bool
+    review_plan: LinearPlanReviewer | None = None
 
 
 def _text(payload: dict[str, Any], key: str) -> str:
@@ -175,7 +172,7 @@ async def _task_for_issue(
         context = fence_untrusted_content(context, source="linear-decision-inbox")
     is_follow_up = admission.status == FOLLOW_UPS_STATUS
     task_prefix = "linear-follow-ups" if is_follow_up else "linear-execute"
-    contract = _FOLLOW_UPS_CONTRACT if is_follow_up else _EXECUTION_CONTRACT
+    contract = FOLLOW_UPS_CONTRACT if is_follow_up else EXECUTION_CONTRACT
     input_kind = "follow-ups" if is_follow_up else "authorized"
     return ScheduledTask(
         id=admission.task_id or f"{task_prefix}-{issue.identifier.lower()}-{digest}",
@@ -388,6 +385,20 @@ async def _admit_human_approved_issue(
     context: DecisionAdmission,
 ) -> ScheduledTask | None:
     if await get_active_work_item_execution(issue.id) is not None:
+        return None
+    if PLAN_START in issue.description and not await review_approved_plan(
+        context.client,
+        context.review_plan,
+        workspace=workspace.folder,
+        board=board,
+        issue_id=issue.id,
+        identifier=issue.identifier,
+        title=issue.title,
+        url=issue.url,
+        description=issue.description,
+        updated_at=issue.updated_at,
+        public_source=context.public_source,
+    ):
         return None
     task = await _task_for_issue(
         issue,

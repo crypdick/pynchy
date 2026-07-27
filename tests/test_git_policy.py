@@ -11,7 +11,7 @@ import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
@@ -361,6 +361,58 @@ async def deps():
 class TestIpcPolicyRouting:
     """Tests that the IPC handler syncs worktrees into main."""
 
+    async def test_cop_receives_the_committed_worktree_patch(
+        self,
+        deps: MockDeps,
+        git_env: dict,
+        tmp_path: Path,
+    ) -> None:
+        repo_ctx = git_env["repo_ctx"]
+        worktree = ensure_worktree("agent-1", repo_ctx).path
+        (worktree / "feature.txt").write_text("review this committed change\n")
+        _git(worktree, "add", "feature.txt")
+        _git(worktree, "config", "user.email", "test@test.com")
+        _git(worktree, "config", "user.name", "Test")
+        _git(worktree, "commit", "-m", "add review fixture")
+        result_dir = tmp_path / "handler-data" / "ipc" / "agent-1" / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "handler-data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as cop,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-cop-patch",
+                    "publication": "pull-request",
+                },
+                "agent-1",
+                False,
+                deps,
+            )
+
+        summary = cop.await_args.args[1]
+        assert "Repository: owner/repo" in summary
+        assert "diff --git a/feature.txt b/feature.txt" in summary
+        assert "+review this committed change" in summary
+        assert cop.await_args.kwargs["required_human_reason"] is None
+        create_pr.assert_not_called()
+
     async def test_agent_publication_opens_pr_without_merging_or_deploying(
         self,
         deps: MockDeps,
@@ -378,6 +430,15 @@ class TestIpcPolicyRouting:
             patch(
                 "pynchy.host.git_ops.repo.resolve_repos_for_group",
                 return_value=[fake_repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=True,
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
@@ -424,6 +485,15 @@ class TestIpcPolicyRouting:
             patch(
                 "pynchy.host.git_ops.repo.resolve_repos_for_group",
                 return_value=[fake_repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=True,
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",

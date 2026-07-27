@@ -286,6 +286,9 @@ class MockSchedulerDeps:
     ) -> None:
         self.context_resets.append((task.id, group.jid, occurrence_id))
 
+    async def review_linear_plan(self, *_args, **_kwargs):
+        raise AssertionError("plan review is outside task scheduler tests")
+
     async def create_thread(
         self,
         parent_jid: str,

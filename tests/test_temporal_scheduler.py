@@ -108,6 +108,9 @@ class NullSchedulerDeps:
 
     async def save_state(self) -> None: ...
 
+    async def review_linear_plan(self, request):
+        raise AssertionError(f"Unexpected plan review for {request}")
+
     async def run_agent(self, *args, **kwargs) -> str:
         return "success"
 
@@ -2141,7 +2144,11 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_linear_work_items.run_linear_work_item_reconciliation()
 
         assert result == "completed:2"
-        reconcile.assert_awaited_once_with(deps.workspaces, boards)
+        reconcile.assert_awaited_once_with(
+            deps.workspaces,
+            boards,
+            review_plan=deps.review_linear_plan,
+        )
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["tracked_results"]["linear-work-item-reconciliation"]["result"] == (
             "completed:2"

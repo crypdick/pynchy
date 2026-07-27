@@ -135,6 +135,15 @@ class TestSyncWorktreeToMain:
                 return_value=[fake_repo_ctx],
             ),
             patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
                 return_value={"success": True, "message": "Opened pull request"},
             ),
@@ -172,6 +181,15 @@ class TestSyncWorktreeToMain:
             patch(
                 "pynchy.host.git_ops.repo.resolve_repos_for_group",
                 return_value=[fake_repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=True,
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",

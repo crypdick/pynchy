@@ -23,6 +23,7 @@ from conftest import init_test_database, make_settings
 
 from pynchy.config.models import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.git_ops.repo import RepoContext
 from pynchy.state import get_all_host_jobs, get_all_tasks
 from pynchy.types import WorkspaceProfile
 
@@ -135,6 +136,7 @@ class TestSyncWorktreeCopGate:
 
     async def test_blocked_by_cop_returns_prompt_failure(self, deps, tmp_path):
         """A blocked publication returns to the caller instead of timing out."""
+        repo_ctx = RepoContext("owner/repo", tmp_path, tmp_path / "worktrees")
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -144,6 +146,14 @@ class TestSyncWorktreeCopGate:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
             ),
         ):
             await dispatch(
@@ -166,6 +176,7 @@ class TestSyncWorktreeCopGate:
 
     async def test_cop_receives_request_id(self, deps, tmp_path):
         """sync_worktree_to_main passes request_id to cop_gate (request-reply)."""
+        repo_ctx = RepoContext("owner/repo", tmp_path, tmp_path / "worktrees")
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -175,6 +186,14 @@ class TestSyncWorktreeCopGate:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
             ),
         ):
             await dispatch(
@@ -189,6 +208,37 @@ class TestSyncWorktreeCopGate:
             )
 
         assert mock_cop.call_args.kwargs.get("request_id") == "req-42"
+
+    async def test_missing_patch_context_forces_human_approval(self, deps, tmp_path):
+        repo_ctx = RepoContext("owner/repo", tmp_path, tmp_path / "missing-worktrees")
+        with (
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as cop,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-missing-patch",
+                    "publication": "pull-request",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        reason = cop.await_args.kwargs["required_human_reason"]
+        assert reason == "Committed patch unavailable for owner/repo: worktree is missing"
 
     @pytest.mark.parametrize("publication", [None, "merge-to-main", "deploy"])
     async def test_non_pr_publication_cannot_reach_cop_or_host_mutation(
@@ -232,6 +282,7 @@ class TestSyncWorktreeCopGate:
 
     async def test_caller_asserted_approval_does_not_skip_gate(self, deps, tmp_path):
         """An untrusted caller boolean cannot bypass Cop inspection."""
+        repo_ctx = RepoContext("owner/repo", tmp_path, tmp_path / "worktrees")
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -243,8 +294,12 @@ class TestSyncWorktreeCopGate:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=None,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\n+safe change", None),
             ),
             patch("pynchy.host.container_manager.ipc.handlers_lifecycle.write_ipc_response"),
         ):
