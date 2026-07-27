@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from pynchy.config import get_settings
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.types import ScheduledTask  # noqa: TC001, RUF100
 from pynchy.utils import ShellResult, run_shell_command
@@ -27,17 +25,6 @@ class DeterministicJobRun:
 
     result: str
     error: str | None
-
-
-def resolve_job_cwd(cwd: str | None) -> str:
-    """Resolve an optional job cwd against the Pynchy project root."""
-    project_root = get_settings().project_root
-    if not cwd:
-        return str(project_root)
-    path = Path(cwd)
-    if path.is_absolute():
-        return str(path)
-    return str((project_root / path).resolve())
 
 
 def _bounded_pre_run_stream(value: str) -> str:
@@ -69,18 +56,21 @@ async def prepare_config_job(task: ScheduledTask) -> tuple[ScheduledTask | None,
     """Run an agent config job's host gate before creating its thread."""
     if task.config_job_name is None:
         return task, None
-    job = get_settings().jobs.get(task.config_job_name)
-    if job is None or job.pre_run_command is None:
+    if task.config_job_pre_run_command is None:
         return task, None
+    if task.config_job_pre_run_cwd is None:
+        raise RuntimeError("Config job pre-run execution is incomplete")
     result = await run_shell_command(
-        job.pre_run_command,
-        cwd=resolve_job_cwd(job.pre_run_cwd),
-        timeout_seconds=job.pre_run_timeout_seconds or 900,
+        task.config_job_pre_run_command,
+        cwd=task.config_job_pre_run_cwd,
+        timeout_seconds=task.config_job_pre_run_timeout_seconds or 900,
         env={"PYNCHY_SCHEDULED_JOB": "1"},
     )
     if result.returncode == 0 and parse_wake_agent_gate(result.stdout) is False:
         return None, "Skipped: wakeAgent=false"
-    return replace(task, prompt=_pre_run_prompt(task, result, job.pre_run_command)), None
+    return replace(
+        task, prompt=_pre_run_prompt(task, result, task.config_job_pre_run_command)
+    ), None
 
 
 def _shell_result_error(result: ShellResult, job_name: str) -> str | None:
@@ -111,19 +101,20 @@ async def run_deterministic_config_job(
     """Run one workspace-owned host command without invoking an agent."""
     if task.config_job_name is None:
         return None
-    job = get_settings().jobs.get(task.config_job_name)
-    if job is None or not job.is_deterministic or job.command is None:
+    if not task.config_job_is_deterministic:
         return None
+    if task.config_job_command is None or task.config_job_cwd is None:
+        raise RuntimeError("Deterministic config job execution is incomplete")
     result = await run_shell_command(
-        job.command,
-        cwd=resolve_job_cwd(job.cwd),
-        timeout_seconds=job.timeout_seconds or 900,
+        task.config_job_command,
+        cwd=task.config_job_cwd,
+        timeout_seconds=task.config_job_timeout_seconds or 900,
         env={"PYNCHY_SCHEDULED_JOB": "1"},
     )
     if result.returncode == 0 and parse_wake_agent_gate(result.stdout) is False:
         return DeterministicJobRun(result="Skipped: wakeAgent=false", error=None)
 
-    display_name = job.display_name or task.config_job_name
+    display_name = task.config_job_display_name or task.config_job_name
     output = _deterministic_job_output(display_name, result)
     if output:
         if task.bound_chat_jid is None:

@@ -553,14 +553,6 @@ imports = ["pynchy.host.container_manager.ipc.write", "pynchy.host.container_man
 reason = "pynchy.host.orchestrator.concurrency still has a runtime-import dependency on container_adapter; Use a use-case-owned execution or container capability port and wire this adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.config_job_execution"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.config_job_execution still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.config_jobs"
 target_component = "config"
 kind = "runtime-import"
@@ -1223,14 +1215,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.host.orchestrator.temporal.git_sync still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.host_jobs"
-target_component = "application"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.orchestrator.config_job_execution"]
-reason = "pynchy.host.orchestrator.temporal.host_jobs still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.host_jobs"

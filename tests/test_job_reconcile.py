@@ -80,6 +80,43 @@ class TestJobReconcile:
         assert task.session_policy is SessionPolicy.RESET_BEFORE_RUN
         assert task.repo_access is None
         assert task.config_job_name == "daily-triage"
+        assert task.config_job_is_deterministic is False
+        assert task.config_job_command is None
+
+    async def test_deterministic_job_persists_its_execution_values(self, db, monkeypatch, tmp_path):
+        settings = self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "watchdog": JobConfig(
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    agent=False,
+                    command="scripts/watchdog.py",
+                    cwd="runtime",
+                    timeout_seconds=42,
+                    display_name="Watchdog",
+                )
+            },
+        )
+        registered = {
+            "slack:CADMIN": WorkspaceProfile(
+                jid="slack:CADMIN",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        task = (await get_all_tasks())[0]
+        assert task.config_job_is_deterministic is True
+        assert task.config_job_command == "scripts/watchdog.py"
+        assert task.config_job_cwd == str((settings.project_root / "runtime").resolve())
+        assert task.config_job_timeout_seconds == 42
+        assert task.config_job_display_name == "Watchdog"
 
     async def test_workspace_job_records_only_its_config_provenance(
         self, db, monkeypatch, tmp_path
