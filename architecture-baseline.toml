@@ -585,14 +585,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.host.orchestrator.adapters still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.agent_core_config"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.host.orchestrator.agent_core_config still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.agent_runner"
 target_component = "config"
 kind = "runtime-import"
