@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.conversation.events import new_turn_id
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.messaging.formatter import (
@@ -372,7 +371,6 @@ async def _handle_final_result(request: _FinalResultRequest) -> tuple[bool, bool
     if not text:
         return False, False
 
-    s = get_settings()
     is_host, content = parse_host_tag(text)
     if is_host:
         sender = "host"
@@ -382,7 +380,7 @@ async def _handle_final_result(request: _FinalResultRequest) -> tuple[bool, bool
         logger.info("Host message", group=request.group.name, text=content[:200])
     else:
         sender = "bot"
-        sender_name = s.agent.name
+        sender_name = request.deps.agent_name
         db_content = text
         event = _make_event("result", text)
         logger.info("Agent output", group=request.group.name, text=raw[:200])

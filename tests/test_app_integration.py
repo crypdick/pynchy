@@ -121,7 +121,6 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.credentials",
             "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch docker_rm_force which spawns a real subprocess to remove
