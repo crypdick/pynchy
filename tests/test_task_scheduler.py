@@ -1588,10 +1588,6 @@ class TestRunScheduledAgent:
         with (
             patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
             patch(
-                "pynchy.host.orchestrator.config_job_execution.get_settings",
-                return_value=settings,
-            ),
-            patch(
                 "pynchy.host.orchestrator.workspace_placement.get_settings",
                 return_value=settings,
             ),
@@ -1663,6 +1659,9 @@ class TestRunScheduledAgent:
             schedule_value="0 23 * * *",
             session_policy=SessionPolicy.RESET_BEFORE_RUN,
             config_job_name="watchdog",
+            config_job_is_deterministic=True,
+            config_job_command="scripts/watchdog.py",
+            config_job_cwd=str(tmp_path),
             derived_thread_name="cron | watchdog",
             bound_chat_jid="discord:channel:watchdog-runtime",
             bound_group_folder="cron-runtime",
@@ -1670,10 +1669,6 @@ class TestRunScheduledAgent:
 
         with (
             patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.config_job_execution.get_settings",
-                return_value=settings,
-            ),
             patch(
                 "pynchy.host.orchestrator.workspace_placement.get_settings",
                 return_value=settings,
@@ -1705,6 +1700,8 @@ class TestRunScheduledAgent:
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
         sample_task.config_job_name = "gated-job"
+        sample_task.config_job_pre_run_command = "scripts/gate.py"
+        sample_task.config_job_pre_run_cwd = str(tmp_path)
         sample_task.derived_thread_name = "test-group | gated-job"
         mock_deps.groups["test-jid"] = sample_group
         settings = make_settings(
@@ -1723,10 +1720,6 @@ class TestRunScheduledAgent:
 
         with (
             patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.config_job_execution.get_settings",
-                return_value=settings,
-            ),
             patch(
                 "pynchy.host.orchestrator.config_job_execution.run_shell_command",
                 new_callable=AsyncMock,

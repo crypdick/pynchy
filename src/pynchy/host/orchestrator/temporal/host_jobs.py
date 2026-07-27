@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from temporalio import activity
 
 from pynchy.config import get_settings
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
-)
-from pynchy.host.orchestrator.config_job_execution import (
-    resolve_job_cwd as resolve_cron_job_cwd,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
@@ -24,6 +23,14 @@ from pynchy.types import (
     HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
 )
 from pynchy.utils import ShellResult, log_shell_result, run_shell_command
+
+
+def _resolve_job_cwd(cwd: str | None) -> str:
+    project_root = get_settings().project_root
+    if not cwd:
+        return str(project_root)
+    path = Path(cwd)
+    return str(path if path.is_absolute() else (project_root / path).resolve())
 
 
 @activity.defn(name="run_database_host_job")
@@ -75,7 +82,7 @@ async def _run_config_host_cron_job(job_name: str, job: JobConfig) -> None:
     """Run a config-backed host cron job and surface shell failures to Temporal."""
     if job.command is None or job.schedule is None:
         raise RuntimeError(f"validated host job {job_name!r} is incomplete")
-    command_cwd = resolve_cron_job_cwd(job.cwd)
+    command_cwd = _resolve_job_cwd(job.cwd)
     logger.info(
         "Running config host cron job",
         job=job_name,
@@ -93,7 +100,7 @@ async def _run_config_host_cron_job(job_name: str, job: JobConfig) -> None:
 
 
 async def _run_database_host_job(job: HostJob) -> None:
-    command_cwd = resolve_cron_job_cwd(job.cwd)
+    command_cwd = _resolve_job_cwd(job.cwd)
     logger.info(
         "Running database host job",
         job_id=job.id,

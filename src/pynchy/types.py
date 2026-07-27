@@ -126,10 +126,7 @@ class ContainerConfig:
         mounts = raw.get("additional_mounts", [])
         if not isinstance(mounts, list):
             raise TypeError(_CONTAINER_MOUNTS_ERROR.format(type_name=type(mounts).__name__))
-        return cls(
-            additional_mounts=[AdditionalMount(**m) for m in mounts],
-            timeout=timeout,
-        )
+        return cls(additional_mounts=[AdditionalMount(**m) for m in mounts], timeout=timeout)
 
 
 # Tri-state: False (safe), True (risky/gated), "forbidden" (blocked)
@@ -443,6 +440,14 @@ class ScheduledTask:
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
     input_source: str = "scheduled_task"
     config_job_name: str | None = None
+    config_job_is_deterministic: bool | None = False
+    config_job_command: str | None = None
+    config_job_cwd: str | None = None
+    config_job_timeout_seconds: int | None = None
+    config_job_display_name: str | None = None
+    config_job_pre_run_command: str | None = None
+    config_job_pre_run_cwd: str | None = None
+    config_job_pre_run_timeout_seconds: int | None = None
     derived_thread_name: str | None = None
     bound_chat_jid: str | None = None
     bound_group_folder: str | None = None

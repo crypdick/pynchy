@@ -7,6 +7,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from pynchy.config.jobs import (
@@ -76,6 +77,21 @@ class _AgentJobTaskDetails:
     schedule_value: str
     session_policy: SessionPolicy
     derived_thread_name: str
+    is_deterministic: bool
+    command: str | None
+    command_cwd: str | None
+    command_timeout_seconds: int | None
+    display_name: str | None
+    pre_run_command: str | None
+    pre_run_cwd: str | None
+    pre_run_timeout_seconds: int | None
+
+
+def _resolve_job_cwd(project_root: Path, cwd: str | None) -> str:
+    if not cwd:
+        return str(project_root)
+    path = Path(cwd)
+    return str(path if path.is_absolute() else (project_root / path).resolve())
 
 
 async def _pause_disabled_job(task_id: str) -> None:
@@ -141,6 +157,14 @@ async def _create_agent_job_task(
             status="active",
             created_at=datetime.now(UTC).isoformat(),
             config_job_name=job_name,
+            config_job_is_deterministic=details.is_deterministic,
+            config_job_command=details.command,
+            config_job_cwd=details.command_cwd,
+            config_job_timeout_seconds=details.command_timeout_seconds,
+            config_job_display_name=details.display_name,
+            config_job_pre_run_command=details.pre_run_command,
+            config_job_pre_run_cwd=details.pre_run_cwd,
+            config_job_pre_run_timeout_seconds=details.pre_run_timeout_seconds,
             derived_thread_name=details.derived_thread_name,
         )
     )
@@ -168,6 +192,21 @@ def _agent_job_updates(
         updates["repo_access"] = None
     if existing.config_job_name != job_name:
         updates["config_job_name"] = job_name
+    execution_updates = {
+        field: value
+        for field, value in (
+            ("config_job_is_deterministic", details.is_deterministic),
+            ("config_job_command", details.command),
+            ("config_job_cwd", details.command_cwd),
+            ("config_job_timeout_seconds", details.command_timeout_seconds),
+            ("config_job_display_name", details.display_name),
+            ("config_job_pre_run_command", details.pre_run_command),
+            ("config_job_pre_run_cwd", details.pre_run_cwd),
+            ("config_job_pre_run_timeout_seconds", details.pre_run_timeout_seconds),
+        )
+        if getattr(existing, field) != value
+    }
+    updates.update(execution_updates)
     if existing.derived_thread_name != details.derived_thread_name:
         updates["derived_thread_name"] = details.derived_thread_name
     return updates
@@ -217,6 +256,20 @@ async def reconcile_agent_jobs(
                 SessionPolicy.RESET_BEFORE_RUN if job.reset_before_run else SessionPolicy.CONTINUE
             ),
             derived_thread_name=(f"{context.root_folder} | {job.display_name or job_name}"),
+            is_deterministic=job.is_deterministic,
+            command=job.command if job.is_deterministic else None,
+            command_cwd=(
+                _resolve_job_cwd(settings.project_root, job.cwd) if job.is_deterministic else None
+            ),
+            command_timeout_seconds=job.timeout_seconds if job.is_deterministic else None,
+            display_name=job.display_name,
+            pre_run_command=job.pre_run_command,
+            pre_run_cwd=(
+                _resolve_job_cwd(settings.project_root, job.pre_run_cwd)
+                if job.pre_run_command is not None
+                else None
+            ),
+            pre_run_timeout_seconds=job.pre_run_timeout_seconds,
         )
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
