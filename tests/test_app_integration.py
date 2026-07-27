@@ -119,7 +119,6 @@ def _patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.container_manager.mounts",
             "pynchy.host.container_manager.session_prep",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
@@ -356,6 +355,7 @@ async def app(tmp_path: Path):
         groups_dir=tmp_path / "groups",
         data_dir=tmp_path / "data",
         agent_image=a.agent_execution_runtime.agent_image,
+        agent_memory_mb=a.agent_execution_runtime.agent_memory_mb,
         container_timeout=a.agent_execution_runtime.container_timeout,
         default_core=a.agent_execution_runtime.default_core,
         idle_timeout=a.agent_execution_runtime.idle_timeout,

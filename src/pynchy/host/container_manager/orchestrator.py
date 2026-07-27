@@ -203,6 +203,9 @@ async def _spawn_container(
     mounts = build_volume_mounts(
         group,
         is_admin=input_data.is_admin,
+        groups_dir=runtime.groups_dir,
+        data_dir=runtime.data_dir,
+        project_root=runtime.project_root,
         plugin_manager=plugin_manager,
         repo_mounts=repo_mounts,
         agent_hooks=agent_hooks,
@@ -235,7 +238,12 @@ async def _spawn_container(
     mcp_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build args ---
-    container_args = build_container_args(mounts, container_name)
+    container_args = build_container_args(
+        mounts,
+        container_name,
+        memory_mb=runtime.agent_memory_mb,
+        image=runtime.agent_image,
+    )
 
     # --- Write initial input as file (container reads on startup) ---
     ipc_input_dir = runtime.data_dir / "ipc" / group.folder / "input"

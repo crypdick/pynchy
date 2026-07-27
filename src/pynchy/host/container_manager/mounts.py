@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
     from pynchy.plugins.contracts import AgentHookSpec
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import write_env_file
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
@@ -24,6 +23,9 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     group: WorkspaceProfile,
     *,
     is_admin: bool,
+    groups_dir: Path,
+    data_dir: Path,
+    project_root: Path,
     plugin_manager: pluggy.PluginManager | None = None,
     repo_ctx: RepoContext | None = None,
     worktree_path: Path | None = None,
@@ -44,10 +46,9 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     Returns:
         List of volume mounts for the container
     """
-    s = get_settings()
     mounts: list[VolumeMount] = []
 
-    group_dir = s.groups_dir / group.folder
+    group_dir = groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
     effective_repo_mounts = _effective_repo_mounts(repo_ctx, worktree_path, repo_mounts)
 
@@ -65,10 +66,10 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     mounts.append(VolumeMount(str(agent_homes.codex_home), "/home/agent/.codex", readonly=False))
     mounts.extend(agent_hook_mounts(agent_hooks))
 
-    _add_ipc_mount(mounts, s.data_dir, group.folder)
+    _add_ipc_mount(mounts, data_dir, group.folder)
 
     # Guard scripts (read-only: hook script + settings overlay)
-    scripts_dir = s.project_root / "src" / "pynchy" / "agent" / "scripts"
+    scripts_dir = project_root / "src" / "pynchy" / "agent" / "scripts"
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
@@ -81,7 +82,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
     # Agent-runner source (read-only, Python source for container)
-    agent_runner_src = s.project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
+    agent_runner_src = project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
     _add_raw_repo_mount(
@@ -183,7 +184,13 @@ def _add_validated_additional_mounts(
     )
 
 
-def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
+def build_container_args(
+    mounts: list[VolumeMount],
+    container_name: str,
+    *,
+    memory_mb: int,
+    image: str,
+) -> list[str]:
     """Build CLI args for `container run`."""
     from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
         get_gateway,
@@ -209,7 +216,6 @@ def build_container_args(mounts: list[VolumeMount], container_name: str) -> list
         f"{AGENT_CONTAINER_LABEL}={AGENT_CONTAINER_LABEL_VALUE}",
     ]
 
-    memory_mb = get_settings().container.memory_mb
     args.extend(["--memory", f"{memory_mb}m"])
 
     # When the gateway is active and we're using Docker, add a host mapping
@@ -234,5 +240,5 @@ def build_container_args(mounts: list[VolumeMount], container_name: str) -> list
                 )
         else:
             args.extend(["-v", f"{m.host_path}:{m.container_path}"])
-    args.append(get_settings().container.image)
+    args.append(image)
     return args
