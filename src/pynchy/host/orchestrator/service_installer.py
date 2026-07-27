@@ -146,32 +146,19 @@ def _write_launchd_plist(
     *,
     dest: Path,
     rendered: str,
-    already_loaded: bool,
 ) -> None:
-    if already_loaded:
-        # Unload before overwriting so launchd picks up the updated version.
-        subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
-            [_LAUNCHCTL, "bootout", _launchd_domain(), str(dest)],
-            capture_output=True,
-            check=False,
-        )
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(rendered, encoding="utf-8")
     _remove_launchd_extended_attrs(dest)
     logger.info("Installed launchd plist", dest=str(dest))
 
 
-def _should_load_launchd_service(*, already_loaded: bool) -> bool:
-    return already_loaded or is_launchd_managed()
-
-
 def install_service(project_root: Path) -> None:
     """Install the platform service file so the process auto-restarts on exit.
 
-    On macOS: copies plist to ~/Library/LaunchAgents/ and loads it into
-    launchd if we're already running under launchd (safe reload). When
-    running manually, only copies the file to avoid spawning a competing
-    second instance — the user bootstraps the LaunchAgent once to activate.
+    On macOS: copies plist to ~/Library/LaunchAgents/. A running LaunchAgent
+    keeps its loaded definition until an external lifecycle action reloads it.
+    When running manually, the user bootstraps the LaunchAgent once to activate.
 
     On Linux: installs systemd user service with auto-restart.
     """
@@ -200,14 +187,19 @@ def _install_launchd_service(project_root: Path) -> None:
     if not file_changed and already_loaded:
         return  # already up to date and loaded
     if file_changed:
-        _write_launchd_plist(dest=dest, rendered=rendered, already_loaded=already_loaded)
-    # Only load if we're already running under launchd (safe to reload).
-    # When running manually, loading would spawn a competing instance
-    # that fights over channel websockets and port binding.
-    if _should_load_launchd_service(already_loaded=already_loaded):
+        _write_launchd_plist(dest=dest, rendered=rendered)
+    if already_loaded:
+        # A LaunchAgent cannot boot itself out and then finish bootstrapping its
+        # replacement. Leave the current job registered and let the external
+        # deployment lifecycle activate the rendered plist.
+        logger.info("launchd plist activation deferred", label=label)
+        return
+    # When running manually, loading would spawn a competing instance that
+    # fights over channel websockets and port binding.
+    if is_launchd_managed():
         if _bootstrap_launchd_service(label, dest):
             logger.info("Loaded launchd service", label=label)
-    elif not already_loaded:
+    else:
         logger.info(
             "Launchd plist installed. To enable auto-restart, stop this "
             "process and run: launchctl bootstrap gui/$(id -u) "

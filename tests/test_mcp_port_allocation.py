@@ -19,6 +19,7 @@ from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_script_running,
     ensure_stdio_running,
     expand_arg_placeholders,
+    warm_image_cache,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager
 from pynchy.host.container_manager.mcp.resolution import (
@@ -161,6 +162,19 @@ class TestDockerLifecycleHelpers:
             port=port,
             tool_environment=tool_environment or {},
         )
+
+    @pytest.mark.asyncio
+    async def test_warm_image_cache_uses_instance_project_root(self, tmp_path, monkeypatch):
+        instance = self._make_instance(project_root=tmp_path)
+        ensure_image_mock = AsyncMock()
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._ensure_mcp_image",
+            ensure_image_mock,
+        )
+
+        await warm_image_cache({"browser": instance})
+
+        ensure_image_mock.assert_awaited_once_with(instance.server_config, tmp_path)
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_builds_expanded_docker_run_and_localhost_health_check(

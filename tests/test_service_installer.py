@@ -3,7 +3,7 @@
 Tests critical business logic:
 - is_launchd_managed() detection
 - is_launchd_loaded() subprocess check
-- install_service() file diffing, unload/copy/load logic
+- install_service() file diffing and safe launchd activation logic
 - install_service() unit file generation and idempotency
 - install_service() platform dispatch
 """
@@ -185,8 +185,8 @@ class TestInstallLaunchdService:
         # No subprocess calls because nothing changed
         mock_run.assert_not_called()
 
-    def test_unloads_before_overwriting_when_already_loaded(self, tmp_path: Path):
-        """Should unload, copy, and reload when file changed and was loaded."""
+    def test_changed_plist_cannot_unregister_its_running_launchd_job(self, tmp_path: Path):
+        """A loaded service must leave activation to an external process."""
         src_dir = tmp_path / "launchd"
         src_dir.mkdir()
         (src_dir / "com.pynchy.plist").write_text("<plist>new</plist>")
@@ -207,13 +207,16 @@ class TestInstallLaunchdService:
         ):
             install_service(tmp_path)
 
-        # Should have booted out the old definition, then bootstrapped the new one.
-        calls = mock_run.call_args_list
-        cmds = [c.args[0] for c in calls]
-        bootout_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootout"]]
-        bootstrap_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootstrap"]]
-        assert len(bootout_cmds) == 1
-        assert len(bootstrap_cmds) == 1
+        service_commands = [
+            call.args[0]
+            for call in mock_run.call_args_list
+            if call.args[0][:2]
+            in (
+                ["/bin/launchctl", "bootout"],
+                ["/bin/launchctl", "bootstrap"],
+            )
+        ]
+        assert service_commands == []
 
         # File should be updated
         assert (dest_dir / "com.pynchy.plist").read_text() == "<plist>new</plist>"
