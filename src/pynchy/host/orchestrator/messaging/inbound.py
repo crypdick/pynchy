@@ -417,7 +417,7 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
             else None
         )
         if not linear_enabled:
-            todos.add_todo(request.group.folder, item)
+            todos.add_todo(get_settings().data_dir, request.group.folder, item)
         elif issue is None:
             await request.deps.broadcast_to_channels(
                 request.group_jid,
