@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-from conftest import make_settings
-
 from pynchy.host.learning.mirror import prepare_vault_mount_root, sync_vault_mount_mirror
 from pynchy.host.learning.paths import LearningPaths
 
@@ -24,6 +22,12 @@ def _paths(vault_root: Path) -> LearningPaths:
         global_skills_root=vault_root / "systems/pynchy/skills",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
+        vault_mirror_root=vault_root.parent / "data" / "learning" / "vault-mirrors" / "research",
+        host_vault_mirror_root=vault_root.parent
+        / "data"
+        / "learning"
+        / "host-vault-mirrors"
+        / "research",
         mounted_profile_root="/workspace/vault/systems/pynchy/profiles/research",
         mounted_memory_root="/workspace/vault/systems/pynchy/profiles/research/memory",
     )
@@ -38,13 +42,7 @@ def test_apple_vault_mirror_round_trips_global_learned_skills(tmp_path: Path) ->
     profile_note.write_text("profile context\n")
     existing_skill.write_text("---\nname: remember-routing\ntier: learned\n---\n")
     paths = _paths(vault)
-    settings = make_settings(
-        project_root=tmp_path,
-        data_dir=tmp_path / "data",
-    )
-
     with (
-        patch("pynchy.host.learning.mirror.get_settings", return_value=settings),
         patch("pynchy.host.learning.mirror.should_use_vault_mount_mirror", return_value=True),
     ):
         mirror = prepare_vault_mount_root(paths)
