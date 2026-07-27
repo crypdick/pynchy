@@ -297,8 +297,16 @@ async def _remove_orphaned_workspaces(
         return
     config_folders = {*specs, *get_settings().workspace_names()}
     retired_legacy_folders = set(get_settings().workspace_migrations) - retained_legacy_folders
+    task_workspace_folders = {
+        task.group_folder for task in await get_all_tasks() if task.status in {"active", "paused"}
+    }
     for jid, profile in list(workspaces.items()):
         if profile.folder in retained_legacy_folders:
+            continue
+        if profile.folder in task_workspace_folders:
+            logger.info(
+                "Retained task-owned workspace registration", folder=profile.folder, jid=jid
+            )
             continue
         parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
         explicitly_retired = (
@@ -328,22 +336,22 @@ async def _retained_legacy_workspace_folders() -> set[str]:
 
     Discord cannot move a root channel's inbound messages into a child thread.
     The migration flags therefore serve as an explicit operator
-    confirmation, while this check independently refuses retirement while an
-    active scheduled task still targets the source workspace.
+    confirmation, while this check independently refuses retirement while a
+    non-terminal scheduled task still targets the source workspace.
     """
     migrations = get_settings().workspace_migrations
-    active_task_folders = {
-        task.group_folder for task in await get_all_tasks() if task.status == "active"
+    task_workspace_folders = {
+        task.group_folder for task in await get_all_tasks() if task.status in {"active", "paused"}
     }
     retained: set[str] = set()
     for legacy_folder, migration in migrations.items():
         if not migration.retire_legacy_workspace:
             retained.add(legacy_folder)
             continue
-        if legacy_folder in active_task_folders:
+        if legacy_folder in task_workspace_folders:
             retained.add(legacy_folder)
             logger.warning(
-                "Legacy workspace retirement blocked by active scheduled task",
+                "Legacy workspace retirement blocked by non-terminal scheduled task",
                 legacy_workspace=legacy_folder,
                 target_workspace=migration.target_workspace,
                 target_thread=migration.target_thread,
