@@ -30,6 +30,11 @@ factory only to remove an architecture-baseline entry. Prefer, in order:
 4. combine modules split at the wrong seam; or
 5. add the smallest port that represents a real boundary.
 
+Prefer ordinary function or constructor injection for resolved configuration
+and external collaborators. Inject the concrete dependency unless the caller
+needs a stable abstraction; injection alone does not require a `Protocol` or
+container.
+
 Use a composition root to select or own the lifecycle of an external
 implementation. Do not turn it into a proxy for ordinary calls between
 modules. This work does not call for network services, a generic
