@@ -52,6 +52,7 @@ class _FakeDeps:
             groups_dir=Path("test-project/groups"),
             data_dir=Path("test-project/data"),
             agent_image="pynchy-agent:latest",
+            agent_memory_mb=2048,
             container_timeout=300.0,
             default_core="openai",
             idle_timeout=60.0,

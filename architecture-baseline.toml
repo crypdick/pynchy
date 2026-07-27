@@ -250,14 +250,6 @@ reason = "pynchy.host.container_manager.mcp.resolution still has a runtime-impor
 
 [[violations]]
 importer = "pynchy.host.container_manager.mounts"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.mounts still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mounts"
 target_component = "git_adapter"
 kind = "runtime-import"
 count = 1

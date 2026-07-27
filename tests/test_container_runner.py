@@ -9,6 +9,7 @@ import logging
 import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
+from contextvars import ContextVar
 from pathlib import Path, PurePosixPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,7 +41,12 @@ from pynchy.host.container_manager.credentials import (
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
-from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.container_manager.mounts import (
+    build_container_args,
+)
+from pynchy.host.container_manager.mounts import (
+    build_volume_mounts as _build_volume_mounts,
+)
 from pynchy.host.container_manager.orchestrator import (
     resolve_agent_core,
     write_initial_input,
@@ -175,7 +181,6 @@ class _AgentRunnerDeps:
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
-    "pynchy.host.container_manager.mounts",
     "pynchy.host.container_manager.session_prep",
     "pynchy.host.learning.paths",
     "pynchy.host.learning.skills",
@@ -184,6 +189,21 @@ _SETTINGS_MODULES = [
     "pynchy.host.orchestrator.host_execution",
 ]
 
+_test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=None)
+
+
+def build_volume_mounts(group, **kwargs):
+    settings = _test_settings.get()
+    if settings is None:
+        raise RuntimeError("build_volume_mounts requires _patch_settings")
+    return _build_volume_mounts(
+        group,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        project_root=settings.project_root,
+        **kwargs,
+    )
+
 
 def _agent_runtime(settings: object) -> AgentExecutionRuntime:
     return AgentExecutionRuntime(
@@ -191,6 +211,7 @@ def _agent_runtime(settings: object) -> AgentExecutionRuntime:
         groups_dir=settings.groups_dir,
         data_dir=settings.data_dir,
         agent_image=settings.container.image,
+        agent_memory_mb=settings.container.memory_mb,
         container_timeout=settings.container_timeout,
         default_core=settings.agent.default_core,
         idle_timeout=settings.idle_timeout,
@@ -275,10 +296,14 @@ def _patch_settings(
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
-    with contextlib.ExitStack() as stack:
-        for mod in _SETTINGS_MODULES:
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        yield s
+    token = _test_settings.set(s)
+    try:
+        with contextlib.ExitStack() as stack:
+            for mod in _SETTINGS_MODULES:
+                stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+            yield s
+    finally:
+        _test_settings.reset(token)
 
 
 class FakeProcess(asyncio.subprocess.Process):
@@ -801,14 +826,18 @@ class TestOutputParsing:
 class TestContainerArgs:
     def test_readonly_uses_mount_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=True)]
-        args = build_container_args(mounts, "test-container")
+        args = build_container_args(
+            mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+        )
         assert "--mount" in args
         assert any("readonly" in a for a in args)
         assert "-v" not in args[args.index("--mount") :]  # no -v after --mount for this mount
 
     def test_readwrite_uses_v_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=False)]
-        args = build_container_args(mounts, "test-container")
+        args = build_container_args(
+            mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+        )
         assert "-v" in args
         assert "/host/path:/container/path" in args
 
@@ -821,7 +850,9 @@ class TestContainerArgs:
         runtime.name = "apple"
 
         with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
-            args = build_container_args(mounts, "test-container")
+            args = build_container_args(
+                mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+            )
 
         assert "-v" in args
         assert f"{host_file}:{ca_container_path}:ro" in args
@@ -832,7 +863,9 @@ class TestContainerArgs:
         runtime.name = "apple"
 
         with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
-            args = build_container_args([], "test-container")
+            args = build_container_args(
+                [], "test-container", memory_mb=2048, image="pynchy-agent:latest"
+            )
 
         memory_index = args.index("--memory")
         assert args[memory_index + 1] == "2048m"
@@ -844,9 +877,13 @@ class TestContainerArgs:
 
         with (
             patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
-            patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
         ):
-            args = build_container_args([], "test-container")
+            args = build_container_args(
+                [],
+                "test-container",
+                memory_mb=settings.container.memory_mb,
+                image=settings.container.image,
+            )
 
         memory_index = args.index("--memory")
         assert args[memory_index + 1] == "1536m"
@@ -856,7 +893,7 @@ class TestContainerArgs:
             ContainerConfig(memory_mb=2049)
 
     def test_includes_name_and_image(self):
-        args = build_container_args([], "my-container")
+        args = build_container_args([], "my-container", memory_mb=2048, image="pynchy-agent:latest")
         assert args[:3] == ["run", "--name", "my-container"]
         assert "--label" in args
         assert "com.pynchy.role=agent" in args

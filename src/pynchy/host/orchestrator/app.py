@@ -122,6 +122,7 @@ class PynchyApp(ThreadRouting):
             groups_dir=settings.groups_dir,
             data_dir=settings.data_dir,
             agent_image=settings.container.image,
+            agent_memory_mb=settings.container.memory_mb,
             container_timeout=settings.container_timeout,
             default_core=settings.agent.default_core,
             idle_timeout=settings.idle_timeout,
