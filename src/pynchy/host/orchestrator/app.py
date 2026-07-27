@@ -22,7 +22,7 @@ from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype re
 )
 from pynchy.host.orchestrator import agent_runner, session_handler, update_offer
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
-from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
@@ -95,9 +95,16 @@ class PynchyApp(ThreadRouting):
         # (the true "successfully processed" cursor) as its baseline.
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
-        self.queue: GroupQueue = GroupQueue()
+        settings = get_settings()
+        self.queue: GroupQueue = GroupQueue(
+            QueuePolicy(
+                max_concurrent=settings.container.max_concurrent,
+                max_retries=settings.queue.max_retries,
+                retry_base_seconds=settings.queue.base_retry_seconds,
+            )
+        )
         self.queue.set_process_messages_fn(
-            lambda chat_jid: message_handler.process_group_messages(self, chat_jid)
+            lambda jid: message_handler.process_group_messages(self, jid)
         )
         self.channels: list[Channel] = []
         self.event_bus: EventBus = EventBus()

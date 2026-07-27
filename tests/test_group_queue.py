@@ -14,7 +14,7 @@ from conftest import make_settings
 from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.security.middleware import PolicyDeniedError
-from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.types import RuntimeId
@@ -33,6 +33,19 @@ def _target(jid: str, folder: str | None = None) -> RuntimeTarget:
     return RuntimeTarget.from_binding(folder or jid, jid)
 
 
+def _queue_policy(
+    *,
+    max_concurrent: int = 2,
+    max_retries: int = 5,
+    base_retry_seconds: float = 5.0,
+) -> QueuePolicy:
+    return QueuePolicy(
+        max_concurrent=max_concurrent,
+        max_retries=max_retries,
+        retry_base_seconds=base_retry_seconds,
+    )
+
+
 @contextlib.contextmanager
 def _patch_settings(
     *,
@@ -47,17 +60,14 @@ def _patch_settings(
     if data_dir is not None:
         overrides["data_dir"] = data_dir
     s = make_settings(**overrides)
-    with (
-        patch("pynchy.host.orchestrator.concurrency.get_settings", return_value=s),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=s),
-    ):
+    with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=s):
         yield
 
 
 @pytest.fixture
 def queue():
     with _patch_settings(max_concurrent=2):
-        yield GroupQueue()
+        yield GroupQueue(_queue_policy())
 
 
 class TestGroupQueue:
@@ -610,7 +620,7 @@ class TestGroupQueueRetry:
 
     async def test_retries_with_backoff(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.1):
-            queue = GroupQueue()
+            queue = GroupQueue(_queue_policy(base_retry_seconds=0.1))
             call_count = 0
 
             def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
@@ -635,7 +645,7 @@ class TestGroupQueueRetry:
 
     async def test_paused_turn_is_terminal_without_retry(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue()
+            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
             process_messages = AsyncMock(return_value=TurnOutcome.PAUSED)
             queue.set_process_messages_fn(process_messages)
 
@@ -648,7 +658,7 @@ class TestGroupQueueRetry:
     async def test_policy_denial_settles_waiter_without_retry(self):
         """A deterministic denial completes its waiter instead of retrying forever."""
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue()
+            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
             process_messages = AsyncMock(side_effect=PolicyDeniedError("outbound operation denied"))
             queue.set_process_messages_fn(process_messages)
 
@@ -661,7 +671,7 @@ class TestGroupQueueRetry:
 
     async def test_stops_retrying_after_max_retries(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue()
+            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
             call_count = 0
 
             def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
@@ -884,7 +894,7 @@ class TestTaskExceptionHandling:
         assert snapshot["_meta"]["active_count"] == 0
         assert snapshot["group1@g.us"]["active"] is False
 
-    async def test_exception_in_process_messages_schedules_retry(self, queue: GroupQueue):
+    async def test_exception_in_process_messages_schedules_retry(self):
         """When process_messages raises, the queue schedules a retry."""
         call_count = 0
 
@@ -896,6 +906,7 @@ class TestTaskExceptionHandling:
             return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
+            queue = GroupQueue(_queue_policy(base_retry_seconds=0.05))
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check(_target("group1@g.us"))
 
@@ -1065,7 +1076,7 @@ class TestDrainGroupTaskOrdering:
     async def test_tasks_queued_at_concurrency_limit_drain_correctly(self):
         """Tasks queued when at concurrency limit drain when slots free up."""
         with _patch_settings(max_concurrent=1):
-            queue = GroupQueue()
+            queue = GroupQueue(_queue_policy(max_concurrent=1))
             execution: list[str] = []
             completions: list[asyncio.Event] = []
 

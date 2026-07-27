@@ -26,7 +26,7 @@ from pynchy.config import SchedulerConfig
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
-from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
@@ -234,7 +234,9 @@ class MockSchedulerDeps:
 
     def __init__(self):
         self.groups: dict[str, WorkspaceProfile] = {}
-        self.queue = GroupQueue()
+        self.queue = GroupQueue(
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+        )
         self.messages: list = []
         self.host_messages: list = []
         self.system_notices: list = []
