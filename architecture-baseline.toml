@@ -1593,14 +1593,6 @@ imports = ["pynchy.config", "pynchy.config.merge", "pynchy.config.models", "pync
 reason = "pynchy.host.orchestrator.workspace_threads still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.personal_messaging_health"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.source_health"]
-reason = "pynchy.host.personal_messaging_health still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.operational_canaries"
 target_component = "config"
 kind = "runtime-import"
