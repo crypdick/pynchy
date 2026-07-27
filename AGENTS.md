@@ -2,6 +2,10 @@
 
 Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](docs/installation/index.md) for installation. See [architecture](docs/architecture/index.md) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
 
+## Architectural Direction
+
+Pynchy's architectural ambition is a modular monolith with semantic domain contracts, use-case-owned ports, concrete adapters, and explicit composition roots—not a distributed-services or dependency-injection-framework rewrite. Before changing a cross-subsystem dependency, read the [service boundary roadmap](docs/architecture/service-boundaries-roadmap.md). Treat its target-dependency-direction Mermaid diagram as the canonical dependency model.
+
 ## Deployment Awareness
 
 You are usually NOT running on the production host. The live host is deployment-specific and should come from local memory, environment, or the operator, not from public repo defaults. Before making changes that affect the live service (config.toml, server-side files, service restarts), read the [pynchy-ops skill](.claude/skills/pynchy-ops/SKILL.md) for deployment procedures, auto-deploy behavior, and how to observe the running service.
@@ -44,6 +48,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | Guide | When to Read |
 |-------|-------------|
 | [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
+| [Service boundary roadmap](docs/architecture/service-boundaries-roadmap.md) | Cross-subsystem dependencies, architectural refactoring, or boundary policy; its Mermaid diagram defines the target dependency direction |
 | [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |
 | [Worktree isolation](docs/usage/worktrees.md) | How non-admin groups get isolated git worktrees |
@@ -56,15 +61,6 @@ Treat the user as a peer, not someone to serve: push back directly on inelegant 
 ## Python & Tool Usage
 
 Use `uv run python` (never bare `python`/`python3`) and `uvx` for CLI tools (`uvx ruff`, `uvx pytest`) — never `pip install` a tool globally. See the [pynchy-dev skill](.claude/skills/pynchy-dev/SKILL.md) for the full command set and development workflow.
-
-## Graphify Artifacts
-
-Run every Graphify workflow from the Git root. Pass `src/` as the scan target
-and write output beneath the root `graphify-out/`; never change into `src/`
-before running Graphify. Use `scripts/graphify_graph.py` for the deterministic
-tracked graph. The wrapper rejects visible nested `graphify-out/` paths. Commit
-only `graph.json` and the manually reviewed `GRAPH_REPORT.md`; keep query
-memories, reflections, wiki exports, and other generated output local.
 
 ## Prek Hooks
 

@@ -134,7 +134,8 @@ async def prepare_linear_webhook_event(
                 conversation=replace(
                     event.conversation,
                     subject=conversation.subject,
-                    workspace=workspace,
+                    workspace=str(conversation.workspace),
+                    controller_workspace=workspace,
                     public_source=public_source,
                     control_closed=False,
                     control_state_revision=current_revision,
@@ -156,7 +157,8 @@ async def prepare_linear_webhook_event(
                 conversation=replace(
                     prepared_conversation,
                     subject=conversation.subject,
-                    workspace=workspace,
+                    workspace=str(conversation.workspace),
+                    controller_workspace=workspace,
                     public_source=public_source,
                     control_closed=True,
                     control_state_revision=control_state_revision,
@@ -165,6 +167,7 @@ async def prepare_linear_webhook_event(
                     context={
                         "linear_state_id": current_state_id,
                         "linear_managed_done_state_id": state_id(board.states["done"]),
+                        "linear_controller_workspace": workspace,
                     }
                 ),
                 effect_evidence=None,
@@ -182,13 +185,15 @@ async def prepare_linear_webhook_event(
     if lifecycle is not None:
         context = dict(lifecycle.context or {})
         context["linear_managed_done_state_id"] = state_id(board.states["done"])
+        context["linear_controller_workspace"] = workspace
         lifecycle = replace(lifecycle, context=context)
     return replace(
         event,
         conversation=replace(
             prepared_conversation,
             subject=conversation.subject,
-            workspace=workspace,
+            workspace=str(conversation.workspace),
+            controller_workspace=workspace,
             public_source=public_source,
         ),
         lifecycle=lifecycle,

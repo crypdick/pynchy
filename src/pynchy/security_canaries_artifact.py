@@ -68,8 +68,29 @@ class _SecurityCanaryDeps:
     def channels(self) -> list[Channel]:
         return []
 
+    async def request_deploy(
+        self,
+        *,
+        chat_jid: str | None,
+        commit_sha: str,
+        rebuild: bool,
+        resume_prompt: str,
+    ) -> None:
+        del chat_jid, commit_sha, rebuild, resume_prompt
+
     async def trigger_deploy(self, _previous_sha: str, *, rebuild: bool = True) -> None:
         del rebuild
+
+    async def create_periodic_agent(self, _request: object) -> None: ...
+
+    async def get_scheduled_work_status(
+        self,
+        *,
+        source_group: str,
+        is_admin: bool,
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        del source_group, is_admin
+        return [], []
 
 
 class FileSecretTaintCanary:

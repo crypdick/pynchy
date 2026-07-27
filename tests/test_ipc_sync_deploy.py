@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
-from pynchy.config.models import NotificationsConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.types import WorkspaceProfile
@@ -67,6 +66,7 @@ class MockDeps(NullIpcDeps):
         self.cleared_chats: list[str] = []
         self.enqueued_checks: list[str] = []
         self.deploy_calls: list[tuple[str, bool]] = []
+        self.requested_deploys: list[tuple[str | None, str, bool, str]] = []
 
     async def broadcast_to_channels(self, jid: str, event: object) -> None:
         content = event.content if hasattr(event, "content") else str(event)
@@ -92,6 +92,16 @@ class MockDeps(NullIpcDeps):
 
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
+
+    async def request_deploy(
+        self,
+        *,
+        chat_jid: str | None,
+        commit_sha: str,
+        rebuild: bool,
+        resume_prompt: str,
+    ) -> None:
+        self.requested_deploys.append((chat_jid, commit_sha, rebuild, resume_prompt))
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))
@@ -223,105 +233,52 @@ class TestSyncWorktreeToMain:
 class TestDeployEdgeCases:
     """Tests for deploy command edge cases in the IPC handler."""
 
-    async def test_deploy_without_chat_jid_uses_configured_notification_workspace(
-        self, deps: MockDeps
-    ):
-        """Deploy request missing chatJid uses the configured notification workspace."""
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.get_settings",
-                return_value=make_settings(
-                    notifications=NotificationsConfig(admin_workspace="admin-1")
-                ),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-                new_callable=AsyncMock,
-            ) as mock_start,
-        ):
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "resumePrompt": "Done.",
-                    "headSha": "abc123",
-                    # chatJid intentionally missing
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-            mock_start.assert_awaited_once()
-            request = mock_start.await_args.args[0]
-            assert request.chat_jid == "admin-1@g.us"
-            assert request.commit_sha == "abc123"
-            assert request.rebuild is False
-
-    async def test_deploy_without_chat_jid_and_no_admin_group(self):
-        """Deploy request with no chatJid and no admin group should not finalize."""
-        await init_test_database()
-        # Deps with no admin group
-        no_admin_deps = MockDeps({"other@g.us": OTHER_GROUP})
-
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "headSha": "abc123",
-                },
-                "admin-1",
-                True,
-                no_admin_deps,
-            )
-            mock_start.assert_not_awaited()
+    async def test_deploy_without_chat_jid_delegates_notification_resolution(self, deps: MockDeps):
+        """The composition root resolves a missing notification target."""
+        await dispatch(
+            {
+                "type": "deploy",
+                "rebuildContainer": False,
+                "resumePrompt": "Done.",
+                "headSha": "abc123",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+        assert deps.requested_deploys == [(None, "abc123", False, "Done.")]
 
     async def test_deploy_with_rebuild_but_no_build_script(self, deps: MockDeps, tmp_path: Path):
         """Deploy rebuild is represented on the Temporal request, not run inline."""
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": True,
-                    "resumePrompt": "Done.",
-                    "headSha": "abc123",
-                    "chatJid": "admin-1@g.us",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-            mock_start.assert_awaited_once()
-            request = mock_start.await_args.args[0]
-            assert request.rebuild is True
+        await dispatch(
+            {
+                "type": "deploy",
+                "rebuildContainer": True,
+                "resumePrompt": "Done.",
+                "headSha": "abc123",
+                "chatJid": "admin-1@g.us",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+        assert deps.requested_deploys == [("admin-1@g.us", "abc123", True, "Done.")]
 
     async def test_deploy_uses_default_resume_prompt(self, deps: MockDeps):
         """Deploy with no resumePrompt should use the default."""
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
-            await dispatch(
-                {
-                    "type": "deploy",
-                    "rebuildContainer": False,
-                    "headSha": "abc123",
-                    "chatJid": "admin-1@g.us",
-                    # resumePrompt intentionally missing
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-            mock_start.assert_awaited_once()
-            request = mock_start.await_args.args[0]
-            assert "Deploy complete" in request.resume_prompt
+        await dispatch(
+            {
+                "type": "deploy",
+                "rebuildContainer": False,
+                "headSha": "abc123",
+                "chatJid": "admin-1@g.us",
+                # resumePrompt intentionally missing
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+        assert "Deploy complete" in deps.requested_deploys[0][3]
 
 
 # ---------------------------------------------------------------------------

@@ -10,20 +10,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     IpcDeps,
+    MessagingSourceHealth,
+    SourceHealthDeps,
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.host.personal_messaging_health import (
-    PERSONAL_PROVIDERS,
-    PersonalProvider,
-    personal_provider_for,
-    project_personal_source,
-)
 from pynchy.logger import logger
-from pynchy.state import get_latest_inbound_timestamp
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     Channel,
 )
@@ -44,35 +38,42 @@ def _requested_sources(data: dict[str, Any]) -> tuple[str, ...] | None:
     return tuple(item.strip() for item in value if item.strip())
 
 
-def _matching_connection_names(requested: str, connections: dict[str, Any]) -> tuple[str, ...]:
+def _source_health(deps: IpcDeps) -> MessagingSourceHealth:
+    if not isinstance(deps, SourceHealthDeps):
+        raise TypeError("Messaging source health requires SourceHealthDeps")
+    return deps.messaging_source_health()
+
+
+def _matching_connection_names(requested: str, connections: dict[str, str]) -> tuple[str, ...]:
     wanted = _normalized(requested)
     return tuple(
         name
-        for name, connection in connections.items()
-        if wanted in {_normalized(name), _normalized(connection.type)}
+        for name, provider in connections.items()
+        if wanted in {_normalized(name), _normalized(provider)}
     )
 
 
 def _selected_sources(
     requested: tuple[str, ...] | None,
-    connections: dict[str, Any],
-) -> tuple[tuple[str, str | None, PersonalProvider | None], ...]:
+    connections: dict[str, str],
+    source_health: MessagingSourceHealth,
+) -> tuple[tuple[str, str | None, str | None], ...]:
     if requested is None:
         configured = tuple((name, name, None) for name in connections)
-        configured_providers = {connection.type for connection in connections.values()}
+        configured_providers = set(connections.values())
         personal = tuple(
             (provider, None, provider)
-            for provider in PERSONAL_PROVIDERS
+            for provider in source_health.personal_providers()
             if provider not in configured_providers
         )
         return configured + personal
 
-    selected: list[tuple[str, str | None, PersonalProvider | None]] = []
+    selected: list[tuple[str, str | None, str | None]] = []
     seen: set[str] = set()
     for label in requested:
         matches = _matching_connection_names(label, connections)
         if not matches:
-            selected.append((label, None, personal_provider_for(label)))
+            selected.append((label, None, source_health.personal_provider_for(label)))
             continue
         for name in matches:
             if name not in seen:
@@ -121,7 +122,9 @@ async def _channel_source(
             "reason": "The connection is configured but its Pynchy channel runtime is unavailable.",
         }
 
-    latest = await get_latest_inbound_timestamp(_owned_workspace_jids(channel, deps))
+    latest = await _source_health(deps).get_latest_inbound_timestamp(
+        _owned_workspace_jids(channel, deps)
+    )
     ready = channel.is_connected()
     return {
         "name": name,
@@ -154,12 +157,12 @@ def _connection_source(
 
 async def _configured_source(
     name: str,
-    connections: dict[str, Any],
+    connections: dict[str, str],
     channels: tuple[Channel, ...],
     connection_statuses: dict[str, bool],
     deps: IpcDeps,
 ) -> dict[str, object]:
-    provider = connections[name].type
+    provider = connections[name]
     if provider in _CHANNEL_CONNECTION_TYPES:
         return await _channel_source(name, provider, channels, deps)
     return _connection_source(name, provider, connection_statuses)
@@ -227,12 +230,13 @@ async def _handle_messaging_source_health(
         )
         return
 
-    connections = dict(get_settings().connections)
+    source_health = _source_health(deps)
+    connections = source_health.configured_connections()
     channels = tuple(deps.channels())
     connection_statuses = _connection_statuses(deps)
     sources: list[dict[str, object]] = []
     for requested_name, configured_name, personal_provider in _selected_sources(
-        requested, connections
+        requested, connections, source_health
     ):
         if configured_name is not None:
             sources.append(
@@ -248,12 +252,7 @@ async def _handle_messaging_source_health(
         if personal_provider is None:
             sources.append(_not_established(requested_name))
             continue
-        sources.append(
-            await project_personal_source(
-                personal_provider,
-                get_settings().messaging_source_health,
-            )
-        )
+        sources.append(await source_health.project_personal_source(personal_provider))
 
     write_ipc_response(
         ipc_response_path(source_group, request_id),

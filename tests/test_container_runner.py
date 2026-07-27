@@ -4326,7 +4326,11 @@ class TestSessionProcessLifecycle:
 
     async def test_proc_monitor_detects_death_during_query(self):
         """A crash before a completion pulse should fail the active query."""
-        session = session_mod.ContainerSession("death-test", "pynchy-death-test")
+        session = session_mod.ContainerSession(
+            "death-test",
+            "pynchy-death-test",
+            runtime_probe=AsyncMock(return_value=False),
+        )
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -4339,7 +4343,11 @@ class TestSessionProcessLifecycle:
 
     async def test_proc_monitor_removes_exited_container_record(self):
         """Exited containers should be removed even when no teardown command runs."""
-        session = session_mod.ContainerSession("record-cleanup-test", "pynchy-record-cleanup-test")
+        session = session_mod.ContainerSession(
+            "record-cleanup-test",
+            "pynchy-record-cleanup-test",
+            runtime_probe=AsyncMock(return_value=False),
+        )
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -4351,7 +4359,11 @@ class TestSessionProcessLifecycle:
 
     async def test_proc_monitor_clean_exit_completes_query(self):
         """A clean exit before a pulse should not be reported as a crash."""
-        session = session_mod.ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
+        session = session_mod.ContainerSession(
+            "clean-exit-test",
+            "pynchy-clean-exit-test",
+            runtime_probe=AsyncMock(return_value=False),
+        )
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]

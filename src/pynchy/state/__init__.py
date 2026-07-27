@@ -204,6 +204,7 @@ from pynchy.state.tasks import (
     log_task_run,
     rebind_task_root,
     record_task_completion,
+    resume_once_task_after_unclaimed_scheduled_turn,
     resume_task,
     resume_task_if_no_in_flight_turn,
     update_task,
@@ -237,19 +238,23 @@ from pynchy.state.work_item_models import (
     WorkItemTransitionRequest,
     WorkItemTransitionResolution,
 )
-from pynchy.state.work_items import (
+from pynchy.state.work_item_transitions import (
     begin_work_item_transition,
+    begin_work_item_transition_if_lifecycle_current,
+    get_latest_unresolved_work_item_transition,
+    get_work_item_transition_by_request,
+    resolve_work_item_transition,
+    resolve_work_item_transition_if_lifecycle_current,
+)
+from pynchy.state.work_items import (
     create_work_item_claim,
     get_active_work_item_execution,
-    get_latest_unresolved_work_item_transition,
+    get_unfinished_work_item_execution,
     get_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_execution_for_task,
-    get_work_item_transition_by_request,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
-    resolve_work_item_transition,
-    resolve_work_item_transition_if_lifecycle_current,
 )
 
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
@@ -377,6 +382,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_task_completion",
     "rebind_task_root",
     "resume_task",
+    "resume_once_task_after_unclaimed_scheduled_turn",
     "resume_task_if_no_in_flight_turn",
     "update_task",
     # webhooks
@@ -427,6 +433,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "WorkItemTransitionResolution",
     "WorkItemTransitionRequest",
     "begin_work_item_transition",
+    "begin_work_item_transition_if_lifecycle_current",
     "bind_work_item_execution_to_turn",
     "bind_work_item_execution_to_task",
     "cancel_work_item_execution",
@@ -437,6 +444,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_work_item_execution",
     "get_work_item_execution_for_issue",
     "get_work_item_execution_for_task",
+    "get_unfinished_work_item_execution",
     "get_work_item_transition_by_request",
     "list_work_item_executions",
     "mark_work_item_delivery_delivered_for_turn",

@@ -13,15 +13,14 @@ from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves helper annotations at runtime.
-    Conversation,
-    ConversationId,
-    ExternalDeliveryIdentity,
-    TerminalConversationRetirement,
-)
+from pynchy.config.jobs import JobConfig
+from pynchy.config.models import WorkspaceConfig
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
+)
+from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    CreatePeriodicAgentRequest,
 )
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -29,7 +28,7 @@ from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolve
 )
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
-from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator import session_handler, workspace_config
 from pynchy.host.orchestrator.adapters import (
     GroupMetadataManager,
     GroupRegistrationManager,
@@ -44,6 +43,14 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
 )
+from pynchy.host.orchestrator.ipc_dependency_adapters import (
+    PendingQuestionStore,
+    ScheduledWorkStore,
+    command_center_channel,
+    scheduled_work_status,
+    valid_jid,
+)
+from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
 )
@@ -55,26 +62,22 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_deploy_workflow,
     start_scheduled_agent_task_workflow,
 )
-from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
-from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
+from pynchy.host.orchestrator.terminal_task_retirement import (
+    retire_conversation_tasks,
+    retire_terminal_conversation,
+)
+from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.state import (
-    cancel_task_and_checkpoint,
     clear_session,
     complete_conversation_delivery,
     conversation_control_state_matches,
-    get_active_work_item_execution,
+    create_task,
     get_conversation,
     get_conversation_control_binding,
-    get_task_by_id,
-    get_tasks_for_conversation,
     get_terminal_conversation_retirement,
-    get_work_item_execution_for_task,
-)
-from pynchy.state import (
-    retire_conversation_for_terminal as _retire_terminal_conversation_state,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
@@ -83,7 +86,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency
     RuntimeId,
     ScheduledTask,
     SessionId,
-    WorkItemExecution,
+    SessionPolicy,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
@@ -102,75 +105,6 @@ def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
     create_background_task(
         app.start_interactive_turn(chat_jid),
         name=f"interactive-turn-{chat_jid[:20]}",
-    )
-
-
-async def _active_linear_execution_for_conversation(
-    conversation: Conversation,
-) -> WorkItemExecution | None:
-    """Return a live managed execution only for its matching Linear issue."""
-    namespace = str(conversation.subject.namespace)
-    if not namespace.startswith("linear:") or not namespace.endswith(":issue"):
-        return None
-    execution = await get_active_work_item_execution(str(conversation.subject.key))
-    if execution is None or execution.workspace != str(conversation.workspace):
-        return None
-    return execution
-
-
-async def _task_owned_by_execution(
-    tasks: list[ScheduledTask],
-    execution: WorkItemExecution | None,
-) -> list[ScheduledTask]:
-    """Recover active task ownership recorded before conversation binding existed."""
-    if execution is None or execution.task_id is None:
-        return tasks
-    if any(task.id == execution.task_id for task in tasks):
-        return tasks
-    task = await get_task_by_id(execution.task_id)
-    if task is None or task.status not in {"active", "paused"}:
-        return tasks
-    return [*tasks, task]
-
-
-async def _retire_conversation_tasks(conversation_id: ConversationId) -> None:
-    """Cancel active workflows before retiring their durable task checkpoints."""
-    conversation = await get_conversation(conversation_id)
-    if conversation is None:
-        raise RuntimeError(f"Terminal task retirement lost conversation: {conversation_id}")
-    execution = await _active_linear_execution_for_conversation(conversation)
-    tasks = await _task_owned_by_execution(
-        await get_tasks_for_conversation(str(conversation_id)),
-        execution,
-    )
-    workflow_ids = {agent_task_workflow_id(task) for task in tasks if task.schedule_type == "once"}
-    for task in tasks:
-        task_execution = await get_work_item_execution_for_task(task.id)
-        if (
-            task_execution is not None
-            and task_execution.status.is_active
-            and task_execution.temporal_workflow_id is not None
-        ):
-            workflow_ids.add(task_execution.temporal_workflow_id)
-    if execution is not None and execution.temporal_workflow_id is not None:
-        workflow_ids.add(execution.temporal_workflow_id)
-    for workflow_id in sorted(workflow_ids):
-        await cancel_scheduled_agent_workflow(workflow_id)
-    for task in tasks:
-        await cancel_task_and_checkpoint(task.id)
-
-
-async def _retire_terminal_conversation(
-    conversation_id: ConversationId,
-    *,
-    preserve_delivery: ExternalDeliveryIdentity,
-    control_state_revision: str | None,
-) -> TerminalConversationRetirement:
-    """Adapt the atomic state retirement transaction for webhook runtime cleanup."""
-    return await _retire_terminal_conversation_state(
-        conversation_id,
-        preserve_delivery=preserve_delivery,
-        control_state_revision=control_state_revision,
     )
 
 
@@ -212,6 +146,34 @@ async def _start_temporal_deploy(
             previous_sha=previous_sha,
             rebuild=rebuild,
             reason="dependency_adapter",
+        )
+    )
+
+
+async def _request_ipc_deploy(
+    *,
+    workspaces: dict[str, WorkspaceProfile],
+    chat_jid: str | None,
+    commit_sha: str,
+    rebuild: bool,
+    resume_prompt: str,
+) -> None:
+    """Start an agent-requested deploy through the configured notification target."""
+    target_jid = chat_jid or resolve_admin_notification_jid(
+        workspaces, get_settings().notifications.admin_workspace
+    )
+    if not target_jid:
+        logger.error("Deploy request missing chatJid and no notification target resolved")
+        return
+    await start_deploy_workflow(
+        DeployRequest(
+            chat_jid=target_jid,
+            commit_sha=commit_sha,
+            config_hash=get_deploy_config_hash(),
+            previous_sha=commit_sha,
+            resume_prompt=resume_prompt,
+            rebuild=rebuild,
+            reason="ipc",
         )
     )
 
@@ -295,8 +257,8 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             app.session_cleared.add(folder)
             await clear_session(folder)
 
-        retire_conversation_tasks = staticmethod(_retire_conversation_tasks)
-        retire_conversation_for_terminal = staticmethod(_retire_terminal_conversation)
+        retire_conversation_tasks = staticmethod(retire_conversation_tasks)
+        retire_conversation_for_terminal = staticmethod(retire_terminal_conversation)
 
         async def ingest_message(self, jid: str, message: NewMessage) -> None:
             await app.on_inbound(jid, message)
@@ -325,6 +287,10 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         has_active_session = session_manager.has_active_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
+        pending_question_store = staticmethod(PendingQuestionStore)
+        scheduled_work_store = staticmethod(ScheduledWorkStore)
+        messaging_source_health = staticmethod(SourceHealthProjection)
+        default_agent_name = staticmethod(lambda: get_settings().agent.name)
 
         async def clear_session(self, group_folder: str) -> None:
             group = next(
@@ -347,6 +313,110 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 
         def connection_statuses(self) -> dict[str, bool]:
             return app.connection_runtime_owner.status()
+
+        async def request_deploy(
+            self,
+            *,
+            chat_jid: str | None,
+            commit_sha: str,
+            rebuild: bool,
+            resume_prompt: str,
+        ) -> None:
+            await _request_ipc_deploy(
+                workspaces=app.workspaces,
+                chat_jid=chat_jid,
+                commit_sha=commit_sha,
+                rebuild=rebuild,
+                resume_prompt=resume_prompt,
+            )
+
+        async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None:
+            settings = get_settings()
+            group_dir = settings.groups_dir / request.name
+            group_dir.mkdir(parents=True, exist_ok=True)
+
+            command_center = settings.command_center.connection
+            if not command_center:
+                logger.warning("create_periodic_agent requires command_center.connection")
+                return
+
+            workspace_config.add_workspace_to_toml(
+                request.name,
+                WorkspaceConfig.model_validate({"profiles": [request.profile]}),
+            )
+            workspace_config.add_job_to_toml(
+                request.name,
+                JobConfig.model_validate(
+                    {
+                        "workspace": request.name,
+                        "schedule": request.schedule,
+                        "prompt": request.prompt,
+                    }
+                ),
+            )
+
+            claude_md_path = group_dir / "CLAUDE.md"
+            if not claude_md_path.exists():
+                claude_md_path.write_text(request.claude_md)
+
+            channel = command_center_channel(metadata_manager.channels(), command_center)
+            if channel is None:
+                logger.warning(
+                    "Command center does not support create_group; "
+                    "periodic agent was created without chat"
+                )
+                return
+
+            jid = valid_jid(await channel.create_group(request.chat or request.name))
+            if jid is None:
+                logger.warning(
+                    "Command center returned invalid jid for periodic agent",
+                    name=request.name,
+                    chat=request.chat or request.name,
+                )
+                return
+
+            registration_manager.register_workspace(
+                WorkspaceProfile(
+                    jid=jid,
+                    name=request.name.replace("-", " ").title(),
+                    folder=request.name,
+                    trigger="@pynchy",
+                    added_at=datetime.now(UTC).isoformat(),
+                )
+            )
+            task_id = f"periodic-{request.name}-{uuid4().hex[:8]}"
+            await create_task(
+                ScheduledTask(
+                    id=task_id,
+                    group_folder=request.name,
+                    chat_jid=jid,
+                    prompt=request.prompt,
+                    schedule_type="cron",
+                    schedule_value=request.schedule,
+                    session_policy=SessionPolicy.RESET_BEFORE_RUN,
+                    status="active",
+                    created_at=datetime.now(UTC).isoformat(),
+                )
+            )
+            logger.info(
+                "Periodic agent created via IPC",
+                name=request.name,
+                schedule=request.schedule,
+                task_id=task_id,
+                jid=jid,
+            )
+
+        async def get_scheduled_work_status(
+            self,
+            *,
+            source_group: str,
+            is_admin: bool,
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            return await scheduled_work_status(
+                source_group,
+                is_admin=is_admin,
+            )
 
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(

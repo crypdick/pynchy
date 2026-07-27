@@ -6,10 +6,12 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock
 
-from conftest import NullIpcDeps, init_test_database, make_settings
+from conftest import init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.state import create_host_job, create_task, log_task_run, record_task_completion
 from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
@@ -100,7 +102,7 @@ async def _request_status(tmp_path, *, source_group: str, is_admin: bool) -> str
         {"type": "task_status", "request_id": request_id},
         source_group,
         is_admin,
-        NullIpcDeps(),
+        make_ipc_deps(PynchyApp()),
     )
     return (tmp_path / "ipc" / source_group / "responses" / f"{request_id}.json").read_text(
         encoding="utf-8"
@@ -113,7 +115,7 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
     await init_test_database()
     monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
-        "pynchy.host.container_manager.ipc.handlers_task_status.get_temporal_orchestration_states",
+        "pynchy.host.orchestrator.ipc_dependency_adapters.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
     )
     await _seed_scheduled_work()
@@ -135,7 +137,7 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
     await init_test_database()
     monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
-        "pynchy.host.container_manager.ipc.handlers_task_status.get_temporal_orchestration_states",
+        "pynchy.host.orchestrator.ipc_dependency_adapters.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
     )
     await _seed_scheduled_work()

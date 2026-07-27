@@ -54,7 +54,7 @@ from pynchy.state import (
     get_task_by_id,
     get_task_run_logs,
     get_work_item_execution_for_issue,
-    resume_task_if_no_in_flight_turn,
+    resume_once_task_after_unclaimed_scheduled_turn,
     update_task,
 )
 from pynchy.types import (
@@ -290,8 +290,12 @@ async def ensure_task_active(
         return existing, False
 
     due_at = observed_at.astimezone(UTC).isoformat()
+    # Recovery retains the task's durable runtime binding across project moves.
     resumed = replace(
         task,
+        group_folder=existing.group_folder,
+        chat_jid=existing.chat_jid,
+        conversation_id=existing.conversation_id,
         schedule_value=due_at,
         next_run=due_at,
         last_run=existing.last_run,
@@ -361,10 +365,7 @@ async def _admit_in_progress_issue(
             workspace=workspace.folder,
         )
         return None
-    if (
-        execution.workspace != workspace.folder
-        or execution.status is not WorkItemExecutionStatus.IN_PROGRESS
-    ):
+    if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         logger.warning(
             "Managed Linear issue has an unusable execution lease",
             issue=issue.identifier,
@@ -388,7 +389,7 @@ async def _admit_in_progress_issue(
         active_task.status == "paused"
         and execution.task_id == active_task.id
         and not _last_run_is_recent(active_task, context.observed_at)
-        and await resume_task_if_no_in_flight_turn(active_task.id)
+        and await resume_once_task_after_unclaimed_scheduled_turn(active_task.id)
     ):
         refreshed_task = await get_task_by_id(active_task.id)
         if refreshed_task is not None and refreshed_task.status == "active":

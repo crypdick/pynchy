@@ -9,32 +9,14 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
-from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.logger import logger
-from pynchy.state import get_all_host_jobs, get_all_tasks, get_task_run_logs
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves reader return types at runtime.
-    HostJob,
-    ScheduledTask,
-)
-
-
-async def _visible_tasks(source_group: str, *, is_admin: bool) -> list[ScheduledTask]:
-    tasks = await get_all_tasks()
-    if is_admin:
-        return tasks
-    return [task for task in tasks if task.group_folder == source_group]
-
-
-async def _visible_host_jobs(*, is_admin: bool) -> list[HostJob]:
-    return await get_all_host_jobs() if is_admin else []
 
 
 async def _handle_task_status(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    _deps: IpcDeps,
+    deps: IpcDeps,
 ) -> None:
     """Project current scheduled-work health without exposing prompts or commands."""
     request_id = data.get("request_id")
@@ -42,11 +24,9 @@ async def _handle_task_status(
         logger.warning("Task status request missing request_id", source_group=source_group)
         return
 
-    tasks, host_jobs = await collect_scheduled_work(
-        lambda: _visible_tasks(source_group, is_admin=is_admin),
-        lambda: _visible_host_jobs(is_admin=is_admin),
-        lambda task_id: get_task_run_logs(task_id, limit=5),
-        get_temporal_orchestration_states,
+    tasks, host_jobs = await deps.get_scheduled_work_status(
+        source_group=source_group,
+        is_admin=is_admin,
     )
     write_ipc_response(
         ipc_response_path(source_group, request_id),

@@ -12,14 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
+from pynchy.host.container_manager.ipc.deps import AskUserDeps, IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.host.orchestrator.messaging.pending_questions import (
-    create_pending_question,
-    resolve_pending_question,
-    update_message_id,
-)
 from pynchy.logger import logger
 
 
@@ -34,6 +29,8 @@ async def _handle_ask_user_request(
     if not request_id:
         logger.warning("ask_user request missing request_id", source_group=source_group)
         return
+    if not isinstance(deps, AskUserDeps):
+        raise TypeError("ask_user handler requires pending-question persistence")
 
     questions = data.get("questions", [])
 
@@ -72,7 +69,8 @@ async def _handle_ask_user_request(
     session_id = active_sessions.get(chat_jid, "")
 
     # Store the pending question
-    create_pending_question(
+    pending_questions = deps.pending_question_store()
+    pending_questions.create(
         request_id=request_id,
         source_group=source_group,
         chat_jid=chat_jid,
@@ -85,7 +83,7 @@ async def _handle_ask_user_request(
     if hasattr(channel, "send_ask_user"):
         message_id = await channel.send_ask_user(chat_jid, request_id, questions)
         if message_id:
-            update_message_id(request_id, source_group, message_id)
+            pending_questions.update_message_id(request_id, source_group, message_id)
     else:
         logger.warning(
             "Channel does not support send_ask_user",
@@ -97,7 +95,7 @@ async def _handle_ask_user_request(
             {"error": f"Channel '{channel.name}' does not support interactive questions"},
         )
         # Clean up the pending question file — no one will answer it.
-        resolve_pending_question(request_id, source_group)
+        pending_questions.resolve(request_id, source_group)
 
 
 register_prefix("ask_user:", _handle_ask_user_request)

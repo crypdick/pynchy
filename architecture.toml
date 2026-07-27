@@ -13,7 +13,10 @@ composition_roots = [
   "pynchy.__main__",
   "pynchy.host.orchestrator.app",
   "pynchy.host.orchestrator.dep_factory",
+  "pynchy.host.orchestrator.ipc_dependency_adapters",
   "pynchy.host.orchestrator.lifecycle",
+  "pynchy.host.orchestrator.source_health_deps",
+  "pynchy.host.orchestrator.terminal_task_retirement",
 ]
 
 [[components]]

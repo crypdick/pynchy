@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from mcp.types import CallToolResult, Tool
-    from starlette.requests import Request
 
 _LOOPBACK_HOST = "127.0.0.1"
 
@@ -39,8 +38,8 @@ def _arguments() -> tuple[int, list[str]]:
     return parsed.port, command
 
 
-def _health(_: Request) -> Response:
-    return Response(status=204)
+def _health(_: object) -> Response:
+    return Response(status_code=204)
 
 
 def _application(command: list[str]) -> Starlette:

@@ -6,10 +6,9 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import init_test_database
+from conftest import NullIpcDeps, init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
@@ -27,8 +26,13 @@ async def _setup_db():
 
 @pytest.fixture
 def mock_ipc_deps():
-    """Mock IPC dependencies."""
-    deps = MagicMock(spec=IpcDeps)
+    """IPC dependencies with real scheduled-work persistence."""
+
+    class HostJobDeps(NullIpcDeps):
+        pass
+
+    deps = HostJobDeps()
+    deps.workspaces = MagicMock()
     deps.workspaces.return_value = {
         "admin-jid": MagicMock(folder="admin-1", is_admin=True),
     }

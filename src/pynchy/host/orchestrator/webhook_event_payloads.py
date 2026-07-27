@@ -47,6 +47,7 @@ def webhook_event_payload(event: WebhookEvent) -> dict[str, object]:
                 "control_closed": conversation.control_closed,
                 "control_state_revision": conversation.control_state_revision,
                 "workspace": conversation.workspace,
+                "controller_workspace": conversation.controller_workspace,
                 "public_source": conversation.public_source,
             }
             if conversation is not None
@@ -114,6 +115,7 @@ def _conversation(payload: Mapping[str, object]) -> WebhookConversation | None:
         control_closed=closed,
         control_state_revision=control_state_revision,
         workspace=_optional_text(raw, "workspace"),
+        controller_workspace=_optional_text(raw, "controller_workspace"),
         public_source=public_source,
     )
 

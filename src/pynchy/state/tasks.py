@@ -231,21 +231,61 @@ async def cancel_task_and_checkpoint(task_id: str) -> None:
 
 async def resume_task(task_id: str) -> None:
     """Reactivate a task and begin one fresh circuit-breaker failure window."""
-    await _resume_paused_task(task_id, require_no_in_flight_turn=False)
+    await _resume_paused_task(
+        task_id,
+        require_no_in_flight_turn=False,
+        retire_unclaimed_scheduled_turn=False,
+    )
 
 
 async def resume_task_if_no_in_flight_turn(task_id: str) -> bool:
     """Reactivate a paused task only when no scheduled turn owns it."""
-    return await _resume_paused_task(task_id, require_no_in_flight_turn=True)
+    return await _resume_paused_task(
+        task_id,
+        require_no_in_flight_turn=True,
+        retire_unclaimed_scheduled_turn=False,
+    )
+
+
+async def resume_once_task_after_unclaimed_scheduled_turn(task_id: str) -> bool:
+    """Resume a paused one-shot task after atomically retiring its terminal checkpoint."""
+    return await _resume_paused_task(
+        task_id,
+        require_no_in_flight_turn=True,
+        retire_unclaimed_scheduled_turn=True,
+    )
 
 
 async def _resume_paused_task(
     task_id: str,
     *,
     require_no_in_flight_turn: bool,
+    retire_unclaimed_scheduled_turn: bool = False,
 ) -> bool:
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as db:
+        if retire_unclaimed_scheduled_turn:
+            await db.execute(
+                """
+                DELETE FROM in_flight_turns
+                WHERE task_id = ? AND work_kind = 'scheduled' AND claimed_at IS NULL
+                  AND control_state = 'active'
+                  AND EXISTS (
+                      SELECT 1 FROM scheduled_tasks
+                      WHERE id = ? AND status = 'paused' AND schedule_type = 'once'
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM in_flight_turns AS retained
+                      WHERE retained.task_id = ?
+                        AND (
+                            retained.work_kind != 'scheduled'
+                            OR retained.claimed_at IS NOT NULL
+                            OR retained.control_state != 'active'
+                        )
+                  )
+                """,
+                (task_id, task_id, task_id),
+            )
         cursor = await db.execute(
             """
             UPDATE scheduled_tasks

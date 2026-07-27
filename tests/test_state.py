@@ -29,6 +29,7 @@ from pynchy.state import (
     get_all_workspace_profiles,
     get_chat_history,
     get_host_job_by_id,
+    get_in_flight_turn,
     get_in_flight_turn_for_task,
     get_last_group_sync,
     get_latest_inbound_timestamp,
@@ -52,6 +53,7 @@ from pynchy.state import (
     record_outbound,
     record_task_completion,
     resolve_work_item_transition,
+    resume_once_task_after_unclaimed_scheduled_turn,
     resume_task,
     resume_task_if_no_in_flight_turn,
     set_chat_cleared_at,
@@ -1145,7 +1147,13 @@ class TestTaskAdvanced:
         assert agent_task_workflow_id(resumed_again).endswith("-resume-2")
 
     async def test_reconciler_resume_refuses_a_live_scheduled_turn(self):
-        task = replace(self._TASK_TEMPLATE, id="resume-guarded", status="paused")
+        task = replace(
+            self._TASK_TEMPLATE,
+            id="resume-guarded",
+            schedule_type="once",
+            schedule_value="2026-07-26T06:00:00+00:00",
+            status="paused",
+        )
         await create_task(task)
         await begin_in_flight_turn(
             InFlightTurn(
@@ -1158,13 +1166,16 @@ class TestTaskAdvanced:
                 input_end_cursor="",
                 started_at="2026-07-26T06:00:00+00:00",
                 task_id=task.id,
+                claimed_at="2026-07-26T06:00:01+00:00",
             )
         )
 
         assert not await resume_task_if_no_in_flight_turn(task.id)
+        assert not await resume_once_task_after_unclaimed_scheduled_turn(task.id)
         paused = await get_task_by_id(task.id)
         assert paused is not None
         assert paused.status == "paused"
+        assert await get_in_flight_turn("resume-guarded-turn") is not None
 
         await clear_in_flight_turn("resume-guarded-turn")
 
@@ -1172,6 +1183,71 @@ class TestTaskAdvanced:
         active = await get_task_by_id(task.id)
         assert active is not None
         assert active.status == "active"
+
+    async def test_reconciler_resume_retires_an_unclaimed_terminal_scheduled_turn(self):
+        task = replace(
+            self._TASK_TEMPLATE,
+            id="resume-unclaimed",
+            schedule_type="once",
+            schedule_value="2026-07-26T06:00:00+00:00",
+            status="paused",
+        )
+        await create_task(task)
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="resume-unclaimed-turn",
+                chat_jid=task.chat_jid,
+                group_folder=task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-26T06:00:00+00:00",
+                task_id=task.id,
+            )
+        )
+
+        assert await resume_once_task_after_unclaimed_scheduled_turn(task.id)
+        active = await get_task_by_id(task.id)
+        assert active is not None
+        assert active.status == "active"
+        assert active.occurrence_generation == 1
+        assert await get_in_flight_turn_for_task(task.id) is None
+
+    async def test_reconciler_resume_preserves_mixed_scheduled_checkpoints(self):
+        task = replace(
+            self._TASK_TEMPLATE,
+            id="resume-mixed-checkpoints",
+            schedule_type="once",
+            schedule_value="2026-07-26T06:00:00+00:00",
+            status="paused",
+        )
+        await create_task(task)
+        for turn_id, claimed_at in (
+            ("terminal-unclaimed-turn", None),
+            ("live-claimed-turn", "2026-07-26T06:00:01+00:00"),
+        ):
+            await begin_in_flight_turn(
+                InFlightTurn(
+                    turn_id=turn_id,
+                    chat_jid=task.chat_jid,
+                    group_folder=task.group_folder,
+                    work_kind=InFlightWorkKind.SCHEDULED,
+                    input_messages=[],
+                    input_start_cursor="",
+                    input_end_cursor="",
+                    started_at="2026-07-26T06:00:00+00:00",
+                    task_id=task.id,
+                    claimed_at=claimed_at,
+                )
+            )
+
+        assert not await resume_once_task_after_unclaimed_scheduled_turn(task.id)
+        paused = await get_task_by_id(task.id)
+        assert paused is not None
+        assert paused.status == "paused"
+        assert await get_in_flight_turn("terminal-unclaimed-turn") is not None
+        assert await get_in_flight_turn("live-claimed-turn") is not None
 
     async def test_resume_task_ignores_missing_and_non_paused_rows(self):
         completed = replace(

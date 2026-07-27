@@ -67,18 +67,24 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     if event.lifecycle is not None:
         # Terminal ingress retires routed work before ordinary webhook admission.
         return event
-    workspace = conversation.workspace
-    if workspace is None:
+    runtime_workspace = conversation.workspace
+    if runtime_workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
+    controller_workspace = conversation.controller_workspace or runtime_workspace
     try:
-        if not await _reopen_verified_conversation_control(conversation, workspace):
+        if not await _reopen_verified_conversation_control(conversation, runtime_workspace):
             return _stale_linear_control_state_event(event)
         if (
             event.event_type == "Issue"
             and event.action == "update"
             and event.ignored_reason is None
         ):
-            return await _process_linear_issue_update(event, conversation, workspace)
+            return await _process_linear_issue_update(
+                event,
+                conversation,
+                runtime_workspace,
+                controller_workspace,
+            )
     except (
         aiohttp.ClientError,
         LinearBoardError,
@@ -94,10 +100,11 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
 async def _process_linear_issue_update(
     event: WebhookEvent,
     conversation: WebhookConversation,
-    workspace: str,
+    runtime_workspace: str,
+    controller_workspace: str,
 ) -> WebhookEvent:
     """Fence controller work after durable provider-state admission."""
-    resolved = await resolve_conversation(conversation.subject, GroupFolder(workspace))
+    resolved = await resolve_conversation(conversation.subject, GroupFolder(runtime_workspace))
     async with conversation_runtime_lock(resolved.id):
         if not await conversation_control_state_matches(
             resolved.id,
@@ -105,7 +112,7 @@ async def _process_linear_issue_update(
             control_state_revision=conversation.control_state_revision,
         ):
             return _stale_linear_control_state_event(event)
-        if not await _controller_owns_event(event, workspace):
+        if not await _controller_owns_event(event, controller_workspace):
             return event
     return replace(
         event,
@@ -167,12 +174,18 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
     ):
         return
     workspace = str(delivery.workspace)
+    controller_workspace = (
+        context.get("linear_controller_workspace", workspace) if context is not None else workspace
+    )
+    if not isinstance(controller_workspace, str) or not controller_workspace:
+        return
     if callback_state == managed_done_state:
         if delivery.lifecycle_fence is None:
             await complete_reviewed_work_item(
                 workspace,
                 delivery.subject_id,
                 str(delivery.identity.delivery_id),
+                controller_workspace=controller_workspace,
             )
         else:
             await complete_reviewed_work_item(
@@ -180,6 +193,7 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
                 delivery.subject_id,
                 str(delivery.identity.delivery_id),
                 lifecycle_fence=delivery.lifecycle_fence,
+                controller_workspace=controller_workspace,
             )
         return
     execution = await get_work_item_execution_for_issue(delivery.subject_id, workspace=workspace)
@@ -209,8 +223,6 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
         in_progress_state_id = state_id(board.states["in_progress"])
         existing = await get_active_work_item_execution(event.subject_id)
         if existing is not None:
-            if existing.workspace != workspace:
-                raise WorkItemClaimConflictError(existing)
             return current_state_id in {approved_state_id, in_progress_state_id}
         latest = await get_work_item_execution_for_issue(event.subject_id, workspace=workspace)
         if (

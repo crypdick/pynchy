@@ -223,6 +223,28 @@ async def test_unnamed_task_gets_persistent_child_thread_binding(tmp_path) -> No
     assert persisted.bound_group_folder == bound.bound_group_folder
 
 
+async def test_existing_named_task_binding_skips_thread_recreation() -> None:
+    owner = _profile()
+    bound = _profile(
+        jid="discord:channel:scheduled-task",
+        folder="owner__thread_discord-channel-scheduled-task",
+    )
+    task = replace(
+        _task(),
+        derived_thread_name="Owner | durable task",
+        bound_chat_jid=bound.jid,
+        bound_group_folder=bound.folder,
+    )
+    await create_task(task)
+    deps = _BindingDeps({owner.jid: owner, bound.jid: bound})
+
+    ensured = await ensure_scheduled_task_binding(task, deps)
+
+    assert ensured == task
+    assert deps.ensured == []
+    assert deps.scheduled_task_updates == []
+
+
 async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> None:
     task = _task()
     deps = _BindingDeps({})

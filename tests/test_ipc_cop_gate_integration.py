@@ -111,7 +111,20 @@ class MockDeps:
     def channels(self) -> list:
         return self._channels
 
+    async def request_deploy(
+        self,
+        *,
+        chat_jid: str | None,
+        commit_sha: str,
+        rebuild: bool,
+        resume_prompt: str,
+    ) -> None:
+        del chat_jid, commit_sha, rebuild, resume_prompt
+
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
+        pass
+
+    async def create_periodic_agent(self, request) -> None:
         pass
 
 
@@ -477,7 +490,7 @@ class TestCreatePeriodicAgentCopGate:
                 return_value=False,
             ) as mock_cop,
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                "pynchy.host.orchestrator.dep_factory.get_settings",
                 return_value=make_settings(
                     groups_dir=tmp_path,
                     project_root=tmp_path,

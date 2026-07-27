@@ -30,6 +30,7 @@ from pynchy.host.orchestrator.temporal.workflow_control import TemporalRuntimeUn
 from pynchy.host.orchestrator.webhook_conversations import ConversationWebhookDeps
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_conversation
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_lifecycle
+from pynchy.plugins.integrations.linear_work_item_completion import complete_reviewed_work_item
 from pynchy.plugins.webhooks import WebhookLifecycleDelivery
 from pynchy.state import (
     WorkItemClaimRequest,
@@ -234,7 +235,7 @@ async def test_host_task_retirement_cancels_linked_tasks_and_workflows() -> None
     assert isinstance(deps, ConversationWebhookDeps)
 
     with patch(
-        "pynchy.host.orchestrator.dep_factory.cancel_scheduled_agent_workflow",
+        "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
         cancel_workflow,
     ):
         await deps.retire_conversation_tasks(conversation_id)
@@ -277,7 +278,7 @@ async def test_host_task_retirement_recovers_detached_execution_task() -> None:
     assert isinstance(deps, ConversationWebhookDeps)
 
     with patch(
-        "pynchy.host.orchestrator.dep_factory.cancel_scheduled_agent_workflow",
+        "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
         cancel_workflow,
     ):
         await deps.retire_conversation_tasks(conversation_id)
@@ -302,7 +303,7 @@ async def test_host_task_retirement_failure_keeps_work_retryable() -> None:
 
     with (
         patch(
-            "pynchy.host.orchestrator.dep_factory.cancel_scheduled_agent_workflow",
+            "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
             AsyncMock(side_effect=TemporalRuntimeUnavailableError("unavailable")),
         ),
         pytest.raises(TemporalRuntimeUnavailableError, match="unavailable"),
@@ -536,3 +537,81 @@ async def test_newer_cancelled_terminal_blocks_claimed_done_settlement() -> None
     transition = await get_work_item_transition_by_request("linear-review:done-old")
     assert transition is not None
     assert transition.status is WorkItemTransitionStatus.PENDING
+
+
+async def test_reopened_conversation_blocks_stale_done_transition_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation_id = await _conversation_id()
+    task = _task("primary", conversation_id)
+    await create_task(task)
+    execution = await _active_execution(task)
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("linear"),
+        route=ExternalRoute("project"),
+        delivery_id=ExternalDeliveryId("done-old"),
+    )
+    receipt = WebhookReceipt(
+        provider=str(identity.provider),
+        route=str(identity.route),
+        delivery_id=str(identity.delivery_id),
+        workspace="project",
+        event_type="Issue",
+        event_action="update",
+        subject_id="issue-1",
+        payload_sha256="sha-done-old",
+        disposition="lifecycle",
+        ignored_reason=None,
+        task_id=None,
+        occurred_at="2026-07-27T00:00:00+00:00",
+        received_at="2026-07-27T00:00:00+00:00",
+    )
+    assert (await admit_webhook_receipt(receipt, None)).created
+    admission = await admit_conversation_delivery(
+        identity,
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:project:issue"),
+            key=ConversationSubjectKey("issue-1"),
+        ),
+        GroupFolder("project"),
+        payload={"delivery_mode": "lifecycle"},
+    )
+    assert admission is not None
+    old_revision = "2026-07-27T00:00:00+00:00"
+    await set_conversation_control_closed(
+        conversation_id,
+        closed=True,
+        control_state_revision=old_revision,
+    )
+    claim_id = ConversationClaimId("old-done-claim")
+    assert await claim_next_conversation_delivery(conversation_id, claim_id)
+    await set_conversation_control_closed(
+        conversation_id,
+        closed=False,
+        control_state_revision="2026-07-27T00:00:01+00:00",
+    )
+
+    def unexpected_linear_client(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("stale Done callback must not call Linear")
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_completion.linear_client",
+        unexpected_linear_client,
+    )
+    completed = await complete_reviewed_work_item(
+        "project",
+        "issue-1",
+        "done-old",
+        lifecycle_fence=ConversationLifecycleFence(
+            conversation_id=conversation_id,
+            identity=identity,
+            claim_id=claim_id,
+            control_state_revision=old_revision,
+        ),
+    )
+
+    assert completed is None
+    assert await get_work_item_transition_by_request("linear-review:done-old") is None
+    current = await get_work_item_execution_for_issue("issue-1", workspace="project")
+    assert current is not None
+    assert current.status is WorkItemExecutionStatus.IN_PROGRESS

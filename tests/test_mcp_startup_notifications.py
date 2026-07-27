@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pynchy.host.container_manager.mcp.startup import McpStartupFailure
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
+from pynchy.types import McpStartupFailure
 
 
 class _Deps:

@@ -14,6 +14,7 @@ from pynchy.config.models import MatrixConnectionConfig, WhatsAppConnectionConfi
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.state import init_test_database, store_message_direct
 from pynchy.types import WorkspaceProfile
 
@@ -51,8 +52,11 @@ class _SourceHealthDeps(NullIpcDeps):
     def channels(self) -> list[_WhatsAppChannel]:
         return [_WhatsAppChannel()]
 
+    def messaging_source_health(self) -> SourceHealthProjection:
+        return SourceHealthProjection()
 
-class _ConnectionHealthDeps(NullIpcDeps):
+
+class _ConnectionHealthDeps(_SourceHealthDeps):
     def connection_statuses(self) -> dict[str, bool]:
         return {"connection.matrix.gateway": True}
 
@@ -188,7 +192,7 @@ async def test_projects_host_aggregate_health_without_identity_or_body(
         },
         "chat-manager",
         False,
-        NullIpcDeps(),
+        _SourceHealthDeps(),
     )
 
     response_path = (
@@ -337,7 +341,7 @@ async def test_unknown_source_remains_not_established(monkeypatch, tmp_path) -> 
         },
         "chat-manager",
         False,
-        NullIpcDeps(),
+        _SourceHealthDeps(),
     )
 
     response_path = (

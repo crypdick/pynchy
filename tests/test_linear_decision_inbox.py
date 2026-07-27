@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 
+from pynchy.conversation.models import ConversationSubjectKey
 from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
     LinearPlanReviewResult,
@@ -26,10 +27,11 @@ from pynchy.state import (
     WorkItemTransitionRequest,
     begin_in_flight_turn,
     begin_work_item_transition,
-    clear_in_flight_turn,
     create_task,
     get_active_work_item_execution,
     get_all_tasks,
+    get_conversation_for_subject_key,
+    get_in_flight_turn_for_task,
     get_task_by_id,
     get_work_item_execution_for_task,
     get_work_item_transition_by_request,
@@ -40,6 +42,7 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import (
+    GroupFolder,
     InFlightTurn,
     InFlightWorkKind,
     ScheduledTask,
@@ -943,7 +946,68 @@ async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -
     assert active.schedule_value == (observed_at + timedelta(minutes=6)).isoformat()
 
 
-async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> None:
+async def test_reconcile_reactivates_moved_active_execution_in_original_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _DecisionClient()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    original = _Workspace("beta", "Beta", "linear:beta")
+    destination = _Workspace("alpha", "Alpha", "linear:alpha")
+    boards = {
+        original.folder: _board("project-beta"),
+        destination.folder: _board("project-alpha"),
+    }
+    observed_at = datetime.now(UTC)
+    task = (
+        await reconcile_linear_decision_inbox(
+            client,
+            [destination, original],
+            boards,
+            now=observed_at,
+        )
+    )[0]
+    assert task.conversation_id is not None
+    await record_task_completion(task.id, last_result="Stopped without transition", completed=True)
+
+    issue = client.issues_by_state["state-progress"][0]
+    issue["project"] = {"id": "project-alpha", "name": "project-alpha"}
+
+    recovered = await reconcile_linear_decision_inbox(
+        client,
+        [destination, original],
+        boards,
+        now=observed_at + timedelta(minutes=6),
+    )
+
+    assert [item.id for item in recovered] == [task.id]
+    assert recovered[0].group_folder == original.folder
+    assert recovered[0].chat_jid == original.jid
+    assert recovered[0].conversation_id == task.conversation_id
+    active_task = await get_task_by_id(task.id)
+    assert active_task is not None
+    assert active_task.status == "active"
+    assert active_task.group_folder == original.folder
+    assert active_task.chat_jid == original.jid
+    assert active_task.conversation_id == task.conversation_id
+    assert len(await get_all_tasks()) == 1
+    assert (
+        await get_conversation_for_subject_key(
+            ConversationSubjectKey("issue-execute"),
+            workspace=GroupFolder(destination.folder),
+            namespace_suffix=":issue",
+        )
+        is None
+    )
+    execution = await get_active_work_item_execution("issue-execute")
+    assert execution is not None
+    assert execution.workspace == original.folder
+    assert execution.task_id == task.id
+
+
+async def test_reconcile_resumes_paused_execution_after_grace_and_clears_terminal_turn() -> None:
     client = _DecisionClient()
     workspace = _Workspace("beta", "Beta", "linear:beta")
     board = _board("project-beta")
@@ -958,24 +1022,9 @@ async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> 
     )[0]
     await record_task_completion(task.id, last_result="Repeated terminal failure", completed=False)
     await update_task(task.id, {"status": "paused"})
-
-    assert (
-        await reconcile_linear_decision_inbox(
-            client,
-            [workspace],
-            {"beta": board},
-            now=observed_at + timedelta(minutes=1),
-        )
-        == []
-    )
-    paused = await get_task_by_id(task.id)
-    assert paused is not None
-    assert paused.status == "paused"
-    assert paused.occurrence_generation == 0
-
     await begin_in_flight_turn(
         InFlightTurn(
-            turn_id="current-scheduled-turn",
+            turn_id="terminal-scheduled-turn",
             chat_jid=task.chat_jid,
             group_folder=task.group_folder,
             work_kind=InFlightWorkKind.SCHEDULED,
@@ -992,7 +1041,7 @@ async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> 
             client,
             [workspace],
             {"beta": board},
-            now=observed_at + timedelta(minutes=6),
+            now=observed_at + timedelta(minutes=1),
         )
         == []
     )
@@ -1000,8 +1049,8 @@ async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> 
     assert paused is not None
     assert paused.status == "paused"
     assert paused.occurrence_generation == 0
+    assert await get_in_flight_turn_for_task(task.id) is not None
 
-    await clear_in_flight_turn("current-scheduled-turn")
     resumed = await reconcile_linear_decision_inbox(
         client,
         [workspace],
@@ -1015,6 +1064,7 @@ async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> 
     assert active.status == "active"
     assert active.occurrence_generation == 1
     assert active.superseded_occurrence_generation == 0
+    assert await get_in_flight_turn_for_task(task.id) is None
     execution = await get_active_work_item_execution("issue-execute")
     assert execution is not None
     assert execution.temporal_workflow_id is not None
