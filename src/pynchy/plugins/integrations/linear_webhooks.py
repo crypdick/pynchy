@@ -108,6 +108,7 @@ async def prepare_linear_webhook_event(
             event.conversation,
             subject=conversation.subject,
             workspace=str(conversation.workspace),
+            controller_workspace=workspace,
             public_source=public_source,
         ),
         lifecycle=lifecycle,

@@ -53,6 +53,7 @@ from pynchy.config import PluginConfig
 from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     ControlSurface,
+    Conversation,
     ConversationControlBinding,
     ConversationId,
     ConversationSubject,
@@ -66,6 +67,10 @@ from pynchy.conversation.models import (
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.webhook_event_payloads import (
+    webhook_event_from_payload,
+    webhook_event_payload,
+)
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearError
@@ -82,6 +87,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import LinearWorkspac
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
     WebhookConfigurationError,
+    WebhookConversation,
     WebhookEvent,
     WebhookLifecycleDelivery,
     WebhookProcessingError,
@@ -121,6 +127,33 @@ class _LeaseResult:
 @pytest.fixture(autouse=True)
 async def _database() -> None:
     await init_test_database()
+
+
+def test_deferred_linear_webhook_preserves_controller_workspace() -> None:
+    event = WebhookEvent(
+        delivery_id=_DELIVERY_ID,
+        event_type="Issue",
+        action="update",
+        subject_id="issue-1",
+        occurred_at=datetime.now(UTC).isoformat(),
+        instructions="Handle the provider update.",
+        external_context="Issue update",
+        conversation=WebhookConversation(
+            subject=ConversationSubject(
+                namespace=ConversationSubjectNamespace("linear:org-1:issue"),
+                key=ConversationSubjectKey("issue-1"),
+            ),
+            control_title="[PYN-1] Linear issue",
+            workspace="pynchy-work",
+            controller_workspace="pynchy-dev",
+        ),
+    )
+
+    restored = webhook_event_from_payload(webhook_event_payload(event))
+
+    assert restored.conversation is not None
+    assert restored.conversation.workspace == "pynchy-work"
+    assert restored.conversation.controller_workspace == "pynchy-dev"
 
 
 def _workspace_board() -> LinearWorkspaceBoard:
@@ -409,12 +442,9 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     workspace_issue.assert_awaited_once()
 
 
-async def test_moved_active_issue_comment_reuses_original_conversation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
-    deps = _WebhookDeps()
-    await deps.persist_parent()
+async def _seed_moved_active_issue(
+    deps: _WebhookDeps,
+) -> tuple[Conversation, WorkspaceProfile]:
     destination = WorkspaceProfile(
         jid="discord:channel:destination",
         name="Destination",
@@ -422,7 +452,6 @@ async def test_moved_active_issue_comment_reuses_original_conversation(
         trigger="@Pynchy",
     )
     await deps.register_workspace(destination)
-
     original = await resolve_conversation(
         ConversationSubject(
             namespace=ConversationSubjectNamespace("linear:org-1:issue"),
@@ -470,6 +499,16 @@ async def test_moved_active_issue_comment_reuses_original_conversation(
         transition_status=WorkItemTransitionStatus.SUCCEEDED,
         issue={**issue, "state": {"id": "state-progress", "name": "In Progress"}},
     )
+    return original, destination
+
+
+async def test_moved_active_issue_comment_reuses_original_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    original, destination = await _seed_moved_active_issue(deps)
 
     config = _config().model_copy(update={"workspace": destination.folder})
     monkeypatch.setattr(
@@ -504,6 +543,101 @@ async def test_moved_active_issue_comment_reuses_original_conversation(
     assert deps.ingested[0].chat_jid == "discord:channel:original-thread"
     assert deps.ingested[0].metadata["conversation_id"] == original.id
     assert not deps.channel.created
+    assert (
+        await get_conversation_for_subject_key(
+            ConversationSubjectKey("issue-1"),
+            workspace=GroupFolder(destination.folder),
+            namespace_suffix=":issue",
+        )
+        is None
+    )
+    preserved = await get_conversation(original.id)
+    assert preserved is not None
+    assert preserved.workspace == deps.workspace.folder
+    assert preserved.session_id == SessionId("original-session")
+
+
+async def test_moved_active_issue_update_uses_destination_board_and_original_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    original, destination = await _seed_moved_active_issue(deps)
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "destination-project"},
+        states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting"},
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+        },
+    )
+    prepare_workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, board))
+    process_workspace_issue = AsyncMock(return_value=({"state": {"id": "state-progress"}}, board))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        prepare_workspace_issue,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        process_workspace_issue,
+    )
+    config = _config().model_copy(update={"workspace": destination.folder})
+    route = replace(
+        _route(),
+        workspace=None,
+        candidate_workspaces=(deps.workspace.folder, destination.folder),
+        prepare_event=partial(
+            prepare_linear_webhook_event,
+            config=config,
+            public_source=False,
+        ),
+        process_event=process_linear_webhook_event,
+    )
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        status, body = await _post_linear_event(
+            client,
+            _payload(
+                now=datetime.now(UTC),
+                event_type="Issue",
+                action="update",
+                data={
+                    "id": "issue-1",
+                    "identifier": "PYN-1",
+                    "title": "Moved active work",
+                    "updatedAt": datetime.now(UTC).isoformat(),
+                    "state": {
+                        "id": "state-progress",
+                        "name": "In Progress",
+                        "type": "started",
+                    },
+                },
+            ),
+        )
+    finally:
+        await client.close()
+
+    assert status == 200
+    assert body == {"status": "ignored", "duplicate": False}
+    process_workspace_issue.assert_awaited_once_with(ANY, destination.folder, "issue-1")
+    assert not deps.ingested
+    assert not deps.channel.created
+    binding = await get_conversation_control_binding(original.id)
+    assert binding is not None
+    assert binding.thread_jid == "discord:channel:original-thread"
     assert (
         await get_conversation_for_subject_key(
             ConversationSubjectKey("issue-1"),
