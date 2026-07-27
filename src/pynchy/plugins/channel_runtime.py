@@ -14,6 +14,10 @@ from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager annotation at runtime.
 
+from pynchy.channels import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    SlackConnectionSettings,
+    WhatsAppConnectionSettings,
+)
 from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     DiscordConnectionSettings,
 )
@@ -46,6 +50,8 @@ class ChannelPluginContext:
     speech_synthesizer: SpeechSynthesizer | None = None
     discord_connections: dict[str, DiscordConnectionSettings] = field(default_factory=dict)
     discord_audio_cache_dir: Path | None = None
+    slack_connections: dict[str, SlackConnectionSettings] = field(default_factory=dict)
+    whatsapp_connections: dict[str, WhatsAppConnectionSettings] = field(default_factory=dict)
 
 
 def default_channel_name(configured: str | None) -> str | None:

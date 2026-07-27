@@ -21,6 +21,7 @@ from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
+from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config import get_settings
 from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.host.container_manager import ipc as ipc_manager
@@ -235,6 +236,20 @@ async def _setup_channels(app: PynchyApp) -> None:
         )
 
     settings = get_settings()
+    whatsapp_connections: dict[str, WhatsAppConnectionSettings] = {}
+    for name, config in settings.connections.items():
+        if config.type != "whatsapp":
+            continue
+        if config.auth_db_path:
+            auth_db_path = Path(config.auth_db_path)
+            if not auth_db_path.is_absolute():
+                auth_db_path = settings.project_root / auth_db_path
+        else:
+            auth_db_path = settings.data_dir / "neonize.db"
+        whatsapp_connections[name] = WhatsAppConnectionSettings(
+            auth_db_path=auth_db_path.resolve(),
+            assistant_name=settings.agent.name,
+        )
     context = ChannelPluginContext(
         on_message_callback=dispatch_inbound,
         on_chat_metadata_callback=dispatch_chat_metadata,
@@ -250,6 +265,18 @@ async def _setup_channels(app: PynchyApp) -> None:
             if config.type == "discord"
         },
         discord_audio_cache_dir=settings.data_dir / "media" / "discord",
+        slack_connections={
+            name: SlackConnectionSettings(
+                bot_token_env=config.bot_token_env,
+                app_token_env=config.app_token_env,
+                chat_names=tuple(config.chat),
+                assistant_name=settings.agent.name,
+                allow_create=settings.command_center.connection == name,
+            )
+            for name, config in settings.connections.items()
+            if config.type == "slack"
+        },
+        whatsapp_connections=whatsapp_connections,
     )
     plugin_manager = _require_plugin_manager(app, "_setup_channels")
     app.channels = load_channels(plugin_manager, context)
