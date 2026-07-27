@@ -46,7 +46,19 @@ from pynchy.host.container_manager.security.cop import (
     CopVerdict,
 )
 from pynchy.plugins.host_actions import HostActionCatalog
-from pynchy.state import close_test_database, init_test_database
+from pynchy.state import (
+    close_test_database,
+    create_host_job,
+    create_task,
+    delete_host_job,
+    delete_task,
+    get_host_job_by_id,
+    get_task_by_id,
+    init_test_database,
+    resume_task,
+    update_host_job,
+    update_task,
+)
 from pynchy.types import InboundFetchResult, NewMessage
 
 
@@ -298,6 +310,9 @@ class NullIpcDeps:
     def pending_question_store(self):
         return _NullPendingQuestionStore()
 
+    def scheduled_work_store(self):
+        return _TestScheduledWorkStore()
+
     async def request_deploy(
         self,
         *,
@@ -324,6 +339,18 @@ class _NullPendingQuestionStore:
 
     def resolve(self, request_id, source_group) -> None:
         del request_id, source_group
+
+
+class _TestScheduledWorkStore:
+    create_task = staticmethod(create_task)
+    create_host_job = staticmethod(create_host_job)
+    get_task_by_id = staticmethod(get_task_by_id)
+    get_host_job_by_id = staticmethod(get_host_job_by_id)
+    update_task = staticmethod(update_task)
+    update_host_job = staticmethod(update_host_job)
+    resume_task = staticmethod(resume_task)
+    delete_task = staticmethod(delete_task)
+    delete_host_job = staticmethod(delete_host_job)
 
 
 class NullChannel:
