@@ -137,14 +137,17 @@ not perform provider writes or interpret provider payloads.
 
 ## Linear Issue Webhooks
 
-The built-in Linear webhook adapter maps each authenticated `Comment` or
-non-creation `Issue` event to `linear:<organization-id>:issue` plus the immutable
-Linear issue ID. `Issue/create` is recorded as ignored: creating an issue,
-including one in `Agent Proposed`, is not an authorization signal. The webhook
-receipt retains the delivery UUID. Ordinary entries retain only the host-parsed
-prompt, readable control title, and control metadata needed to wake the agent;
-terminal issue entries retain closed metadata and immutable state evidence for
-lifecycle-only delivery. Raw provider shapes do not cross the routing boundary.
+The built-in Linear webhook adapter maps each authenticated `Comment` or `Issue`
+event to `linear:<organization-id>:issue` plus the immutable Linear issue ID. An
+`Issue/create` callback is recorded as ignored only when its signed callback
+state matches the managed `Agent Proposed` state: creating a proposal does not
+authorize work. Other issue creations follow the normal callback policy. The
+callback state remains immutable for that delivery, so a later state transition
+arrives as a separate `Issue/update` delivery. The webhook receipt retains the
+delivery UUID. Ordinary entries retain only the host-parsed prompt, readable
+control title, and control metadata needed to wake the agent; terminal issue
+entries retain closed metadata and immutable state evidence for lifecycle-only
+delivery. Raw provider shapes do not cross the routing boundary.
 
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration

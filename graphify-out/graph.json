@@ -62792,7 +62792,7 @@
       "label": "_LinearActor",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L55",
+      "source_location": "L60",
       "_origin": "ast"
     },
     {
@@ -62808,7 +62808,7 @@
       "label": "_LinearIssueState",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L64",
+      "source_location": "L69",
       "_origin": "ast"
     },
     {
@@ -62816,7 +62816,7 @@
       "label": "_LinearWebhookPayload",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L72",
+      "source_location": "L77",
       "_origin": "ast"
     },
     {
@@ -62824,7 +62824,7 @@
       "label": "_header()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L86",
+      "source_location": "L91",
       "_origin": "ast"
     },
     {
@@ -62832,7 +62832,7 @@
       "label": "_authenticate()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L91",
+      "source_location": "L96",
       "_origin": "ast"
     },
     {
@@ -62848,7 +62848,7 @@
       "label": "_parse_payload()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L120",
+      "source_location": "L125",
       "_origin": "ast"
     },
     {
@@ -62856,7 +62856,7 @@
       "label": "_required_data_text()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L131",
+      "source_location": "L136",
       "_origin": "ast"
     },
     {
@@ -62864,7 +62864,7 @@
       "label": "_issue_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L138",
+      "source_location": "L143",
       "_origin": "ast"
     },
     {
@@ -62872,7 +62872,7 @@
       "label": "_ignored_event()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L151",
+      "source_location": "L156",
       "_origin": "ast"
     },
     {
@@ -62880,7 +62880,7 @@
       "label": "_actor_name()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L170",
+      "source_location": "L175",
       "_origin": "ast"
     },
     {
@@ -62888,7 +62888,7 @@
       "label": "_actor()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L176",
+      "source_location": "L181",
       "_origin": "ast"
     },
     {
@@ -62896,7 +62896,7 @@
       "label": "_optional_text()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L186",
+      "source_location": "L191",
       "_origin": "ast"
     },
     {
@@ -62904,7 +62904,7 @@
       "label": "_issue_display_fields()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L192",
+      "source_location": "L197",
       "_origin": "ast"
     },
     {
@@ -62912,7 +62912,7 @@
       "label": "_control_title()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L205",
+      "source_location": "L210",
       "_origin": "ast"
     },
     {
@@ -62920,7 +62920,15 @@
       "label": "_issue_state()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L218",
+      "source_location": "L223",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "label": "_is_agent_proposed_issue_creation()",
+      "file_type": "code",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L239",
       "_origin": "ast"
     },
     {
@@ -62928,7 +62936,7 @@
       "label": "_issue_state_name()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L234",
+      "source_location": "L250",
       "_origin": "ast"
     },
     {
@@ -62936,7 +62944,7 @@
       "label": "_issue_control_closed()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L239",
+      "source_location": "L255",
       "_origin": "ast"
     },
     {
@@ -62944,7 +62952,7 @@
       "label": "_issue_label()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L246",
+      "source_location": "L262",
       "_origin": "ast"
     },
     {
@@ -62952,7 +62960,7 @@
       "label": "_comment_context()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L251",
+      "source_location": "L267",
       "_origin": "ast"
     },
     {
@@ -62960,7 +62968,7 @@
       "label": "_comment_effect_evidence()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L267",
+      "source_location": "L283",
       "_origin": "ast"
     },
     {
@@ -62968,7 +62976,7 @@
       "label": "_issue_state_effect_evidence()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "_origin": "ast"
     },
     {
@@ -62976,7 +62984,7 @@
       "label": "_issue_context()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L314",
+      "source_location": "L330",
       "_origin": "ast"
     },
     {
@@ -62984,7 +62992,7 @@
       "label": "_conversation()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L325",
+      "source_location": "L341",
       "_origin": "ast"
     },
     {
@@ -62992,7 +63000,7 @@
       "label": "_comment_event()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L341",
+      "source_location": "L357",
       "_origin": "ast"
     },
     {
@@ -63000,7 +63008,7 @@
       "label": "_issue_event()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L364",
+      "source_location": "L380",
       "_origin": "ast"
     },
     {
@@ -63008,7 +63016,7 @@
       "label": "parse_linear_webhook()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L421",
+      "source_location": "L438",
       "_origin": "ast"
     },
     {
@@ -63020,51 +63028,51 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_65",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_70",
       "label": "Provider state evidence preserved from one Issue callback.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L65",
+      "source_location": "L70",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_139",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_144",
       "label": "Read the immutable issue key from either documented Issue payload shape.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L139",
+      "source_location": "L144",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_271",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_287",
       "label": "Build an exact selector only from provider-side Comment/create evidence.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L271",
+      "source_location": "L287",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_294",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_310",
       "label": "Build a selector only for exact nonterminal Issue/update evidence.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L294",
+      "source_location": "L310",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_429",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_446",
       "label": "Authenticate and parse one Linear delivery into a closed event contract.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L429",
+      "source_location": "L446",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_48",
+      "id": "pynchy_plugins_integrations_linear_webhook_parser_rationale_53",
       "label": "# NOTE: Update docs/integrations/linear.md \"Receive Linear callbacks\" and",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L48",
+      "source_location": "L53",
       "_origin": "ast"
     },
     {
@@ -256886,7 +256894,7 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_webhook_parser",
-      "target": "pynchy_plugins_integrations_linear_statuses",
+      "target": "pynchy_plugins_integrations_linear_board_payloads",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -256897,7 +256905,7 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_webhook_parser",
-      "target": "pynchy_plugins_integrations_linear_webhook_config",
+      "target": "pynchy_plugins_integrations_linear_statuses",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -256908,12 +256916,23 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_webhook_parser",
+      "target": "pynchy_plugins_integrations_linear_webhook_config",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser",
       "target": "pynchy_plugins_integrations_linear_webhook_evidence",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L28",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256924,7 +256943,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L32",
+      "source_location": "L37",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256935,7 +256954,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256946,7 +256965,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L44",
+      "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256956,7 +256975,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L55",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256966,7 +256985,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L55",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256976,7 +256995,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L64",
+      "source_location": "L69",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256986,7 +257005,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L72",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -256996,7 +257015,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L72",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257006,7 +257025,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L86",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257016,7 +257035,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L91",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257027,7 +257046,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L91",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257038,7 +257057,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L91",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257048,7 +257067,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L120",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257059,7 +257078,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L120",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257069,7 +257088,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L131",
+      "source_location": "L136",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257080,7 +257099,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L131",
+      "source_location": "L136",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257090,7 +257109,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L138",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257101,7 +257120,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L138",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257111,7 +257130,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L151",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257122,7 +257141,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L151",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257133,7 +257152,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L151",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257143,7 +257162,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L170",
+      "source_location": "L175",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257154,7 +257173,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L170",
+      "source_location": "L175",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257164,7 +257183,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L176",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257175,7 +257194,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L176",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257186,7 +257205,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L176",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257196,7 +257215,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L186",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257206,7 +257225,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L192",
+      "source_location": "L197",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257217,7 +257236,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L192",
+      "source_location": "L197",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257227,7 +257246,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L205",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257238,7 +257257,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L205",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257248,7 +257267,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L218",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257259,7 +257278,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L218",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257270,7 +257289,39 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L218",
+      "source_location": "L223",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser",
+      "target": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L239",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "target": "pynchy_plugins_integrations_linear_webhook_parser_linearwebhookpayload",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L239",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "target": "pynchy_plugins_integrations_linear_webhook_parser_linearissuestate",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L239",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257280,7 +257331,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L234",
+      "source_location": "L250",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257291,7 +257342,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L234",
+      "source_location": "L250",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257301,7 +257352,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L239",
+      "source_location": "L255",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257312,7 +257363,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L239",
+      "source_location": "L255",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257322,7 +257373,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L246",
+      "source_location": "L262",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257333,7 +257384,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L246",
+      "source_location": "L262",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257343,7 +257394,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L251",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257354,7 +257405,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L251",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257364,7 +257415,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L267",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257375,7 +257426,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L267",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257386,7 +257437,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L267",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257397,7 +257448,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L267",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257407,7 +257458,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257418,7 +257469,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257429,7 +257480,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257440,7 +257491,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257451,7 +257502,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L287",
+      "source_location": "L303",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257461,7 +257512,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L314",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257472,7 +257523,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L314",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257482,7 +257533,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L325",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257493,7 +257544,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L325",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257504,7 +257555,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L325",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257514,7 +257565,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L341",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257525,7 +257576,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L341",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257536,7 +257587,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L341",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257547,7 +257598,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L341",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257557,7 +257608,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L364",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257568,7 +257619,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L364",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257579,7 +257630,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L364",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257590,7 +257641,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L364",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257600,7 +257651,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L421",
+      "source_location": "L438",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257611,7 +257662,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L421",
+      "source_location": "L438",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257622,7 +257673,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L421",
+      "source_location": "L438",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257633,7 +257684,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L421",
+      "source_location": "L438",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257644,7 +257695,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L98",
+      "source_location": "L103",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257655,7 +257706,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L140",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257666,7 +257717,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L158",
+      "source_location": "L163",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257677,7 +257728,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L183",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257688,7 +257739,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L195",
+      "source_location": "L200",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257699,7 +257750,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L206",
+      "source_location": "L211",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257710,7 +257761,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L224",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257721,7 +257772,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L225",
+      "source_location": "L230",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257732,7 +257783,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L235",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257743,7 +257794,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L240",
+      "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257754,7 +257805,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L247",
+      "source_location": "L263",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257765,7 +257816,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L260",
+      "source_location": "L276",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257776,7 +257827,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L262",
+      "source_location": "L278",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257787,7 +257838,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L274",
+      "source_location": "L290",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257798,7 +257849,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L303",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257809,7 +257860,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L315",
+      "source_location": "L331",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257820,7 +257871,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L318",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257831,7 +257882,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L331",
+      "source_location": "L347",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257842,7 +257893,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L336",
+      "source_location": "L352",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257853,7 +257904,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L347",
+      "source_location": "L363",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257864,7 +257915,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L349",
+      "source_location": "L365",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257875,7 +257926,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L356",
+      "source_location": "L372",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257886,7 +257937,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L357",
+      "source_location": "L373",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257897,7 +257948,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L358",
+      "source_location": "L374",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257908,7 +257959,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L360",
+      "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257919,7 +257970,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L370",
+      "source_location": "L386",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257930,7 +257981,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L371",
+      "source_location": "L387",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_issue_event",
+      "target": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L389",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257941,7 +258003,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L373",
+      "source_location": "L390",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257952,7 +258014,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L379",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257963,7 +258025,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L380",
+      "source_location": "L397",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257974,7 +258036,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L386",
+      "source_location": "L403",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257985,7 +258047,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L398",
+      "source_location": "L415",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -257996,7 +258058,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L408",
+      "source_location": "L425",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258007,7 +258069,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L412",
+      "source_location": "L429",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258018,7 +258080,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L430",
+      "source_location": "L447",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258029,7 +258091,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L431",
+      "source_location": "L448",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258040,7 +258102,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L435",
+      "source_location": "L452",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258051,7 +258113,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L437",
+      "source_location": "L454",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258062,7 +258124,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L439",
+      "source_location": "L456",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -258077,62 +258139,62 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_65",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_70",
       "target": "pynchy_plugins_integrations_linear_webhook_parser_linearissuestate",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L65",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_139",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_144",
       "target": "pynchy_plugins_integrations_linear_webhook_parser_issue_id",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L139",
+      "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_271",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_287",
       "target": "pynchy_plugins_integrations_linear_webhook_parser_comment_effect_evidence",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L271",
+      "source_location": "L287",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_294",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_310",
       "target": "pynchy_plugins_integrations_linear_webhook_parser_issue_state_effect_evidence",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L294",
+      "source_location": "L310",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_429",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_446",
       "target": "pynchy_plugins_integrations_linear_webhook_parser_parse_linear_webhook",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L429",
+      "source_location": "L446",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_48",
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_rationale_53",
       "target": "pynchy_plugins_integrations_linear_webhook_parser",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L48",
+      "source_location": "L53",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327770,12 +327832,23 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_webhook_parser",
+      "target": "pynchy_plugins_integrations_linear_board_payloads_norm_name",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser",
       "target": "pynchy_plugins_integrations_linear_webhook_config_linearwebhookrouteconfig",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L25",
+      "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327786,7 +327859,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L28",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327797,7 +327870,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L28",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327808,7 +327881,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L32",
+      "source_location": "L37",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327819,7 +327892,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327830,7 +327903,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327841,7 +327914,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327852,7 +327925,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327863,7 +327936,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327874,7 +327947,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327885,7 +327958,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L44",
+      "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -335976,12 +336049,34 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_approval_decision_context",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_decision_context",
       "target": "pynchy_host_container_manager_security_approval",
       "relation": "imports_from",
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/approval_decision_context.py",
       "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_approval_replay",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/approval_replay.py",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336107,6 +336202,28 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_container_manager_mcp_manager",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/mcp/manager.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_mcp_resolution",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/mcp/resolution.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_container_manager_orchestrator",
       "target": "pynchy_plugins_runtimes_system_checks",
       "relation": "imports_from",
@@ -336140,6 +336257,17 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_container_manager_security_gate",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/security/gate.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_git_ops_utils",
       "target": "pynchy_host_git_ops_repo",
       "relation": "imports_from",
@@ -336147,6 +336275,17 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/git_ops/utils.py",
       "source_location": "L123",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_git_ops_worktree",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/git_ops/worktree.py",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336279,6 +336418,17 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/app.py",
       "source_location": "L53",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_capability_status",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/capability_status.py",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -336752,6 +336902,17 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/desktop_screenshot.py",
       "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_accounts",
+      "target": "pynchy_config_settings",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
+      "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350149,7 +350310,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L101",
+      "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350160,7 +350321,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L125",
+      "source_location": "L130",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350171,7 +350332,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L134",
+      "source_location": "L139",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350182,7 +350343,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L148",
+      "source_location": "L153",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_webhook_parser_is_agent_proposed_issue_creation",
+      "target": "pynchy_plugins_integrations_linear_board_payloads_norm_name",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350193,7 +350365,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L279",
+      "source_location": "L295",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350204,7 +350376,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L306",
+      "source_location": "L322",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350215,7 +350387,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L332",
+      "source_location": "L348",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350226,7 +350398,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L355",
+      "source_location": "L371",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350237,7 +350409,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L395",
+      "source_location": "L412",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350248,7 +350420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L433",
+      "source_location": "L450",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -370658,7 +370830,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L25",
+      "source_location": "L30",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370668,7 +370840,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L25",
+      "source_location": "L30",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370678,7 +370850,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L25",
+      "source_location": "L30",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370688,7 +370860,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370698,7 +370870,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370708,7 +370880,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370718,7 +370890,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370728,7 +370900,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370738,7 +370910,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370748,7 +370920,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370758,7 +370930,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370768,7 +370940,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370778,7 +370950,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370788,7 +370960,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370798,7 +370970,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370808,7 +370980,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370818,7 +370990,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370828,7 +371000,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370838,7 +371010,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370848,7 +371020,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370858,7 +371030,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L36",
+      "source_location": "L41",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370868,7 +371040,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L44",
+      "source_location": "L49",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370878,7 +371050,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L44",
+      "source_location": "L49",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -370888,7 +371060,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L44",
+      "source_location": "L49",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -383277,6 +383449,30 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_orchestrator_capability_status_resolve_workspace_capabilities",
+      "target": "pynchy_config_settings_get_settings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/host/orchestrator/capability_status.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_capability_status_collect_capability_status",
+      "target": "pynchy_config_settings_get_settings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/host/orchestrator/capability_status.py",
+      "source_location": "L90",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_orchestrator_concurrency_groupqueue_init",
       "target": "pynchy_host_orchestrator_runtime_registry_runtimeregistry",
       "relation": "calls",
@@ -386841,7 +387037,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_setup_start",
       "relation": "indirect_call",
       "context": "collection",
@@ -386853,7 +387049,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_setup_complete",
       "relation": "indirect_call",
       "context": "collection",
@@ -386865,7 +387061,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_search",
       "relation": "indirect_call",
       "context": "collection",
@@ -386877,7 +387073,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_get",
       "relation": "indirect_call",
       "context": "collection",
@@ -386889,7 +387085,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_create_draft",
       "relation": "indirect_call",
       "context": "collection",
@@ -386901,7 +387097,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_send_draft",
       "relation": "indirect_call",
       "context": "collection",
@@ -386913,7 +387109,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_gmail_send",
       "relation": "indirect_call",
       "context": "collection",
@@ -386925,7 +387121,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_contacts_search",
       "relation": "indirect_call",
       "context": "collection",
@@ -386937,7 +387133,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_docs_read",
       "relation": "indirect_call",
       "context": "collection",
@@ -386949,7 +387145,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_docs_export",
       "relation": "indirect_call",
       "context": "collection",
@@ -386961,7 +387157,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_sheets_get",
       "relation": "indirect_call",
       "context": "collection",
@@ -386973,7 +387169,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_gog_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_gog_plugin_py",
       "target": "pynchy_plugins_integrations_gog_handlers_handle_sheets_update",
       "relation": "indirect_call",
       "context": "collection",
@@ -387149,6 +387345,42 @@
       "confidence_score": 0.8,
       "source_file": "pynchy/plugins/integrations/linear.py",
       "source_location": "L342",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_accounts_configured_linear_accounts",
+      "target": "pynchy_config_settings_get_settings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_accounts_linear_account",
+      "target": "pynchy_config_settings_get_settings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_accounts_linear_account_for_workspace",
+      "target": "pynchy_config_settings_get_settings",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/plugins/integrations/linear_accounts.py",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -387352,7 +387584,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
-      "source_location": "L334",
+      "source_location": "L350",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -388533,7 +388765,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_setup_x_session",
       "relation": "indirect_call",
       "context": "collection",
@@ -388545,7 +388777,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_post",
       "relation": "indirect_call",
       "context": "collection",
@@ -388557,7 +388789,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_like",
       "relation": "indirect_call",
       "context": "collection",
@@ -388569,7 +388801,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_reply",
       "relation": "indirect_call",
       "context": "collection",
@@ -388581,7 +388813,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_retweet",
       "relation": "indirect_call",
       "context": "collection",
@@ -388593,7 +388825,7 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_x_integration_plugin",
+      "source": "private_var_folders_9w_mclzdrg90ss4xp_t5tmmnyxh0000gn_t_pynchy_graphify_index_vvitzl51_src_pynchy_plugins_integrations_x_integration_plugin_py",
       "target": "pynchy_plugins_integrations_x_integration_actions_handle_x_quote",
       "relation": "indirect_call",
       "context": "collection",
