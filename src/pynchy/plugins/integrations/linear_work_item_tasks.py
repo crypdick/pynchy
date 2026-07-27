@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves task annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
+from pynchy.conversation.models import ConversationId
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.logger import logger
@@ -45,6 +50,7 @@ from pynchy.state import (
     bind_work_item_execution_to_task,
     create_task_if_absent,
     get_active_work_item_execution,
+    get_conversation_control_binding,
     get_task_by_id,
     get_task_run_logs,
     get_work_item_execution_for_issue,
@@ -126,6 +132,7 @@ class DecisionAdmission:
     observed_at: datetime
     public_source: bool
     review_plan: LinearPlanReviewer | None = None
+    broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None
 
 
 def _text(payload: dict[str, Any], key: str) -> str:
@@ -147,6 +154,31 @@ async def linear_issue_conversation_id(
         return None
     conversation = await resolve_linear_issue_conversation(issue_id, workspace, account.name)
     return str(conversation.id)
+
+
+async def _report_plan_review_status(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    context: DecisionAdmission,
+    text: str,
+) -> None:
+    """Post actual plan-review state to the issue's existing control thread."""
+    if context.broadcast_host_message is None:
+        return
+    try:
+        conversation_id = await linear_issue_conversation_id(issue.id, workspace.folder)
+        if conversation_id is None:
+            return
+        binding = await get_conversation_control_binding(ConversationId(conversation_id))
+        if binding is None or binding.closed:
+            return
+        await context.broadcast_host_message(str(binding.thread_jid), text)
+    except Exception:  # noqa: BLE001, RUF100 - status delivery must not change admission.
+        logger.exception(
+            "Linear plan review status delivery failed",
+            issue=issue.identifier,
+            workspace=workspace.folder,
+        )
 
 
 async def _task_for_issue(
@@ -386,20 +418,39 @@ async def _admit_human_approved_issue(
 ) -> ScheduledTask | None:
     if await get_active_work_item_execution(issue.id) is not None:
         return None
-    if PLAN_START in issue.description and not await review_approved_plan(
-        context.client,
-        context.review_plan,
-        workspace=workspace.folder,
-        board=board,
-        issue_id=issue.id,
-        identifier=issue.identifier,
-        title=issue.title,
-        url=issue.url,
-        description=issue.description,
-        updated_at=issue.updated_at,
-        public_source=context.public_source,
-    ):
-        return None
+    if PLAN_START in issue.description:
+        await _report_plan_review_status(
+            issue,
+            workspace,
+            context,
+            "🔎 Rechecking the approved plan against the current checkout.",
+        )
+        if not await review_approved_plan(
+            context.client,
+            context.review_plan,
+            workspace=workspace.folder,
+            board=board,
+            issue_id=issue.id,
+            identifier=issue.identifier,
+            title=issue.title,
+            url=issue.url,
+            description=issue.description,
+            updated_at=issue.updated_at,
+            public_source=context.public_source,
+        ):
+            await _report_plan_review_status(
+                issue,
+                workspace,
+                context,
+                "⚠️ Plan check did not admit work. See Linear for the updated plan or error.",
+            )
+            return None
+        await _report_plan_review_status(
+            issue,
+            workspace,
+            context,
+            "✅ Plan check passed. Starting work.",
+        )
     task = await _task_for_issue(
         issue,
         workspace,
