@@ -45,17 +45,17 @@ class McpInstance:
     kwargs: dict[str, str]
     instance_id: str  # server_name + short hash of kwargs
     container_name: str  # Docker container name (for type=docker)
-    port: int | None = None  # host-side port (auto-assigned for inject_workspace scripts)
+    port: int | None = None  # host-side port (auto-assigned for host-process instances)
     last_activity: float = 0.0  # monotonic timestamp
-    process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script)
+    process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script/stdio)
 
     @property
     def endpoint_url(self) -> str:
         """URL that LiteLLM should use to reach this MCP server."""
         if self.server_config.type == "url":
             return self.server_config.url or ""
-        if self.server_config.type == "script":
-            # Script runs on host — LiteLLM reaches it via localhost.
+        if self.server_config.type in ("script", "stdio"):
+            # Host processes run on the Pynchy host — LiteLLM reaches localhost.
             # Uses instance port (unique per workspace) over config port.
             base = f"http://localhost:{self.port}"
             if self.server_config.transport in ("http", "streamable_http"):
@@ -258,7 +258,7 @@ def resolve_all_instances(
     Auto-assigns host-side ports: first instance of a server gets
     ``cfg.port``, second gets ``cfg.port + 1``, etc.  This prevents port
     conflicts when ``inject_workspace`` creates multiple host-side
-    instances of the same script-type server.
+    instances of the same host-process server.
     """
     state = _SyncState()
     # Track how many instances we've created per server_name so we can
@@ -295,14 +295,14 @@ def resolve_all_instances(
                 base_port = server_config.port
                 instance_port = (base_port + offset) if base_port is not None else None
                 while (
-                    server_config.type == "script"
+                    server_config.type in ("script", "stdio")
                     and instance_port is not None
                     and instance_port in assigned_ports
                 ):
                     offset += 1
                     instance_port = base_port + offset if base_port is not None else None
                 port_counters[server_name] = offset + 1
-                if server_config.type == "script" and instance_port is not None:
+                if server_config.type in ("script", "stdio") and instance_port is not None:
                     assigned_ports.add(instance_port)
                 state.instances[iid] = McpInstance(
                     server_name=server_name,

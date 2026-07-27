@@ -56,6 +56,9 @@ DOCKER_MCP_PORT_MESSAGE = "Docker MCP tools require 'port'"
 URL_MCP_URL_MESSAGE = "URL MCP tools require 'url'"
 SCRIPT_MCP_COMMAND_MESSAGE = "Script MCP tools require 'command'"
 SCRIPT_MCP_PORT_MESSAGE = "Script MCP tools require 'port'"
+STDIO_MCP_COMMAND_MESSAGE = "Stdio MCP tools require 'command'"
+STDIO_MCP_PORT_MESSAGE = "Stdio MCP tools require 'port'"
+STDIO_MCP_TRANSPORT_MESSAGE = "Stdio MCP tools require HTTP transport"
 
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
@@ -514,7 +517,7 @@ class LinearTool(_ToolTrustConfig):
 class McpToolConfig(_StrictModel):
     """MCP provider/runtime config nested under ``[tools.<name>.mcp]``."""
 
-    runtime: Literal["docker", "url", "script"] = "docker"
+    runtime: Literal["docker", "url", "script", "stdio"] = "docker"
     image: str | None = None
     dockerfile: str | None = None
     extra_ports: list[int] = []
@@ -547,6 +550,13 @@ class McpToolConfig(_StrictModel):
                 raise ValueError(SCRIPT_MCP_COMMAND_MESSAGE)
             if self.port is None:
                 raise ValueError(SCRIPT_MCP_PORT_MESSAGE)
+        elif self.runtime == "stdio":
+            if not self.command:
+                raise ValueError(STDIO_MCP_COMMAND_MESSAGE)
+            if self.port is None:
+                raise ValueError(STDIO_MCP_PORT_MESSAGE)
+            if self.transport not in ("http", "streamable_http"):
+                raise ValueError(STDIO_MCP_TRANSPORT_MESSAGE)
         return self
 
 
