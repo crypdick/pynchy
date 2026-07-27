@@ -129,7 +129,8 @@ signal.signal(signal.SIGTERM, signal.SIG_IGN)
 deadline = time.monotonic() + 0.5
 while not os.path.exists(os.environ["CHILD_READY_PATH"]) and time.monotonic() < deadline:
     time.sleep(0.01)
-time.sleep(60)
+while not os.path.exists(os.environ["CHILD_SIGNAL_PATH"]):
+    time.sleep(0.01)
 """
         )
         fake_git.chmod(0o755)

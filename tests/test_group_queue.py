@@ -673,18 +673,22 @@ class TestGroupQueueRetry:
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
             queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
             call_count = 0
+            final_attempt = asyncio.Event()
 
             def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
                 nonlocal call_count
                 call_count += 1
+                if call_count == 6:
+                    final_attempt.set()
                 return asyncio.sleep(0, result=TurnOutcome.RETRY)
 
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check(_target("group1@g.us"))
 
-            # Let all retries complete (5 retries + 1 initial = 6 calls total)
+            # Wait for all retries (5 retries + 1 initial = 6 calls total).
             # Retry delays: 0.01, 0.02, 0.04, 0.08, 0.16 = 0.31s total
-            await asyncio.sleep(1.0)
+            await asyncio.wait_for(final_attempt.wait(), timeout=1)
+            await asyncio.sleep(0)
 
             # Should have called 6 times (initial + 5 retries) then stopped
             assert call_count == 6
