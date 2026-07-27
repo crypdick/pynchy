@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
-from pynchy.config import (
-    Settings,  # noqa: TC001, RUF100 - runtime validation resolves settings annotations.
-)
 from pynchy.conversation.models import ConversationId
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
-    approval_replay_gate,
 )
 from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
 from pynchy.host.container_manager.security import approval as security_approval
+from pynchy.host.container_manager.security.gate import (  # noqa: TC001, RUF100 - beartype resolves replay-gate annotations.
+    SecurityGate,
+)
 
 
 @dataclass(frozen=True)
@@ -85,12 +84,25 @@ class ApprovalDecision:
         )
 
 
+@runtime_checkable
+class ApprovalReplayGateResolver(Protocol):
+    """Build the current approval gate for one already-bound source group."""
+
+    def __call__(
+        self,
+        *,
+        require_resolved: bool,
+        request_corruption_tainted: bool,
+        request_secret_tainted: bool,
+    ) -> SecurityGate | None: ...
+
+
 def build_approval_decision_context(
     pending: dict[str, Any],
     decision: ApprovalDecision,
     *,
     source_group: str,
-    settings: Settings,
+    replay_gate: ApprovalReplayGateResolver,
 ) -> ApprovalDecisionContext:
     """Build replay context from validated host-owned durable state."""
     tool_name = _required_nonempty_string(pending, "tool_name")
@@ -118,9 +130,7 @@ def build_approval_decision_context(
     if origin is not None and not isinstance(origin, str):
         raise ValueError("pending approval origin_conversation_id must be a string or null")
     origin_conversation_id = ConversationId(origin) if isinstance(origin, str) and origin else None
-    gate = approval_replay_gate(
-        settings,
-        source_group,
+    gate = replay_gate(
         require_resolved=origin_conversation_id is not None,
         request_corruption_tainted=_persisted_taint(pending, "corruption_tainted"),
         request_secret_tainted=_persisted_taint(pending, "secret_tainted"),
