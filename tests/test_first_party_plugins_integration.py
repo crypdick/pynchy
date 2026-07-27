@@ -10,9 +10,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.channel_runtime import ChannelPluginContext
@@ -60,13 +58,8 @@ class TestInRepoPluginDiscovery:
 
     def test_disabled_plugin_skipped(self):
         """Plugin disabled via config.toml is not loaded."""
-        settings = make_settings(plugins={"claude": PluginConfig(enabled=False)})
-
-        with (
-            patch("pynchy.plugins.registry.get_settings", return_value=settings),
-            patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
-        ):
-            pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager({"claude": False})
 
         names = [pm.get_name(p) for p in pm.get_plugins()]
         assert "builtin-claude" not in names

@@ -7,9 +7,7 @@ from unittest.mock import patch
 
 import pluggy
 import pytest
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.contracts import AgentCoreSpec
 
@@ -79,13 +77,8 @@ class TestPluginManager:
 
     def test_disabled_plugin_not_loaded(self):
         """Plugin with enabled=False in config is not loaded."""
-        settings = make_settings(plugins={"tailscale": PluginConfig(enabled=False)})
-
-        with (
-            patch("pynchy.plugins.registry.get_settings", return_value=settings),
-            patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
-        ):
-            pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager({"tailscale": False})
 
         names = [pm.get_name(p) for p in pm.get_plugins()]
         assert "builtin-tailscale" not in names

@@ -2225,22 +2225,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.plugins.observers.sqlite_observer.observer still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.plugins.registry"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.registry still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.registry"
-target_component = "config"
-kind = "type-checking-import"
-count = 1
-imports = ["pynchy.config.models"]
-reason = "pynchy.plugins.registry still has a type-checking-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.runtimes.apple_runtime.runtime"
 target_component = "container_adapter"
 kind = "runtime-import"
