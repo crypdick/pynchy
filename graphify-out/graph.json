@@ -15204,27 +15204,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "label": "dynamic_thread_folder()",
-      "file_type": "code",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L10",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_config_workspace_names_parent_workspace_name",
-      "label": "parent_workspace_name()",
-      "file_type": "code",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L16",
-      "_origin": "ast"
-    },
-    {
       "id": "pynchy_config_workspace_names_static_workspace_name",
       "label": "static_workspace_name()",
       "file_type": "code",
       "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L22",
+      "source_location": "L10",
       "_origin": "ast"
     },
     {
@@ -15237,26 +15221,10 @@
     },
     {
       "id": "pynchy_config_workspace_names_rationale_11",
-      "label": "Return the isolated runtime folder for a child conversation.",
-      "file_type": "rationale",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L11",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_config_workspace_names_rationale_17",
-      "label": "Return the configured parent for a generated dynamic-thread workspace.",
-      "file_type": "rationale",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L17",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_config_workspace_names_rationale_23",
       "label": "Return the config identity for a workspace, collapsing dynamic threads.",
       "file_type": "rationale",
       "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L23",
+      "source_location": "L11",
       "_origin": "ast"
     },
     {
@@ -15676,11 +15644,27 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_conversation_workspaces_dynamic_thread_folder",
+      "label": "dynamic_thread_folder()",
+      "file_type": "code",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_conversation_workspaces_parent_workspace_name",
+      "label": "parent_workspace_name()",
+      "file_type": "code",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L19",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_conversation_workspaces_routed_conversation_folder",
       "label": "routed_conversation_folder()",
       "file_type": "code",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L11",
+      "source_location": "L25",
       "_origin": "ast"
     },
     {
@@ -15696,7 +15680,7 @@
       "label": "conversation_id_from_folder()",
       "file_type": "code",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L16",
+      "source_location": "L30",
       "_origin": "ast"
     },
     {
@@ -15708,19 +15692,35 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_conversation_workspaces_rationale_12",
-      "label": "Return a stable child runtime folder independent of control-thread JID.",
+      "id": "pynchy_conversation_workspaces_rationale_14",
+      "label": "Return the stable runtime folder for a child conversation.",
       "file_type": "rationale",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L12",
+      "source_location": "L14",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_conversation_workspaces_rationale_17",
+      "id": "pynchy_conversation_workspaces_rationale_20",
+      "label": "Return the configured parent for a generated child runtime folder.",
+      "file_type": "rationale",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_conversation_workspaces_rationale_26",
+      "label": "Return a stable child runtime folder independent of control-thread JID.",
+      "file_type": "rationale",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L26",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_conversation_workspaces_rationale_31",
       "label": "Recover routed identity from a stable child runtime folder.",
       "file_type": "rationale",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L17",
+      "source_location": "L31",
       "_origin": "ast"
     },
     {
@@ -116861,8 +116861,8 @@
     },
     {
       "source": "pynchy_config_workspace_names",
-      "target": "re",
-      "relation": "imports",
+      "target": "pynchy_conversation_workspaces",
+      "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/config/workspace_names.py",
@@ -116872,42 +116872,11 @@
     },
     {
       "source": "pynchy_config_workspace_names",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L10",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_config_workspace_names",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L16",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_config_workspace_names",
       "target": "pynchy_config_workspace_names_static_workspace_name",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L22",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_config_workspace_names_static_workspace_name",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L24",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -116923,31 +116892,11 @@
     },
     {
       "source": "pynchy_config_workspace_names_rationale_11",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_config_workspace_names_rationale_17",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "rationale_for",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_config_workspace_names_rationale_23",
       "target": "pynchy_config_workspace_names_static_workspace_name",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/config/workspace_names.py",
-      "source_location": "L23",
+      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117676,8 +117625,8 @@
     },
     {
       "source": "pynchy_conversation_workspaces",
-      "target": "pynchy_config_workspace_names",
-      "relation": "imports_from",
+      "target": "re",
+      "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
@@ -117692,7 +117641,27 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L6",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_conversation_workspaces",
+      "target": "pynchy_conversation_workspaces_dynamic_thread_folder",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_conversation_workspaces",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117702,7 +117671,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L11",
+      "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117713,7 +117682,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L11",
+      "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117723,7 +117692,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L16",
+      "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117734,7 +117703,18 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L16",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_conversation_workspaces_routed_conversation_folder",
+      "target": "pynchy_conversation_workspaces_dynamic_thread_folder",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117745,7 +117725,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L22",
+      "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -117760,22 +117740,42 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_conversation_workspaces_rationale_12",
-      "target": "pynchy_conversation_workspaces_routed_conversation_folder",
+      "source": "pynchy_conversation_workspaces_rationale_14",
+      "target": "pynchy_conversation_workspaces_dynamic_thread_folder",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L12",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_conversation_workspaces_rationale_17",
+      "source": "pynchy_conversation_workspaces_rationale_20",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_conversation_workspaces_rationale_26",
+      "target": "pynchy_conversation_workspaces_routed_conversation_folder",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/conversation/workspaces.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_conversation_workspaces_rationale_31",
       "target": "pynchy_conversation_workspaces_conversation_id_from_folder",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L17",
+      "source_location": "L31",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301569,6 +301569,28 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_config_workspace_names",
+      "target": "pynchy_conversation_workspaces_dynamic_thread_folder",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/config/workspace_names.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_config_workspace_names",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/config/workspace_names.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_conversation_dispatch",
       "target": "pynchy_conversation_models_conversationdeliverycompletion",
       "relation": "imports",
@@ -301576,17 +301598,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/conversation/dispatch.py",
       "source_location": "L7",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_conversation_workspaces",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308841,17 +308852,6 @@
     },
     {
       "source": "pynchy_host_orchestrator_conversation_control",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/conversation_control.py",
-      "source_location": "L13",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_conversation_control",
       "target": "pynchy_conversation_models_controlsurface",
       "relation": "imports",
       "context": "import",
@@ -312708,17 +312708,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/runtime_target.py",
       "source_location": "L7",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_scheduled_binding",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/scheduled_binding.py",
-      "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -317707,28 +317696,6 @@
     },
     {
       "source": "pynchy_host_orchestrator_workspace_config",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_config.py",
-      "source_location": "L36",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_config",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_config.py",
-      "source_location": "L37",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_config",
       "target": "pynchy_conversation_workspaces_conversation_id_from_folder",
       "relation": "imports",
       "context": "import",
@@ -318021,17 +317988,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/workspace_threads.py",
       "source_location": "L20",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_threads",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_threads.py",
-      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -324390,17 +324346,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_webhook_parser.py",
       "source_location": "L44",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_webhooks",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/plugins/integrations/linear_webhooks.py",
-      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -330995,28 +330940,6 @@
     },
     {
       "source": "pynchy_state_conversation_runtime_repair",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_conversation_runtime_repair",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_conversation_runtime_repair",
       "target": "pynchy_conversation_workspaces_conversation_id_from_folder",
       "relation": "imports",
       "context": "import",
@@ -331573,17 +331496,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/sessions.py",
       "source_location": "L8",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_task_schema_migrations",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/task_schema_migrations.py",
-      "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334437,13 +334349,13 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_conversation_workspaces_routed_conversation_folder",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
+      "source": "pynchy_config_workspace_names_static_workspace_name",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "pynchy/conversation/workspaces.py",
-      "source_location": "L13",
+      "source_file": "pynchy/config/workspace_names.py",
+      "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338607,17 +338519,6 @@
     },
     {
       "source": "pynchy_host_orchestrator_conversation_control_ensure_conversation_control",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/conversation_control.py",
-      "source_location": "L106",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_conversation_control_ensure_conversation_control",
       "target": "pynchy_state_conversation_controls_get_conversation_control_binding",
       "relation": "calls",
       "context": "call",
@@ -341422,17 +341323,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_scheduled_binding_bind_named_thread",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/scheduled_binding.py",
-      "source_location": "L125",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_orchestrator_scheduled_binding_bind_routed_conversation",
       "target": "pynchy_state_conversation_routing_get_conversation",
       "relation": "calls",
@@ -343710,28 +343600,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_workspace_config_dynamic_thread_folder",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_config.py",
-      "source_location": "L115",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_config_parent_folder_for_dynamic_thread",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_config.py",
-      "source_location": "L119",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_orchestrator_workspace_config_load_workspace_config",
       "target": "pynchy_conversation_workspaces_conversation_id_from_folder",
       "relation": "calls",
@@ -343931,34 +343799,12 @@
     },
     {
       "source": "pynchy_host_orchestrator_workspace_threads_child_profile",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_threads.py",
-      "source_location": "L50",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_threads_child_profile",
       "target": "pynchy_host_orchestrator_workspace_registration_workspace_security",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/workspace_threads.py",
       "source_location": "L61",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_workspace_threads_declared_child_profile",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/workspace_threads.py",
-      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -346681,17 +346527,6 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_webhooks_validate_linear_workspace",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/plugins/integrations/linear_webhooks.py",
-      "source_location": "L126",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_plugins_integrations_linear_webhooks_validate_linear_workspace",
       "target": "pynchy_plugins_integrations_linear_accounts_linear_account",
       "relation": "calls",
       "context": "call",
@@ -348848,17 +348683,6 @@
     },
     {
       "source": "pynchy_state_conversation_runtime_repair_runtime_source_folders",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L77",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_conversation_runtime_repair_runtime_source_folders",
       "target": "pynchy_conversation_workspaces_routed_conversation_folder",
       "relation": "calls",
       "context": "call",
@@ -348876,17 +348700,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
       "source_location": "L83",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_conversation_runtime_repair_plan_runtime_ownership_repair",
-      "target": "pynchy_config_workspace_names_parent_workspace_name",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349822,17 +349635,6 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/sessions.py",
       "source_location": "L144",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_state_task_schema_migrations_migrate_cached_task_thread_binding",
-      "target": "pynchy_config_workspace_names_dynamic_thread_folder",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/state/task_schema_migrations.py",
-      "source_location": "L116",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379676,6 +379478,18 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_orchestrator_conversation_control_ensure_conversation_control",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/host/orchestrator/conversation_control.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_orchestrator_dep_factory_make_http_deps",
       "target": "pynchy_host_orchestrator_http_server_httpdeps",
       "relation": "calls",
@@ -379876,6 +379690,18 @@
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/runtime_process_control.py",
       "source_location": "L137",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_scheduled_binding_bind_named_thread",
+      "target": "pynchy_host_orchestrator_workspace_config_dynamic_thread_folder",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "pynchy/host/orchestrator/scheduled_binding.py",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -381644,6 +381470,18 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_orchestrator_workspace_config_parent_folder_for_dynamic_thread",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/host/orchestrator/workspace_config.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_orchestrator_workspace_config_add_workspace_to_toml",
       "target": "pynchy_config_settings_reset_settings",
       "relation": "calls",
@@ -381676,6 +381514,30 @@
       "confidence_score": 0.8,
       "source_file": "pynchy/host/orchestrator/workspace_config.py",
       "source_location": "L490",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_workspace_threads_child_profile",
+      "target": "pynchy_host_orchestrator_workspace_config_dynamic_thread_folder",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "pynchy/host/orchestrator/workspace_threads.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_workspace_threads_declared_child_profile",
+      "target": "pynchy_host_orchestrator_workspace_config_dynamic_thread_folder",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "pynchy/host/orchestrator/workspace_threads.py",
+      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -383576,6 +383438,18 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_plugins_integrations_linear_webhooks_validate_linear_workspace",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "pynchy/plugins/integrations/linear_webhooks.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_plugins_integrations_linear_webhooks_linear_webhook_routes",
       "target": "pynchy_plugins_integrations_linear_webhook_effects_process_linear_webhook_event",
       "relation": "indirect_call",
@@ -385144,6 +385018,30 @@
       "confidence_score": 1.0,
       "source_file": "pynchy/state/conversation_runtime_repair.py",
       "source_location": "L62",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_runtime_source_folders",
+      "target": "pynchy_conversation_workspaces_dynamic_thread_folder",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_plan_runtime_ownership_repair",
+      "target": "pynchy_conversation_workspaces_parent_workspace_name",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },

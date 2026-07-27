@@ -25,14 +25,6 @@ imports = ["pynchy.plugins.integrations.linear_config", "pynchy.plugins.integrat
 reason = "pynchy.config.models still has a runtime-import dependency on integration_adapter; Use an integration-neutral application port instead of importing this concrete integration."
 
 [[violations]]
-importer = "pynchy.conversation.workspaces"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.workspace_names"]
-reason = "pynchy.conversation.workspaces still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.google_mcp_canaries"
 target_component = "config"
 kind = "runtime-import"
