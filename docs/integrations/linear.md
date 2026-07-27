@@ -222,9 +222,14 @@ ignored. Pynchy ignores an `Issue/create` callback only when its signed callback
 state matches the managed `Agent Proposed` state, because creating a proposal
 does not authorize work. Other issue creations follow the normal callback
 policy. Callback state stays immutable for that delivery, so a later state
-transition arrives as a separate `Issue/update` callback. Ordinary comments,
-nonterminal issue updates and removals, and messages in the corresponding
-Discord thread share one ordered conversation.
+transition arrives as a separate `Issue/update` callback. A project-assignment
+update never wakes an agent when its changed fields contain `projectId` plus
+only Linear's `addedToProjectAt` and `updatedAt` bookkeeping. Pynchy still
+resolves the issue's workspace ownership before it records the delivery as
+ignored. An update that also changes a substantive field follows the normal
+callback policy. Ordinary comments, other nonterminal issue updates and
+removals, and messages in the corresponding Discord thread share one ordered
+conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
 Approved` update also remains controller-owned; the periodic controller checks

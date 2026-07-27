@@ -143,11 +143,15 @@ event to `linear:<organization-id>:issue` plus the immutable Linear issue ID. An
 state matches the managed `Agent Proposed` state: creating a proposal does not
 authorize work. Other issue creations follow the normal callback policy. The
 callback state remains immutable for that delivery, so a later state transition
-arrives as a separate `Issue/update` delivery. The webhook receipt retains the
-delivery UUID. Ordinary entries retain only the host-parsed prompt, readable
-control title, and control metadata needed to wake the agent; terminal issue
-entries retain closed metadata and immutable state evidence for lifecycle-only
-delivery. Raw provider shapes do not cross the routing boundary.
+arrives as a separate `Issue/update` delivery. An update whose changed fields
+contain `projectId` and only the `addedToProjectAt` and `updatedAt` bookkeeping
+fields resolves durable workspace ownership, then completes as an ignored
+receipt without an agent turn. Any additional substantive field keeps its
+normal callback semantics. The webhook receipt retains the delivery UUID.
+Ordinary entries retain only the host-parsed prompt, readable control title,
+and control metadata needed to wake the agent; terminal issue entries retain
+closed metadata and immutable state evidence for lifecycle-only delivery. Raw
+provider shapes do not cross the routing boundary.
 
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration
