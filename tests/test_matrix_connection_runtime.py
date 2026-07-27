@@ -9,6 +9,10 @@ from datetime import UTC, datetime
 import pytest
 from conftest import init_test_database, make_settings
 
+from pynchy.config.models import (
+    MatrixConnectionConfig,
+    MatrixEndpointConfig,
+)
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDeliveryStatus,
@@ -36,10 +40,6 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     get_active_matrix_route,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRoute
-from pynchy.plugins.integrations.matrix_routing_config import (
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
-)
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
