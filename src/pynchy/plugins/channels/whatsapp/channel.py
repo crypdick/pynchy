@@ -35,7 +35,7 @@ from pynchy.host.orchestrator.messaging.pending_questions import (
     find_pending_for_jid,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     get_chat_jids_by_name,
     get_last_group_sync,
     set_last_group_sync,

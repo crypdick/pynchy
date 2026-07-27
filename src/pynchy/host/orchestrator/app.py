@@ -71,7 +71,7 @@ from pynchy.plugins.session_lifecycle import prepare_context_reset
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     cancel_task_and_checkpoint,
     delete_workspace_profile,
     get_all_chats,

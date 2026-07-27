@@ -5,6 +5,7 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
+import pytest
 from scripts.prek_hooks.check_architecture_boundaries import check_architecture
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ def _policy(
     app_allowed = ", ".join(f'"{item}"' for item in application_allowed)
     adapter_allowed_text = ", ".join(f'"{item}"' for item in adapter_allowed)
     return f"""
-        version = 1
+        version = 2
         default_violation_guidance = "Use a configured generic boundary."
         source_roots = [
           {{ path = "src/acme", module = "acme", exclude = ["runner/**"] }},
@@ -35,28 +36,51 @@ def _policy(
         ]
         composition_roots = [{roots}]
 
-        [[components]]
-        name = "domain"
-        module_patterns = ["acme", "acme.domain.**"]
+        [roles.domain]
         allowed_dependencies = []
         violation_guidance = "Keep stable domain contracts inward."
 
-        [[components]]
-        name = "application"
-        module_patterns = ["acme.app.**"]
+        [roles.application]
         allowed_dependencies = [{app_allowed}]
 
-        [[components]]
-        name = "adapter"
-        module_patterns = ["acme.adapters.**"]
+        [roles.adapter]
         allowed_dependencies = [{adapter_allowed_text}]
         violation_guidance = "Depend on an application-owned port."
 
-        [[components]]
-        name = "worker"
-        module_patterns = ["worker.**"]
+        [roles.worker]
         allowed_dependencies = []
         violation_guidance = "Cross this runtime through its configured wire contract."
+
+        [[packages]]
+        name = "root"
+        root = "acme"
+        role = "domain"
+        public_modules = []
+        include_descendants = false
+
+        [[packages]]
+        name = "domain"
+        root = "acme.domain"
+        role = "domain"
+        public_modules = ["acme.domain.api"]
+
+        [[packages]]
+        name = "application"
+        root = "acme.app"
+        role = "application"
+        public_modules = ["acme.app.api"]
+
+        [[packages]]
+        name = "adapters"
+        root = "acme.adapters"
+        role = "adapter"
+        public_modules = ["acme.adapters.api"]
+
+        [[packages]]
+        name = "worker"
+        root = "worker"
+        role = "worker"
+        public_modules = []
     """
 
 
@@ -65,14 +89,17 @@ def _initialize_repo(
     app_source: str,
     *,
     policy: str | None = None,
-    baseline: str = "version = 1\n",
+    baseline: str = "version = 2\n",
     app_module: str = "use_case",
 ) -> None:
     _write(root, "src/acme/__init__.py")
     _write(root, "src/acme/domain/__init__.py")
+    _write(root, "src/acme/domain/api.py")
     _write(root, "src/acme/app/__init__.py")
+    _write(root, "src/acme/app/api.py")
     _write(root, f"src/acme/app/{app_module}.py", app_source)
     _write(root, "src/acme/adapters/__init__.py")
+    _write(root, "src/acme/adapters/api.py")
     _write(root, "src/acme/adapters/database.py")
     _write(root, "src/acme/adapters/cache.py")
     _write(root, "src/acme/adapters/dynamic.py")
@@ -109,70 +136,103 @@ def test_extracts_runtime_type_checking_relative_and_dynamic_imports(tmp_path: P
     diagnostics, current = _check(tmp_path)
 
     assert [
-        (item.imported, item.kind) for item in current if item.importer == "acme.app.use_case"
+        (item.imported, item.kind, item.rule)
+        for item in current
+        if item.importer == "acme.app.use_case"
     ] == [
-        ("acme.adapters.database", "runtime-import"),
-        ("acme.adapters.cache", "type-checking-import"),
-        ("acme.adapters.dynamic", "runtime-import"),
+        ("acme.adapters.database", "runtime-import", "direction"),
+        ("acme.adapters.database", "runtime-import", "visibility"),
+        ("acme.adapters.cache", "type-checking-import", "direction"),
+        ("acme.adapters.cache", "type-checking-import", "visibility"),
+        ("acme.adapters.dynamic", "runtime-import", "direction"),
+        ("acme.adapters.dynamic", "runtime-import", "visibility"),
     ]
-    assert {item.code for item in diagnostics} == {"architecture-boundary"}
-    assert all("Depend on an application-owned port." in item.message for item in diagnostics)
+    assert {item.code for item in diagnostics} == {
+        "architecture-direction",
+        "architecture-visibility",
+    }
     assert all(item.path == "src/acme/app/use_case.py" for item in diagnostics)
 
 
-def test_exact_baseline_allows_only_recorded_import_occurrences(tmp_path: Path) -> None:
+def test_public_surface_and_role_direction_are_independent(tmp_path: Path) -> None:
+    _initialize_repo(
+        tmp_path,
+        "from acme.adapters import api",
+        policy=_policy(application_allowed=("domain", "adapter")),
+    )
+
+    diagnostics, current = _check(tmp_path)
+
+    assert diagnostics == []
+    assert current == []
+
+    _write(tmp_path, "src/acme/app/use_case.py", "from acme.adapters import database")
+    diagnostics, current = _check(tmp_path)
+
+    assert [(item.imported, item.rule) for item in current] == [
+        ("acme.adapters.database", "visibility")
+    ]
+    assert [item.code for item in diagnostics] == ["architecture-visibility"]
+    assert "declared public modules: acme.adapters.api" in diagnostics[0].message
+
+
+def test_exact_baseline_allows_only_recorded_rule_and_import_occurrences(
+    tmp_path: Path,
+) -> None:
     baseline = """
-        version = 1
+        version = 2
 
         [[violations]]
         importer = "acme.app.use_case"
-        target_component = "adapter"
+        target_role = "adapter"
+        rule = "direction"
         kind = "runtime-import"
         count = 1
-        imports = ["acme.adapters.database"]
-        reason = "The use case still calls this database adapter directly."
+        imports = ["acme.adapters.api"]
+        reason = "The use case still calls this adapter facade directly."
     """
-    _initialize_repo(tmp_path, "from acme.adapters import database", baseline=baseline)
+    _initialize_repo(tmp_path, "from acme.adapters import api", baseline=baseline)
 
     diagnostics, _current = _check(tmp_path)
 
     assert diagnostics == []
 
-    _write(
-        tmp_path,
-        "src/acme/app/use_case.py",
-        "from acme.adapters import cache",
-    )
+    _write(tmp_path, "src/acme/app/use_case.py", "from acme.adapters import cache")
     diagnostics, _current = _check(tmp_path)
 
     assert [item.code for item in diagnostics] == [
         "architecture-baseline-stale",
-        "architecture-boundary",
+        "architecture-direction",
+        "architecture-visibility",
     ]
     assert "acme.adapters.cache" in diagnostics[1].message
 
 
-def test_baseline_count_reason_and_import_list_must_agree(tmp_path: Path) -> None:
+def test_baseline_rule_count_reason_and_import_list_must_agree(tmp_path: Path) -> None:
     baseline = """
-        version = 1
+        version = 2
 
         [[violations]]
         importer = "acme.app.use_case"
-        target_component = "adapter"
+        target_role = "adapter"
+        rule = "everything"
         kind = "runtime-import"
         count = 2
-        imports = ["acme.adapters.database"]
+        imports = ["acme.adapters.api"]
         reason = ""
     """
-    _initialize_repo(tmp_path, "from acme.adapters import database", baseline=baseline)
+    _initialize_repo(tmp_path, "from acme.adapters import api", baseline=baseline)
 
     diagnostics, _current = _check(tmp_path)
 
-    assert [item.code for item in diagnostics] == ["architecture-baseline"]
-    assert "positive count matching imports and a nonempty reason" in diagnostics[0].message
+    baseline_diagnostics = [item for item in diagnostics if item.code == "architecture-baseline"]
+    assert len(baseline_diagnostics) == 1
+    assert "direction or visibility rule" in baseline_diagnostics[0].message
 
 
-def test_named_composition_root_may_wire_a_concrete_adapter(tmp_path: Path) -> None:
+def test_named_composition_root_may_wire_a_private_concrete_adapter(
+    tmp_path: Path,
+) -> None:
     _initialize_repo(
         tmp_path,
         "from acme.adapters import database",
@@ -186,30 +246,30 @@ def test_named_composition_root_may_wire_a_concrete_adapter(tmp_path: Path) -> N
     assert current == []
 
 
-def test_policy_rejects_unclassified_and_multiply_classified_modules(tmp_path: Path) -> None:
-    overlapping_policy = (
+def test_policy_rejects_unclassified_modules_and_duplicate_package_roots(
+    tmp_path: Path,
+) -> None:
+    duplicate_policy = (
         _policy()
         + """
-        [[components]]
-        name = "overlap"
-        module_patterns = ["acme.app.**"]
-        allowed_dependencies = []
+        [[packages]]
+        name = "duplicate"
+        root = "acme.app"
+        role = "application"
+        public_modules = []
     """
     )
-    _initialize_repo(tmp_path, "", policy=overlapping_policy)
+    _initialize_repo(tmp_path, "", policy=duplicate_policy)
     _write(tmp_path, "src/acme/unowned.py")
 
     diagnostics, _current = _check(tmp_path)
 
     policy_messages = [item.message for item in diagnostics if item.code == "architecture-policy"]
     assert any("'acme.unowned' is unclassified" in message for message in policy_messages)
-    assert any(
-        "'acme.app.use_case' is matched application, overlap" in message
-        for message in policy_messages
-    )
+    assert any("duplicate package root 'acme.app'" in message for message in policy_messages)
 
 
-def test_policy_rejects_cycles_in_the_allowed_component_graph(tmp_path: Path) -> None:
+def test_policy_rejects_cycles_in_the_allowed_role_graph(tmp_path: Path) -> None:
     _initialize_repo(
         tmp_path,
         "",
@@ -226,15 +286,120 @@ def test_policy_rejects_cycles_in_the_allowed_component_graph(tmp_path: Path) ->
     assert "adapter -> application -> adapter" in cycles[0].message
 
 
-def test_separate_source_root_uses_policy_guidance_without_project_assumptions(
+def test_package_family_expands_only_direct_child_packages(tmp_path: Path) -> None:
+    family_policy = (
+        _policy(application_allowed=("domain", "adapter"))
+        + """
+        [[packages]]
+        name = "plugins"
+        root = "acme.plugins"
+        role = "domain"
+        public_modules = []
+        include_descendants = false
+
+        [[package_families]]
+        name = "plugins"
+        root_pattern = "acme.plugins.*"
+        role = "adapter"
+        public_modules = ["{root}.api"]
+    """
+    )
+    _initialize_repo(
+        tmp_path,
+        """
+        from acme.plugins.alpha import api, internal
+        from acme.plugins.alpha import helpers
+        from acme.plugins.beta import api as beta_api
+        """,
+        policy=family_policy,
+    )
+    _write(tmp_path, "src/acme/plugins/__init__.py")
+    _write(tmp_path, "src/acme/plugins/alpha/__init__.py")
+    _write(tmp_path, "src/acme/plugins/alpha/api.py")
+    _write(tmp_path, "src/acme/plugins/alpha/internal.py")
+    _write(tmp_path, "src/acme/plugins/alpha/helpers/__init__.py")
+    _write(tmp_path, "src/acme/plugins/beta/__init__.py")
+    _write(tmp_path, "src/acme/plugins/beta/api.py")
+
+    diagnostics, current = _check(tmp_path)
+
+    assert [(item.imported, item.target_package, item.rule) for item in current] == [
+        ("acme.plugins.alpha.internal", "acme.plugins.alpha", "visibility"),
+        ("acme.plugins.alpha.helpers", "acme.plugins.alpha", "visibility"),
+    ]
+    assert [item.code for item in diagnostics] == [
+        "architecture-visibility",
+        "architecture-visibility",
+    ]
+
+
+def test_public_packages_with_the_same_role_need_explicit_direction(
+    tmp_path: Path,
+) -> None:
+    family_policy = (
+        _policy(application_allowed=("domain", "adapter"))
+        + """
+        [[packages]]
+        name = "plugins"
+        root = "acme.plugins"
+        role = "domain"
+        public_modules = []
+        include_descendants = false
+
+        [[package_families]]
+        name = "plugins"
+        root_pattern = "acme.plugins.*"
+        role = "adapter"
+        public_modules = ["{root}.api"]
+    """
+    )
+    _initialize_repo(tmp_path, "", policy=family_policy)
+    _write(tmp_path, "src/acme/plugins/__init__.py")
+    _write(tmp_path, "src/acme/plugins/alpha/__init__.py")
+    _write(
+        tmp_path,
+        "src/acme/plugins/alpha/api.py",
+        "from acme.plugins.beta import api",
+    )
+    _write(tmp_path, "src/acme/plugins/beta/__init__.py")
+    _write(tmp_path, "src/acme/plugins/beta/api.py")
+
+    diagnostics, current = _check(tmp_path)
+
+    assert [(item.imported, item.rule) for item in current] == [
+        ("acme.plugins.beta.api", "direction")
+    ]
+    assert [item.code for item in diagnostics] == ["architecture-direction"]
+
+
+def test_package_family_rejects_recursive_pattern(tmp_path: Path) -> None:
+    policy = (
+        _policy()
+        + """
+        [[package_families]]
+        name = "plugins"
+        root_pattern = "acme.plugins.**"
+        role = "adapter"
+        public_modules = ["{root}.api"]
+    """
+    )
+    _initialize_repo(tmp_path, "", policy=policy)
+
+    with pytest.raises(ValueError, match="one-level"):
+        _check(tmp_path)
+
+
+def test_separate_source_root_uses_role_guidance_without_project_assumptions(
     tmp_path: Path,
 ) -> None:
     _initialize_repo(tmp_path, "from worker import core")
 
     diagnostics, current = _check(tmp_path)
 
-    assert [(item.importer, item.imported) for item in current] == [
-        ("acme.app.use_case", "worker.core")
+    assert [(item.importer, item.imported, item.rule) for item in current] == [
+        ("acme.app.use_case", "worker.core", "direction"),
+        ("acme.app.use_case", "worker.core", "visibility"),
     ]
-    assert len(diagnostics) == 1
-    assert "Cross this runtime through its configured wire contract." in diagnostics[0].message
+    direction = [item for item in diagnostics if item.code == "architecture-direction"]
+    assert len(direction) == 1
+    assert "Cross this runtime through its configured wire contract." in direction[0].message

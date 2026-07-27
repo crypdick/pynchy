@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from pynchy.config import access
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     advance_cursors_atomic,
     get_channel_cursor,
     get_pending_outbound,

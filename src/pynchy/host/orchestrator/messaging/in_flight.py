@@ -16,7 +16,7 @@ from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     begin_in_flight_turn,
     clear_in_flight_turn,
     complete_in_flight_turn,

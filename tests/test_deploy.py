@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 def deploy_dir(tmp_path: Path):
     """Provide an isolated continuation directory for deploy tests."""
     with patch(
-        "pynchy.state.get_in_flight_turns",
+        "pynchy.state.api.get_in_flight_turns",
         new_callable=AsyncMock,
         return_value=[],
     ):
@@ -267,7 +267,7 @@ class TestRollbackDeployCheckout:
         with (
             patch("pynchy.host.orchestrator.deploy.os.kill"),
             patch(
-                "pynchy.state.get_in_flight_turns",
+                "pynchy.state.api.get_in_flight_turns",
                 new_callable=AsyncMock,
                 return_value=[turn],
             ),

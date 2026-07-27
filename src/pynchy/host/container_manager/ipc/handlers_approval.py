@@ -57,7 +57,7 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     approve_action_intent,
     deny_action_intent,
     fail_action_intent,

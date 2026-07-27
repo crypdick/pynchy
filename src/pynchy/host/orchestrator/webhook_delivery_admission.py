@@ -16,7 +16,7 @@ from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves
     WebhookEvent,
     WebhookRoute,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     admit_webhook_receipt,

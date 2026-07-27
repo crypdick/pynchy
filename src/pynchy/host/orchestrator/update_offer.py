@@ -26,7 +26,7 @@ from pynchy.host.orchestrator.adapters import resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
-from pynchy.state import advance_deployment_baseline, get_deployment_state
+from pynchy.state.api import advance_deployment_baseline, get_deployment_state
 from pynchy.types import (
     AgentExecutionRuntime,
     Channel,

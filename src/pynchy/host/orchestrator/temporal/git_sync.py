@@ -38,7 +38,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     advance_deployment_baseline,
     get_deployment_state,
     get_router_state,

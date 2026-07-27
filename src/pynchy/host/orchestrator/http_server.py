@@ -54,7 +54,7 @@ from pynchy.host.orchestrator.webhook_ingress import (
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
 from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes, validate_webhook_routes
-from pynchy.state import (
+from pynchy.state.api import (
     action_intent_to_dict,
     get_recent_canary_runs,
     list_action_intents,

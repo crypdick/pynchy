@@ -42,7 +42,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     parse_temporal_activity_info,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     claim_in_flight_turn,
     clear_in_flight_turn,
     get_in_flight_turn_for_task,

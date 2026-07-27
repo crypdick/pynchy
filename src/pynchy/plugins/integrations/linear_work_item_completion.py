@@ -10,7 +10,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     reconcile_work_item,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemTransitionRequest,
     begin_work_item_transition,
     begin_work_item_transition_if_lifecycle_current,

@@ -44,7 +44,7 @@ from pynchy.host.orchestrator.workspace_registration import (
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
 from pynchy.plugins.contracts import WorkspaceSpec
-from pynchy.state import (
+from pynchy.state.api import (
     get_all_tasks,
     update_task,
 )

@@ -10,7 +10,6 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 
-from pynchy import state
 from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     AgentActivityEvent,
     AgentTraceEvent,
@@ -21,6 +20,7 @@ from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these 
 from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
 from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.logger import logger
+from pynchy.state import api as state
 
 _TRACE_CHAR_LIMIT = 6_000
 _TRACE_COLLECTION_LIMIT = 20

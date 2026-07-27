@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.plugins.integrations.linear_client import LinearSelfEchoRecorder
-from pynchy.state import (
+from pynchy.state.api import (
     begin_webhook_effect,
     confirm_webhook_effect,
     fail_webhook_effect,

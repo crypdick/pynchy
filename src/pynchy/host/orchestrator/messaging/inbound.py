@@ -34,7 +34,11 @@ from pynchy.host.orchestrator.messaging.host_controls import (
 )
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.state import get_messages_since, get_new_messages, get_oldest_resumable_turn_for_group
+from pynchy.state.api import (
+    get_messages_since,
+    get_new_messages,
+    get_oldest_resumable_turn_for_group,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
     InFlightWorkKind,
     NewMessage,

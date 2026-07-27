@@ -31,7 +31,7 @@ from pynchy.plugins.webhooks import (
     WebhookLifecycleDelivery,
     WebhookProcessingError,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WorkItemClaimConflictError,
     apply_conversation_control_state,
     cancel_work_item_execution,

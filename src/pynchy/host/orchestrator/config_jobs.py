@@ -21,7 +21,7 @@ from pynchy.config.settings import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.state import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
+from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     SessionPolicy,
