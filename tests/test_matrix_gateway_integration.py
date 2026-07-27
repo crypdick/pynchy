@@ -421,7 +421,11 @@ def test_approval_draft_binds_route_conversation_portal_thread_and_body() -> Non
     }
 
 
-def test_gateway_subprocess_uses_distinct_absolute_connection_state(tmp_path: Path) -> None:
+def test_gateway_subprocess_uses_distinct_absolute_connection_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UNRELATED_HOST_SECRET", "must-not-leak")
     first_dir = matrix_connection_state_dir(tmp_path / "relative", "personal-chats")
     second_dir = matrix_connection_state_dir(tmp_path / "relative", "work-chats")
     completed = subprocess.CompletedProcess(
@@ -449,6 +453,7 @@ def test_gateway_subprocess_uses_distinct_absolute_connection_state(tmp_path: Pa
     assert first_dir == tmp_path / "relative/matrix-gateway/connection-personal-chats"
     assert environments[0]["PYNCHY_MATRIX_GATEWAY_DATA_DIR"] == str(first_dir)
     assert environments[1]["PYNCHY_MATRIX_GATEWAY_DATA_DIR"] == str(second_dir)
+    assert "UNRELATED_HOST_SECRET" not in environments[0]
     assert first_dir != second_dir
 
 

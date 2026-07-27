@@ -16,6 +16,7 @@ from pathlib import Path
 
 from pynchy.config import get_settings
 from pynchy.plugins.integrations.gog._config import GogConfig, gog_config
+from pynchy.utils import filtered_process_environment
 
 _MAX_OUTPUT_CHARS = 2_000_000
 _OAUTH_SERVICES = "gmail,contacts,docs,sheets,drive"
@@ -305,6 +306,4 @@ def _append_recipients(arguments: list[str], flag: str, recipients: list[str]) -
 
 
 def _gog_environment(home: Path) -> dict[str, str]:
-    environment = dict(os.environ)
-    environment["GOG_HOME"] = str(home)
-    return environment
+    return filtered_process_environment({"GOG_HOME": str(home)})
