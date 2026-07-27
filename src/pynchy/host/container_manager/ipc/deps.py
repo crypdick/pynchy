@@ -66,6 +66,13 @@ class IpcDeps(Protocol):
 
     async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None: ...
 
+    async def get_scheduled_work_status(
+        self,
+        *,
+        source_group: str,
+        is_admin: bool,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]: ...
+
 
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
     """Look up the chat JID for a group folder from the workspace registry."""
