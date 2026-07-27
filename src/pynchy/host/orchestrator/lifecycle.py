@@ -424,8 +424,8 @@ async def _activate_runtime_owners(
     prepared_http: http_server.PreparedHttpServer,
 ) -> None:
     """Restore durable routes and start critical pollers behind their gates."""
-    await http_server.recover_http_routes(prepared_http)
     await _start_temporal_scheduler(app)
+    await http_server.recover_http_routes(prepared_http)
     await start_connection_runtimes(app)
 
 
