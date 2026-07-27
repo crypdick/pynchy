@@ -10,11 +10,11 @@ from pathlib import (
 from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
     JobConfig,
 )
-from pynchy.config.mcp import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
-    McpServerConfig,
-)
 from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
     WorkspaceConfig,
+)
+from pynchy.plugins.mcp_server import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
+    McpServerConfig,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
     ServiceTrustConfig,

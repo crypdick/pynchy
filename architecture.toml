@@ -68,6 +68,7 @@ module_patterns = [
   "pynchy.plugins.host_actions",
   "pynchy.plugins.memory",
   "pynchy.plugins.memory._api",
+  "pynchy.plugins.mcp_server",
   "pynchy.plugins.observers",
   "pynchy.plugins.observers._api",
   "pynchy.plugins.registry",
