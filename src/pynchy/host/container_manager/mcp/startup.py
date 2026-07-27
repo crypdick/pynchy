@@ -4,14 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
-class McpStartupFailure:
-    """A newly observed MCP startup failure that callers can surface to users."""
-
-    instance_id: str
-    server_name: str
-    reason: str
+from pynchy.types import McpStartupFailure  # noqa: TC001, RUF100 - public import contract.
 
 
 @dataclass(frozen=True)
