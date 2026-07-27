@@ -33,7 +33,10 @@ plus image, Dockerfile, command, arguments, ports, transport, idle timeout,
 environment, and volume fields. `stdio` wraps a trusted host command in a
 loopback HTTP bridge. Optional `ServiceTrustConfig` declares the template's
 trust defaults separately from its runtime configuration. Users create
-instances through their tool configuration; see [MCP servers](../../usage/mcp.md).
+instances through their tool configuration. That tool owns credential
+requirements and companion skills; plugin server templates cannot expose host
+credentials by themselves. See [MCP servers](../../usage/mcp.md) and
+[Tool access and secrets](../../usage/tool-access.md).
 
 ## `pynchy_workspace_spec`
 

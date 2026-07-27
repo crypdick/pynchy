@@ -94,13 +94,13 @@ async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypa
         tools={
             "linear_public": LinearTool(
                 type="linear",
-                api_key_env="LINEAR_PUBLIC_KEY",  # pragma: allowlist secret
-                team_key_env="LINEAR_PUBLIC_TEAM",
+                required_env=["LINEAR_PUBLIC_KEY"],  # pragma: allowlist secret
+                optional_env=["LINEAR_PUBLIC_TEAM"],
             ),
             "linear_synapse": LinearTool(
                 type="linear",
-                api_key_env="LINEAR_SYNAPSE_KEY",  # pragma: allowlist secret
-                team_key_env="LINEAR_SYNAPSE_TEAM",
+                required_env=["LINEAR_SYNAPSE_KEY"],  # pragma: allowlist secret
+                optional_env=["LINEAR_SYNAPSE_TEAM"],
             ),
         },
     )

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
@@ -14,7 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 import aiohttp
 
 from pynchy.canaries import CanaryExercise, CanaryRunContext, CanaryScenario
-from pynchy.config import get_settings
+from pynchy.config import get_settings, tool_process_environment
 from pynchy.config.models import McpTool
 from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
 from pynchy.plugins.integrations.caldav import (
@@ -33,6 +32,7 @@ from pynchy.plugins.integrations.linear_boards import (
     select_team,
 )
 from pynchy.plugins.integrations.proton_bridge import ProtonMailClient, create_proton_mail_client
+from pynchy.utils import filtered_process_environment
 
 _LINEAR_TIMEOUT_SECONDS = 30
 _CANARY_EVENT_DURATION = timedelta(minutes=1)
@@ -354,14 +354,7 @@ def _configured_proton_mail_client() -> ProtonMailClient:
     tool = get_settings().tools.get("proton-mail")
     if not isinstance(tool, McpTool):
         raise CanaryServiceError("Proton mail canary requires an MCP tool configuration")
-    environment = {**os.environ, **tool.mcp.env}
-    environment.update(
-        {
-            target_name: source_value
-            for target_name, source_name in tool.mcp.env_forward.items()
-            if (source_value := os.environ.get(source_name)) is not None
-        }
-    )
+    environment = filtered_process_environment({**tool.mcp.env, **tool_process_environment(tool)})
     return create_proton_mail_client(environment=environment)
 
 

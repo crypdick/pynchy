@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import shutil
 import stat
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,17 @@ _SKILL_NAME_COLLISION_ERROR = (
     "Skill name collision: skill '{skill_name}' conflicts with an existing skill. "
     "Rename the plugin skill directory to avoid shadowing a default or other plugin skill."
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompanionSkillAccess:
+    """Companion names owned by all tools and by this workspace's available tools."""
+
+    selected_names: frozenset[str]
+    all_names: frozenset[str]
+
+
+_NO_COMPANION_SKILL_ACCESS = CompanionSkillAccess(frozenset(), frozenset())
 
 
 def parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
@@ -64,16 +76,25 @@ def parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
     return name, tier
 
 
-def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) -> bool:
+def is_skill_selected(
+    name: str,
+    tier: str,
+    workspace_skills: list[str] | None,
+    *,
+    companion_skill_access: CompanionSkillAccess = _NO_COMPANION_SKILL_ACCESS,
+) -> bool:
     """Determine whether a skill should be included for a workspace.
 
     Resolution rules:
+    - Tool companion names require an available owning tool
     - ``workspace_skills is None`` → core only (safe default)
     - ``"*"`` in the list → include everything
     - Tier matches an entry → include
     - Name matches an entry → include
     - ``tier == "core"`` → always included when any filtering is active
     """
+    if name in companion_skill_access.all_names:
+        return name in companion_skill_access.selected_names
     if workspace_skills is None:
         return tier == "core"
     if "*" in workspace_skills:
@@ -90,13 +111,14 @@ def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) 
 # ---------------------------------------------------------------------------
 
 
-def sync_skills(
+def sync_skills(  # noqa: PLR0913, RUF100 - source selection and companion authorization are independent inputs.
     session_dir: Path,
     *,
     project_root: Path,
     plugin_manager: pluggy.PluginManager | None = None,
     workspace_skills: list[str] | None = None,
     denied_skill_names: list[str] | None = None,
+    companion_skill_access: CompanionSkillAccess = _NO_COMPANION_SKILL_ACCESS,
 ) -> None:
     """Copy selected canonical skills into one generated agent registry.
 
@@ -112,16 +134,24 @@ def sync_skills(
         project_root / "data" / "defaults" / "skills",
         skills_dst,
         workspace_skills,
+        companion_skill_access,
     )
     refresh_personalized_skills(
         session_dir,
         project_root=project_root,
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
+        companion_skill_access=companion_skill_access,
     )
     # Tool-associated skills cross this boundary through their owning plugin,
     # keeping built-in and third-party plugins equally pluggable.
-    _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills, project_root)
+    _sync_plugin_skills(
+        skills_dst,
+        plugin_manager,
+        workspace_skills,
+        project_root,
+        companion_skill_access,
+    )
 
 
 def refresh_personalized_skills(
@@ -130,15 +160,21 @@ def refresh_personalized_skills(
     project_root: Path,
     workspace_skills: list[str] | None,
     denied_skill_names: list[str] | None,
+    companion_skill_access: CompanionSkillAccess = _NO_COMPANION_SKILL_ACCESS,
 ) -> None:
     """Refresh canonical personalization skills in an existing agent home."""
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
+    _prune_unauthorized_companion_skills(
+        skills_dst,
+        companion_skill_access,
+    )
     skills_src = project_root / "data" / "personalization" / "skills"
     desired_names = _selected_personalized_skill_names(
         skills_src,
         workspace_skills,
         denied_skill_names,
+        companion_skill_access,
     )
     _prune_stale_personalized_skill_copies(skills_dst, desired_names)
     _sync_personalized_skills(
@@ -146,13 +182,36 @@ def refresh_personalized_skills(
         skills_dst,
         workspace_skills,
         denied_skill_names or [],
+        companion_skill_access,
     )
+
+
+def _prune_unauthorized_companion_skills(
+    skills_dst: Path,
+    companion_skill_access: CompanionSkillAccess,
+) -> None:
+    unauthorized = companion_skill_access.all_names - companion_skill_access.selected_names
+    if not unauthorized:
+        return
+
+    for skill_path in skills_dst.iterdir():
+        name = skill_path.name
+        if skill_path.is_dir() and not skill_path.is_symlink():
+            name, _tier = parse_skill_tier(skill_path)
+        if name not in unauthorized:
+            continue
+        if skill_path.is_symlink() or not skill_path.is_dir():
+            skill_path.unlink()
+        else:
+            shutil.rmtree(skill_path)
+        logger.info("Pruned unauthorized tool companion skill", skill=name)
 
 
 def _sync_configured_skills(
     skills_src: Path,
     skills_dst: Path,
     workspace_skills: list[str] | None,
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     if not skills_src.exists():
         return
@@ -160,16 +219,27 @@ def _sync_configured_skills(
     for skill_dir in skills_src.iterdir():
         if not skill_dir.is_dir():
             continue
-        _sync_configured_skill_dir(skill_dir, skills_dst, workspace_skills)
+        _sync_configured_skill_dir(
+            skill_dir,
+            skills_dst,
+            workspace_skills,
+            companion_skill_access,
+        )
 
 
 def _sync_configured_skill_dir(
     skill_dir: Path,
     skills_dst: Path,
     workspace_skills: list[str] | None,
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     name, tier = parse_skill_tier(skill_dir)
-    if not is_skill_selected(name, tier, workspace_skills):
+    if not is_skill_selected(
+        name,
+        tier,
+        workspace_skills,
+        companion_skill_access=companion_skill_access,
+    ):
         logger.debug("Skipping skill (not selected)", skill=name, tier=tier)
         return
 
@@ -184,12 +254,19 @@ def _sync_plugin_skills(
     plugin_manager: pluggy.PluginManager | None,
     workspace_skills: list[str] | None,
     project_root: Path,
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     if plugin_manager is None:
         return
 
     for skill_paths in plugin_manager.hook.pynchy_skill_paths():
-        _sync_plugin_skill_paths(skills_dst, skill_paths, workspace_skills, project_root)
+        _sync_plugin_skill_paths(
+            skills_dst,
+            skill_paths,
+            workspace_skills,
+            project_root,
+            companion_skill_access,
+        )
 
 
 def _sync_plugin_skill_paths(
@@ -197,9 +274,16 @@ def _sync_plugin_skill_paths(
     skill_paths: list[Any],
     workspace_skills: list[str] | None,
     project_root: Path,
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     for skill_path_str in skill_paths:
-        _sync_plugin_skill_path(skills_dst, skill_path_str, workspace_skills, project_root)
+        _sync_plugin_skill_path(
+            skills_dst,
+            skill_path_str,
+            workspace_skills,
+            project_root,
+            companion_skill_access,
+        )
 
 
 def _sync_plugin_skill_path(
@@ -207,6 +291,7 @@ def _sync_plugin_skill_path(
     skill_path_str: object,
     workspace_skills: list[str] | None,
     project_root: Path,
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     if not isinstance(skill_path_str, str | Path):
         logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
@@ -225,7 +310,12 @@ def _sync_plugin_skill_path(
         return
 
     name, tier = parse_skill_tier(skill_path)
-    if not is_skill_selected(name, tier, workspace_skills):
+    if not is_skill_selected(
+        name,
+        tier,
+        workspace_skills,
+        companion_skill_access=companion_skill_access,
+    ):
         logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
         return
 
@@ -308,6 +398,7 @@ def _selected_personalized_skill_names(
     skills_src: Path,
     workspace_skills: list[str] | None,
     denied_skill_names: list[str] | None,
+    companion_skill_access: CompanionSkillAccess,
 ) -> set[str]:
     if not skills_src.is_dir():
         return set()
@@ -323,7 +414,12 @@ def _selected_personalized_skill_names(
             continue
 
         name, tier = parse_skill_tier(skill_path)
-        if name not in denied and is_skill_selected(name, tier, workspace_skills):
+        if name not in denied and is_skill_selected(
+            name,
+            tier,
+            workspace_skills,
+            companion_skill_access=companion_skill_access,
+        ):
             selected_names.add(skill_path.name)
 
     return selected_names
@@ -354,6 +450,7 @@ def _sync_personalized_skills(
     skills_dst: Path,
     workspace_skills: list[str] | None,
     denied_skill_names: list[str],
+    companion_skill_access: CompanionSkillAccess,
 ) -> None:
     if not skills_src.is_dir():
         return
@@ -367,7 +464,12 @@ def _sync_personalized_skills(
                 )
             continue
         name, tier = parse_skill_tier(skill_path)
-        if name in denied_skill_names or not is_skill_selected(name, tier, workspace_skills):
+        if name in denied_skill_names or not is_skill_selected(
+            name,
+            tier,
+            workspace_skills,
+            companion_skill_access=companion_skill_access,
+        ):
             logger.debug(
                 "Skipping personalized skill (not selected)",
                 skill=name,

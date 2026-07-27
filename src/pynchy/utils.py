@@ -32,6 +32,17 @@ from pynchy.logger import logger
 _INTERVAL_POSITIVE_ERROR = "Interval must be positive"
 _SHELL_TERMINATION_GRACE_SECONDS = 10
 _PROGRESS_HARD_TIMEOUT_MULTIPLIER = 4.0
+_SAFE_HOST_ENVIRONMENT = ("HOME", "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL")
+
+
+def filtered_process_environment(
+    extra: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return the safe host baseline plus explicitly selected values."""
+    environment = {name: os.environ[name] for name in _SAFE_HOST_ENVIRONMENT if name in os.environ}
+    if extra:
+        environment.update(extra)
+    return environment
 
 
 class ProgressTimeoutError(TimeoutError):

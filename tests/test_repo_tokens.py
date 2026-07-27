@@ -4,7 +4,6 @@ Covers:
 - get_repo_token() resolution chain
 - ensure_repo_cloned() with token authentication
 - token scrubbing in clone-failure logs
-- Container credential injection (scoped vs broad)
 - git_env_with_token() environment building
 - check_token_expiry() API header parsing
 """
@@ -20,9 +19,7 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config import WorkspaceConfig
 from pynchy.config.models import RepoConfig, ReposConfig
-from pynchy.host.container_manager import credentials
 from pynchy.host.git_ops.repo import (
     RepoContext,
     check_token_expiry,
@@ -521,116 +518,6 @@ class TestEnsureRepoCloned:
             assert ensure_repo_cloned(repo_ctx) is False
 
         clone.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Container credential injection
-# ---------------------------------------------------------------------------
-
-
-class TestContainerCredentialInjection:
-    def test_admin_gets_broad_token(self, tmp_path: Path):
-        """Admin container gets the broad gh_token."""
-        s = make_settings(
-            data_dir=tmp_path,
-            secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
-        )
-        with (
-            patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
-            patch(
-                "pynchy.host.container_manager.credentials._read_git_identity",
-                return_value=(None, None),
-            ),
-        ):
-            env_dir = credentials.write_env_file(is_admin=True, group_folder="admin")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert BROAD_CREDENTIAL in content
-            assert "GH_TOKEN" in content
-
-    def test_non_admin_with_repo_access_gets_scoped_token(self, tmp_path: Path):
-        """Non-admin container with repo_access gets the repo-scoped token."""
-        s = make_settings(
-            data_dir=tmp_path,
-            repos=_repos({REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_CREDENTIAL))}),
-            workspaces={"code-improver": WorkspaceConfig()},
-            secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
-        )
-        fake_resolved = MagicMock(repo=[REPO_SLUG])
-        with (
-            patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
-            patch(
-                "pynchy.host.container_manager.credentials._read_git_identity",
-                return_value=(None, None),
-            ),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
-                return_value=fake_resolved,
-            ),
-        ):
-            env_dir = credentials.write_env_file(is_admin=False, group_folder="code-improver")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            # Gets the scoped token, not the broad one
-            assert SCOPED_CREDENTIAL in content
-            assert BROAD_CREDENTIAL not in content
-
-    def test_non_admin_without_repo_access_gets_no_token(self, tmp_path: Path):
-        """Non-admin container without repo_access gets no GH_TOKEN."""
-        s = make_settings(
-            data_dir=tmp_path,
-            workspaces={
-                "basic-group": WorkspaceConfig(),
-            },
-            secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
-        )
-        fake_resolved = MagicMock(repo=[])
-        with (
-            patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
-            patch(
-                "pynchy.host.container_manager.credentials._read_git_identity",
-                return_value=("Test", "test@test.com"),
-            ),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
-                return_value=fake_resolved,
-            ),
-        ):
-            env_dir = credentials.write_env_file(is_admin=False, group_folder="basic-group")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            assert "GH_TOKEN" not in content
-            assert BROAD_CREDENTIAL not in content
-
-    def test_non_admin_with_repo_access_no_token_configured(self, tmp_path: Path):
-        """Non-admin with repo_access but no token configured gets no GH_TOKEN."""
-        s = make_settings(
-            data_dir=tmp_path,
-            repos=_repos({REPO_SLUG: RepoConfig()}),
-            workspaces={"code-improver": WorkspaceConfig()},
-            secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
-        )
-        fake_resolved = MagicMock(repo=[REPO_SLUG])
-        with (
-            patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
-            patch(
-                "pynchy.host.container_manager.credentials._read_git_identity",
-                return_value=("Test", "test@test.com"),
-            ),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
-                return_value=fake_resolved,
-            ),
-        ):
-            env_dir = credentials.write_env_file(is_admin=False, group_folder="code-improver")
-            assert env_dir is not None
-            content = (env_dir / "env").read_text()
-            # No token injected — repo_access without a scoped token
-            assert "GH_TOKEN" not in content
 
 
 # ---------------------------------------------------------------------------

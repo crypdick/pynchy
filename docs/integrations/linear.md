@@ -18,6 +18,10 @@ LINEAR_TEAM_KEY=SYN
 ```toml
 [tools.linear]
 type = "linear"
+skills = ["linear"]
+required_env = ["LINEAR_API_KEY"]
+optional_env = ["LINEAR_TEAM_KEY"]
+expose_env_to_workspace = true
 project_per_workspace = true
 
 [profiles.project]
@@ -26,6 +30,12 @@ tools = ["linear"]
 [workspaces.code-improver]
 profiles = ["project"]
 ```
+
+The Linear companion skill calls the provider directly, so this tool uses the
+exceptional `expose_env_to_workspace = true` setting. Selecting `linear`
+installs the skill and exposes only its declared variables to the workspace.
+See [Tool access and secrets](../usage/tool-access.md) for the authorization
+model.
 
 For multiple accounts, declare one tool per API key. The tool declaration is
 the account and data-policy boundary:
@@ -38,8 +48,9 @@ LINEAR_SYNAPSE_TEAM_KEY=SYN
 ```toml
 [tools.linear_synapse]
 type = "linear"
-api_key_env = "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
-team_key_env = "LINEAR_SYNAPSE_TEAM_KEY"
+required_env = ["LINEAR_SYNAPSE_API_KEY"]
+optional_env = ["LINEAR_SYNAPSE_TEAM_KEY"]
+project_per_workspace = true
 public_source = false
 secret_data = false
 public_sink = true
@@ -50,11 +61,13 @@ tools = ["linear_synapse"]
 ```
 
 A workspace can select at most one Linear account. Pynchy maps that account's
-key into the workspace's Linear MCP process and uses the same account for
-host-side work-item state.
+declared variables to Linear's standard runtime names for its managed process
+and uses the configured names for host-side work-item state. This multi-account
+form keeps custom credential names out of the agent workspace.
 
-Editing `.env` triggers the normal Pynchy restart. Restart manually only if the
-health check shows that the service is stuck.
+Changing the materialized host environment requires the normal managed Pynchy
+restart. Local `.env` edits trigger that flow automatically. Restart manually
+only if the health check shows that the service is stuck.
 
 ## Use workspace boards
 

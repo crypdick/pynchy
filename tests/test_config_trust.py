@@ -9,6 +9,7 @@ from pynchy.config.models import (
     MatrixConnectionConfig,
     McpTool,
     ToolConfig,
+    WorkspaceTool,
 )
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
@@ -37,6 +38,28 @@ def test_tool_trust_all_false():
     )
     assert cfg.public_source is False
     assert cfg.dangerous_writes is False
+
+
+def test_workspace_tool_owns_skills_and_environment_access() -> None:
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "workspace",
+            "skills": ["github-auth"],
+            "required_env": ["GITHUB_TOKEN"],
+        }
+    )
+
+    assert isinstance(cfg, WorkspaceTool)
+    assert cfg.skills == ["github-auth"]
+    assert cfg.required_env == ["GITHUB_TOKEN"]
+    assert cfg.expose_env_to_workspace is True
+
+
+def test_workspace_tool_rejects_disabling_inherent_workspace_exposure() -> None:
+    with pytest.raises(ValidationError, match="expose_env_to_workspace"):
+        TypeAdapter(ToolConfig).validate_python(
+            {"type": "workspace", "expose_env_to_workspace": False}
+        )
 
 
 def test_tool_trust_forbidden():
@@ -92,6 +115,21 @@ def test_mcp_tool_provider_config_parses_credentials_path():
 def test_mcp_tool_rejects_missing_provider_config() -> None:
     with pytest.raises(ValidationError, match="mcp"):
         TypeAdapter(ToolConfig).validate_python({"type": "mcp"})
+
+
+def test_mcp_tool_rejects_removed_env_forward() -> None:
+    with pytest.raises(ValidationError, match="env_forward"):
+        TypeAdapter(ToolConfig).validate_python(
+            {
+                "type": "mcp",
+                "mcp": {
+                    "runtime": "script",
+                    "command": "uv",
+                    "port": 8475,
+                    "env_forward": {"TOKEN": "HOST_TOKEN"},
+                },
+            }
+        )
 
 
 def test_mcp_tool_provider_config_rejects_implicit_partial_docker_config() -> None:

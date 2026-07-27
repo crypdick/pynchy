@@ -335,16 +335,22 @@ class LiteLLMGateway:
             storage=self._postgres_mount_source,
         )
 
+        postgres_environment = {
+            "POSTGRES_USER": _POSTGRES_USER,
+            "POSTGRES_PASSWORD": self._pg_password,
+            "POSTGRES_DB": _POSTGRES_DB,
+        }
         await run_docker(
             "run", "-d",
             "--name", self._postgres_container,
             "--network", self._network_name,
             "-v", f"{self._postgres_mount_source}:/var/lib/postgresql/data",
-            "-e", f"POSTGRES_USER={_POSTGRES_USER}",
-            "-e", f"POSTGRES_PASSWORD={self._pg_password}",
-            "-e", f"POSTGRES_DB={_POSTGRES_DB}",
+            "-e", "POSTGRES_USER",
+            "-e", "POSTGRES_PASSWORD",
+            "-e", "POSTGRES_DB",
             "--restart", "unless-stopped",
             self._postgres_image,
+            environment=postgres_environment,
         )  # fmt: skip
 
         await self._wait_postgres_healthy()
@@ -420,29 +426,26 @@ class LiteLLMGateway:
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
 
-        env_vars = [
-            "-e",
-            f"LITELLM_MASTER_KEY={self.key}",
-            "-e",
-            f"LITELLM_SALT_KEY={self._salt_key}",
-            "-e",
-            f"DATABASE_URL={self._database_url}",
-        ]
+        container_environment = {
+            "LITELLM_MASTER_KEY": self.key,
+            "LITELLM_SALT_KEY": self._salt_key,
+            "DATABASE_URL": self._database_url,
+        }
         if self._uses_chatgpt_provider(filtered_config):
-            token_dir = env.get("CHATGPT_TOKEN_DIR") or "/app/data/chatgpt"
-            env_vars.extend(["-e", f"CHATGPT_TOKEN_DIR={token_dir}"])
-        for var_name, value in phoenix_env.items():
-            env_vars.extend(["-e", f"{var_name}={value}"])
+            container_environment["CHATGPT_TOKEN_DIR"] = (
+                env.get("CHATGPT_TOKEN_DIR") or "/app/data/chatgpt"
+            )
+        container_environment.update(phoenix_env)
 
         # Forward env vars referenced in the *filtered* config so we don't
         # forward vars for model entries that were filtered out.
-        for var_name, value in collect_litellm_yaml_environment(filtered_config, env):
-            env_vars.extend(["-e", f"{var_name}={value}"])
+        container_environment.update(collect_litellm_yaml_environment(filtered_config, env))
 
         if self._ui_credentials.ui_username:
-            env_vars.extend(["-e", f"UI_USERNAME={self._ui_credentials.ui_username}"])
+            container_environment["UI_USERNAME"] = self._ui_credentials.ui_username
         if self._ui_credentials.ui_password:
-            env_vars.extend(["-e", f"UI_PASSWORD={self._ui_credentials.ui_password}"])
+            container_environment["UI_PASSWORD"] = self._ui_credentials.ui_password
+        env_args = [argument for name in sorted(container_environment) for argument in ("-e", name)]
 
         await ensure_network(self._network_name)
         await self._start_postgres()
@@ -464,11 +467,12 @@ class LiteLLMGateway:
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
             "-v", f"{filtered_config}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
-            *env_vars,
+            *env_args,
             "--restart", "unless-stopped",
             self._image,
             "--config", "/app/config.yaml",
             "--port", str(_LITELLM_INTERNAL_PORT),
+            environment=container_environment,
         )  # fmt: skip
 
         await wait_healthy(

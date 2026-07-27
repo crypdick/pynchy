@@ -34,7 +34,7 @@ from pynchy.capabilities import (
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.config.models import LinearTool, WorkspaceConfig
+from pynchy.config.models import BuiltinTool, LinearTool, WorkspaceConfig
 from pynchy.config.profiles import CapabilityTomlConfig, ProfileConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -103,10 +103,12 @@ def _settings(
     capabilities = (
         {_ACTION_ID: CapabilityTomlConfig(decision=decision)} if decision is not None else {}
     )
+    selected_tools = tools if tools is not None else [_TOOL_NAME] if enabled else []
     return make_settings(
+        tools={name: BuiltinTool(type="builtin") for name in selected_tools},
         profiles={
             "matrix": ProfileConfig(
-                tools=tools if tools is not None else [_TOOL_NAME] if enabled else [],
+                tools=selected_tools,
                 capabilities=capabilities,
             )
         },
@@ -176,8 +178,9 @@ async def test_declared_workspace_requirement_controls_action_readiness():
 
 
 @pytest.mark.asyncio
-async def test_named_linear_account_satisfies_stable_host_action_requirement():
+async def test_named_linear_account_satisfies_stable_host_action_requirement(monkeypatch):
     """A credential-bearing account name must still expose the Linear capability."""
+    monkeypatch.setenv("LINEAR_API_KEY", "configured")
     settings = make_settings(
         profiles={"synapse": ProfileConfig(tools=["linear_synapse"])},
         workspaces={"test-ws": WorkspaceConfig(profiles=["synapse"])},

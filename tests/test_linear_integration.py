@@ -68,10 +68,7 @@ class TestLinearMcpPlugin:
         assert spec.config.port == 8474
         assert spec.config.transport == "streamable_http"
         assert spec.config.inject_workspace is True
-        assert spec.config.env_forward == {
-            "LINEAR_API_KEY": "LINEAR_API_KEY",  # pragma: allowlist secret
-            "LINEAR_TEAM_KEY": "LINEAR_TEAM_KEY",
-        }
+        assert spec.config.env == {}
 
     def test_plugin_trust_defaults_allow_linear_task_writes(self):
         plugin = LinearMcpPlugin()
@@ -102,7 +99,7 @@ class TestLinearMcpPlugin:
             tools={
                 "linear_public": LinearTool(
                     type="linear",
-                    api_key_env="LINEAR_PUBLIC_API_KEY",  # pragma: allowlist secret
+                    required_env=["LINEAR_PUBLIC_API_KEY"],  # pragma: allowlist secret
                     public_source=True,
                     secret_data=False,
                     public_sink=True,
@@ -110,7 +107,7 @@ class TestLinearMcpPlugin:
                 ),
                 "linear_synapse": LinearTool(
                     type="linear",
-                    api_key_env="LINEAR_SYNAPSE_API_KEY",  # pragma: allowlist secret
+                    required_env=["LINEAR_SYNAPSE_API_KEY"],  # pragma: allowlist secret
                     public_source=False,
                     secret_data=True,
                     public_sink=False,
@@ -123,16 +120,10 @@ class TestLinearMcpPlugin:
             specs = plugin.pynchy_mcp_server_spec()
 
         assert [spec.name for spec in specs] == ["linear_public", "linear_synapse"]
-        assert (
-            specs[0].config.env_forward["LINEAR_API_KEY"]  # pragma: allowlist secret
-            == "LINEAR_PUBLIC_API_KEY"  # pragma: allowlist secret
-        )
+        assert specs[0].config.env == {}
         assert specs[0].trust is not None
         assert specs[0].trust.public_source is True
-        assert (
-            specs[1].config.env_forward["LINEAR_API_KEY"]  # pragma: allowlist secret
-            == "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
-        )
+        assert specs[1].config.env == {}
         assert specs[1].trust is not None
         assert specs[1].trust.public_source is False
         assert specs[1].trust.secret_data is True

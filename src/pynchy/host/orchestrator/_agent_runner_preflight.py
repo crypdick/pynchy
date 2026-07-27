@@ -189,10 +189,14 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.chat_jid,
         request.on_output,
     )
+    access = workspace_config.load_resolved_tool_access(request.group.folder)
     system_notices = merged_system_notices(
-        build_admin_system_notices(
-            request.group.folder, is_admin=is_admin, repo_access=repo_access
-        ),
+        [
+            *build_admin_system_notices(
+                request.group.folder, is_admin=is_admin, repo_access=repo_access
+            ),
+            *(access.notices if access is not None else ()),
+        ],
         request.extra_system_notices,
     )
 

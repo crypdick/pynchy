@@ -72,13 +72,20 @@ private repository, and then check it out at `data/personalization/`. See the
 layout and CI workflow.
 
 Configure models in `data/personalization/litellm.yaml` and non-secret Pynchy
-settings in `data/personalization/pynchy.toml`. Put provider keys and the
-gateway key in the root `.env`:
+settings in `data/personalization/pynchy.toml`. For local development, put
+provider keys, the gateway key, and selected tool requirements in the root
+`.env`:
 
 ```dotenv
 OPENAI_API_KEY=sk-proj-...
 GATEWAY__MASTER_KEY=replace-with-a-long-random-value
+LINEAR_API_KEY=lin_api_...
 ```
+
+Tool declarations own provider requirements and companion skills. See
+[Tool access and secrets](../usage/tool-access.md) before granting a workspace
+access. Production deployments should materialize the same names into the
+managed host process through Proton Pass instead of a plaintext `.env`.
 
 Validate the complete tree before starting:
 

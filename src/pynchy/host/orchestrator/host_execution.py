@@ -141,7 +141,10 @@ def migrate_host_codex_thread(
 def host_agent_env_vars(
     *, is_admin: bool, group_folder: str, codex_home: Path | None = None
 ) -> dict[str, str]:
-    env = build_agent_env_vars(is_admin=is_admin, group_folder=group_folder)
+    env = build_agent_env_vars(
+        is_admin=is_admin,
+        group_folder=group_folder,
+    )
     s = get_settings()
     # Direct-host CLI hooks are fresh subprocesses, separate from the Pynchy MCP
     # process configured in host_direct. They therefore need the workspace

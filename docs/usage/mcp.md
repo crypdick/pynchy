@@ -19,6 +19,7 @@ Define it in `data/personalization/pynchy.toml`:
 ```toml
 [tools.playwright]
 type = "mcp"
+skills = ["browser-control"]
 public_source = true
 secret_data = false
 public_sink = false
@@ -41,7 +42,11 @@ tools = ["playwright"]
 profiles = ["browser"]
 ```
 
-MCP runtime details come from plugins and server-specific setup flows. The profile controls which MCP-backed tool names a workspace may use, while the trust fields control security gating.
+MCP runtime details come from plugins and server-specific setup flows. The
+profile controls which MCP-backed tool names a workspace may use, while the
+trust fields control security gating. Selecting the tool installs its companion
+skills. See [Tool access and secrets](tool-access.md) for credential
+requirements and process exposure.
 
 ## Host stdio servers
 
@@ -53,6 +58,7 @@ proxy.
 ```toml
 [tools.android]
 type = "mcp"
+required_env = ["ANDROID_TOKEN"]
 public_source = false
 secret_data = true
 public_sink = false
@@ -68,18 +74,24 @@ env = { ADB_PATH = "/path/to/adb" }
 ```
 
 `dangerous_writes = true` keeps every tool call subject to the normal human
-approval flow. The bridge receives only a small host environment. Add a needed
-host variable explicitly with `env` or `env_forward`.
+approval flow. The bridge receives only a small host environment. Put non-secret
+constants in `mcp.env`, and declare secret names on the tool. The selected tool
+process receives `ANDROID_TOKEN`; unrelated host variables do not. Pynchy does
+not support `env_forward`. See
+[Tool access and secrets](tool-access.md#define-tools) for the complete model.
 
 For the lifecycle and routing details, see [MCP management architecture](../architecture/mcp-management.md#host-stdio-servers).
 
 ## Multi-tenant Servers
 
-For multiple accounts, define one tool per account and compose the right tool names into profiles:
+For multiple accounts, define one tool per account and compose the right tool
+names into profiles. Give each account distinct requirement names when its
+runtime supports them:
 
 ```toml
 [tools.example_acme]
 type = "mcp"
+required_env = ["EXAMPLE_ACME_TOKEN"]
 public_source = true
 secret_data = true
 public_sink = true
@@ -88,9 +100,11 @@ dangerous_writes = true
 [tools.example_acme.mcp]
 runtime = "url"
 url = "https://acme.example.com/mcp"
+auth_value_env = "EXAMPLE_ACME_TOKEN"
 
 [tools.example_personal]
 type = "mcp"
+required_env = ["EXAMPLE_PERSONAL_TOKEN"]
 public_source = false
 secret_data = true
 public_sink = false
@@ -99,6 +113,7 @@ dangerous_writes = false
 [tools.example_personal.mcp]
 runtime = "url"
 url = "https://personal.example.com/mcp"
+auth_value_env = "EXAMPLE_PERSONAL_TOKEN"
 
 [profiles.work]
 tools = ["example_acme"]

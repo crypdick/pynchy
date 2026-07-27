@@ -70,3 +70,8 @@ Environment values are intentionally absent from this static validation pass.
 That lets CI validate private desired state without production secrets. Startup
 still performs the existing runtime route and credential checks after
 environment overrides are applied.
+
+For external tools, the host environment supplies values but never authority.
+Only a selected TOML tool can name requirements, expose values to a workspace,
+and install companion skills. See
+[Tool access and secrets](../usage/tool-access.md).

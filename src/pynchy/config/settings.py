@@ -45,6 +45,7 @@ from pynchy.config.models import (
     SecurityConfig,
     ToolConfig,
     WorkspaceConfig,
+    WorkspaceTool,
 )
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
@@ -82,6 +83,8 @@ def _assert_admin_clean_room(
         return
     for tool_name in resolved.tools:
         tool = settings.tools[tool_name]
+        if isinstance(tool, WorkspaceTool):
+            continue
         if tool.public_source is not False:
             message = (
                 f"Admin workspace '{workspace_name}' has tool '{tool_name}' "
@@ -305,8 +308,6 @@ class Settings(BaseSettings):
         return replace(
             resolved,
             model=workspace.model if workspace.model is not None else resolved.model,
-            contains_secrets=resolved.contains_secrets
-            or workspace.proton_pass_env_file is not None,
         )
 
     def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:

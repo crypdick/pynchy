@@ -17,7 +17,7 @@ from pynchy.capabilities import (
     WorkspaceCapabilitySnapshot,
     missing_workspace_tool,
 )
-from pynchy.config import Settings, get_settings
+from pynchy.config import Settings, apply_tool_access, get_settings
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     build_workspace_security,
@@ -50,6 +50,11 @@ async def resolve_workspace_capabilities(
     effective_settings = settings or get_settings()
     effective_catalog = catalog or get_host_action_catalog()
     resolved_workspace = effective_settings.resolved_workspace_config(workspace)
+    if resolved_workspace is not None:
+        resolved_workspace = apply_tool_access(
+            effective_settings.tools,
+            resolved_workspace,
+        )[0]
     outcomes = canary_outcomes or {}
     if resolved_workspace is None:
         capabilities = tuple(

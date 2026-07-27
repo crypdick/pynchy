@@ -15,6 +15,9 @@ import re
 import signal
 import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
 import sys
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves MCP environment annotations at runtime.
+    Mapping,
+)
 from pathlib import Path
 
 from pynchy.host.container_manager.docker import (
@@ -35,6 +38,7 @@ from pynchy.logger import logger
 from pynchy.plugins.mcp_server import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
+from pynchy.utils import filtered_process_environment
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle
@@ -83,9 +87,7 @@ async def ensure_script_running(instance: McpInstance) -> None:
     cmd = [cfg.command or "", *expanded_args]
     cmd.extend(kwargs_to_args(instance.kwargs))
 
-    # Merge env: inherit host env + static env + env_forward
-    merged_env = {**os.environ, **cfg.env}
-    merged_env.update(resolve_env_forward(cfg.env_forward))
+    merged_env = filtered_process_environment({**cfg.env, **instance.tool_environment})
     logger.info(
         "Starting MCP script on-demand",
         instance_id=instance.instance_id,
@@ -139,7 +141,7 @@ async def ensure_stdio_running(instance: McpInstance) -> None:
     instance.process = await asyncio.to_thread(
         _start_script_process,
         cmd,
-        build_stdio_env(instance.server_config),
+        build_stdio_env(instance.server_config, instance.tool_environment),
     )
 
     try:
@@ -306,16 +308,18 @@ async def _start_docker_container(
     instance: McpInstance,
     placeholders: dict[str, str],
 ) -> None:
+    container_environment = {**instance.server_config.env, **instance.tool_environment}
     await run_docker(
         "run", "-d",
         "--name", instance.container_name,
         "--network", runtime_network_name("litellm-net"),
         "--restart", "unless-stopped",
         *_docker_publish_args(instance),
-        *build_env_args(instance.server_config),
+        *build_env_args(container_environment),
         *_docker_volume_args(instance, placeholders),
         instance.server_config.image or "",
         *_docker_command_args(instance, placeholders),
+        environment=filtered_process_environment(container_environment),
     )  # fmt: skip
 
 
@@ -370,39 +374,16 @@ def kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
     return args
 
 
-def resolve_env_forward(env_forward: dict[str, str]) -> dict[str, str]:
-    """Resolve ``env_forward`` mappings to concrete values from the host environment.
-
-    Returns ``{container_var: resolved_value}`` for each host var that exists.
-    Logs a warning for any host variable that is not set.
-    """
-    resolved: dict[str, str] = {}
-    for container_var, host_var in sorted(env_forward.items()):
-        value = os.environ.get(host_var)
-        if value is None:
-            logger.warning(
-                "env_forward var not set on host — skipping",
-                container_var=container_var,
-                host_var=host_var,
-            )
-            continue
-        resolved[container_var] = value
-    return resolved
-
-
-def build_stdio_env(config: McpServerConfig) -> dict[str, str]:
+def build_stdio_env(
+    config: McpServerConfig,
+    tool_environment: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return the intentionally small host environment for a stdio bridge.
 
-    Unlike HTTP script MCPs, this starts arbitrary stdio tooling such as
-    ``npx``.  Do not inherit the Pynchy service environment (which can carry
-    provider credentials); an operator can forward an additional variable
-    explicitly through ``env_forward``.
+    Host tooling gets only the operational process baseline, static runtime
+    configuration, and variables declared by the selected tool.
     """
-    passthrough = ("HOME", "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL")
-    env = {name: os.environ[name] for name in passthrough if name in os.environ}
-    env.update(config.env)
-    env.update(resolve_env_forward(config.env_forward))
-    return env
+    return filtered_process_environment({**config.env, **(tool_environment or {})})
 
 
 def _stdio_bridge_command(instance: McpInstance) -> list[str]:
@@ -424,18 +405,12 @@ def _stdio_bridge_command(instance: McpInstance) -> list[str]:
 
 
 def build_env_args(
-    config: McpServerConfig,
+    environment: Mapping[str, str],
 ) -> list[str]:
-    """Build ``-e KEY=VALUE`` Docker flags from ``env`` and ``env_forward``.
-
-    ``env_forward`` is a ``{container_var: host_var}`` dict (normalized from
-    list or dict form by the Pydantic validator).
-    """
+    """Build value-free Docker flags for explicitly selected variables."""
     args: list[str] = []
-    for key, value in sorted(config.env.items()):
-        args.extend(["-e", f"{key}={value}"])
-    for container_var, value in resolve_env_forward(config.env_forward).items():
-        args.extend(["-e", f"{container_var}={value}"])
+    for key in sorted(environment):
+        args.extend(["-e", key])
     return args
 
 

@@ -28,6 +28,11 @@ configuration, then select the tool in a profile:
 ```toml
 [tools.proton-mail]
 type = "mcp"
+skills = ["reading-proton-email"]
+required_env = [
+  "PYNCHY_PROTON_BRIDGE_USERNAME",
+  "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND",
+]
 public_source = true
 secret_data = true
 public_sink = true
@@ -39,13 +44,6 @@ command = "uv"
 args = ["run", "python", "-m", "pynchy.plugins.integrations.proton_mail", "--port", "{port}"]
 port = 8475
 transport = "streamable_http"
-env = {
-  PYNCHY_PROTON_BRIDGE_USERNAME = "you@example.com",
-  PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND = "/path/to/read-bridge-app-password",
-  # Set only when Bridge uses non-default ports.
-  PYNCHY_PROTON_BRIDGE_IMAP_PORT = "1143",
-  PYNCHY_PROTON_BRIDGE_SMTP_PORT = "1025"
-}
 
 [profiles.mail-research]
 tools = ["proton-mail"]
@@ -54,9 +52,22 @@ tools = ["proton-mail"]
 profiles = ["mail-research"]
 ```
 
-The password command is intentionally explicit: it lets the host use its
-existing secret store without passing a Bridge credential into agent containers
-or embedding it in the Pynchy configuration.
+Set the declared variables in the Pynchy host process:
+
+```dotenv
+PYNCHY_PROTON_BRIDGE_USERNAME=you@example.com
+PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND=/path/to/read-bridge-app-password
+```
+
+Add `PYNCHY_PROTON_BRIDGE_IMAP_PORT` and
+`PYNCHY_PROTON_BRIDGE_SMTP_PORT` to `optional_env` only when Bridge uses
+non-default ports.
+
+The password command lets the host use its existing secret store without
+passing a Bridge credential into agent containers or embedding it in TOML.
+Pynchy sends these variables only to the Proton Mail MCP subprocess. Selecting
+the tool also installs its companion reading skill. See
+[Tool access and secrets](../usage/tool-access.md).
 
 ## Available tools
 

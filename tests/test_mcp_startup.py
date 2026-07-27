@@ -9,7 +9,7 @@ import pytest
 from conftest import make_settings
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.models import McpTool, McpToolConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.manager import McpManager
 from pynchy.host.container_manager.mcp.proxy import McpBackendUnavailableError, McpProxy
@@ -29,6 +29,17 @@ async def _synced_manager(
     }
     settings = make_settings(
         data_dir=tmp_path,
+        tools={
+            name: McpTool(
+                type="mcp",
+                mcp=McpToolConfig(
+                    runtime="docker",
+                    image=server_configs[name].image,
+                    port=server_configs[name].port,
+                ),
+            )
+            for name in server_names
+        },
         profiles={"test": ProfileConfig(tools=list(server_names))},
         workspaces={"workspace": WorkspaceConfig(profiles=["test"])},
     )

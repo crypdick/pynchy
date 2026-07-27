@@ -237,7 +237,7 @@ WorkingDirectory={project_root}
 ExecStartPre={git_path} -C {project_root} pull --ff-only
 ExecStartPre={uv_path} sync --all-extras
 ExecStartPre={uv_path} tool run prek install
-ExecStart={uv_path} run pynchy
+ExecStart=/bin/sh {project_root}/scripts/run_pynchy.sh
 Restart=always
 RestartSec=10
 Environment=HOME={home}

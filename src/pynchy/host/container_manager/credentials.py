@@ -1,24 +1,18 @@
-"""Credential discovery and environment file writing.
+"""Build the explicitly authorized environment passed to agent processes.
 
-Containers receive the gateway URL and an ephemeral key instead of real
-API credentials.  Real keys never leave the host process.
+LLM provider keys stay behind the gateway. Workspace tool variables enter an
+agent process only when its selected tool explicitly authorizes that exposure.
 """
 
 from __future__ import annotations
 
-import os
-import shutil
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves credential helpers at runtime.
 from urllib.parse import urlparse
-
-from dotenv import dotenv_values
 
 from pynchy.config import get_settings
 from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
+    Settings,  # noqa: TC001, RUF100 - beartype resolves credential helper annotations.
 )
-from pynchy.conversation.workspaces import parent_workspace_name
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
@@ -81,113 +75,11 @@ def _read_git_identity() -> tuple[str | None, str | None]:
     return name, email
 
 
-def shell_quote(value: str) -> str:
-    """Quote a value for safe inclusion in a shell env file."""
-    return "'" + value.replace("'", "'\\''") + "'"
-
-
-# ---------------------------------------------------------------------------
-# Env file writer
-# ---------------------------------------------------------------------------
-
 _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
-_RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
-_PROTON_PASS_TIMEOUT_SECONDS = 15
-_AGENT_ACCESS_REASON = "Resolve credentials for a Pynchy workspace container"
-
-
-class ProtonPassSecretResolutionError(RuntimeError):
-    """A configured scoped secret reference could not be resolved safely."""
-
-
-def _null_delimited_env_values(output: bytes) -> dict[str, str]:
-    """Parse ``env -0`` output without ever rendering it to logs."""
-    values: dict[str, str] = {}
-    for entry in output.split(b"\0"):
-        if not entry or b"=" not in entry:
-            continue
-        raw_name, raw_value = entry.split(b"=", maxsplit=1)
-        name = raw_name.decode("utf-8", errors="strict")
-        values[name] = raw_value.decode("utf-8", errors="strict")
-    return values
-
-
-def _workspace_proton_pass_env_vars(s: Settings, group_folder: str) -> dict[str, str]:
-    """Resolve one workspace's Proton Pass references for its env-dir only.
-
-    The template stores ``pass://`` references, never real secret values.  The
-    ``pass-cli`` child receives the real values and this process copies only the
-    explicitly named variables into Pynchy's already-scoped container env file.
-    """
-    workspace = s.workspaces.get(parent_workspace_name(group_folder) or group_folder)
-    template_name = workspace.proton_pass_env_file if workspace else None
-    if template_name is None:
-        return {}
-
-    template_path = (s.project_root / template_name).resolve()
-    if not template_path.is_file():
-        msg = f"Proton Pass secret template is missing for workspace {group_folder!r}"
-        raise ProtonPassSecretResolutionError(msg)
-    template_values = dotenv_values(template_path)
-    expected_names = {name for name, value in template_values.items() if value is not None}
-    if not expected_names:
-        return {}
-    pass_cli = shutil.which("pass-cli")
-    if pass_cli is None:
-        msg = f"Proton Pass CLI is unavailable for workspace {group_folder!r}"
-        raise ProtonPassSecretResolutionError(msg)
-
-    try:
-        # pass_cli is discovered locally; every other argv element stays fixed.
-        result = subprocess.run(  # noqa: S603, RUF100
-            [
-                pass_cli,
-                "run",
-                "--no-masking",
-                "--env-file",
-                str(template_path),
-                "--",
-                "/usr/bin/env",
-                "-0",
-            ],
-            capture_output=True,
-            check=False,
-            # Agent-scoped Proton Pass sessions require an auditable reason for
-            # each secret read. Keep it fixed rather than deriving it from a
-            # user-controlled workspace name.
-            env={**os.environ, "PROTON_PASS_AGENT_REASON": _AGENT_ACCESS_REASON},
-            timeout=_PROTON_PASS_TIMEOUT_SECONDS,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        msg = (
-            "Proton Pass secret resolution unavailable for workspace "
-            f"{group_folder!r}: {type(exc).__name__}"
-        )
-        raise ProtonPassSecretResolutionError(msg) from exc
-    if result.returncode != 0:
-        msg = (
-            f"Proton Pass secret resolution failed for workspace {group_folder!r} "
-            f"(exit {result.returncode})"
-        )
-        raise ProtonPassSecretResolutionError(msg)
-
-    resolved = _null_delimited_env_values(result.stdout)
-    missing_names = sorted(name for name in expected_names if name not in resolved)
-    if missing_names:
-        msg = (
-            "Proton Pass did not provide configured variables for workspace "
-            f"{group_folder!r}: {', '.join(missing_names)}"
-        )
-        raise ProtonPassSecretResolutionError(msg)
-    return {name: resolved[name] for name in expected_names}
 
 
 def has_api_credentials() -> bool:
-    """Check whether LLM API credentials are available for containers.
-
-    Pure check with no filesystem side effects — use this instead of
-    calling :func:`write_env_file` with a dummy group folder.
-    """
+    """Check whether the host gateway can serve an LLM provider."""
     from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
         get_gateway,
     )
@@ -242,33 +134,6 @@ def _merge_no_proxy_hosts(env_vars: dict[str, str], hosts: list[str]) -> None:
         env_vars[key] = ",".join(merged)
 
 
-def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
-    """GH_TOKEN — admin gets a broad token, non-admin gets a repo-scoped token."""
-    if is_admin:
-        if s.secrets.gh_token:
-            return {"GH_TOKEN": s.secrets.gh_token.get_secret_value()}
-        if gh_token := _read_gh_token():
-            logger.debug("Using GitHub token from gh CLI")
-            return {"GH_TOKEN": gh_token}
-        return {}
-
-    # Non-admin: inject repo-scoped token if this workspace has a configured repo.
-    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
-        load_resolved_config,
-    )
-
-    resolved = load_resolved_config(group_folder)
-    if resolved and resolved.repo:
-        tokens = {
-            repo_cfg.token.get_secret_value()
-            for slug in resolved.repo
-            if (repo_cfg := s.repos.overrides.get(slug)) and repo_cfg.token
-        }
-        if len(tokens) == 1:
-            return {"GH_TOKEN": next(iter(tokens))}
-    return {}
-
-
 def _git_identity_env_vars() -> dict[str, str]:
     git_name, git_email = _read_git_identity()
     env_vars: dict[str, str] = {}
@@ -281,17 +146,24 @@ def _git_identity_env_vars() -> dict[str, str]:
     return env_vars
 
 
-def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
-    """Chrome profiles selected by resolved MCP tool names.
+def _workspace_config_env_vars(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
+    """Authorized tool variables and Chrome profiles for one workspace.
 
     Admin gets every configured chrome profile; non-admin workspaces get the
     chrome profile suffixes from selected MCP tools such as ``gdrive.personal``.
     """
+    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100
+        load_resolved_config,
+        load_resolved_tool_access,
+    )
+
+    access = load_resolved_tool_access(group_folder)
+    env_vars = dict(access.workspace_env) if access is not None else {}
     if is_admin:
         chrome_profiles = s.chrome_profiles
     else:
         chrome_profiles_set: set[str] = set()
-        resolved = s.resolved_workspace_config(group_folder)
+        resolved = load_resolved_config(group_folder)
         for tool_name in resolved.tools if resolved else []:
             tool = s.tools.get(tool_name)
             if tool is None or tool.type != "mcp" or "." not in tool_name:
@@ -302,20 +174,8 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
         chrome_profiles = sorted(chrome_profiles_set)
 
     if chrome_profiles:
-        return {"PYNCHY_CHROME_PROFILES": ",".join(chrome_profiles)}
-    return {}
-
-
-def _agent_context_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
-    from pynchy.host.paths import (  # noqa: PLC0415, RUF100
-        PERSONALIZATION_SKILLS_CONTAINER_PATH,
-    )
-
-    return {
-        "PYNCHY_GROUP_FOLDER": group_folder,
-        "PYNCHY_IS_ADMIN": "1" if is_admin else "0",
-        "PYNCHY_SKILLS_ROOT": PERSONALIZATION_SKILLS_CONTAINER_PATH,
-    }
+        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
+    return env_vars
 
 
 def build_agent_env_vars(
@@ -323,9 +183,8 @@ def build_agent_env_vars(
     is_admin: bool,
     group_folder: str,
     extra_env_vars: dict[str, str] | None = None,
-    include_gh_token: bool = True,
 ) -> dict[str, str]:
-    """Build agent environment variables without writing an env-dir file."""
+    """Build the selected workspace environment without ambient discovery."""
     from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
         get_gateway,
     )
@@ -339,64 +198,6 @@ def build_agent_env_vars(
         env_vars.update(extra_env_vars)
     if gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
-    # NOTE: Update docs/architecture/container-isolation.md § Environment Variable
-    # Isolation and docs/architecture/security.md § 6. Credential Handling when
-    # changing this workspace-scoped credential path.
-    env_vars.update(_workspace_proton_pass_env_vars(s, group_folder))
-    # The deterministic runtime must not discover credentials from the host,
-    # including credentials held by gh outside its sandboxed HOME directory.
-    # NOTE: Keep docs/contributing/new-feature.md in sync.  # temporal-ok: current doc path.
-    if include_gh_token and os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
-        env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
     env_vars.update(_git_identity_env_vars())
-    env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars.update(_workspace_config_env_vars(s, is_admin=is_admin, group_folder=group_folder))
     return env_vars
-
-
-def write_env_file(
-    *,
-    is_admin: bool,
-    group_folder: str,
-    extra_env_vars: dict[str, str] | None = None,
-    include_gh_token: bool = True,
-) -> Path | None:
-    """Write credential env vars for a specific group's container.
-
-    Returns the per-group env dir, or ``None`` if no credentials were found.
-
-    LLM credentials are swapped for a gateway URL + ephemeral key.
-    Real API keys never enter the container.
-
-    Non-LLM credentials (GH_TOKEN, git identity) are written directly —
-    they are not proxied through the gateway.
-    """
-    s = get_settings()
-    env_dir = s.data_dir / "env" / group_folder
-    env_dir.mkdir(parents=True, exist_ok=True)
-
-    env_vars = build_agent_env_vars(
-        is_admin=is_admin,
-        group_folder=group_folder,
-        extra_env_vars=extra_env_vars,
-        include_gh_token=include_gh_token,
-    )
-
-    if not env_vars:
-        logger.warning(
-            "No credentials found — containers will fail to authenticate. "
-            "Configure an LLM provider in data/personalization/litellm.yaml "
-            "and the root .env"
-        )
-        return None
-
-    env_vars.update(_agent_context_env_vars(is_admin=is_admin, group_folder=group_folder))
-
-    logger.debug(
-        "Container env prepared",
-        group=group_folder,
-        is_admin=is_admin,
-        vars=list(env_vars.keys()),
-    )
-    lines = [f"{k}={shell_quote(v)}" for k, v in env_vars.items()]
-    (env_dir / "env").write_text("\n".join(lines) + "\n")
-    return env_dir

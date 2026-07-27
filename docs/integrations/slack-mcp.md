@@ -10,7 +10,9 @@ Pynchy's built-in Slack channel plugin needs a bot token (`xoxb`), which means a
 
 ## Prerequisites
 
-You should already understand how pynchy manages MCP servers. If not, read the [MCP servers guide](../usage/mcp.md) first — especially the sections on `env_forward` and multi-tenant setup.
+Read [MCP servers](../usage/mcp.md) for runtime configuration and
+[Tool access and secrets](../usage/tool-access.md) for credential exposure
+before continuing.
 
 ## 1. Define the server in `data/personalization/pynchy.toml`
 
@@ -19,6 +21,10 @@ Each Slack workspace gets its own tool entry with its own token mapping:
 ```toml
 [tools.slack_mcp_acme]
 type = "mcp"
+required_env = [
+  "SLACK_MCP_XOXC_TOKEN",
+  "SLACK_MCP_XOXD_TOKEN",
+]
 public_source = true
 secret_data = true
 public_sink = true
@@ -30,12 +36,16 @@ image = "ghcr.io/korotovsky/slack-mcp-server:latest"
 port = 8080
 transport = "http"
 env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
 ```
 
-The `env_forward` mapping means: the Docker container sees `SLACK_MCP_XOXC_TOKEN`, resolved from `SLACK_XOXC_ACME` in the host `.env`.
+The upstream server reads these exact variable names. Pynchy passes them only
+to the selected Docker tool process. `mcp.env` contains non-secret runtime
+constants.
 
-For multiple Slack workspaces, add another entry with a different name, port, and `env_forward` mapping. See [MCP servers § Multi-tenant servers](../usage/mcp.md#multi-tenant-servers) for the pattern.
+This upstream server's fixed names allow one browser-token pair in one Pynchy
+host process. Multiple accounts require a provider wrapper that accepts
+distinct environment names; declare those names in each tool's `required_env`.
+Pynchy does not map one environment name to another.
 
 ## 2. Extract browser tokens
 
@@ -65,14 +75,17 @@ The Slack MCP server authenticates using browser session tokens (`xoxc` and `xox
 
 Browser session tokens. They expire when you log out of Slack in the browser or when Slack rotates sessions. Once expired, the MCP server fails to authenticate and you need to extract fresh tokens.
 
-## 3. Add tokens to `.env`
+## 3. Materialize the tokens
 
 ```
-SLACK_XOXC_ACME=xoxc-...
-SLACK_XOXD_ACME=xoxd-...
+SLACK_MCP_XOXC_TOKEN=xoxc-...
+SLACK_MCP_XOXD_TOKEN=xoxd-...
 ```
 
-The variable names must match the right-hand side of your `env_forward` mapping from step 1. Changes to `.env` trigger an automatic service restart.
+The variable names must match `required_env`. Use the ignored root `.env` for
+local development. Use the Proton Pass host-process flow from
+[Tool access and secrets](../usage/tool-access.md#materialize-host-secrets) for
+production.
 
 ## 4. Grant workspace access
 
@@ -86,7 +99,7 @@ profiles = ["acme-slack"]
 
 The Docker container starts on-demand when an agent first needs it. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
 
-## 5. Automated token refresh (optional)
+## 5. Automated local token refresh (optional)
 
 Instead of manually extracting tokens from DevTools every time they expire, use the **slack-token-extractor** plugin to automate extraction via a persistent browser session.
 
@@ -141,12 +154,15 @@ Once the session is established, tokens refresh headlessly:
 ```
 refresh_slack_tokens(
     workspace_name="acme",
-    xoxc_var="SLACK_XOXC_ACME",
-    xoxd_var="SLACK_XOXD_ACME",
+    xoxc_var="SLACK_MCP_XOXC_TOKEN",
+    xoxd_var="SLACK_MCP_XOXD_TOKEN",
 )
 ```
 
 The tool navigates to Slack using the saved session, extracts fresh tokens, and writes them to `.env`. The service auto-restarts on `.env` changes.
+Use this flow only when `.env` owns the local credentials. For a production
+Proton Pass deployment, update the corresponding Pass items through an
+operator-authorized process instead.
 
 ### Scheduled refresh
 
