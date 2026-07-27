@@ -1049,22 +1049,6 @@ imports = ["pynchy.host.container_manager"]
 reason = "pynchy.host.orchestrator.messaging.deps still has a type-checking-import dependency on container_adapter; Use a use-case-owned execution or container capability port and wire this adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.messaging.direct_command"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.messaging.direct_command still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.direct_command"
-target_component = "state_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.state"]
-reason = "pynchy.host.orchestrator.messaging.direct_command still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.messaging.host_controls"
 target_component = "container_adapter"
 kind = "runtime-import"

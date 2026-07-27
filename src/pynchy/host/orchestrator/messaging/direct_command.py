@@ -3,23 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Protocol
 
 import pynchy.types as types
-from pynchy.config import get_settings
-from pynchy.event_bus import Event, MessageEvent
-from pynchy.host.orchestrator.messaging.approval_handler import ApprovalDeps
+from pynchy.event_bus import MessageEvent
+from pynchy.host.orchestrator.messaging.deps import DirectCommandDeps, DirectCommandOutput
 from pynchy.logger import logger
-from pynchy.state import store_message_direct
 from pynchy.utils import run_shell_command
-
-
-class DirectCommandDeps(ApprovalDeps, Protocol):
-    async def broadcast_to_channels(
-        self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
-    ) -> None: ...
-
-    def emit(self, event: Event) -> None: ...
 
 
 async def execute_direct_command(
@@ -30,12 +19,11 @@ async def execute_direct_command(
     command: str,
 ) -> None:
     """Execute a user command directly without LLM approval."""
-    s = get_settings()
     logger.info("Executing direct command", group=group.name, command=command[:100])
 
     result = await run_shell_command(
         command,
-        cwd=str(s.groups_dir / group.folder),
+        cwd=str(deps.direct_command_workdir(group)),
         timeout_seconds=30,
     )
 
@@ -57,23 +45,16 @@ async def execute_direct_command(
     ts = datetime.now(UTC).isoformat()
     output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
 
-    await store_message_direct(
-        message_id=f"command-output-{message.id}",
-        chat_jid=chat_jid,
-        sender="command_output",
-        sender_name="command",
-        content=output_text,
-        timestamp=ts,
-        is_from_me=True,
-        message_type="host",
-        metadata={
-            "source": "direct_command",
-            "command": command,
-            "exit_code": result.returncode,
-            "source_message_id": message.id,
-            "workspace_name": group.name,
-            "workspace_folder": group.folder,
-        },
+    await deps.record_direct_command_output(
+        DirectCommandOutput(
+            chat_jid=chat_jid,
+            group=group,
+            source_message=message,
+            command=command,
+            exit_code=result.returncode,
+            content=output_text,
+            timestamp=ts,
+        )
     )
 
     event = types.OutboundEvent(

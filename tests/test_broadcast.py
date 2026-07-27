@@ -20,7 +20,7 @@ from pynchy.host.container_manager.session import destroy_all_sessions, get_sess
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
-from pynchy.state import store_message
+from pynchy.state import get_chat_history, store_message
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -92,7 +92,7 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.snapshots",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
-            "pynchy.host.orchestrator.messaging.direct_command",
+            "pynchy.host.orchestrator.app",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
@@ -469,6 +469,20 @@ class TestBroadcastConsistency:
             )
 
         await capture.drain()
+
+        persisted = next(
+            message
+            for message in await get_chat_history("group@g.us")
+            if message.id == "command-output-m1"
+        )
+        assert persisted.metadata == {
+            "source": "direct_command",
+            "command": "echo hello world",
+            "exit_code": 0,
+            "source_message_id": "m1",
+            "workspace_name": "Test Group",
+            "workspace_folder": "test-group",
+        }
 
         # Channel should have the command output with actual content
         channel_texts = [t for _, t in channel.sent_messages]
