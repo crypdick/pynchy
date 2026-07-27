@@ -334,6 +334,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         pending_question_store = staticmethod(_PendingQuestionStore)
         scheduled_work_store = staticmethod(_ScheduledWorkStore)
         messaging_source_health = staticmethod(SourceHealthProjection)
+        default_agent_name = staticmethod(lambda: get_settings().agent.name)
 
         async def clear_session(self, group_folder: str) -> None:
             group = next(

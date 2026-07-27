@@ -185,14 +185,6 @@ imports = ["pynchy.host.learning.skills"]
 reason = "pynchy.host.container_manager.ipc.handlers_skills still has a runtime-import dependency on learning_adapter; Use a use-case-owned learning capability port and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.container_manager.ipc.input_processing"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.ipc.input_processing still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.skill_access"
 target_component = "application"
 kind = "runtime-import"

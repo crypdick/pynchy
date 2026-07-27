@@ -76,6 +76,9 @@ class MockDeps(NullIpcDeps):
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
+    def default_agent_name(self) -> str:
+        return "pynchy"
+
     def register_workspace(self, profile: WorkspaceProfile) -> None:
         self._groups[profile.jid] = profile
 

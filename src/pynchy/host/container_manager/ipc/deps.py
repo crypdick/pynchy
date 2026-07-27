@@ -155,6 +155,13 @@ class SourceHealthDeps(IpcDeps, Protocol):
     def messaging_source_health(self) -> MessagingSourceHealth: ...
 
 
+@runtime_checkable
+class IpcMessageDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for inbound-message presentation."""
+
+    def default_agent_name(self) -> str: ...
+
+
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
     """Look up the chat JID for a group folder from the workspace registry."""
     for jid, ws in deps.workspaces().items():

@@ -6,9 +6,9 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC paths at runtime.
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC deps at runtime.
+    IpcMessageDeps,
 )
 from pynchy.host.container_manager.ipc.protocol import InboundChatMessage, parse_ipc_file
 from pynchy.logger import logger
@@ -31,6 +31,12 @@ def _unlink_path(path: Path) -> None:
     path.unlink()
 
 
+def _default_agent_name(deps: IpcDeps) -> str:
+    if not isinstance(deps, IpcMessageDeps):
+        raise TypeError("Inbound IPC messages require IpcMessageDeps")
+    return deps.default_agent_name()
+
+
 async def handle_message_file(
     file_path: Path,
     source_group: str,
@@ -38,14 +44,13 @@ async def handle_message_file(
     is_admin: bool,
     deps: IpcDeps,
 ) -> None:
-    s = get_settings()
     message = InboundChatMessage.from_dict(parse_ipc_file(file_path))
 
     if message is not None:
         workspaces = deps.workspaces()
         target_group = workspaces.get(message.chat_jid)
         if is_admin or (target_group and target_group.folder == source_group):
-            prefix = message.sender or s.agent.name
+            prefix = message.sender or _default_agent_name(deps)
             await deps.broadcast_to_channels(
                 message.chat_jid,
                 OutboundEvent(
