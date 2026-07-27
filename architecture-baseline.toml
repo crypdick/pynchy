@@ -866,14 +866,6 @@ reason = "pynchy.host.orchestrator.messaging.reconciler still has a runtime-impo
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.router"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.messaging.router still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.router"
 target_component = "state_adapter"
 kind = "runtime-import"
 count = 1

@@ -87,7 +87,6 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.credentials",
             "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.messaging.router",
             "pynchy.host.orchestrator.app",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
