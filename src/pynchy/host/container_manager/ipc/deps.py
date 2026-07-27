@@ -50,6 +50,15 @@ class IpcDeps(Protocol):
 
     def channels(self) -> list[Channel]: ...
 
+    async def request_deploy(
+        self,
+        *,
+        chat_jid: str | None,
+        commit_sha: str,
+        rebuild: bool,
+        resume_prompt: str,
+    ) -> None: ...
+
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None: ...
 
 

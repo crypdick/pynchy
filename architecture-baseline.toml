@@ -129,38 +129,6 @@ imports = ["pynchy.host.orchestrator.messaging.pending_questions"]
 reason = "pynchy.host.container_manager.ipc.handlers_ask_user still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_deploy"
-target_component = "application"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.orchestrator.adapters"]
-reason = "pynchy.host.container_manager.ipc.handlers_deploy still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_deploy"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.ipc.handlers_deploy still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_deploy"
-target_component = "git_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.git_ops.sync_poll"]
-reason = "pynchy.host.container_manager.ipc.handlers_deploy still has a runtime-import dependency on git_adapter; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_deploy"
-target_component = "temporal_adapter"
-kind = "runtime-import"
-count = 2
-imports = ["pynchy.host.orchestrator.temporal.deploy", "pynchy.host.orchestrator.temporal.scheduler"]
-reason = "pynchy.host.container_manager.ipc.handlers_deploy still has a runtime-import dependency on temporal_adapter; Use an application scheduling port; keep Temporal workflow and activity implementations behind it."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_groups"
 target_component = "application"
 kind = "runtime-import"

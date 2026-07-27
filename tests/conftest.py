@@ -295,6 +295,15 @@ class NullIpcDeps:
     def channels(self) -> list:
         return []
 
+    async def request_deploy(
+        self,
+        *,
+        chat_jid=None,
+        commit_sha="",
+        rebuild=False,
+        resume_prompt="",
+    ) -> None: ...
+
     async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
 
 
