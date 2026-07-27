@@ -13,7 +13,7 @@ Install `uv`, then run the repository bootstrapper:
 ./scripts/install_new_feature_dependencies.py
 ```
 
-The bootstrapper verifies Docker and installs Pynchy's pinned `new-feature` (v1.1.6) and Codex
+The bootstrapper verifies Docker and installs Pynchy's pinned `new-feature` (v1.1.14) and Codex
 CLIs into `~/.local/bin`. It installs the pinned Temporal release in the selected bin directory
 and verifies its SHA-256 archive digest before installation. It does not install or start Docker
 because that requires platform-specific system administration. Run with `--check` to diagnose

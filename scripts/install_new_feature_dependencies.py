@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 
 _TEMPORAL_VERSION = "1.8.0"
-_NEW_FEATURE_VERSION = "1.1.6"
+_NEW_FEATURE_VERSION = "1.1.14"
 _CODEX_VERSION = "0.144.1"
 _TEMPORAL_BASE_URL = "https://github.com/temporalio/cli/releases/download"
 _TEMPORAL_VERSION_PATTERN = re.compile(r"\btemporal version v?([^\s]+)")
