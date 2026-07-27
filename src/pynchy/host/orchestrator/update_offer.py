@@ -15,7 +15,6 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these a
 )
 from typing import Any, Protocol, cast, runtime_checkable
 
-from pynchy.config import get_settings
 from pynchy.host.git_ops.sync_poll import (
     get_deploy_config_hash,
     get_local_head_sha,
@@ -28,7 +27,13 @@ from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
 from pynchy.state import advance_deployment_baseline, get_deployment_state
-from pynchy.types import Channel, DeployClaimStatus, DeployRevision, WorkspaceProfile
+from pynchy.types import (
+    AgentExecutionRuntime,
+    Channel,
+    DeployClaimStatus,
+    DeployRevision,
+    WorkspaceProfile,
+)
 
 _REQUEST_PREFIX = "host-update:"
 _APPROVE_LABEL = "Fetch and upgrade"
@@ -37,6 +42,12 @@ _APPROVE_LABEL = "Fetch and upgrade"
 @runtime_checkable
 class UpdateOfferDeps(Protocol):
     """Capabilities required to handle an accepted update offer."""
+
+    @property
+    def agent_execution_runtime(self) -> AgentExecutionRuntime: ...
+
+    @property
+    def admin_workspace(self) -> str | None: ...
 
     workspaces: dict[str, WorkspaceProfile]
 
@@ -155,10 +166,7 @@ async def _handle_accepted_update_offer(
     deps: UpdateOfferDeps,
 ) -> bool:
     """Perform the fetch/deploy work after recognizing a host update action."""
-    settings = get_settings()
-    admin_jid = resolve_admin_notification_jid(
-        deps.workspaces, settings.notifications.admin_workspace
-    )
+    admin_jid = resolve_admin_notification_jid(deps.workspaces, deps.admin_workspace)
     if not admin_jid:
         return True
     if not _answer_targets_admin(answer, admin_jid):
@@ -170,11 +178,13 @@ async def _handle_accepted_update_offer(
     deployment = await get_deployment_state()
     applied = deployment.applied
     previous_sha = (
-        applied.commit_sha if applied is not None else get_local_head_sha(settings.project_root)
+        applied.commit_sha
+        if applied is not None
+        else get_local_head_sha(deps.agent_execution_runtime.project_root)
     )
     previous_config_hash = applied.config_hash if applied is not None else ""
 
-    updated = await asyncio.to_thread(host_update_main, settings.project_root)
+    updated = await asyncio.to_thread(host_update_main, deps.agent_execution_runtime.project_root)
     if not updated:
         await deps.broadcast_host_message(
             admin_jid,
@@ -182,7 +192,7 @@ async def _handle_accepted_update_offer(
         )
         return True
 
-    current_sha = get_local_head_sha(settings.project_root)
+    current_sha = get_local_head_sha(deps.agent_execution_runtime.project_root)
     config_hash = get_deploy_config_hash()
     restart_required = (
         applied is None

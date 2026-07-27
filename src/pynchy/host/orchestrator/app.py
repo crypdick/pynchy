@@ -110,6 +110,7 @@ class PynchyApp(ThreadRouting):
         self.message_loop_running: bool = False
         settings = get_settings()
         self.agent_name = settings.agent.name
+        self.admin_workspace = settings.notifications.admin_workspace
         self.command_matcher = CommandMatcher.from_values(
             settings.trigger_pattern, settings.commands.model_dump()
         )
