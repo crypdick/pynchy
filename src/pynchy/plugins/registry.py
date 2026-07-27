@@ -102,11 +102,6 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "linear",
     ),
     (
-        "pynchy.plugins.integrations.github",
-        "GitHubWebhookPlugin",
-        "github",
-    ),
-    (
         "pynchy.plugins.integrations.proton_mail",
         "ProtonMailMcpPlugin",
         "proton-mail",

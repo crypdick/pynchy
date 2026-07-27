@@ -59,6 +59,8 @@ from pynchy.plugins.channel_runtime import (
 from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
+from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
+from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
@@ -366,6 +368,10 @@ async def _prepare_and_bind_control_plane(
     status.record_start_time()
     settings = get_settings()
     server = settings.server
+    github_plugin = settings.plugins.get("github")
+    github_options = GitHubPluginOptions.model_validate(
+        github_plugin.options if github_plugin is not None and github_plugin.enabled else {}
+    )
     runtime = resolve_control_plane_runtime(
         bind_host=server.host,
         port=server.port,
@@ -382,6 +388,7 @@ async def _prepare_and_bind_control_plane(
         dep_factory.make_http_deps(app),
         runtime=runtime,
         status_deps=dep_factory.make_status_deps(app),
+        github_webhook_routes=github_webhook_routes(github_options.webhook_routes),
     )
     app.set_http_runner(prepared_http.runner)
     await http_server.activate_http_server(prepared_http)
