@@ -74,6 +74,33 @@ class IpcDeps(Protocol):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]: ...
 
 
+@runtime_checkable
+class PendingQuestionStore(Protocol):
+    """Persistence boundary for interactive questions raised over IPC."""
+
+    def create(  # noqa: PLR0913, RUF100 - file-backed payload mirrors the channel callback contract.
+        self,
+        *,
+        request_id: str,
+        source_group: str,
+        chat_jid: str,
+        channel_name: str,
+        session_id: str,
+        questions: list[dict[str, Any]],
+    ) -> None: ...
+
+    def update_message_id(self, request_id: str, source_group: str, message_id: str) -> None: ...
+
+    def resolve(self, request_id: str, source_group: str) -> None: ...
+
+
+@runtime_checkable
+class AskUserDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for interactive questions."""
+
+    def pending_question_store(self) -> PendingQuestionStore: ...
+
+
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
     """Look up the chat JID for a group folder from the workspace registry."""
     for jid, ws in deps.workspaces().items():
