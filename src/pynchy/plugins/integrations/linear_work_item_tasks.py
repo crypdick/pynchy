@@ -290,8 +290,12 @@ async def ensure_task_active(
         return existing, False
 
     due_at = observed_at.astimezone(UTC).isoformat()
+    # Recovery retains the task's durable runtime binding across project moves.
     resumed = replace(
         task,
+        group_folder=existing.group_folder,
+        chat_jid=existing.chat_jid,
+        conversation_id=existing.conversation_id,
         schedule_value=due_at,
         next_run=due_at,
         last_run=existing.last_run,
@@ -361,10 +365,7 @@ async def _admit_in_progress_issue(
             workspace=workspace.folder,
         )
         return None
-    if (
-        execution.workspace != workspace.folder
-        or execution.status is not WorkItemExecutionStatus.IN_PROGRESS
-    ):
+    if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         logger.warning(
             "Managed Linear issue has an unusable execution lease",
             issue=issue.identifier,

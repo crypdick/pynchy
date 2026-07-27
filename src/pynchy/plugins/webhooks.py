@@ -51,7 +51,9 @@ class WebhookConversation:
     subject: ConversationSubject
     control_title: str
     control_closed: bool | None = None
+    # Runtime ownership and provider controller placement are distinct.
     workspace: str | None = None
+    controller_workspace: str | None = None
     public_source: bool | None = None
 
     def __post_init__(self) -> None:
