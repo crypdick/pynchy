@@ -41,6 +41,9 @@ def test_repo_does_not_contain_maintainer_local_markers() -> None:
 
     for path in _non_ignored_repo_paths():
         relative_path = path.relative_to(_REPO_ROOT)
+        # Copyright attribution is public metadata, not a maintainer-local leak.
+        if relative_path == Path("LICENSE"):
+            continue
         relative_text = relative_path.as_posix().casefold()
         for marker in _FORBIDDEN_MARKERS:
             if marker.casefold() in relative_text:
