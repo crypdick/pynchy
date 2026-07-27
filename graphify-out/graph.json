@@ -16700,6 +16700,14 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_host_container_manager_cleanup_py_orphanreapagems",
+      "label": "OrphanReapAgeMs",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_host_container_manager_cleanup_rationale_1",
       "label": "Host-side cleanup for orphaned agent containers.",
       "file_type": "rationale",
@@ -35456,7 +35464,7 @@
       "label": "_setup_channels()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L202",
+      "source_location": "L204",
       "_origin": "ast"
     },
     {
@@ -35464,7 +35472,7 @@
       "label": "_reconcile_state()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L264",
+      "source_location": "L266",
       "_origin": "ast"
     },
     {
@@ -35472,7 +35480,7 @@
       "label": "start_connection_runtimes()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L290",
+      "source_location": "L292",
       "_origin": "ast"
     },
     {
@@ -35480,7 +35488,7 @@
       "label": "_prepare_and_bind_control_plane()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "_origin": "ast"
     },
     {
@@ -35488,7 +35496,7 @@
       "label": "_start_ipc_watcher()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L333",
+      "source_location": "L335",
       "_origin": "ast"
     },
     {
@@ -35496,7 +35504,7 @@
       "label": "_start_temporal_scheduler()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L343",
+      "source_location": "L345",
       "_origin": "ast"
     },
     {
@@ -35504,7 +35512,7 @@
       "label": "_activate_runtime_owners()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L356",
+      "source_location": "L358",
       "_origin": "ast"
     },
     {
@@ -35512,7 +35520,7 @@
       "label": "_publish_runtime_owners()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L366",
+      "source_location": "L368",
       "_origin": "ast"
     },
     {
@@ -35520,7 +35528,7 @@
       "label": "_start_runtime_owners()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L390",
+      "source_location": "L392",
       "_origin": "ast"
     },
     {
@@ -35528,7 +35536,7 @@
       "label": "_prepare_state_and_subsystems()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L400",
+      "source_location": "L402",
       "_origin": "ast"
     },
     {
@@ -35544,7 +35552,7 @@
       "label": "run_app()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L434",
+      "source_location": "L436",
       "_origin": "ast"
     },
     {
@@ -35572,91 +35580,91 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_203",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_205",
       "label": "Create channel context, load channels, validate, connect.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L203",
+      "source_location": "L205",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_265",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_267",
       "label": "Reconcile worktrees and workspaces, returning live Linear board identities.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L265",
+      "source_location": "L267",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_291",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_293",
       "label": "Start provider polling only after recovery and dispatch are ready.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L291",
+      "source_location": "L293",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_320",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_322",
       "label": "Prepare route callbacks and prove the gated listener can bind.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L320",
+      "source_location": "L322",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_334",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_336",
       "label": "Start IPC only after the deploy continuation is finalized.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L334",
+      "source_location": "L336",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_344",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_346",
       "label": "Start Temporal polling and wait until its worker owns the task queue.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L344",
+      "source_location": "L346",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_360",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_362",
       "label": "Restore durable routes and start critical pollers behind their gates.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L360",
+      "source_location": "L362",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_371",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_373",
       "label": "Commit startup success, then publish request and activity surfaces.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L371",
+      "source_location": "L373",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_394",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_396",
       "label": "Start preflighted runtime owners in dependency order.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L394",
+      "source_location": "L396",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_404",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_406",
       "label": "Start stateful runtime owners inside the deploy rollback boundary.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L404",
+      "source_location": "L406",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_lifecycle_rationale_435",
+      "id": "pynchy_host_orchestrator_lifecycle_rationale_437",
       "label": "Main entry point \u2014 startup sequence.      Phases:     1. Core initialization (pl",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L435",
+      "source_location": "L437",
       "_origin": "ast"
     },
     {
@@ -69568,7 +69576,7 @@
       "label": "_generate_plugin_requirements()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L38",
+      "source_location": "L41",
       "_origin": "ast"
     },
     {
@@ -69584,7 +69592,7 @@
       "label": "_ensure_agent_image_available()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L59",
+      "source_location": "L62",
       "_origin": "ast"
     },
     {
@@ -69592,7 +69600,15 @@
       "label": "ensure_container_system_running()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L105",
+      "source_location": "L108",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_plugins_runtimes_system_checks_py_orphanreapagems",
+      "label": "OrphanReapAgeMs",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast"
     },
     {
@@ -69604,35 +69620,35 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_39",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_42",
       "label": "Write the plugin requirements file consumed by the agent Dockerfile.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L39",
+      "source_location": "L42",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_60",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_63",
       "label": "Build the configured agent image when it is absent from the runtime.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L60",
+      "source_location": "L63",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_94",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_97",
       "label": "Verify that the configured agent image is ready to launch.      This runs immedi",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L94",
+      "source_location": "L97",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_106",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_109",
       "label": "Verify the container runtime and clean up stale agent resources.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L106",
+      "source_location": "L109",
       "_origin": "ast"
     },
     {
@@ -76400,7 +76416,7 @@
       "label": "DeploymentState",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L39",
+      "source_location": "L40",
       "_origin": "ast"
     },
     {
@@ -76408,7 +76424,7 @@
       "label": "DeployClaimStatus",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "_origin": "ast"
     },
     {
@@ -76424,7 +76440,7 @@
       "label": "DeployClaim",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L56",
+      "source_location": "L57",
       "_origin": "ast"
     },
     {
@@ -76432,7 +76448,7 @@
       "label": "AdditionalMount",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "_origin": "ast"
     },
     {
@@ -76440,7 +76456,7 @@
       "label": "AllowedRoot",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "_origin": "ast"
     },
     {
@@ -76448,7 +76464,7 @@
       "label": "MountAllowlist",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L78",
+      "source_location": "L79",
       "_origin": "ast"
     },
     {
@@ -76456,7 +76472,7 @@
       "label": "ContainerConfig",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L85",
+      "source_location": "L86",
       "_origin": "ast"
     },
     {
@@ -76464,7 +76480,7 @@
       "label": ".from_dict()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L90",
+      "source_location": "L91",
       "_origin": "ast"
     },
     {
@@ -76480,7 +76496,7 @@
       "label": "CapabilityRule",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L112",
+      "source_location": "L113",
       "_origin": "ast"
     },
     {
@@ -76488,7 +76504,7 @@
       "label": "ServiceTrustConfig",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L122",
+      "source_location": "L123",
       "_origin": "ast"
     },
     {
@@ -76496,7 +76512,7 @@
       "label": "WorkspaceSecurity",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L142",
+      "source_location": "L143",
       "_origin": "ast"
     },
     {
@@ -76504,7 +76520,7 @@
       "label": "WorkspaceProfile",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L156",
+      "source_location": "L157",
       "_origin": "ast"
     },
     {
@@ -76512,7 +76528,7 @@
       "label": ".validate()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L179",
+      "source_location": "L180",
       "_origin": "ast"
     },
     {
@@ -76520,7 +76536,7 @@
       "label": "NewMessage",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L196",
+      "source_location": "L197",
       "_origin": "ast"
     },
     {
@@ -76528,7 +76544,7 @@
       "label": "InFlightWorkKind",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L208",
+      "source_location": "L209",
       "_origin": "ast"
     },
     {
@@ -76536,7 +76552,7 @@
       "label": "CheckpointControlState",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L216",
+      "source_location": "L217",
       "_origin": "ast"
     },
     {
@@ -76544,7 +76560,7 @@
       "label": "WorkItemExecutionStatus",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L225",
+      "source_location": "L226",
       "_origin": "ast"
     },
     {
@@ -76552,7 +76568,7 @@
       "label": ".is_active()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L240",
+      "source_location": "L241",
       "_origin": "ast"
     },
     {
@@ -76560,7 +76576,7 @@
       "label": ".is_explicit_lifecycle_outcome()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L245",
+      "source_location": "L246",
       "_origin": "ast"
     },
     {
@@ -76568,7 +76584,7 @@
       "label": "WorkItemExecution",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L251",
+      "source_location": "L252",
       "_origin": "ast"
     },
     {
@@ -76576,7 +76592,7 @@
       "label": "WorkItemTransitionStatus",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L282",
+      "source_location": "L283",
       "_origin": "ast"
     },
     {
@@ -76584,7 +76600,7 @@
       "label": "WorkItemTransition",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L292",
+      "source_location": "L293",
       "_origin": "ast"
     },
     {
@@ -76592,7 +76608,7 @@
       "label": "InFlightTurn",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L313",
+      "source_location": "L314",
       "_origin": "ast"
     },
     {
@@ -76600,7 +76616,7 @@
       "label": "InboundFetchResult",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L336",
+      "source_location": "L337",
       "_origin": "ast"
     },
     {
@@ -76608,7 +76624,7 @@
       "label": "ScheduledTask",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L350",
+      "source_location": "L351",
       "_origin": "ast"
     },
     {
@@ -76616,7 +76632,7 @@
       "label": ".to_snapshot_dict()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L376",
+      "source_location": "L377",
       "_origin": "ast"
     },
     {
@@ -76624,7 +76640,7 @@
       "label": "TaskRunLog",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L395",
+      "source_location": "L396",
       "_origin": "ast"
     },
     {
@@ -76632,7 +76648,7 @@
       "label": "CanaryOutcome",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L416",
+      "source_location": "L417",
       "_origin": "ast"
     },
     {
@@ -76640,7 +76656,7 @@
       "label": "CanaryRun",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L427",
+      "source_location": "L428",
       "_origin": "ast"
     },
     {
@@ -76648,7 +76664,7 @@
       "label": "HostJob",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L447",
+      "source_location": "L448",
       "_origin": "ast"
     },
     {
@@ -76656,7 +76672,7 @@
       "label": ".to_snapshot_dict()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L468",
+      "source_location": "L469",
       "_origin": "ast"
     },
     {
@@ -76664,7 +76680,7 @@
       "label": "ContainerInput",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L483",
+      "source_location": "L484",
       "_origin": "ast"
     },
     {
@@ -76672,7 +76688,7 @@
       "label": "ContainerOutput",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L512",
+      "source_location": "L513",
       "_origin": "ast"
     },
     {
@@ -76680,7 +76696,7 @@
       "label": "OutboundEventType",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L532",
+      "source_location": "L533",
       "_origin": "ast"
     },
     {
@@ -76696,7 +76712,7 @@
       "label": "OutboundEvent",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L546",
+      "source_location": "L547",
       "_origin": "ast"
     },
     {
@@ -76704,7 +76720,7 @@
       "label": "PluginVerification",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L559",
+      "source_location": "L560",
       "_origin": "ast"
     },
     {
@@ -76712,7 +76728,7 @@
       "label": "VolumeMount",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L571",
+      "source_location": "L572",
       "_origin": "ast"
     },
     {
@@ -76720,7 +76736,7 @@
       "label": "Channel",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L581",
+      "source_location": "L582",
       "_origin": "ast"
     },
     {
@@ -76736,7 +76752,7 @@
       "label": ".connect()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L585",
+      "source_location": "L586",
       "_origin": "ast"
     },
     {
@@ -76744,7 +76760,7 @@
       "label": ".send_event()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L587",
+      "source_location": "L588",
       "_origin": "ast"
     },
     {
@@ -76752,7 +76768,7 @@
       "label": ".is_connected()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L596",
+      "source_location": "L597",
       "_origin": "ast"
     },
     {
@@ -76760,7 +76776,7 @@
       "label": ".owns_jid()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L605",
+      "source_location": "L606",
       "_origin": "ast"
     },
     {
@@ -76768,7 +76784,7 @@
       "label": ".disconnect()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L607",
+      "source_location": "L608",
       "_origin": "ast"
     },
     {
@@ -76776,7 +76792,7 @@
       "label": ".reconnect()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L609",
+      "source_location": "L610",
       "_origin": "ast"
     },
     {
@@ -76784,7 +76800,7 @@
       "label": ".prepare_shutdown()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L618",
+      "source_location": "L619",
       "_origin": "ast"
     },
     {
@@ -76792,7 +76808,7 @@
       "label": ".fetch_inbound_since()",
       "file_type": "code",
       "source_file": "pynchy/types.py",
-      "source_location": "L627",
+      "source_location": "L628",
       "_origin": "ast"
     },
     {
@@ -76804,267 +76820,267 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_40",
+      "id": "pynchy_types_rationale_41",
       "label": "Canonical effective revisions applied by and pending for the host.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L40",
+      "source_location": "L41",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_47",
+      "id": "pynchy_types_rationale_48",
       "label": "Outcome of atomically admitting a requested deployment.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L47",
+      "source_location": "L48",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_57",
+      "id": "pynchy_types_rationale_58",
       "label": "Deploy admission result with a cause only when work was claimed.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L57",
+      "source_location": "L58",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_113",
+      "id": "pynchy_types_rationale_114",
       "label": "Explicit policy for a semantic capability such as an MCP tool call.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L113",
+      "source_location": "L114",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_123",
+      "id": "pynchy_types_rationale_124",
       "label": "Four trust properties per service \u2014 the user-facing security model.      Each pr",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L123",
+      "source_location": "L124",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_143",
+      "id": "pynchy_types_rationale_144",
       "label": "Security configuration for a workspace.      Holds per-service trust declaration",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L143",
+      "source_location": "L144",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_157",
+      "id": "pynchy_types_rationale_158",
       "label": "Complete workspace configuration with security profile.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L157",
+      "source_location": "L158",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_180",
+      "id": "pynchy_types_rationale_181",
       "label": "Validate workspace configuration.          Returns:             List of error me",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L180",
+      "source_location": "L181",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_209",
+      "id": "pynchy_types_rationale_210",
       "label": "Agent work that can be resumed semantically after process loss.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L209",
+      "source_location": "L210",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_217",
+      "id": "pynchy_types_rationale_218",
       "label": "Durable human control over one unfinished agent checkpoint.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L217",
+      "source_location": "L218",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_226",
+      "id": "pynchy_types_rationale_227",
       "label": "Pynchy's durable lifecycle for one linked Linear work item.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L226",
+      "source_location": "L227",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_241",
+      "id": "pynchy_types_rationale_242",
       "label": "Return whether this status must continue to exclude a second claim.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L241",
+      "source_location": "L242",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_246",
+      "id": "pynchy_types_rationale_247",
       "label": "Return whether the agent recorded an outcome in Linear's lifecycle.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L246",
+      "source_location": "L247",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_252",
+      "id": "pynchy_types_rationale_253",
       "label": "Durable link between a Linear issue and one Pynchy execution attempt.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L252",
+      "source_location": "L253",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_283",
+      "id": "pynchy_types_rationale_284",
       "label": "Evidence status for a provider transition requested by an execution.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L283",
+      "source_location": "L284",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_293",
+      "id": "pynchy_types_rationale_294",
       "label": "Intended Linear state change and its provider receipt or uncertainty.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L293",
+      "source_location": "L294",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_314",
+      "id": "pynchy_types_rationale_315",
       "label": "Durable checkpoint for one agent invocation that has not finalized.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L314",
+      "source_location": "L315",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_337",
+      "id": "pynchy_types_rationale_338",
       "label": "Result of fetching inbound messages from a channel.      ``high_water_mark`` is",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L337",
+      "source_location": "L338",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_377",
+      "id": "pynchy_types_rationale_378",
       "label": "Serialize to the dict format expected by write_tasks_snapshot.          Used by",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L377",
+      "source_location": "L378",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_396",
+      "id": "pynchy_types_rationale_397",
       "label": "Attempt evidence linked across Temporal retries and Pynchy recovery.      A work",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L396",
+      "source_location": "L397",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_417",
+      "id": "pynchy_types_rationale_418",
       "label": "Terminal outcome recorded for one external-service canary run.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L417",
+      "source_location": "L418",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_428",
+      "id": "pynchy_types_rationale_429",
       "label": "Durable evidence from one declared external-service canary scenario.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L428",
+      "source_location": "L429",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_448",
+      "id": "pynchy_types_rationale_449",
       "label": "Host-level cron job that runs shell commands directly (no LLM/container).      N",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L448",
+      "source_location": "L449",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_469",
+      "id": "pynchy_types_rationale_470",
       "label": "Serialize to the dict format expected by write_tasks_snapshot.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L469",
+      "source_location": "L470",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_533",
+      "id": "pynchy_types_rationale_534",
       "label": "Types of events flowing from the agent to the channel.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L533",
+      "source_location": "L534",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_547",
+      "id": "pynchy_types_rationale_548",
       "label": "A structured event flowing from the agent/host toward the channel.      Carries",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L547",
+      "source_location": "L548",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_560",
+      "id": "pynchy_types_rationale_561",
       "label": "Cached plugin security verification result.",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L560",
+      "source_location": "L561",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_588",
+      "id": "pynchy_types_rationale_589",
       "label": "Send a rendered event to the channel.          This is THE protocol method for a",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L588",
+      "source_location": "L589",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_597",
+      "id": "pynchy_types_rationale_598",
       "label": "Return True iff the channel can currently receive inbound events.          Must",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L597",
+      "source_location": "L598",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_610",
+      "id": "pynchy_types_rationale_611",
       "label": "Tear down the current connection and re-establish it.          Called when is_co",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L610",
+      "source_location": "L611",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_619",
+      "id": "pynchy_types_rationale_620",
       "label": "Signal imminent shutdown \u2014 suppress reconnect attempts.          Called early in",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L619",
+      "source_location": "L620",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_628",
+      "id": "pynchy_types_rationale_629",
       "label": "Fetch messages from channel API newer than ``since``.          Channels without",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L628",
+      "source_location": "L629",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_types_rationale_118",
+      "id": "pynchy_types_rationale_119",
       "label": "# NOTE: Update docs/architecture/security.md \u00a7 5 (Service Trust Policy) and",
       "file_type": "rationale",
       "source_file": "pynchy/types.py",
-      "source_location": "L118",
+      "source_location": "L119",
       "_origin": "ast"
     },
     {
@@ -120282,7 +120298,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_config",
+      "target": "pynchy_host_container_manager_runtime_names",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120293,7 +120309,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_host_container_manager_runtime_names",
+      "target": "pynchy_host_container_manager_session",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120304,7 +120320,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_host_container_manager_session",
+      "target": "pynchy_logger",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120315,7 +120331,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_logger",
+      "target": "pynchy_plugins_runtimes_detection",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120326,7 +120342,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_plugins_runtimes_detection",
+      "target": "pynchy_types",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120512,6 +120528,17 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup_reap_orphaned_agent_containers",
+      "target": "pynchy_host_container_manager_cleanup_py_orphanreapagems",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_reap_orphaned_agent_containers",
       "target": "pynchy_host_container_manager_cleanup_reapedcontainer",
       "relation": "references",
       "context": "generic_arg",
@@ -120561,7 +120588,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L140",
+      "source_location": "L137",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120572,7 +120599,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L144",
+      "source_location": "L141",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120583,7 +120610,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L151",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120594,7 +120621,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L160",
+      "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120605,7 +120632,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L178",
+      "source_location": "L175",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175911,7 +175938,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L202",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175922,7 +175949,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L202",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175932,7 +175959,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L264",
+      "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175943,7 +175970,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L264",
+      "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175954,7 +175981,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L264",
+      "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175964,7 +175991,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L290",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175975,7 +176002,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L290",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175985,7 +176012,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -175996,7 +176023,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176007,7 +176034,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L317",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176017,7 +176044,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L333",
+      "source_location": "L335",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176028,7 +176055,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L333",
+      "source_location": "L335",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176038,7 +176065,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L343",
+      "source_location": "L345",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176049,7 +176076,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L343",
+      "source_location": "L345",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176059,7 +176086,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L356",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176070,7 +176097,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L356",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176081,7 +176108,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L356",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176091,7 +176118,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L366",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176102,7 +176129,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L366",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176113,7 +176140,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L366",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176124,7 +176151,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L366",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176134,7 +176161,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L390",
+      "source_location": "L392",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176145,7 +176172,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L390",
+      "source_location": "L392",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176156,7 +176183,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L390",
+      "source_location": "L392",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176166,7 +176193,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L400",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176177,7 +176204,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L400",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176188,7 +176215,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L400",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176199,7 +176226,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L400",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176209,7 +176236,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L434",
+      "source_location": "L436",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176220,7 +176247,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L434",
+      "source_location": "L436",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176297,7 +176324,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L243",
+      "source_location": "L245",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176308,7 +176335,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L284",
+      "source_location": "L286",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176319,7 +176346,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L321",
+      "source_location": "L323",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176330,7 +176357,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L362",
+      "source_location": "L364",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176341,7 +176368,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L363",
+      "source_location": "L365",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176352,7 +176379,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L386",
+      "source_location": "L388",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176363,7 +176390,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L395",
+      "source_location": "L397",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176374,7 +176401,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L396",
+      "source_location": "L398",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176385,7 +176412,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L397",
+      "source_location": "L399",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176396,7 +176423,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L406",
+      "source_location": "L408",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176407,7 +176434,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L411",
+      "source_location": "L413",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176418,7 +176445,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L448",
+      "source_location": "L450",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176429,7 +176456,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L471",
+      "source_location": "L473",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176440,7 +176467,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L481",
+      "source_location": "L483",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -176475,112 +176502,112 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_203",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_205",
       "target": "pynchy_host_orchestrator_lifecycle_setup_channels",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L203",
+      "source_location": "L205",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_265",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_267",
       "target": "pynchy_host_orchestrator_lifecycle_reconcile_state",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L265",
+      "source_location": "L267",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_291",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_293",
       "target": "pynchy_host_orchestrator_lifecycle_start_connection_runtimes",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L291",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_320",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_322",
       "target": "pynchy_host_orchestrator_lifecycle_prepare_and_bind_control_plane",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L320",
+      "source_location": "L322",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_334",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_336",
       "target": "pynchy_host_orchestrator_lifecycle_start_ipc_watcher",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L334",
+      "source_location": "L336",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_344",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_346",
       "target": "pynchy_host_orchestrator_lifecycle_start_temporal_scheduler",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L344",
+      "source_location": "L346",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_360",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_362",
       "target": "pynchy_host_orchestrator_lifecycle_activate_runtime_owners",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L360",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_371",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_373",
       "target": "pynchy_host_orchestrator_lifecycle_publish_runtime_owners",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L371",
+      "source_location": "L373",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_394",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_396",
       "target": "pynchy_host_orchestrator_lifecycle_start_runtime_owners",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L394",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_404",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_406",
       "target": "pynchy_host_orchestrator_lifecycle_prepare_state_and_subsystems",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L404",
+      "source_location": "L406",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_lifecycle_rationale_435",
+      "source": "pynchy_host_orchestrator_lifecycle_rationale_437",
       "target": "pynchy_host_orchestrator_lifecycle_run_app",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L435",
+      "source_location": "L437",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276700,11 +276727,22 @@
     },
     {
       "source": "pynchy_plugins_runtimes_system_checks",
+      "target": "pynchy_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks",
       "target": "pynchy_plugins_runtimes_system_checks_generate_plugin_requirements",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L38",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276715,7 +276753,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L38",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276725,7 +276763,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L59",
+      "source_location": "L62",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276735,7 +276773,18 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L105",
+      "source_location": "L108",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks_ensure_container_system_running",
+      "target": "pynchy_plugins_runtimes_system_checks_py_orphanreapagems",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L108",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276746,7 +276795,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L79",
+      "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276757,7 +276806,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L113",
+      "source_location": "L116",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276772,42 +276821,42 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_39",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_42",
       "target": "pynchy_plugins_runtimes_system_checks_generate_plugin_requirements",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L39",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_60",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_63",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_agent_image_available",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L60",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_94",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_97",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_agent_image_available",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L94",
+      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_106",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_109",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_container_system_running",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L106",
+      "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295422,7 +295471,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L39",
+      "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295432,7 +295481,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295442,7 +295491,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295452,7 +295501,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L56",
+      "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295462,7 +295511,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295472,7 +295521,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295482,7 +295531,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L78",
+      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295492,7 +295541,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L85",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295502,7 +295551,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L90",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295513,7 +295562,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L90",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295524,7 +295573,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L90",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295534,7 +295583,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L112",
+      "source_location": "L113",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295544,7 +295593,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L122",
+      "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295554,7 +295603,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L142",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295564,7 +295613,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L156",
+      "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295574,7 +295623,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L179",
+      "source_location": "L180",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295584,7 +295633,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L196",
+      "source_location": "L197",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295594,7 +295643,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L208",
+      "source_location": "L209",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295604,7 +295653,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L208",
+      "source_location": "L209",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295614,7 +295663,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L216",
+      "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295624,7 +295673,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L216",
+      "source_location": "L217",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295634,7 +295683,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L225",
+      "source_location": "L226",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295644,7 +295693,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L225",
+      "source_location": "L226",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295654,7 +295703,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L240",
+      "source_location": "L241",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295664,7 +295713,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L245",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295674,7 +295723,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L251",
+      "source_location": "L252",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295684,7 +295733,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L282",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295694,7 +295743,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L282",
+      "source_location": "L283",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295704,7 +295753,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L292",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295714,7 +295763,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L313",
+      "source_location": "L314",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295724,7 +295773,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L336",
+      "source_location": "L337",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295734,7 +295783,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L350",
+      "source_location": "L351",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295744,7 +295793,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L376",
+      "source_location": "L377",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295754,7 +295803,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L395",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295764,7 +295813,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L416",
+      "source_location": "L417",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295774,7 +295823,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L416",
+      "source_location": "L417",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295784,7 +295833,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L427",
+      "source_location": "L428",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295794,7 +295843,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L447",
+      "source_location": "L448",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295804,7 +295853,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L468",
+      "source_location": "L469",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295814,7 +295863,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L483",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295824,7 +295873,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L512",
+      "source_location": "L513",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295834,7 +295883,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L532",
+      "source_location": "L533",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295844,7 +295893,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L532",
+      "source_location": "L533",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295854,7 +295903,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L546",
+      "source_location": "L547",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295864,7 +295913,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L559",
+      "source_location": "L560",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295874,7 +295923,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L571",
+      "source_location": "L572",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295884,7 +295933,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L581",
+      "source_location": "L582",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295894,7 +295943,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L581",
+      "source_location": "L582",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295904,7 +295953,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L585",
+      "source_location": "L586",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295914,7 +295963,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L587",
+      "source_location": "L588",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295925,7 +295974,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L587",
+      "source_location": "L588",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295935,7 +295984,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L596",
+      "source_location": "L597",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295945,7 +295994,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L605",
+      "source_location": "L606",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295955,7 +296004,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L607",
+      "source_location": "L608",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295965,7 +296014,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L609",
+      "source_location": "L610",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295975,7 +296024,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L618",
+      "source_location": "L619",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295985,7 +296034,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L627",
+      "source_location": "L628",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -295996,7 +296045,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L627",
+      "source_location": "L628",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -296007,7 +296056,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L101",
+      "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -296022,332 +296071,332 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_40",
+      "source": "pynchy_types_rationale_41",
       "target": "pynchy_types_deploymentstate",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L40",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_47",
+      "source": "pynchy_types_rationale_48",
       "target": "pynchy_types_deployclaimstatus",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L47",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_57",
+      "source": "pynchy_types_rationale_58",
       "target": "pynchy_types_deployclaim",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L57",
+      "source_location": "L58",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_113",
+      "source": "pynchy_types_rationale_114",
       "target": "pynchy_types_capabilityrule",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L113",
+      "source_location": "L114",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_123",
+      "source": "pynchy_types_rationale_124",
       "target": "pynchy_types_servicetrustconfig",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L123",
+      "source_location": "L124",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_143",
+      "source": "pynchy_types_rationale_144",
       "target": "pynchy_types_workspacesecurity",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L143",
+      "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_157",
+      "source": "pynchy_types_rationale_158",
       "target": "pynchy_types_workspaceprofile",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L157",
+      "source_location": "L158",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_180",
+      "source": "pynchy_types_rationale_181",
       "target": "pynchy_types_workspaceprofile_validate",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L180",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_209",
+      "source": "pynchy_types_rationale_210",
       "target": "pynchy_types_inflightworkkind",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L209",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_217",
+      "source": "pynchy_types_rationale_218",
       "target": "pynchy_types_checkpointcontrolstate",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L217",
+      "source_location": "L218",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_226",
+      "source": "pynchy_types_rationale_227",
       "target": "pynchy_types_workitemexecutionstatus",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L226",
+      "source_location": "L227",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_241",
+      "source": "pynchy_types_rationale_242",
       "target": "pynchy_types_workitemexecutionstatus_is_active",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L241",
+      "source_location": "L242",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_246",
+      "source": "pynchy_types_rationale_247",
       "target": "pynchy_types_workitemexecutionstatus_is_explicit_lifecycle_outcome",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L246",
+      "source_location": "L247",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_252",
+      "source": "pynchy_types_rationale_253",
       "target": "pynchy_types_workitemexecution",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L252",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_283",
+      "source": "pynchy_types_rationale_284",
       "target": "pynchy_types_workitemtransitionstatus",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L283",
+      "source_location": "L284",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_293",
+      "source": "pynchy_types_rationale_294",
       "target": "pynchy_types_workitemtransition",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L293",
+      "source_location": "L294",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_314",
+      "source": "pynchy_types_rationale_315",
       "target": "pynchy_types_inflightturn",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L314",
+      "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_337",
+      "source": "pynchy_types_rationale_338",
       "target": "pynchy_types_inboundfetchresult",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L337",
+      "source_location": "L338",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_377",
+      "source": "pynchy_types_rationale_378",
       "target": "pynchy_types_scheduledtask_to_snapshot_dict",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L377",
+      "source_location": "L378",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_396",
+      "source": "pynchy_types_rationale_397",
       "target": "pynchy_types_taskrunlog",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L396",
+      "source_location": "L397",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_417",
+      "source": "pynchy_types_rationale_418",
       "target": "pynchy_types_canaryoutcome",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L417",
+      "source_location": "L418",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_428",
+      "source": "pynchy_types_rationale_429",
       "target": "pynchy_types_canaryrun",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L428",
+      "source_location": "L429",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_448",
+      "source": "pynchy_types_rationale_449",
       "target": "pynchy_types_hostjob",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L448",
+      "source_location": "L449",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_469",
+      "source": "pynchy_types_rationale_470",
       "target": "pynchy_types_hostjob_to_snapshot_dict",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L469",
+      "source_location": "L470",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_533",
+      "source": "pynchy_types_rationale_534",
       "target": "pynchy_types_outboundeventtype",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L533",
+      "source_location": "L534",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_547",
+      "source": "pynchy_types_rationale_548",
       "target": "pynchy_types_outboundevent",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L547",
+      "source_location": "L548",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_560",
+      "source": "pynchy_types_rationale_561",
       "target": "pynchy_types_pluginverification",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L560",
+      "source_location": "L561",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_588",
+      "source": "pynchy_types_rationale_589",
       "target": "pynchy_types_channel_send_event",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L588",
+      "source_location": "L589",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_597",
+      "source": "pynchy_types_rationale_598",
       "target": "pynchy_types_channel_is_connected",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L597",
+      "source_location": "L598",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_610",
+      "source": "pynchy_types_rationale_611",
       "target": "pynchy_types_channel_reconnect",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L610",
+      "source_location": "L611",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_619",
+      "source": "pynchy_types_rationale_620",
       "target": "pynchy_types_channel_prepare_shutdown",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L619",
+      "source_location": "L620",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_628",
+      "source": "pynchy_types_rationale_629",
       "target": "pynchy_types_channel_fetch_inbound_since",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L628",
+      "source_location": "L629",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_types_rationale_118",
+      "source": "pynchy_types_rationale_119",
       "target": "pynchy_types",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/types.py",
-      "source_location": "L118",
+      "source_location": "L119",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301498,7 +301547,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L11",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301509,7 +301558,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L12",
+      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301520,7 +301569,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L14",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327656,7 +327705,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L23",
+      "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339173,7 +339222,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L182",
+      "source_location": "L184",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339184,7 +339233,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L182",
+      "source_location": "L184",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339195,7 +339244,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L183",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339206,7 +339255,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L186",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339217,7 +339266,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L187",
+      "source_location": "L189",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339228,7 +339277,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L188",
+      "source_location": "L190",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339239,7 +339288,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L188",
+      "source_location": "L190",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339250,7 +339299,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L206",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339261,7 +339310,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L209",
+      "source_location": "L211",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339272,7 +339321,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L216",
+      "source_location": "L218",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339283,7 +339332,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L233",
+      "source_location": "L235",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339294,7 +339343,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L244",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339305,7 +339354,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L285",
+      "source_location": "L287",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339316,7 +339365,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L292",
+      "source_location": "L294",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339327,7 +339376,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L336",
+      "source_location": "L338",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339338,7 +339387,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L348",
+      "source_location": "L350",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339349,7 +339398,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L377",
+      "source_location": "L379",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339360,7 +339409,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L459",
+      "source_location": "L461",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339371,7 +339420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L478",
+      "source_location": "L480",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -339382,7 +339431,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L496",
+      "source_location": "L498",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347720,7 +347769,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L71",
+      "source_location": "L74",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347731,7 +347780,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L99",
+      "source_location": "L102",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347742,7 +347791,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L107",
+      "source_location": "L110",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347753,7 +347802,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L109",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347764,7 +347813,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L115",
+      "source_location": "L118",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385569,7 +385618,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L180",
+      "source_location": "L182",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385581,7 +385630,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L246",
+      "source_location": "L248",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385593,7 +385642,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L268",
+      "source_location": "L270",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385605,7 +385654,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L275",
+      "source_location": "L277",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385617,7 +385666,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L282",
+      "source_location": "L284",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385629,7 +385678,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L323",
+      "source_location": "L325",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385641,7 +385690,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L324",
+      "source_location": "L326",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385653,7 +385702,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L325",
+      "source_location": "L327",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385665,7 +385714,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L326",
+      "source_location": "L328",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385677,7 +385726,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L329",
+      "source_location": "L331",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385689,7 +385738,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L337",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385701,7 +385750,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L345",
+      "source_location": "L347",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385713,7 +385762,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L349",
+      "source_location": "L351",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385725,7 +385774,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L361",
+      "source_location": "L363",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385737,7 +385786,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L375",
+      "source_location": "L377",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385749,7 +385798,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L380",
+      "source_location": "L382",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385761,7 +385810,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L385",
+      "source_location": "L387",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385773,7 +385822,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L407",
+      "source_location": "L409",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385785,7 +385834,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L424",
+      "source_location": "L426",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385797,7 +385846,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L445",
+      "source_location": "L447",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385809,7 +385858,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L451",
+      "source_location": "L453",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385821,7 +385870,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L479",
+      "source_location": "L481",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385833,7 +385882,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L483",
+      "source_location": "L485",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385845,7 +385894,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L485",
+      "source_location": "L487",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -385857,7 +385906,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/lifecycle.py",
-      "source_location": "L489",
+      "source_location": "L491",
       "weight": 1.0,
       "_origin": "ast"
     },

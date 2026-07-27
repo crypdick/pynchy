@@ -33,6 +33,7 @@ RuntimeId = NewType("RuntimeId", str)  # stable execution identity across contro
 SessionId = NewType("SessionId", str)  # agent session handle
 ChatJid = NewType("ChatJid", str)  # canonical chat identifier
 ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
+OrphanReapAgeMs = NewType("OrphanReapAgeMs", int)  # unowned container retention
 
 
 @dataclass(frozen=True)

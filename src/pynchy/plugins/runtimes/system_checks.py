@@ -18,6 +18,9 @@ from pynchy.host.container_manager.cleanup import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves the public startup contract.
+    OrphanReapAgeMs,
+)
 
 if TYPE_CHECKING:
     from pynchy.plugins.runtimes.detection import RuntimeProvider
@@ -102,7 +105,7 @@ def ensure_agent_image_available() -> None:
         _ensure_agent_image_available(runtime)
 
 
-def ensure_container_system_running() -> None:
+def ensure_container_system_running(orphan_reap_age_ms: OrphanReapAgeMs) -> None:
     """Verify the container runtime and clean up stale agent resources."""
     runtime = get_runtime()
     runtime.ensure_running()
@@ -112,4 +115,7 @@ def ensure_container_system_running() -> None:
         with _AGENT_IMAGE_LOCK:
             _ensure_agent_image_available(runtime)
 
-    reap_orphaned_agent_containers(runtime=runtime)
+    reap_orphaned_agent_containers(
+        runtime=runtime,
+        orphan_age_ms=orphan_reap_age_ms,
+    )

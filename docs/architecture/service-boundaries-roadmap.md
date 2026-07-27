@@ -458,8 +458,8 @@ because the AgentEvent defect has independent correctness impact.
 ### Current work log
 
 The blocking checker, policy, exact baseline, `prek` hook, required CI step,
-and code-owner protection are implemented. The policy currently records 333
-exact baseline entries containing 463 import occurrences. The aggregate report
+and code-owner protection are implemented. The policy currently records 332
+exact baseline entries containing 462 import occurrences. The aggregate report
 below is a review aid; `architecture-baseline.toml` remains the exact,
 machine-checked authority.
 
@@ -469,7 +469,7 @@ machine-checked authority.
 | `canary_adapter` | 21 | `config` 3, `container_adapter` 11, `git_adapter` 1, `integration_adapter` 5, `state_adapter` 1 |
 | `channel_adapter` | 31 | `application` 6, `config` 19, `container_adapter` 1, `host_adapter` 3, `state_adapter` 2 |
 | `config` | 2 | `integration_adapter` 2 |
-| `container_adapter` | 92 | `application` 13, `config` 43, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
+| `container_adapter` | 91 | `application` 13, `config` 42, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
 | `domain` | 2 | `application` 1, `config` 1 |
 | `extension_api` | 7 | `config` 6, `runtime_adapter` 1 |
 | `git_adapter` | 9 | `application` 1, `config` 7, `container_adapter` 1 |
@@ -488,6 +488,12 @@ resolved SQLite path from the lifecycle composition root, verified schema
 initialization through the public state API, removed the
 `pynchy.state.connection` to `config` baseline entry, and left the allowed
 dependency graph unchanged.
+
+The second completed ratchet slice introduced `OrphanReapAgeMs`, passed the
+resolved retention from the lifecycle composition root through runtime startup,
+verified live-container reaping through the public system-check API, removed the
+`pynchy.host.container_manager.cleanup` to `config` baseline entry, and left the
+allowed dependency graph unchanged.
 
 ### Phase 0: Encode the target and stop new debt
 
