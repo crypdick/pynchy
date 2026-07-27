@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    Settings,
-)
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
@@ -15,8 +12,8 @@ FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]
 LearningRunSummary = learning_packets.LearningRunSummary
 
 
-def is_after_turn_learning_enabled(settings: Settings) -> bool:
-    return settings.learning.enabled and settings.learning.review_after_turn
+def is_after_turn_learning_enabled(*, enabled: bool, review_after_turn: bool) -> bool:
+    return enabled and review_after_turn
 
 
 def observe_learning_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
@@ -75,15 +72,20 @@ async def messages_for_learning_packet(
 
 
 async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learning review entry point mirrors the turn state it needs.
-    settings: Settings,
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
     final_cursor: str,
     summary: LearningRunSummary,
     fetch_messages_since: FetchMessagesSince,
+    *,
+    enabled: bool,
+    review_after_turn: bool,
 ) -> str | None:
-    if not is_after_turn_learning_enabled(settings):
+    if not is_after_turn_learning_enabled(
+        enabled=enabled,
+        review_after_turn=review_after_turn,
+    ):
         return None
 
     try:

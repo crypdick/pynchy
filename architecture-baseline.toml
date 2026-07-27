@@ -449,14 +449,6 @@ imports = ["pynchy.config", "pynchy.config"]
 reason = "pynchy.host.git_ops.worktree still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.learning.capture"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.host.learning.capture still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.learning.mirror"
 target_component = "config"
 kind = "runtime-import"

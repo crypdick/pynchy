@@ -161,15 +161,15 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
     assert result is TurnOutcome.COMPLETED
     mock_start.assert_awaited_once()
     args = mock_start.await_args.args
-    assert args[:5] == (
-        settings.return_value,
+    assert args[:4] == (
         "g@g.us",
         group,
         [msg],
         "new-ts",
     )
-    assert args[5].final_answer == "Remembered."
-    assert args[5].tool_counts == {"Bash": 1}
+    assert args[4].final_answer == "Remembered."
+    assert args[4].tool_counts == {"Bash": 1}
+    assert mock_start.await_args.kwargs == {"enabled": True, "review_after_turn": True}
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
 
 
