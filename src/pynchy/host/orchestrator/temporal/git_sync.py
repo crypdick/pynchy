@@ -6,7 +6,8 @@ import asyncio
 import json
 import os
 from dataclasses import asdict
-from typing import NoReturn, cast
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -48,6 +49,9 @@ from pynchy.types import (
     WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal git-sync annotations at runtime.
 )
 
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
+
 HOST_GIT_SYNC_ID = "git-sync-host"
 HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
@@ -65,7 +69,7 @@ class _TemporalGitSyncDeps:
     """Adapter that lets existing git-sync helpers start Temporal deploys."""
 
     def __init__(self, deps: object, *, reason: str) -> None:
-        self._deps = deps
+        self._deps = cast("SchedulerDependencies", deps)
         self._reason = reason
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
@@ -85,6 +89,9 @@ class _TemporalGitSyncDeps:
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return _workspace_map(self._deps)
+
+    def sync_personalization(self, project_root: Path) -> str:
+        return self._deps.sync_personalization(project_root)
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - avoids scheduler <-> git_sync import cycle.
@@ -205,6 +212,12 @@ async def run_host_git_sync() -> str:
     result = "idle"
 
     try:
+        personalization_result = await asyncio.to_thread(
+            deps.sync_personalization,
+            settings.project_root,
+        )
+        if personalization_result == "pushed":
+            result = "personalization_pushed"
         if (
             await _config_drift_started_deploy(state, deps)
             or await _check_local_head_drift(
@@ -224,7 +237,7 @@ async def run_host_git_sync() -> str:
         ):
             result = "deploy_started"
     finally:
-        if result == "idle" and state.deployed_sha and state.config_hash:
+        if result != "deploy_started" and state.deployed_sha and state.config_hash:
             await advance_deployment_baseline(DeployRevision(state.deployed_sha, state.config_hash))
         await _save_host_state(state)
 

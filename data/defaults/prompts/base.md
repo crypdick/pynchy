@@ -35,6 +35,10 @@ Use `search_skills` as the source of truth for skill discovery. Discovery does
 not grant access; request access only when the user asks to use an inaccessible
 skill.
 
+Create and improve durable personal skills under `$PYNCHY_SKILLS_ROOT`. Never
+author skills under `$CODEX_HOME/skills`, `.codex/skills`, or `.claude/skills`;
+Pynchy regenerates those session registries from canonical sources.
+
 ## Communication
 
 Use `send_message` for useful progress during longer work. Use `ask_user` when

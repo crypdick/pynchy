@@ -77,7 +77,6 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
     assert paths.profile_slug == "shopping"
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/shopping"
     assert paths.memory_root == paths.profile_root / "memory"
-    assert paths.global_skills_root == vault.resolve() / "systems/pynchy/skills"
     assert paths.mounted_profile_root == "/workspace/vault/systems/pynchy/profiles/shopping"
     assert paths.mounted_memory_root == "/workspace/vault/systems/pynchy/profiles/shopping/memory"
 
@@ -131,7 +130,6 @@ def test_resolver_does_not_create_directories(tmp_path):
     assert not vault.exists()
     assert not paths.profile_root.exists()
     assert not paths.memory_root.exists()
-    assert not paths.global_skills_root.exists()
 
 
 def test_symlink_escape_through_profile_root_is_rejected(tmp_path):

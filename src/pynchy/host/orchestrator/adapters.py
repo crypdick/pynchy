@@ -14,7 +14,7 @@ from typing import Any
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
-from pynchy.state import clear_session
+from pynchy.state import clear_session, store_message_direct
 from pynchy.types import (
     Channel,
     GroupFolder,
@@ -180,6 +180,44 @@ class _StoreBroadcastAndEmitRequest:
     sender_name: str
     event_type: OutboundEventType
     store_fn: StoreMessageFn
+
+
+def make_host_message_broadcaster(
+    broadcaster: MessageBroadcaster,
+    emit_event: EmitEventFn,
+) -> HostMessageBroadcaster:
+    """Wire host broadcasting to its two message-history representations."""
+
+    async def store_host_message(**kwargs: object) -> None:
+        await _store_broadcast_message(kwargs, message_type="host")
+
+    async def store_system_notice(**kwargs: object) -> None:
+        await _store_broadcast_message(kwargs, message_type="user")
+
+    return HostMessageBroadcaster(
+        broadcaster,
+        store_host_message,
+        store_system_notice,
+        emit_event,
+    )
+
+
+async def _store_broadcast_message(
+    kwargs: dict[str, object],
+    *,
+    message_type: str,
+) -> None:
+    await store_message_direct(
+        message_id=str(kwargs["message_id"]),
+        chat_jid=str(kwargs["chat_jid"]),
+        sender=str(kwargs["sender"]),
+        sender_name=str(kwargs["sender_name"]) if kwargs.get("sender_name") else "",
+        content=str(kwargs["content"]),
+        timestamp=str(kwargs["timestamp"]),
+        is_from_me=bool(kwargs.get("is_from_me", True)),
+        message_type=message_type,
+        metadata={"source": "host_broadcaster"},
+    )
 
 
 def resolve_admin_notification_jid(

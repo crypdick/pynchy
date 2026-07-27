@@ -49,14 +49,6 @@ imports = ["pynchy.config", "pynchy.config.settings"]
 reason = "pynchy.host.container_manager.credentials still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.credentials"
-target_component = "learning_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.learning.paths"]
-reason = "pynchy.host.container_manager.credentials still has a runtime-import dependency on learning_adapter; Use a use-case-owned learning capability port and wire the concrete adapter at composition."
-
-[[violations]]
 importer = "pynchy.host.container_manager.gateway"
 target_component = "config"
 kind = "runtime-import"

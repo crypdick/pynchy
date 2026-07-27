@@ -23,6 +23,7 @@ module_patterns = [
   "pynchy",
   "pynchy.agent",
   "pynchy.host",
+  "pynchy.host.paths",
   "pynchy._runtime_typing",
   "pynchy.logger",
   "pynchy.utils",
@@ -179,6 +180,7 @@ violation_guidance = "Use a use-case-owned learning capability port and wire the
 name = "host_adapter"
 module_patterns = ["pynchy.host.*"]
 exclude_patterns = [
+  "pynchy.host.paths",
   "pynchy.host.container_manager",
   "pynchy.host.git_ops",
   "pynchy.host.learning",

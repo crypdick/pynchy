@@ -806,3 +806,16 @@ class TestHashConfigFiles:
         after = sync_poll.get_deploy_config_hash()
 
         assert before != after
+
+    def test_hash_excludes_personalization_skills(self, git_env: dict):
+        project = git_env["project"]
+        skill = project / "data/personalization/skills/remember-routing"
+        skill.mkdir(parents=True)
+        skill_file = skill / "SKILL.md"
+        skill_file.write_text("before", encoding="utf-8")
+        before = sync_poll.get_deploy_config_hash()
+
+        skill_file.write_text("after", encoding="utf-8")
+        after = sync_poll.get_deploy_config_hash()
+
+        assert before == after

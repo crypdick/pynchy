@@ -699,11 +699,11 @@ class TestBuildCoreConfig:
         assert env["PYNCHY_CHAT_JID"] == "456@g.us"
 
     def test_mcp_env_includes_global_learned_skill_root(self, monkeypatch):
-        monkeypatch.setenv("PYNCHY_SKILLS_ROOT", "/workspace/vault/systems/pynchy/skills")
+        monkeypatch.setenv("PYNCHY_SKILLS_ROOT", "/workspace/personalization/skills")
         config = build_core_config(self._make_input())
         env = config.mcp_servers["pynchy"]["env"]
 
-        assert env["PYNCHY_SKILLS_ROOT"] == "/workspace/vault/systems/pynchy/skills"
+        assert env["PYNCHY_SKILLS_ROOT"] == "/workspace/personalization/skills"
         assert "PYNCHY_PROFILE_SKILLS_ROOT" not in env
 
     def test_mcp_env_is_admin_flag(self):

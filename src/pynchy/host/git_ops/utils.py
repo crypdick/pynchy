@@ -139,7 +139,7 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
     env["GH_TOKEN"] = token
     # gh auth git-credential respects GH_TOKEN. But for raw git operations
     # (not going through gh), we set up a minimal credential helper:
-    env["GIT_CONFIG_COUNT"] = "2"
+    env["GIT_CONFIG_COUNT"] = "4"
     env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.username"
     env["GIT_CONFIG_VALUE_0"] = "x-access-token"
     env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
@@ -147,6 +147,11 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
         f"!f() {{ echo protocol=https; echo host=github.com; "
         f"echo username=x-access-token; echo password={token}; }}; f"
     )
+    # A token must win over a read-only SSH deploy key on unattended hosts.
+    env["GIT_CONFIG_KEY_2"] = "url.https://github.com/.insteadOf"
+    env["GIT_CONFIG_VALUE_2"] = "git@github.com:"
+    env["GIT_CONFIG_KEY_3"] = "url.https://github.com/.insteadOf"
+    env["GIT_CONFIG_VALUE_3"] = "ssh://git@github.com/"
     return env
 
 

@@ -211,7 +211,7 @@ visibility or a data class.
    submitting the change.
 
 The built-in catalog covers calendars, memories, task lifecycle, todos,
-outbound delivery, vault-backed skill discovery and access, workspace and
+outbound delivery, personalized skill discovery and access, workspace and
 deployment operations, desktop controls, Google and Slack setup, X actions,
 and first-party Linear, Proton Mail, and notebook MCP actions. Provider MCP
 servers with user-facing operational effects must also declare semantic actions

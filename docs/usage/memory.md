@@ -34,20 +34,36 @@ On top of the structured tools above, agents have file-based storage:
 
 ## Obsidian Automatic Learning
 
-Automatic learning can use an Obsidian vault as a shared memory and skill namespace. Enable `[learning]` and set `[learning.obsidian].vault_root` to the vault root. Pynchy mounts that root read-write at `/workspace/vault` by default.
+Automatic learning can use an Obsidian vault as a shared memory namespace.
+Enable `[learning]` and set `[learning.obsidian].vault_root` to the vault root.
+Pynchy mounts that root read-write at `/workspace/vault` by default.
 
-After each successful turn, Pynchy starts a Temporal learning review workflow. The workflow runs a hidden reviewer agent that decides whether the turn produced durable memory or skill updates. Set `max_attempts` to control Temporal activity retries for that reviewer.
+After each successful turn, Pynchy starts a Temporal learning review workflow.
+The workflow runs a hidden reviewer agent that decides whether the turn
+produced durable memory or skill updates. Memory goes to Obsidian; skills go to
+`data/personalization/skills/`. Set `max_attempts` to control Temporal activity
+retries for that reviewer.
 
 The vault root is the global memory namespace. The hidden reviewer chooses existing semantic folders first, then falls back to `systems/pynchy/profiles/{profile}/memory` when no repo, machine, subject, or other existing folder clearly fits.
 
-Learned skills live in one shared registry at `systems/pynchy/skills/<skill-name>/SKILL.md`. A profile chooses which learned skills its workspaces may use through its existing `skills` list. Add a learned skill by its exact name alongside the profile's other skills:
+Personalized and agent-authored skills live in one shared registry at
+`data/personalization/skills/<skill-name>/SKILL.md`. Every agent may create or
+improve skills through `$PYNCHY_SKILLS_ROOT`. A profile chooses which skills its
+workspaces may use through its existing `skills` list. Add a skill by its exact
+name alongside the profile's other skills:
 
 ```toml
 [profiles.research]
 skills = ["core", "research-workflow"]
 ```
 
-Pynchy applies that selection to cold containers, later warm-container turns, and direct-host turns. It does not grant learned skills automatically. A tier selector such as `learned`, or `*`, permits every learned skill; prefer exact names when profiles need different access. See [workspace configuration](../architecture/workspaces.md#profile-config-fields) for the general selection rules.
+Pynchy applies that selection to cold containers, later warm-container turns,
+and direct-host turns. A newly authored or updated skill appears on the next
+turn without restarting Pynchy. Pynchy does not grant personalized skills
+automatically. A tier selector such as `learned`, or `*`, permits matching
+skills; prefer exact names when profiles need different access. See
+[workspace configuration](../architecture/workspaces.md#profile-config-fields)
+for the general selection rules.
 
 ### Conversation Archives
 

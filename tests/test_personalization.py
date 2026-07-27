@@ -174,3 +174,17 @@ def test_rejects_inline_secrets_in_settings_and_litellm(tmp_path: Path) -> None:
     )
     with pytest.raises(PersonalizationError, match="store its value"):
         validate_personalization_tree(tmp_path, personalization)
+
+
+def test_rejects_symlinks_inside_personalized_skills(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills/test-skill"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: test-skill\ndescription: Test skill.\n---\n",
+        encoding="utf-8",
+    )
+    (skill / "outside").symlink_to(tmp_path / "outside")
+
+    with pytest.raises(PersonalizationError, match="cannot contain symlinks"):
+        validate_personalization_tree(tmp_path, personalization)

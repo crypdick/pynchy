@@ -27,7 +27,10 @@ The default backend uses SQLite FTS5 for full-text search with BM25 ranking, fal
 
 ## Obsidian Learning
 
-Automatic learning can mount an Obsidian vault root into agent containers and run a hidden reviewer after successful turns. The configured vault root mounts read-write at `/workspace/vault` by default and acts as the global memory namespace.
+Automatic learning can mount an Obsidian vault root into agent containers and
+run a hidden reviewer after successful turns. The configured vault root mounts
+read-write at `/workspace/vault` by default and acts as the global memory
+namespace. It is not a skill source.
 
 The reviewer receives a bounded packet from the completed turn, not the full transcript. It writes immediately when the packet contains durable learning, and it should use the vault's existing folder organization before falling back to profile-scoped paths. Memory notes rely on folder placement, not semantic frontmatter.
 
@@ -36,9 +39,19 @@ Profile fallback paths use the active workspace profile name, or `default` when 
 | Purpose | Vault path |
 |---------|------------|
 | Fallback memory notes | `systems/pynchy/profiles/{profile}/memory` |
-| Learned skills | `systems/pynchy/skills` |
 
-Learned skills live in the shared registry at `systems/pynchy/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. Profiles determine which skills their workspaces may receive through `skills`; exact names are the preferred allowlist, while `learned` and `*` select by tier. `denied_skills` always blocks a named skill. A session can discover the global catalog with `search_skills` and request a one-time or persistent grant with `request_skill_access`; persistent decisions update the workspace profile and are synchronized into the next session registry. The selection refreshes for cold containers, warm-container follow-up turns, and direct-host turns.
+The reviewer writes skill outcomes to the shared personalization registry at
+`data/personalization/skills/<skill-name>/SKILL.md`. All agents receive a narrow
+read-write mount of that registry, while their `.claude/skills` and
+`.codex/skills` directories remain generated projections. Profiles determine
+which skills their workspaces may receive through `skills`; exact names are the
+preferred allowlist, while tier names and `*` select by tier.
+`denied_skills` always blocks a named skill. A session can discover the live
+catalog with `search_skills` and request a one-time or persistent grant with
+`request_skill_access`; persistent decisions update the workspace profile and
+are synchronized into the next session registry. The selection refreshes for
+cold containers, warm-container follow-up turns, and direct-host turns without
+restarting the service.
 
 Learning packets live in a durable filesystem queue under `data/ipc/learning`. The queue uses pending, claimed, done, and error states so work can survive process restarts and another worker can reclaim expired jobs.
 
