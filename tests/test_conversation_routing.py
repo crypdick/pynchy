@@ -735,6 +735,7 @@ class _DiscordThreadChannel:
         participant_ids: tuple[str, ...] = (),
     ) -> str:
         assert participant_ids == ()
+        assert 1 <= len(name) <= 100
         thread_jid = f"discord:channel:thread-{len(self.created) + 1}"
         self.threads[parent_jid, name] = thread_jid
         self.created.append((parent_jid, name, thread_jid))
@@ -803,6 +804,27 @@ async def test_deleted_control_thread_is_replaced_and_workspace_can_rebind() -> 
     assert current.id == conversation.id
     assert current.workspace == GroupFolder("engineering")
     assert current.session_id == SessionId("session-42")
+
+
+async def test_control_titles_fit_discord_and_remain_idempotent() -> None:
+    parent_jid = ChatJid("discord:channel:triage")
+    await _register_workspace(parent_jid, "triage")
+    conversation = await resolve_conversation(_subject("long-title"), GroupFolder("triage"))
+    channel = _DiscordThreadChannel()
+    title = "[SYN-13] " + "operational error log " * 8
+    request = ConversationControlRequest(
+        conversation_id=conversation.id,
+        parent_workspace=GroupFolder("triage"),
+        parent_jid=parent_jid,
+        title=title,
+    )
+
+    first = await ensure_conversation_control([channel], request)
+    second = await ensure_conversation_control([channel], request)
+
+    assert len(first.binding.title) == 100
+    assert second.binding.thread_jid == first.binding.thread_jid
+    assert len(channel.created) == 1
 
 
 async def test_control_titles_use_human_friendly_suffixes_for_distinct_conversations() -> None:

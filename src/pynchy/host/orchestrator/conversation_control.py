@@ -27,6 +27,8 @@ from pynchy.state import (
 )
 from pynchy.types import Channel, ChatJid, GroupFolder, SessionId, WorkspaceProfile
 
+_DISCORD_THREAD_TITLE_MAX_LENGTH = 100
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationControlRequest:
@@ -115,9 +117,11 @@ async def ensure_conversation_control(
         else False
     )
 
+    base_title = request.title.strip()
     index = 1
     while True:
-        title = request.title if index == 1 else f"{request.title} ({index})"
+        suffix = "" if index == 1 else f" ({index})"
+        title = f"{base_title[: _DISCORD_THREAD_TITLE_MAX_LENGTH - len(suffix)].rstrip()}{suffix}"
         ensured = await ensure_thread(
             channels,
             request.parent_jid,
