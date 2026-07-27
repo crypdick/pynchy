@@ -2130,14 +2130,6 @@ reason = "pynchy.plugins.runtimes.docker_runtime.runtime still has a runtime-imp
 
 [[violations]]
 importer = "pynchy.plugins.runtimes.system_checks"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.runtimes.system_checks still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.system_checks"
 target_component = "container_adapter"
 kind = "runtime-import"
 count = 1

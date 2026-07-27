@@ -356,6 +356,7 @@ async def app(tmp_path: Path):
         project_root=tmp_path,
         groups_dir=tmp_path / "groups",
         data_dir=tmp_path / "data",
+        agent_image=a.agent_execution_runtime.agent_image,
         container_timeout=a.agent_execution_runtime.container_timeout,
         default_core=a.agent_execution_runtime.default_core,
         idle_timeout=a.agent_execution_runtime.idle_timeout,
@@ -498,7 +499,10 @@ class TestProcessGroupMessages:
         await driver
         assert result is TurnOutcome.COMPLETED
         assert app.sessions.get("test-group") == "sess-1"
-        image_check.assert_called_once_with()
+        image_check.assert_called_once_with(
+            project_root=tmp_path,
+            image=app.agent_execution_runtime.agent_image,
+        )
         # Output should have been sent via the channel
         assert len(channel.sent_messages) == 1
         assert "The answer is 4" in channel.sent_messages[0][1]

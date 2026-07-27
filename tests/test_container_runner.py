@@ -191,6 +191,7 @@ def _agent_runtime(settings: object) -> AgentExecutionRuntime:
         project_root=settings.project_root,
         groups_dir=settings.groups_dir,
         data_dir=settings.data_dir,
+        agent_image=settings.container.image,
         container_timeout=settings.container_timeout,
         default_core=settings.agent.default_core,
         idle_timeout=settings.idle_timeout,

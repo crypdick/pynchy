@@ -138,10 +138,6 @@ async def _spawn_container(
     """
     start_time = time.monotonic()
 
-    # The harness deliberately defers this expensive check at host startup,
-    # but an agent container must never be spawned without its image.
-    await asyncio.to_thread(system_checks.ensure_agent_image_available)
-
     # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
     # Must exist before the container starts so IPC/MCP handlers can look it up.
     from pynchy.host.container_manager.security.gate import (  # noqa: PLC0415, RUF100 - security gate setup is only needed during container spawn.
@@ -162,6 +158,13 @@ async def _spawn_container(
 
     if runtime is None:
         raise ValueError("Agent execution runtime is required")
+    # The harness deliberately defers this expensive check at host startup,
+    # but an agent container must never be spawned without its image.
+    await asyncio.to_thread(
+        system_checks.ensure_agent_image_available,
+        project_root=runtime.project_root,
+        image=runtime.agent_image,
+    )
     group_dir = runtime.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 

@@ -44,6 +44,7 @@ class AgentExecutionRuntime:
     project_root: Path
     groups_dir: Path
     data_dir: Path
+    agent_image: str
     container_timeout: float
     default_core: str
     idle_timeout: float
