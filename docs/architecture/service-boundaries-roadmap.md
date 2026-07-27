@@ -461,8 +461,8 @@ and test history in Git or Linear rather than this document.
 ### Current work log
 
 The blocking checker, policy, exact baseline, `prek` hook, required CI step,
-and code-owner protection are implemented. The policy currently records 328
-exact baseline entries containing 458 import occurrences. The aggregate report
+and code-owner protection are implemented. The policy currently records 327
+exact baseline entries containing 457 import occurrences. The aggregate report
 below is a review aid; `architecture-baseline.toml` remains the exact,
 machine-checked authority.
 
@@ -473,7 +473,7 @@ machine-checked authority.
 | `channel_adapter` | 31 | `application` 6, `config` 19, `container_adapter` 1, `host_adapter` 3, `state_adapter` 2 |
 | `config` | 2 | `integration_adapter` 2 |
 | `container_adapter` | 90 | `application` 13, `config` 41, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
-| `domain` | 2 | `application` 1, `config` 1 |
+| `domain` | 1 | `application` 1 |
 | `extension_api` | 7 | `config` 6, `runtime_adapter` 1 |
 | `git_adapter` | 9 | `application` 1, `config` 7, `container_adapter` 1 |
 | `host_adapter` | 1 | `config` 1 |
