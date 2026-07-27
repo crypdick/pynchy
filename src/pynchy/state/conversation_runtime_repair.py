@@ -8,10 +8,11 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery anno
     Connection,
 )
 
-from pynchy.config.workspace_names import dynamic_thread_folder, parent_workspace_name
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import (
     conversation_id_from_folder,
+    dynamic_thread_folder,
+    parent_workspace_name,
     routed_conversation_folder,
 )
 from pynchy.logger import logger

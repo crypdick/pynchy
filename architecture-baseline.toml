@@ -52,8 +52,8 @@ reason = "pynchy.host.container_manager.credentials still has a runtime-import d
 importer = "pynchy.host.container_manager.credentials"
 target_component = "config"
 kind = "runtime-import"
-count = 3
-imports = ["pynchy.config", "pynchy.config.settings", "pynchy.config.workspace_names"]
+count = 2
+imports = ["pynchy.config", "pynchy.config.settings"]
 reason = "pynchy.host.container_manager.credentials still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -663,14 +663,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.host.orchestrator.config_jobs still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.conversation_control"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.workspace_names"]
-reason = "pynchy.host.orchestrator.conversation_control still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.conversation_control"
@@ -1620,8 +1612,8 @@ reason = "pynchy.host.orchestrator.webhook_ingress still has a runtime-import de
 importer = "pynchy.host.orchestrator.workspace_config"
 target_component = "config"
 kind = "runtime-import"
-count = 7
-imports = ["pynchy.config", "pynchy.config.jobs", "pynchy.config.merge", "pynchy.config.models", "pynchy.config.toml_io", "pynchy.config.workspace_names", "pynchy.config.workspace_names"]
+count = 5
+imports = ["pynchy.config", "pynchy.config.jobs", "pynchy.config.merge", "pynchy.config.models", "pynchy.config.toml_io"]
 reason = "pynchy.host.orchestrator.workspace_config still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -1660,8 +1652,8 @@ reason = "pynchy.host.orchestrator.workspace_registration still has a runtime-im
 importer = "pynchy.host.orchestrator.workspace_threads"
 target_component = "config"
 kind = "runtime-import"
-count = 5
-imports = ["pynchy.config", "pynchy.config.merge", "pynchy.config.models", "pynchy.config.workspace_layout", "pynchy.config.workspace_names"]
+count = 4
+imports = ["pynchy.config", "pynchy.config.merge", "pynchy.config.models", "pynchy.config.workspace_layout"]
 reason = "pynchy.host.orchestrator.workspace_threads still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -1988,8 +1980,8 @@ reason = "pynchy.plugins.integrations.linear_webhook_effects still has a runtime
 importer = "pynchy.plugins.integrations.linear_webhooks"
 target_component = "config"
 kind = "runtime-import"
-count = 2
-imports = ["pynchy.config", "pynchy.config.workspace_names"]
+count = 1
+imports = ["pynchy.config"]
 reason = "pynchy.plugins.integrations.linear_webhooks still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
@@ -2231,22 +2223,6 @@ kind = "runtime-import"
 count = 2
 imports = ["pynchy.host.container_manager.ipc.handlers_artifact_security", "pynchy.host.container_manager.security.gate"]
 reason = "pynchy.security_canaries_artifact still has a runtime-import dependency on container_adapter; Use a use-case-owned execution or container capability port and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.state.conversation_runtime_repair"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.workspace_names"]
-reason = "pynchy.state.conversation_runtime_repair still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.state.task_schema_migrations"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.workspace_names"]
-reason = "pynchy.state.task_schema_migrations still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.types"

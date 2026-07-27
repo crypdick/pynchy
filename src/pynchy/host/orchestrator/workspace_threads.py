@@ -20,7 +20,7 @@ from pynchy.config.models import (
 from pynchy.config.workspace_layout import (  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
     WorkspaceThreadConfig,
 )
-from pynchy.config.workspace_names import dynamic_thread_folder
+from pynchy.conversation.workspaces import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
