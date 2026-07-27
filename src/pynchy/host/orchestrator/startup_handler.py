@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.startup_rollback import (
     terminate_failed_startup,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     clear_in_flight_turn,
     clear_pending_deployment,
     complete_deployment,

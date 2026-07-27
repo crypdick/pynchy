@@ -20,7 +20,7 @@ from pynchy.conversation.models import (
 from pynchy.conversation.workspaces import parent_workspace_name, routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.state import (
+from pynchy.state.api import (
     ConversationControlWorkspaceChangedError,
     get_conversation,
     get_conversation_control_binding,

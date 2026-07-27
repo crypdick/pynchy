@@ -65,7 +65,7 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.runtimes import system_checks
-from pynchy.state import (
+from pynchy.state.api import (
     init_database,
     initialize_deployment_state,
     prepare_conversation_runtime_ownership_recovery,

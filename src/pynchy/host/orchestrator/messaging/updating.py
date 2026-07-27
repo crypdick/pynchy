@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
-from pynchy import state
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
+from pynchy.state import api as state
 from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
 from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
 

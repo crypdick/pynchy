@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.messaging.in_flight import (
 )
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     claim_in_flight_turn,
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,

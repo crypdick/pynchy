@@ -35,7 +35,7 @@ from pynchy.plugins.webhooks import (
     WebhookRoute,
     validate_webhook_routes,
 )
-from pynchy.state import (
+from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     get_webhook_receipt,

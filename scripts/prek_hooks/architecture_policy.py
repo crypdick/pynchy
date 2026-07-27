@@ -1,4 +1,4 @@
-"""Policy loading and first-party component classification."""
+"""Policy loading and first-party package classification."""
 
 from __future__ import annotations
 
@@ -18,19 +18,36 @@ class SourceRoot:
 
 
 @dataclass(frozen=True)
-class Component:
+class Role:
     name: str
-    patterns: tuple[str, ...]
-    exclude_patterns: tuple[str, ...]
     allowed: frozenset[str]
     violation_guidance: str
+
+
+@dataclass(frozen=True)
+class Package:
+    name: str
+    root: str
+    role: str
+    public_modules: frozenset[str]
+    include_descendants: bool = True
+
+
+@dataclass(frozen=True)
+class PackageFamily:
+    name: str
+    root_pattern: str
+    role: str
+    public_modules: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class Policy:
     source_roots: tuple[SourceRoot, ...]
     composition_roots: frozenset[str]
-    components: tuple[Component, ...]
+    roles: tuple[Role, ...]
+    packages: tuple[Package, ...]
+    package_families: tuple[PackageFamily, ...]
     default_violation_guidance: str
 
 
@@ -60,8 +77,8 @@ def _load_toml(path: Path) -> dict[str, Any]:
 
 def load_policy(root: Path, path: Path) -> Policy:
     raw = _load_toml(path)
-    if raw.get("version") != 1:
-        raise ValueError("architecture policy version must be 1")
+    if raw.get("version") != 2:
+        raise ValueError("architecture policy version must be 2")
     source_roots = tuple(
         SourceRoot(
             path=root / item["path"],
@@ -70,46 +87,41 @@ def load_policy(root: Path, path: Path) -> Policy:
         )
         for item in raw.get("source_roots", ())
     )
-    components = tuple(
-        Component(
-            name=item["name"],
-            patterns=tuple(item["module_patterns"]),
-            exclude_patterns=tuple(item.get("exclude_patterns", ())),
+    roles = tuple(
+        Role(
+            name=name,
             allowed=frozenset(item.get("allowed_dependencies", ())),
             violation_guidance=item.get("violation_guidance", "").strip(),
         )
-        for item in raw.get("components", ())
+        for name, item in raw.get("roles", {}).items()
+    )
+    packages = tuple(
+        Package(
+            name=item["name"],
+            root=item["root"],
+            role=item["role"],
+            public_modules=frozenset(item["public_modules"]),
+            include_descendants=item.get("include_descendants", True),
+        )
+        for item in raw.get("packages", ())
+    )
+    package_families = tuple(
+        PackageFamily(
+            name=item["name"],
+            root_pattern=item["root_pattern"],
+            role=item["role"],
+            public_modules=tuple(item["public_modules"]),
+        )
+        for item in raw.get("package_families", ())
     )
     return Policy(
         source_roots=source_roots,
         composition_roots=frozenset(raw.get("composition_roots", ())),
-        components=components,
+        roles=roles,
+        packages=packages,
+        package_families=package_families,
         default_violation_guidance=raw["default_violation_guidance"].strip(),
     )
-
-
-def module_matches_pattern(module: str, pattern: str) -> bool:
-    """Match an exact, one-level ``.*``, or recursive ``.**`` module pattern."""
-    if pattern.endswith(".**"):
-        prefix = pattern[:-3]
-        return module == prefix or module.startswith(f"{prefix}.")
-    if pattern.endswith(".*"):
-        prefix = pattern[:-2]
-        if not module.startswith(f"{prefix}."):
-            return False
-        return "." not in module[len(prefix) + 1 :]
-    return module == pattern
-
-
-def matching_components(module: str, policy: Policy) -> list[Component]:
-    return [
-        component
-        for component in policy.components
-        if any(module_matches_pattern(module, pattern) for pattern in component.patterns)
-        and not any(
-            module_matches_pattern(module, pattern) for pattern in component.exclude_patterns
-        )
-    ]
 
 
 def _excluded(relative_path: str, patterns: tuple[str, ...]) -> bool:
@@ -137,41 +149,182 @@ def discover_modules(policy: Policy) -> dict[str, SourceModule]:
     return modules
 
 
+def _family_prefix(pattern: str) -> str:
+    # Families stay one level deep. ``**`` would silently turn implementation
+    # subpackages into peer architectural packages.
+    if not pattern.endswith(".*") or "*" in pattern[:-2]:
+        raise ValueError(f"package family root_pattern must end in one-level '.*': {pattern!r}")
+    return pattern[:-2]
+
+
+def resolve_packages(
+    modules: dict[str, SourceModule],
+    policy: Policy,
+    policy_path: Path,
+) -> tuple[tuple[Package, ...], list[Diagnostic]]:
+    packages = list(policy.packages)
+    diagnostics: list[Diagnostic] = []
+    for family in policy.package_families:
+        prefix = _family_prefix(family.root_pattern)
+        family_roots = sorted(
+            module.name
+            for module in modules.values()
+            if module.is_package
+            and module.name.startswith(f"{prefix}.")
+            and "." not in module.name[len(prefix) + 1 :]
+        )
+        if not family_roots:
+            diagnostics.append(
+                Diagnostic(
+                    policy_path.as_posix(),
+                    0,
+                    "architecture-policy",
+                    f"package family {family.name!r} matches no first-party packages",
+                )
+            )
+        for package_root in family_roots:
+            try:
+                public_modules = frozenset(
+                    template.format(root=package_root) for template in family.public_modules
+                )
+            except (KeyError, ValueError) as exc:
+                raise ValueError(
+                    f"invalid public_modules template in package family {family.name!r}"
+                ) from exc
+            packages.append(
+                Package(
+                    name=f"{family.name}:{package_root.rsplit('.', 1)[-1]}",
+                    root=package_root,
+                    role=family.role,
+                    public_modules=public_modules,
+                )
+            )
+
+    roles = {role.name for role in policy.roles}
+    known_modules = set(modules)
+    seen_names: set[str] = set()
+    seen_roots: set[str] = set()
+    for package in packages:
+        if package.name in seen_names:
+            diagnostics.append(
+                Diagnostic(
+                    policy_path.as_posix(),
+                    0,
+                    "architecture-policy",
+                    f"duplicate package name {package.name!r}",
+                )
+            )
+        if package.root in seen_roots:
+            diagnostics.append(
+                Diagnostic(
+                    policy_path.as_posix(),
+                    0,
+                    "architecture-policy",
+                    f"duplicate package root {package.root!r}",
+                )
+            )
+        if package.root not in known_modules:
+            diagnostics.append(
+                Diagnostic(
+                    policy_path.as_posix(),
+                    0,
+                    "architecture-policy",
+                    f"package {package.name!r} has unknown root module {package.root!r}",
+                )
+            )
+        if package.role not in roles:
+            diagnostics.append(
+                Diagnostic(
+                    policy_path.as_posix(),
+                    0,
+                    "architecture-policy",
+                    f"package {package.name!r} has unknown role {package.role!r}",
+                )
+            )
+        for public_module in sorted(package.public_modules):
+            if public_module != package.root and not public_module.startswith(f"{package.root}."):
+                diagnostics.append(
+                    Diagnostic(
+                        policy_path.as_posix(),
+                        0,
+                        "architecture-policy",
+                        (
+                            f"package {package.name!r} exposes {public_module!r} "
+                            f"outside its root {package.root!r}"
+                        ),
+                    )
+                )
+            elif public_module not in known_modules:
+                diagnostics.append(
+                    Diagnostic(
+                        policy_path.as_posix(),
+                        0,
+                        "architecture-policy",
+                        (f"package {package.name!r} exposes unknown module {public_module!r}"),
+                    )
+                )
+        seen_names.add(package.name)
+        seen_roots.add(package.root)
+    return tuple(packages), diagnostics
+
+
+def package_owns_module(package: Package, module: str) -> bool:
+    return module == package.root or (
+        package.include_descendants and module.startswith(f"{package.root}.")
+    )
+
+
+def owning_package(module: str, packages: tuple[Package, ...]) -> Package | None:
+    matches = [package for package in packages if package_owns_module(package, module)]
+    if not matches:
+        return None
+    return max(matches, key=lambda package: package.root.count("."))
+
+
 def classify_modules(
-    modules: dict[str, SourceModule], policy: Policy
-) -> tuple[dict[str, Component], list[Diagnostic]]:
-    classified: dict[str, Component] = {}
+    modules: dict[str, SourceModule],
+    packages: tuple[Package, ...],
+) -> tuple[dict[str, Package], list[Diagnostic]]:
+    classified: dict[str, Package] = {}
     diagnostics: list[Diagnostic] = []
     for module in modules.values():
-        matches = matching_components(module.name, policy)
-        if len(matches) == 1:
-            classified[module.name] = matches[0]
+        package = owning_package(module.name, packages)
+        if package is not None:
+            classified[module.name] = package
             continue
-        problem = "unclassified" if not matches else f"matched {', '.join(c.name for c in matches)}"
         diagnostics.append(
             Diagnostic(
                 module.path.as_posix(),
                 0,
                 "architecture-policy",
-                f"first-party module {module.name!r} is {problem}; assign exactly one component",
+                f"first-party module {module.name!r} is unclassified; assign one package",
             )
         )
     return classified, diagnostics
 
 
 def policy_cycle_diagnostics(policy: Policy, policy_path: Path) -> list[Diagnostic]:
-    """Reject unknown component references and cycles in the positive graph."""
-    components = {component.name: component for component in policy.components}
+    """Reject unknown role references and cycles in the positive graph."""
+    roles = {role.name: role for role in policy.roles}
     diagnostics = [
         Diagnostic(
             policy_path.as_posix(),
             0,
             "architecture-policy",
-            f"component {component.name!r} allows unknown component {name!r}",
+            f"role {role.name!r} allows unknown role {name!r}",
         )
-        for component in policy.components
-        for name in sorted(component.allowed - components.keys())
+        for role in policy.roles
+        for name in sorted(role.allowed - roles.keys())
     ]
+    if len(roles) != len(policy.roles):
+        diagnostics.append(
+            Diagnostic(
+                policy_path.as_posix(),
+                0,
+                "architecture-policy",
+                "role names must be unique",
+            )
+        )
     visiting: list[str] = []
     visited: set[str] = set()
 
@@ -187,14 +340,14 @@ def policy_cycle_diagnostics(policy: Policy, policy_path: Path) -> list[Diagnost
                 )
             )
             return
-        if name in visited or name not in components:
+        if name in visited or name not in roles:
             return
         visiting.append(name)
-        for target in sorted(components[name].allowed - {name}):
+        for target in sorted(roles[name].allowed - {name}):
             visit(target)
         visiting.pop()
         visited.add(name)
 
-    for name in sorted(components):
+    for name in sorted(roles):
         visit(name)
     return diagnostics

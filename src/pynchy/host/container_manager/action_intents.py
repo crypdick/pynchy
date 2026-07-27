@@ -11,7 +11,7 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves run
     HostActionDescriptor,
 )
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     ActionIntentCreateRequest,
     claim_action_intent,
     confirm_action_intent,

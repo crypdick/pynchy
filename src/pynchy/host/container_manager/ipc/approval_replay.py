@@ -23,7 +23,7 @@ from pynchy.host.container_manager.security.gate import (
     resolve_security,
 )
 from pynchy.host.orchestrator import workspace_config
-from pynchy.state import get_action_intent_by_request, get_conversation_control_binding
+from pynchy.state.api import get_action_intent_by_request, get_conversation_control_binding
 
 
 @dataclass(frozen=True)

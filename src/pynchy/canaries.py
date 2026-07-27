@@ -18,7 +18,7 @@ from pynchy.actions import ACTION_SPECS
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.logger import logger
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
-from pynchy.state import (
+from pynchy.state.api import (
     get_latest_canary_runs,
     get_recent_canary_runs,
     get_unresolved_canary_regressions,

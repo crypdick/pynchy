@@ -32,7 +32,7 @@ from pynchy.host.orchestrator.messaging.turn_recovery import (
     resume_interrupted_message_if_present,
 )
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.state import (
+from pynchy.state.api import (
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,

@@ -19,7 +19,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
-from pynchy.state import clear_pending_deployment
+from pynchy.state.api import clear_pending_deployment
 from pynchy.types import AgentExecutionRuntime, DeployChangeKind, DeployRevision
 
 

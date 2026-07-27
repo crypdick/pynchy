@@ -11,7 +11,7 @@ from pynchy.host.personal_messaging_health import (
     personal_provider_for,
     project_personal_source,
 )
-from pynchy.state import get_latest_inbound_timestamp
+from pynchy.state.api import get_latest_inbound_timestamp
 
 
 class SourceHealthProjection:

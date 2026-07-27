@@ -8,7 +8,7 @@ from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resol
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
-from pynchy.state import (
+from pynchy.state.api import (
     cancel_task_and_checkpoint,
     get_conversation,
     get_task_by_id,

@@ -35,7 +35,7 @@ from pynchy.host.orchestrator.messaging.streaming import (
     stream_text_to_channels,
 )
 from pynchy.logger import logger
-from pynchy.state import mark_work_item_delivery_delivered_for_turn, store_message_direct
+from pynchy.state.api import mark_work_item_delivery_delivered_for_turn, store_message_direct
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves router annotations at runtime.
     ContainerOutput,
     OutboundEvent,

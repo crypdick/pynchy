@@ -44,7 +44,7 @@ from pynchy.plugins.host_actions import (
     get_host_action_catalog,
 )
 from pynchy.plugins.integrations.matrix_route_registry import get_active_matrix_route
-from pynchy.state import (
+from pynchy.state.api import (
     approve_action_intent,
     deny_action_intent,
     get_conversation_control_by_thread,

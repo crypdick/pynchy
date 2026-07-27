@@ -14,7 +14,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.state import (
+from pynchy.state.api import (
     clear_in_flight_turn,
     consume_in_flight_control_message,
     finalize_in_flight_pause,

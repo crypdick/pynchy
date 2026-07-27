@@ -14,7 +14,7 @@ from typing import Any
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
-from pynchy.state import clear_session, store_message_direct
+from pynchy.state.api import clear_session, store_message_direct
 from pynchy.types import (
     Channel,
     GroupFolder,
