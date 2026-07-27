@@ -306,6 +306,8 @@ class NullIpcDeps:
 
     async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
 
+    async def create_periodic_agent(self, request) -> None: ...
+
 
 class NullChannel:
     """No-op stand-in for every method on ``Channel``.

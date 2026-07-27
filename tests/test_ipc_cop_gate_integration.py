@@ -124,6 +124,9 @@ class MockDeps:
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         pass
 
+    async def create_periodic_agent(self, request) -> None:
+        pass
+
 
 @pytest.fixture
 async def deps():
@@ -487,7 +490,7 @@ class TestCreatePeriodicAgentCopGate:
                 return_value=False,
             ) as mock_cop,
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                "pynchy.host.orchestrator.dep_factory.get_settings",
                 return_value=make_settings(
                     groups_dir=tmp_path,
                     project_root=tmp_path,
