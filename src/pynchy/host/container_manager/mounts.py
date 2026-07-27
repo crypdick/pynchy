@@ -26,6 +26,8 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     groups_dir: Path,
     data_dir: Path,
     project_root: Path,
+    mount_allowlist_path: Path,
+    blocked_mount_patterns: tuple[str, ...],
     plugin_manager: pluggy.PluginManager | None = None,
     repo_ctx: RepoContext | None = None,
     worktree_path: Path | None = None,
@@ -91,7 +93,13 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         is_admin=is_admin,
     )
 
-    _add_validated_additional_mounts(mounts, group, is_admin=is_admin)
+    _add_validated_additional_mounts(
+        mounts,
+        group,
+        is_admin=is_admin,
+        allowlist_path=mount_allowlist_path,
+        blocked_patterns=blocked_mount_patterns,
+    )
 
     return mounts
 
@@ -163,6 +171,8 @@ def _add_validated_additional_mounts(
     group: WorkspaceProfile,
     *,
     is_admin: bool,
+    allowlist_path: Path,
+    blocked_patterns: tuple[str, ...],
 ) -> None:
     if group.container_config is None or not group.container_config.additional_mounts:
         return
@@ -171,6 +181,8 @@ def _add_validated_additional_mounts(
         group.container_config.additional_mounts,
         group.name,
         is_admin=is_admin,
+        allowlist_path=allowlist_path,
+        default_blocked_patterns=blocked_patterns,
     )
     mounts.extend(
         [

@@ -354,6 +354,8 @@ async def app(tmp_path: Path):
         project_root=tmp_path,
         groups_dir=tmp_path / "groups",
         data_dir=tmp_path / "data",
+        mount_allowlist_path=a.agent_execution_runtime.mount_allowlist_path,
+        blocked_mount_patterns=a.agent_execution_runtime.blocked_mount_patterns,
         agent_image=a.agent_execution_runtime.agent_image,
         agent_memory_mb=a.agent_execution_runtime.agent_memory_mb,
         container_timeout=a.agent_execution_runtime.container_timeout,

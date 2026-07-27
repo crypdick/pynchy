@@ -51,6 +51,8 @@ class _FakeDeps:
             project_root=Path("test-project"),
             groups_dir=Path("test-project/groups"),
             data_dir=Path("test-project/data"),
+            mount_allowlist_path=Path("test-project/mount-allowlist.toml"),
+            blocked_mount_patterns=(),
             agent_image="pynchy-agent:latest",
             agent_memory_mb=2048,
             container_timeout=300.0,

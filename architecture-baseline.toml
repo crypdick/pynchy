@@ -369,14 +369,6 @@ imports = ["pynchy.capability_policy"]
 reason = "pynchy.host.container_manager.security.middleware still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.security.mount_security"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.security.mount_security still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.session_prep"
 target_component = "config"
 kind = "runtime-import"
