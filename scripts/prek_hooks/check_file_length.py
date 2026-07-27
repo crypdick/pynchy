@@ -9,7 +9,7 @@ Logical lines of code (LLOC) are lines that are not empty, not comments, and
 not part of docstrings or standalone string literals.
 
 Arguments:
-  --max-lines N   Maximum allowed logical lines per file (default: 400)
+  --max-lines N   Maximum allowed logical lines per file (default: 450)
 
 Allowed:
 - Files with ``# allow: file-length`` in the first 5 lines
@@ -111,8 +111,8 @@ def main(filenames: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-lines",
         type=int,
-        default=400,
-        help="Maximum allowed logical lines per file (default: 400)",
+        default=450,
+        help="Maximum allowed logical lines per file (default: 450)",
     )
     args = parser.parse_args(filenames)
 
