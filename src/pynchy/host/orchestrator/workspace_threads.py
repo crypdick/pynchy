@@ -177,9 +177,29 @@ async def reconcile_workspace_threads(
             )
             if existing == profile:
                 continue
+            if dry_run:
+                actions.append(
+                    WorkspaceThreadAction("register", folder, declared_thread.name, child_jid)
+                )
+                continue
+            try:
+                await register_fn(profile)
+            except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one conflicting child must not block startup.
+                detail = f"workspace registration failed: {type(exc).__name__}"
+                actions.append(
+                    WorkspaceThreadAction(
+                        "blocked", folder, declared_thread.name, child_jid, detail
+                    )
+                )
+                logger.warning(
+                    "Configured workspace thread not reconciled",
+                    workspace=folder,
+                    thread=declared_thread.name,
+                    jid=child_jid,
+                    reason=detail,
+                )
+                continue
             actions.append(
                 WorkspaceThreadAction("register", folder, declared_thread.name, child_jid)
             )
-            if not dry_run:
-                await register_fn(profile)
     return actions

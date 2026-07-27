@@ -196,6 +196,66 @@ async def test_thread_lookup_failure_does_not_block_workspace_reconciliation() -
 
 
 @pytest.mark.asyncio
+async def test_conflicting_child_registration_is_blocked_without_stopping_reconciliation() -> None:
+    parent = _parent()
+    conflicting_jid = "discord:channel:marketplace-inbox"
+    foreign = WorkspaceProfile(
+        jid=conflicting_jid,
+        name="Marketplace Inbox Poller",
+        folder="marketplace-inbox-poller",
+        trigger="@Pynchy",
+        added_at=datetime.now(UTC).isoformat(),
+    )
+    workspaces = {parent.jid: parent, foreign.jid: foreign}
+    available_jid = "discord:channel:family"
+    channel = _ThreadChannel(
+        {
+            "marketplace-inbox": conflicting_jid,
+            "family": available_jid,
+        }
+    )
+
+    def register(profile: WorkspaceProfile) -> None:
+        if profile.jid == conflicting_jid:
+            raise ValueError(
+                "Chat JID 'discord:channel:marketplace-inbox' is already owned by "
+                "workspace 'marketplace-inbox-poller'"
+            )
+        workspaces[profile.jid] = profile
+
+    register_fn = AsyncMock(side_effect=register)
+    actions = await reconcile_workspace_threads(
+        workspaces,
+        {
+            "relationships": WorkspaceConfig(
+                threads=[
+                    WorkspaceThreadConfig(name="marketplace-inbox"),
+                    WorkspaceThreadConfig(name="family"),
+                ]
+            )
+        },
+        [channel],
+        register_fn,
+    )
+
+    assert actions == [
+        WorkspaceThreadAction("reuse", "relationships", "marketplace-inbox", conflicting_jid),
+        WorkspaceThreadAction(
+            "blocked",
+            "relationships",
+            "marketplace-inbox",
+            conflicting_jid,
+            "workspace registration failed: ValueError",
+        ),
+        WorkspaceThreadAction("reuse", "relationships", "family", available_jid),
+        WorkspaceThreadAction("register", "relationships", "family", available_jid),
+    ]
+    assert workspaces[conflicting_jid] == foreign
+    assert workspaces[available_jid].folder == dynamic_thread_folder("relationships", available_jid)
+    assert register_fn.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_unretired_legacy_workspace_remains_registered(monkeypatch, tmp_path) -> None:
     await init_test_database()
     settings = make_settings(
