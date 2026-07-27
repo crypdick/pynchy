@@ -31,6 +31,7 @@ Everyone is writing their own AI assistant. Why write another one? Mainly becaus
   - MCP gateway — manages external MCP tool servers with per-workspace access control and on-demand Docker lifecycle.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
 - [Ten plugin hook types](docs/plugins/index.md) — agent cores, skills, channels, service handlers, container runtimes, tunnels, observers, memory backends, MCP servers, and workspaces.
+- [Tool-owned secret access](docs/usage/tool-access.md) limits provider credentials to selected tool processes and installs their companion skills automatically.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Recurring tasks scheduled at specific times or intervals.
 - Policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).

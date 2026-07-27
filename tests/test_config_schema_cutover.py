@@ -133,8 +133,8 @@ def test_named_linear_account_parses_credential_selectors() -> None:
         """
         [tools.linear_synapse]
         type = "linear"
-        api_key_env = "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
-        team_key_env = "LINEAR_SYNAPSE_TEAM_KEY"
+        required_env = ["LINEAR_SYNAPSE_API_KEY"]  # pragma: allowlist secret
+        optional_env = ["LINEAR_SYNAPSE_TEAM_KEY"]
         public_source = false
         secret_data = true
         public_sink = false
@@ -148,15 +148,30 @@ def test_named_linear_account_parses_credential_selectors() -> None:
     assert account.team_key_env == "LINEAR_SYNAPSE_TEAM_KEY"
 
 
-@pytest.mark.parametrize("field", ["api_key_env", "team_key_env"])
+def test_linear_account_migrates_legacy_credential_selectors() -> None:
+    settings = _settings_from_toml(
+        """
+        [tools.linear]
+        type = "linear"
+        api_key_env = "LINEAR_LEGACY_API_KEY"  # pragma: allowlist secret
+        team_key_env = "LINEAR_LEGACY_TEAM_KEY"
+        """
+    )
+
+    account = settings.tools["linear"]
+    assert account.required_env == ["LINEAR_LEGACY_API_KEY"]  # pragma: allowlist secret
+    assert account.optional_env == ["LINEAR_LEGACY_TEAM_KEY"]
+
+
+@pytest.mark.parametrize("field", ["required_env", "optional_env"])
 def test_linear_account_rejects_empty_credential_selector(field: str) -> None:
-    with pytest.raises(ValidationError, match="credential environment"):
+    with pytest.raises(ValidationError, match="environment"):
         _settings_from_dict(
             {
                 "tools": {
                     "linear": {
                         "type": "linear",
-                        field: "",
+                        field: [""],
                     }
                 }
             }

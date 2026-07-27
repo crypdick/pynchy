@@ -196,19 +196,30 @@ journalctl --user -u pynchy -f          # Follow logs
 
 Systemd unit template: `config-examples/pynchy.service.EXAMPLE`
 
-## Container GitHub Access
+## Workspace GitHub CLI Access
 
-**Admin containers only.** `GH_TOKEN` is forwarded only to admin containers. Non-admin containers have git operations routed through host IPC and never receive the token.
+GitHub CLI access requires a selected `type = "workspace"` tool whose
+`required_env` includes `GITHUB_TOKEN`. Pynchy does not discover `gh auth`
+credentials or inject a broad token into admin agents. Host-side repository
+operations retain their separate scoped-token resolution.
 
-```bash
-# Interactive login (works over SSH with -t for TTY)
-ssh -t "$PYNCHY_HOST" 'gh auth login -p ssh'
+Verify only that the managed Pynchy host process receives `GITHUB_TOKEN`; never
+print the value. See
+[Tool access and secrets](../../../docs/usage/tool-access.md) for the canonical
+configuration.
 
-# Verify
-ssh "$PYNCHY_HOST" 'gh auth status'
-```
+## Production Secret Materialization
 
-After authenticating, `_write_env_file()` auto-discovers `GH_TOKEN` and git identity on each admin container launch. No manual env configuration needed.
+Production credentials must enter the managed Pynchy host process through
+Proton Pass. Keep `pass://` references in
+`data/proton-pass/pynchy.env`; the managed service must start
+`scripts/run_pynchy.sh`, which invokes `pass-cli run` when that template
+exists. Do not put resolved values in a launchd plist, systemd unit, workspace
+file, container argument, or generated env directory.
+
+After updating the Pass items or tool requirements, use the normal managed
+deployment flow. Verify requirement names and tool availability through status,
+logs, or a canary without printing raw task environments or credential values.
 
 ## Container Build Cache
 

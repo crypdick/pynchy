@@ -171,6 +171,7 @@ class TestSecurityGateTaintPersistence:
         assert not gate2.policy.corruption_tainted
 
     def test_admin_resolved_trust_keeps_forbidden_writes(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "configured")
         settings = validate_settings_mapping(
             {
                 "profiles": {
@@ -199,6 +200,7 @@ class TestSecurityGateTaintPersistence:
         assert decision.allowed is False
 
     def test_named_linear_account_owns_host_action_policy(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "configured")
         settings = validate_settings_mapping(
             {
                 "profiles": {"synapse": {"tools": ["linear_synapse"]}},
@@ -328,6 +330,7 @@ class TestResolveSecurity:
         assert security.services == {}
 
     def test_dynamic_thread_uses_parent_workspace_security(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "configured")
         settings = validate_settings_mapping(
             {
                 "profiles": {

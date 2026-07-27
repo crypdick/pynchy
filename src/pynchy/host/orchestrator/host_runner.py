@@ -14,7 +14,7 @@ from typing import Protocol, runtime_checkable
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
-from pynchy.utils import ProgressTimeoutError, wait_for_progress
+from pynchy.utils import ProgressTimeoutError, filtered_process_environment, wait_for_progress
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 IsInterrupted = Callable[[], bool]
@@ -65,10 +65,7 @@ def _host_runner_command(project_root: Path) -> list[str]:
 
 
 def _host_runner_env(extra_env: dict[str, str] | None) -> dict[str, str]:
-    env = os.environ.copy()
-    if extra_env:
-        env.update(extra_env)
-    return env
+    return filtered_process_environment(extra_env)
 
 
 def _host_runner_payload(input_data: ContainerInput, cwd: Path) -> bytes:

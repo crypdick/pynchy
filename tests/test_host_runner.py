@@ -153,6 +153,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
         return fake_proc
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setenv("UNRELATED_HOST_SECRET", "must-not-leak")
 
     outputs: list[ContainerOutput] = []
 
@@ -197,6 +198,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
     assert created["cmd"][4] == "python"
     assert created["kwargs"]["cwd"] == str(tmp_path)
     assert created["kwargs"]["env"]["OPENAI_API_KEY"] == fake_openai_key
+    assert "UNRELATED_HOST_SECRET" not in created["kwargs"]["env"]
     assert created["kwargs"]["start_new_session"] is True
     assert fake_proc.stdin.closed is True
 

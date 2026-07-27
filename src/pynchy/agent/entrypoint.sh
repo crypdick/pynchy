@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# Source per-group environment variables if provided
-if [ -f /workspace/env-dir/env ]; then
-  set -a; . /workspace/env-dir/env; set +a
-fi
-
 # Restore ~/.claude.json from backup if missing.
 # The ~/.claude/ directory is mounted from the host (persists across restarts),
 # but ~/.claude.json sits outside that mount and is lost when the container

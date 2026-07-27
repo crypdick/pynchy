@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import (  # noqa: TC003, RUF100 - Pydantic resolves field annotations at runtime.
     Path,
 )
@@ -29,11 +28,12 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config import get_settings
+from pynchy.config import get_settings, tool_process_environment
 from pynchy.config.models import McpTool
 from pynchy.plugins.integrations._service import service_tool
 from pynchy.plugins.integrations.proton_bridge import create_proton_mail_client
 from pynchy.plugins.integrations.proton_bridge_config import ProtonMailError
+from pynchy.utils import filtered_process_environment
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -126,15 +126,7 @@ def _load_counts(path: Path) -> MarketplaceCounts:
 
 
 def _reader_environment(tool: McpTool) -> dict[str, str]:
-    environment = {**os.environ, **tool.mcp.env}
-    environment.update(
-        {
-            target_name: source_value
-            for target_name, source_name in tool.mcp.env_forward.items()
-            if (source_value := os.environ.get(source_name)) is not None
-        }
-    )
-    return environment
+    return filtered_process_environment({**tool.mcp.env, **tool_process_environment(tool)})
 
 
 def _reader_health(reader_tool: str) -> ReaderHealth:

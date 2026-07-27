@@ -35,7 +35,6 @@ Pynchy labels agent containers and removes stopped agent containers when it obse
 | `src/pynchy/agent/scripts/` | `/workspace/scripts` | Readonly | All |
 | `src/pynchy/agent/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
-| `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
 | Obsidian vault root | `/workspace/vault` | Read-write | Learning-enabled groups |
 | Repo worktrees | `/workspace/repos/<owner>/<repo>` | Read-write | Workspaces with profile `repo` |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
@@ -66,27 +65,37 @@ Configure additional directory mounts via `containerConfig` in the SQLite `regis
 
 ## Environment Variable Isolation
 
-Each group gets its own env file at `data/env/{group}/env`. Only allowlisted variables pass through.
+Pynchy constructs each agent process environment from a small operational
+baseline plus variables authorized by selected tools. It never generates a
+workspace env file or mounts `/workspace/env-dir`.
 
 **LLM credentials** flow through the host gateway (see [Security Model](security.md#6-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
 
 - `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` — points to host gateway
 - `OPENAI_BASE_URL` / `OPENAI_API_KEY` — points to host gateway
 
-**Non-LLM credentials** get written directly, scoped by trust level:
+**Non-LLM process values** follow explicit boundaries:
 
-- `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `SECRETS__GH_TOKEN` in `.env`. Non-admin containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
-- Workspace-scoped Proton Pass variables — resolved only for workspaces that declare a secret-reference template. See [Credential Handling](security.md#workspace-scoped-proton-pass-templates).
+- A `type = "workspace"` tool's declared variables enter the selected agent
+  workspace.
+- Runtime-backed tool variables stay in the tool process unless the declaration
+  sets `expose_env_to_workspace = true`.
 
 **Process:**
-1. Host discovers credentials from `.env` and auto-discovery (OAuth, gh CLI, git config)
-2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key
-3. `GH_TOKEN` is included only for admin containers
-4. Per-group env file written to `data/env/{group}/env`
-5. Env material is mounted into the container
-6. Container entrypoint sources the env file
+
+1. The host resolves the workspace's selected TOML tools.
+2. Missing requirements disable only the affected tools.
+3. LLM keys stay in the gateway; agent containers receive its URL and
+   ephemeral key.
+4. The container runtime receives value-free `-e NAME` flags for selected
+   workspace variables.
+5. The container CLI subprocess receives the corresponding values through its
+   filtered environment.
+
+See [Tool access and secrets](../usage/tool-access.md) for declarations,
+companion skills, missing-access notices, and host secret materialization.
 
 ---
 

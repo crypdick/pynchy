@@ -443,33 +443,27 @@ layer unless the integration gains an enforceable request hook.
 
 #### Non-LLM credentials
 
-Non-LLM credentials get written directly to per-group env files (`data/env/{group}/env`):
-
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with profile `repo` get a fine-grained PAT scoped to their designated repo (configured via `repos.overrides."owner/repo".token`). Non-admin containers without a repo get no token. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
 | `GIT_COMMITTER_EMAIL` | Yes | Yes | |
 
-Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-admin container's token is scoped to a single repo and cannot access other repositories.
+Tools own every provider credential that can enter an agent or tool process.
+TOML names the requirements; a selected, available tool supplies its companion
+skills and exact process exposure. Skill files and learned skills cannot grant
+credentials. Missing requirements produce value-free notices.
 
-#### Workspace-scoped Proton Pass templates
+Runtime-backed tool credentials stay in the runtime by default. Workspace tool
+credentials enter the agent process because no separate service exists.
+Pynchy filters host environments, keeps Docker values out of argv, and creates
+no workspace credential files. Production deployments materialize values from
+Proton Pass into the Pynchy host process before startup. Pynchy never resolves a
+workspace-owned Pass template.
 
-Use a Proton Pass reference template when one workspace needs a non-LLM credential. Store only `pass://` references in the template; Pynchy resolves them immediately before launching that workspace and writes the resolved values only to its per-group env directory.
-
-```toml
-[workspaces.review]
-profiles = ["review"]
-proton_pass_env_file = "secrets/review.env"
-```
-
-```dotenv
-TODOIST_API_KEY=pass://Operations/Todoist/password
-```
-
-Keep the template out of version control when its vault or item names disclose sensitive context. Configure `pass-cli` with a Proton Pass personal access token that can read only the listed items. Pynchy fails the launch without revealing command output when that CLI cannot resolve a configured variable.
+See [Tool access and secrets](../usage/tool-access.md) for the canonical
+configuration and delivery rules.
 
 **Token resolution order** for host-side git operations (fetch, push, ls-remote):
 

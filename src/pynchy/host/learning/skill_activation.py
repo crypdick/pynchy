@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.session_prep import (
+    CompanionSkillAccess,
     refresh_personalized_skills,
     sync_skills,
     write_settings_json,
@@ -33,6 +34,13 @@ class PreparedAgentHomes:
     learning_paths: LearningPaths | None
 
 
+@dataclass(frozen=True)
+class _WorkspaceSkillPolicy:
+    workspace_skills: list[str] | None
+    denied_skill_names: list[str] | None
+    companion_skill_access: CompanionSkillAccess
+
+
 def prepare_agent_homes(
     group_folder: str,
     plugin_manager: pluggy.PluginManager | None = None,
@@ -44,7 +52,7 @@ def prepare_agent_homes(
     the next turn without restarting the session.
     """
     settings = get_settings()
-    workspace_skills, denied_skill_names = _workspace_skill_policy(group_folder)
+    skill_policy = _workspace_skill_policy(group_folder)
     learning_paths = resolve_learning_paths(
         group_folder,
         profile_override=_learning_profile_override_for_group(group_folder),
@@ -64,8 +72,9 @@ def prepare_agent_homes(
         claude_home,
         project_root=settings.project_root,
         plugin_manager=plugin_manager,
-        workspace_skills=workspace_skills,
-        denied_skill_names=denied_skill_names,
+        workspace_skills=skill_policy.workspace_skills,
+        denied_skill_names=skill_policy.denied_skill_names,
+        companion_skill_access=skill_policy.companion_skill_access,
     )
 
     codex_home = session_root / ".codex"
@@ -74,8 +83,9 @@ def prepare_agent_homes(
         codex_home,
         project_root=settings.project_root,
         plugin_manager=plugin_manager,
-        workspace_skills=workspace_skills,
-        denied_skill_names=denied_skill_names,
+        workspace_skills=skill_policy.workspace_skills,
+        denied_skill_names=skill_policy.denied_skill_names,
+        companion_skill_access=skill_policy.companion_skill_access,
     )
     return PreparedAgentHomes(
         claude_home=claude_home,
@@ -86,15 +96,16 @@ def prepare_agent_homes(
 
 def refresh_personalized_agent_skills(group_folder: str) -> None:
     """Expose personalization skill updates on the next agent turn."""
-    workspace_skills, denied_skill_names = _workspace_skill_policy(group_folder)
+    skill_policy = _workspace_skill_policy(group_folder)
     settings = get_settings()
     session_root = settings.data_dir / "sessions" / group_folder
     for agent_home in (session_root / ".claude", session_root / ".codex"):
         refresh_personalized_skills(
             agent_home,
             project_root=settings.project_root,
-            workspace_skills=workspace_skills,
-            denied_skill_names=denied_skill_names,
+            workspace_skills=skill_policy.workspace_skills,
+            denied_skill_names=skill_policy.denied_skill_names,
+            companion_skill_access=skill_policy.companion_skill_access,
         )
 
 
@@ -104,11 +115,34 @@ def _validate_learning_vault(vault_root: Path) -> None:
     raise LearningConfigError(_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR)
 
 
-def _workspace_skill_policy(group_folder: str) -> tuple[list[str] | None, list[str] | None]:
+def _workspace_skill_policy(group_folder: str) -> _WorkspaceSkillPolicy:
+    settings = get_settings()
+    all_companion_skill_names = frozenset(
+        skill_name for tool in settings.tools.values() for skill_name in tool.skills
+    )
     resolved = load_resolved_config(group_folder)
     if resolved is None:
-        return None, None
-    return resolved.skills, resolved.denied_skills
+        return _WorkspaceSkillPolicy(
+            workspace_skills=None,
+            denied_skill_names=None,
+            companion_skill_access=CompanionSkillAccess(
+                selected_names=frozenset(),
+                all_names=all_companion_skill_names,
+            ),
+        )
+    selected_companion_skill_names = frozenset(
+        skill_name
+        for tool_name in resolved.tools
+        for skill_name in getattr(settings.tools.get(tool_name), "skills", ())
+    )
+    return _WorkspaceSkillPolicy(
+        workspace_skills=resolved.skills,
+        denied_skill_names=resolved.denied_skills,
+        companion_skill_access=CompanionSkillAccess(
+            selected_names=selected_companion_skill_names,
+            all_names=all_companion_skill_names,
+        ),
+    )
 
 
 def _learning_profile_override_for_group(group_folder: str) -> str | None:

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
     from pynchy.plugins.contracts import AgentHookSpec
 
-from pynchy.host.container_manager.credentials import write_env_file
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.mirror import prepare_vault_mount_root
@@ -88,14 +87,6 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     scripts_dir = project_root / "src" / "pynchy" / "agent" / "scripts"
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
-
-    # Environment file directory (per-group, GH_TOKEN scoped to admin only)
-    env_dir = write_env_file(
-        is_admin=is_admin,
-        group_folder=group.folder,
-    )
-    if env_dir is not None:
-        mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))
 
     # Agent-runner source (read-only, Python source for container)
     agent_runner_src = project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
@@ -216,6 +207,7 @@ def build_container_args(
     *,
     memory_mb: int,
     image: str,
+    env_names: tuple[str, ...] = (),
 ) -> list[str]:
     """Build CLI args for `container run`."""
     from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
@@ -250,6 +242,9 @@ def build_container_args(
     gateway = get_gateway()
     if gateway is not None and runtime.name == "docker":
         args.extend(["--add-host", "host.docker.internal:host-gateway"])
+
+    for name in sorted(env_names):
+        args.extend(["-e", name])
 
     for m in mounts:
         if m.readonly:

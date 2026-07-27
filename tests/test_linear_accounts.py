@@ -23,8 +23,8 @@ def test_account_resolves_its_own_credentials_and_trust(monkeypatch: pytest.Monk
         tools={
             "linear_synapse": LinearTool(
                 type="linear",
-                api_key_env="LINEAR_SYNAPSE_API_KEY",  # pragma: allowlist secret
-                team_key_env="LINEAR_SYNAPSE_TEAM_KEY",
+                required_env=["LINEAR_SYNAPSE_API_KEY"],  # pragma: allowlist secret
+                optional_env=["LINEAR_SYNAPSE_TEAM_KEY"],
                 public_source=False,
                 secret_data=True,
                 public_sink=False,
@@ -68,8 +68,8 @@ async def test_host_client_uses_the_workspace_accounts_exact_key(
         tools={
             "linear_synapse": LinearTool(
                 type="linear",
-                api_key_env="LINEAR_SYNAPSE_API_KEY",  # pragma: allowlist secret
-                team_key_env="LINEAR_SYNAPSE_TEAM_KEY",
+                required_env=["LINEAR_SYNAPSE_API_KEY"],  # pragma: allowlist secret
+                optional_env=["LINEAR_SYNAPSE_TEAM_KEY"],
             )
         },
     )

@@ -16,6 +16,7 @@ from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
     ensure_docker_running,
+    ensure_script_running,
     ensure_stdio_running,
     expand_arg_placeholders,
 )
@@ -24,6 +25,11 @@ from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
     merged_mcp_servers,
     resolve_all_instances,
+)
+from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspaceRestriction,
+    clear_runtime_workspace_restrictions,
+    register_runtime_workspace_restriction,
 )
 from pynchy.plugins.mcp_server import McpServerConfig
 
@@ -74,17 +80,10 @@ class TestMcpServerConfig:
             McpServerConfig(type="docker", image="img", port=8000, startup_timeout_seconds=0)
 
     def test_build_env_args_includes_static_env(self):
-        cfg = McpServerConfig(
-            type="docker",
-            image="img",
-            port=8000,
-            env={"STATIC": "value"},
-        )
+        args = build_env_args({"STATIC": "value"})
 
-        args = build_env_args(cfg)
-
-        assert "-e" in args
-        assert "STATIC=value" in args
+        assert args == ["-e", "STATIC"]
+        assert "value" not in args
 
     def test_stdio_server_requires_http_transport(self):
         config = McpServerConfig(
@@ -139,6 +138,8 @@ class TestDockerLifecycleHelpers:
         volumes: list[str] | None = None,
         args: list[str] | None = None,
         kwargs: dict[str, str] | None = None,
+        env: dict[str, str] | None = None,
+        tool_environment: dict[str, str] | None = None,
         project_root: Path = Path("/project"),
     ) -> McpInstance:
         cfg = McpServerConfig(
@@ -148,6 +149,7 @@ class TestDockerLifecycleHelpers:
             extra_ports=extra_ports or [],
             args=args or [],
             volumes=volumes or [],
+            env=env or {},
         )
         return McpInstance(
             server_name="browser",
@@ -157,6 +159,7 @@ class TestDockerLifecycleHelpers:
             container_name="pynchy-mcp-browser",
             project_root=project_root,
             port=port,
+            tool_environment=tool_environment or {},
         )
 
     @pytest.mark.asyncio
@@ -214,6 +217,35 @@ class TestDockerLifecycleHelpers:
                 health_timeout_seconds=5.0,
             ),
         )
+
+    @pytest.mark.asyncio
+    async def test_docker_passes_selected_values_only_through_the_client_environment(
+        self,
+        monkeypatch,
+    ):
+        instance = self._make_instance(
+            env={"STATIC_SETTING": "static-value"},
+            tool_environment={"SELECTED_TOKEN": "selected-value"},
+        )
+        monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
+        run_docker_mock, _wait_healthy_mock = self._stub_docker_lifecycle(monkeypatch)
+
+        await ensure_docker_running(instance)
+
+        argv = run_docker_mock.await_args.args
+        environment = run_docker_mock.await_args.kwargs["environment"]
+        assert argv[argv.index("-e") :] == (
+            "-e",
+            "SELECTED_TOKEN",
+            "-e",
+            "STATIC_SETTING",
+            "img",
+        )
+        assert "selected-value" not in argv
+        assert "static-value" not in argv
+        assert environment["SELECTED_TOKEN"] == "selected-value"  # noqa: S105  # pragma: allowlist secret
+        assert environment["STATIC_SETTING"] == "static-value"
+        assert "UNRELATED_HOST_TOKEN" not in environment
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_omits_primary_publish_and_falls_back_to_container_url(
@@ -292,6 +324,7 @@ class TestStdioLifecycle:
             container_name="unused",
             project_root=Path("/project"),
             port=8932,
+            tool_environment={"ANDROID_TOKEN": "selected-value"},
         )
         start_process = MagicMock(return_value=None)
         wait_healthy_mock = AsyncMock()
@@ -323,6 +356,7 @@ class TestStdioLifecycle:
             "8932",
         ]
         assert environment["ADB_PATH"] == "/opt/homebrew/bin/adb"
+        assert environment["ANDROID_TOKEN"] == "selected-value"  # noqa: S105  # pragma: allowlist secret
         assert environment["PATH"] == "/usr/bin"
         assert "SERVICE_TOKEN" not in environment
         assert wait_healthy_mock.await_args.args == (
@@ -334,6 +368,49 @@ class TestStdioLifecycle:
                 health_timeout_seconds=5.0,
             ),
         )
+
+
+class TestScriptLifecycle:
+    @pytest.mark.asyncio
+    async def test_ensure_script_runs_with_filtered_environment(self, monkeypatch):
+        instance = McpInstance(
+            server_name="linear",
+            server_config=McpServerConfig(
+                type="script",
+                command="uv",
+                args=["run", "linear-server", "--port", "{port}"],
+                port=8474,
+                transport="streamable_http",
+                env={"STATIC_SETTING": "static-value"},
+            ),
+            kwargs={},
+            instance_id="linear",
+            container_name="unused",
+            project_root=Path("/project"),
+            port=8474,
+            tool_environment={"LINEAR_API_KEY": "selected-value"},  # pragma: allowlist secret
+        )
+        process = subprocess.Popen.__new__(subprocess.Popen)
+        start_process = MagicMock(return_value=process)
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._start_script_process",
+            start_process,
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            AsyncMock(),
+        )
+
+        await ensure_script_running(instance)
+
+        command, environment = start_process.call_args.args
+        assert command == ["uv", "run", "linear-server", "--port", "8474"]
+        assert environment["LINEAR_API_KEY"] == "selected-value"  # pragma: allowlist secret
+        assert environment["STATIC_SETTING"] == "static-value"
+        assert environment["PATH"] == "/usr/bin"
+        assert "UNRELATED_HOST_TOKEN" not in environment
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +573,10 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            lambda: settings,
+        )
 
         def close_background_task(coro, **_kwargs):
             coro.close()
@@ -537,6 +618,68 @@ class TestResolveAllInstancesPortOffset:
 
         assert child_ids == parent_ids
         assert child_ids
+
+    @pytest.mark.asyncio
+    async def test_runtime_route_restriction_removes_parent_mcp_instances(self, monkeypatch):
+        settings = self._settings(
+            workspaces={"admin": ["browser"]},
+            tool_mcp_configs={
+                "browser": {
+                    "runtime": "script",
+                    "command": "npx",
+                    "port": 9100,
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            lambda: settings,
+        )
+        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
+        proxy = MagicMock()
+        proxy.start = AsyncMock(return_value=0)
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.McpProxy",
+            MagicMock(return_value=proxy),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.sync_mcp_endpoints",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.sync_teams",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.load_teams_cache",
+            lambda _: {},
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.save_teams_cache",
+            lambda *_: None,
+        )
+
+        def close_background_task(coro, **_kwargs):
+            coro.close()
+            return MagicMock()
+
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.create_background_task",
+            close_background_task,
+        )
+        await manager.sync()
+        child = "admin__thread_discord-channel-restricted"
+        register_runtime_workspace_restriction(
+            child,
+            RuntimeWorkspaceRestriction(parent_workspace="admin", tools=()),
+        )
+
+        try:
+            instance_ids = manager.get_workspace_instance_ids(child)
+        finally:
+            clear_runtime_workspace_restrictions()
+
+        assert instance_ids == []
 
     def test_inject_workspace_independent_port_counters_per_server(self):
         state = self._resolve_instances(
@@ -667,7 +810,8 @@ class TestResolveAllInstancesPortOffset:
         assert instance.port == 8474
 
     def test_linear_mcp_requires_explicit_tool_selection_with_api_key(self, monkeypatch):
-        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        monkeypatch.setenv("LINEAR_API_KEY", "selected-value")
+        monkeypatch.setenv("LINEAR_TEAM_KEY", "team-value")
         settings = validate_settings_mapping(
             {
                 "profiles": {"linear-access": {"tools": ["linear"]}},
@@ -677,27 +821,7 @@ class TestResolveAllInstancesPortOffset:
                 },
                 "tools": {
                     "linear": {
-                        "type": "mcp",
-                        "mcp": {
-                            "runtime": "script",
-                            "command": "uv",
-                            "args": [
-                                "run",
-                                "python",
-                                "-m",
-                                "pynchy.plugins.integrations.linear",
-                                "--port",
-                                "{port}",
-                                "--workspace",
-                                "{workspace}",
-                            ],
-                            "port": 8474,
-                            "transport": "streamable_http",
-                            "inject_workspace": True,
-                            "env_forward": {
-                                "LINEAR_API_KEY": "LINEAR_API_KEY"  # pragma: allowlist secret
-                            },
-                        },
+                        "type": "linear",
                     }
                 },
             }
@@ -719,7 +843,6 @@ class TestResolveAllInstancesPortOffset:
                 port=8474,
                 transport="streamable_http",
                 inject_workspace=True,
-                env_forward={"LINEAR_API_KEY": "LINEAR_API_KEY"},  # pragma: allowlist secret
             )
         }
 
@@ -728,4 +851,32 @@ class TestResolveAllInstancesPortOffset:
         assert set(state.workspace_instances) == {"beta"}
         assert state.workspace_instances["beta"][0].startswith("linear_")
         assert len(state.instances) == 1
-        assert next(iter(state.instances.values())).port == 8474
+        instance = next(iter(state.instances.values()))
+        assert instance.port == 8474
+        assert instance.tool_environment == {
+            "LINEAR_API_KEY": "selected-value",  # pragma: allowlist secret
+            "LINEAR_TEAM_KEY": "team-value",  # pragma: allowlist secret
+        }
+
+    def test_missing_required_environment_removes_the_mcp_instance(self, monkeypatch):
+        monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"linear-access": {"tools": ["linear"]}},
+                "workspaces": {"beta": {"profiles": ["linear-access"]}},
+                "tools": {"linear": {"type": "linear"}},
+            }
+        )
+        all_servers = {
+            "linear": McpServerConfig(
+                type="script",
+                command="uv",
+                port=8474,
+                transport="streamable_http",
+            )
+        }
+
+        state = resolve_all_instances(settings, all_servers)
+
+        assert state.instances == {}
+        assert state.workspace_instances == {}

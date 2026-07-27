@@ -463,10 +463,23 @@ class McpManager:
         logger.info("All MCP instances stopped")
 
     def get_workspace_instance_ids(self, group_folder: str) -> list[str]:
-        """Get the list of MCP instance IDs for a workspace."""
-        return self._workspace_instances.get(
-            workspace_config.static_workspace_folder(group_folder), []
+        """Get only MCP instances still authorized by effective workspace policy."""
+        static_folder = workspace_config.static_workspace_folder(group_folder)
+        instance_ids = self._workspace_instances.get(static_folder, [])
+        if static_folder == group_folder:
+            return list(instance_ids)
+        resolved = workspace_config.load_resolved_config(
+            group_folder,
+            settings=self._settings,
         )
+        if resolved is None:
+            return []
+        allowed_tools = set(resolved.tools)
+        return [
+            instance_id
+            for instance_id in instance_ids
+            if self._instances[instance_id].server_name in allowed_tools
+        ]
 
     def get_direct_server_configs(
         self,

@@ -20,7 +20,10 @@ from pynchy.capabilities import (
     HostActionAccess,
     HostActionDescriptor,
 )
-from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.config import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    Settings,
+    WorkspaceTool,
+)
 from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     ResolvedWorkspaceConfig,
 )
@@ -206,9 +209,7 @@ def destroy_gate(source_group: str, invocation_ts: float) -> None:
 def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceSecurity:
     """Resolve security from selected tools and workspace secret state."""
     s = pynchy_config.get_settings()
-    config_group = workspace_config.static_workspace_folder(source_group)
-    resolve_workspace = getattr(s, "resolved_workspace_config", None)
-    resolved = resolve_workspace(config_group) if callable(resolve_workspace) else None
+    resolved = workspace_config.load_resolved_config(source_group, settings=s)
     contains_secrets = resolved.contains_secrets if resolved is not None else False
 
     del is_admin
@@ -229,7 +230,7 @@ def build_workspace_security(
     tools = settings.tools
     for tool_name in resolved.tools:
         tool = tools.get(tool_name)
-        if tool is None:
+        if tool is None or isinstance(tool, WorkspaceTool):
             continue
         trust = ServiceTrustConfig(
             public_source=tool.public_source,

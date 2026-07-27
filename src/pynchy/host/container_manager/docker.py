@@ -13,11 +13,15 @@ import asyncio
 import shutil
 import subprocess  # noqa: S404, RUF100 - Docker helpers use fixed no-shell argv.
 import time
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Docker environment annotations at runtime.
+    Mapping,
+)
 from dataclasses import dataclass
 
 import aiohttp
 
 from pynchy.logger import logger
+from pynchy.utils import filtered_process_environment
 
 
 def docker_available() -> bool:
@@ -42,6 +46,7 @@ def _run_docker_sync(
     *args: str,
     check: bool = True,
     timeout: int = 30,
+    environment: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command (blocking — internal only)."""
     return subprocess.run(  # noqa: S603, RUF100 - args are constrained by internal Docker helper call sites; no shell.
@@ -50,6 +55,7 @@ def _run_docker_sync(
         text=True,
         timeout=timeout,
         check=check,
+        env=filtered_process_environment(dict(environment or {})),
     )
 
 
@@ -57,6 +63,7 @@ async def run_docker(
     *args: str,
     check: bool = True,
     command_timeout_seconds: int = 30,
+    environment: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command without blocking the event loop."""
     return await asyncio.to_thread(
@@ -64,6 +71,7 @@ async def run_docker(
         *args,
         check=check,
         timeout=command_timeout_seconds,
+        environment=environment,
     )
 
 

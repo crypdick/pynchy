@@ -58,7 +58,7 @@ RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/requests /workspace/ipc/input /workspace/ipc/output
 
-# Copy entrypoint script (sources env, restores .claude.json from backup, runs agent)
+# Copy entrypoint script (restores .claude.json from backup, runs agent)
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

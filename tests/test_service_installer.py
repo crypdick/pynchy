@@ -10,7 +10,7 @@ Tests critical business logic:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -20,9 +20,6 @@ from pynchy.host.orchestrator.service_installer import (
     is_launchd_loaded,
     is_launchd_managed,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # is_launchd_managed
@@ -252,6 +249,29 @@ class TestInstallLaunchdService:
         assert "/opt/homebrew/bin:" in content
         assert str(tmp_path) in content
 
+    def test_repository_launchd_template_uses_host_secret_launcher(self, tmp_path: Path) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+        source = project_root / "launchd" / "com.pynchy.plist"
+        destination = tmp_path / "Library" / "LaunchAgents" / "com.pynchy.plist"
+
+        with (
+            patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded",
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed",
+                return_value=False,
+            ),
+            patch("subprocess.run"),
+        ):
+            install_service(project_root)
+
+        content = destination.read_text(encoding="utf-8")
+        assert str(project_root / "scripts" / "run_pynchy.sh") in content
+        assert source.exists()
+
     def test_loads_when_running_under_launchd(self, tmp_path: Path):
         """Should load the service when the process is managed by launchd."""
         src_dir = tmp_path / "launchd"
@@ -349,7 +369,7 @@ class TestInstallSystemdService:
         assert "Description=Pynchy personal assistant" in content
         assert f"WorkingDirectory={tmp_path}" in content
         assert "ExecStartPre=/usr/local/bin/uv tool run prek install" in content
-        assert "ExecStart=/usr/local/bin/uv run pynchy" in content
+        assert f"ExecStart=/bin/sh {tmp_path}/scripts/run_pynchy.sh" in content
         assert "Restart=always" in content
         assert "RestartSec=10" in content
 

@@ -1,0 +1,62 @@
+[tools.linear]
+type = "linear"
+skills = ["linear"]
+required_env = ["LINEAR_API_KEY"]
+optional_env = ["LINEAR_TEAM_KEY"]
+
+# The companion skill calls Linear directly.
+expose_env_to_workspace = true
+project_per_workspace = true
+
+[tools.github-cli]
+# Agent-side capability with no MCP or host service.
+type = "workspace"
+skills = [
+  "github-auth",
+  "github-code-review",
+  "github-issues",
+  "github-pr-workflow",
+  "github-repo-management",
+]
+required_env = ["GITHUB_TOKEN"]
+
+[tools.proton-mail]
+type = "mcp"
+skills = ["reading-proton-email"]
+required_env = [
+  "PYNCHY_PROTON_BRIDGE_USERNAME",
+  "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND",
+]
+
+# Default: credentials enter only the MCP subprocess.
+expose_env_to_workspace = false
+
+[tools.proton-mail.mcp]
+runtime = "script"
+command = "uv"
+args = [
+  "run",
+  "python",
+  "-m",
+  "pynchy.plugins.integrations.proton_mail",
+  "--port",
+  "{port}",
+]
+port = 8475
+transport = "streamable_http"
+
+[profiles.base]
+# Profiles remain the existing composition mechanism.
+tools = ["linear"]
+skills = ["ponytail", "caveman"]
+
+[profiles.dev]
+includes = ["base"]
+tools = ["github-cli"]
+
+[profiles.ops]
+includes = ["base"]
+tools = ["proton-mail"]
+
+[workspaces.ops]
+profiles = ["ops"]

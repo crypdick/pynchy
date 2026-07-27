@@ -39,4 +39,9 @@ skills = ["core", "dev"]
 ```
 
 When `skills` is unset, Pynchy includes only core skills. `["*"]` includes every
-available skill.
+ordinary available skill. It does not bypass companion-skill authorization.
+
+`allowed-tools` and profile skill selection do not grant environment
+credentials. A credential-requiring skill must accompany a selected tool whose
+TOML declaration owns the requirements. See
+[Tool access and secrets](../../usage/tool-access.md).

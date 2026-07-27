@@ -331,15 +331,15 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
         tools={
             "proton-mail": McpTool(
                 type="mcp",
+                required_env=[
+                    "PYNCHY_PROTON_BRIDGE_USERNAME",
+                    "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND",
+                ],
+                optional_env=["PYNCHY_PROTON_BRIDGE_IMAP_PORT"],
                 mcp=McpToolConfig(
                     runtime="script",
                     command="uv",
                     port=8475,
-                    env={
-                        "PYNCHY_PROTON_BRIDGE_USERNAME": "mail@example.test",
-                        "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND": _TEST_PASSWORD_COMMAND,
-                    },
-                    env_forward={"PYNCHY_PROTON_BRIDGE_IMAP_PORT": "TEST_IMAP_PORT"},
                 ),
             )
         }
@@ -351,7 +351,10 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
         captured_environment = environment
         return _FakeProtonClient()
 
-    monkeypatch.setenv("TEST_IMAP_PORT", "2143")
+    monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_USERNAME", "mail@example.test")
+    monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND", _TEST_PASSWORD_COMMAND)
+    monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_IMAP_PORT", "2143")
+    monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
     monkeypatch.setattr("pynchy.operational_canaries.get_settings", lambda: settings)
     monkeypatch.setattr("pynchy.operational_canaries.create_proton_mail_client", create_client)
 
@@ -361,6 +364,7 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
     assert captured_environment["PYNCHY_PROTON_BRIDGE_USERNAME"] == "mail@example.test"
     assert captured_environment["PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND"] == _TEST_PASSWORD_COMMAND
     assert captured_environment["PYNCHY_PROTON_BRIDGE_IMAP_PORT"] == "2143"
+    assert "UNRELATED_HOST_TOKEN" not in captured_environment
 
 
 def test_built_in_operational_canaries_register_only_safe_supported_services():

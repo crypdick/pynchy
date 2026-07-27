@@ -139,6 +139,10 @@ otherwise select it. Dynamic Discord threads use their policy owner's
 configuration for both the catalog and persistent choice. An unowned manual
 thread inherits its physical parent for backward compatibility.
 
+Companion skills form a separate set: only an available selected tool installs
+them. Learned-skill grants and wildcard selection cannot add a companion skill
+or its credentials. See [Tool access and secrets](../usage/tool-access.md).
+
 ---
 
 **Want to customize this?** Write your own workspace plugin — see the [Plugin Authoring Guide](../plugins/index.md). Have an idea but don't want to build it? [Open a feature request](https://github.com/crypdick/pynchy/issues).

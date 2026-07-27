@@ -372,6 +372,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Define tools that profiles can select. The security policy reads the trust
 # fields from selected tools. See docs/usage/security.md for details.
+# For a complete tool-owned credential and companion-skill example, see
+# config-examples/tool-access.toml and docs/usage/tool-access.md.
 #
 # Properties:
 #   public_source     — Can this service deliver content from untrusted parties?
