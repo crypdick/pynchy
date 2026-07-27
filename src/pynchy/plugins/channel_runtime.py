@@ -8,11 +8,15 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager annotation at runtime.
 
+from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    DiscordConnectionSettings,
+)
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
@@ -40,6 +44,8 @@ class ChannelPluginContext:
     on_ask_user_answer_callback: Callable[[str, dict[str, Any]], None] | None = None
     on_approval_decision_callback: Callable[[str, str, str, str], None] | None = None
     speech_synthesizer: SpeechSynthesizer | None = None
+    discord_connections: dict[str, DiscordConnectionSettings] = field(default_factory=dict)
+    discord_audio_cache_dir: Path | None = None
 
 
 def default_channel_name(configured: str | None) -> str | None:

@@ -19,10 +19,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
-    DiscordChannelConfig,
-    DiscordConnectionConfig,
-    DiscordGuildConfig,
+from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    DiscordChannelSettings,
+    DiscordConnectionSettings,
+    DiscordGuildSettings,
 )
 
 Decision = Literal["allow", "deny", "pairing"]
@@ -116,7 +116,7 @@ def _same_name(left: str | None, right: str | None) -> bool:
 
 
 def _member_allowlists(
-    guild: DiscordGuildConfig, channel: DiscordChannelConfig | None
+    guild: DiscordGuildSettings, channel: DiscordChannelSettings | None
 ) -> tuple[list[str], list[str]]:
     users = channel.users if channel and channel.users else guild.users
     roles = channel.roles if channel and channel.roles else guild.roles
@@ -137,7 +137,7 @@ def _is_member_allowed(
 
 
 def _requires_mention(
-    guild: DiscordGuildConfig, channel: DiscordChannelConfig | None
+    guild: DiscordGuildSettings, channel: DiscordChannelSettings | None
 ) -> bool | None:
     if channel is not None and channel.require_mention is not None:
         return channel.require_mention
@@ -147,7 +147,7 @@ def _requires_mention(
 class DiscordAccess:
     """Decide whether an inbound message may reach the agent."""
 
-    def __init__(self, config: DiscordConnectionConfig) -> None:
+    def __init__(self, config: DiscordConnectionSettings) -> None:
         self._cfg = config
 
     def decide(self, ctx: InboundContext) -> Decision:
@@ -203,7 +203,7 @@ class DiscordAccess:
             return "deny"
         return self._decide_member(ctx, guild, channel)
 
-    def _lookup_guild(self, ctx: InboundContext) -> DiscordGuildConfig | None:
+    def _lookup_guild(self, ctx: InboundContext) -> DiscordGuildSettings | None:
         for key in (ctx.guild_id, ctx.guild_name):
             if key and key in self._cfg.chat:
                 return self._cfg.chat[key]
@@ -213,8 +213,8 @@ class DiscordAccess:
         )
 
     def _lookup_channel(
-        self, guild: DiscordGuildConfig, ctx: InboundContext
-    ) -> DiscordChannelConfig | None:
+        self, guild: DiscordGuildSettings, ctx: InboundContext
+    ) -> DiscordChannelSettings | None:
         for key in (
             ctx.parent_channel_id,
             ctx.channel_id,
@@ -242,8 +242,8 @@ class DiscordAccess:
     def _decide_member(
         self,
         ctx: InboundContext,
-        guild: DiscordGuildConfig,
-        channel: DiscordChannelConfig | None,
+        guild: DiscordGuildSettings,
+        channel: DiscordChannelSettings | None,
     ) -> Decision:
         users, roles = _member_allowlists(guild, channel)
         if not _is_member_allowed(ctx, users=users, roles=roles):

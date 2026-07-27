@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path  # noqa: TC003, RUF100 - test context constructs the concrete cache path.
 from types import ModuleType
 from typing import Any
 from unittest.mock import ANY, MagicMock, patch
@@ -14,6 +15,9 @@ from pynchy.config.models import (
     DiscordConnectionConfig,
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
+)
+from pynchy.discord import (  # noqa: TC001, RUF100 - test context exposes the concrete domain value.
+    DiscordConnectionSettings,
 )
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
@@ -79,7 +83,12 @@ from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
 from pynchy.types import Channel  # noqa: E402
 
 
-def _context(*, speech_synthesizer: Any | None = None) -> ChannelPluginContext:
+def _context(
+    *,
+    speech_synthesizer: Any | None = None,
+    discord_connections: dict[str, DiscordConnectionSettings] | None = None,
+    discord_audio_cache_dir: Path | None = None,
+) -> ChannelPluginContext:
     return ChannelPluginContext(
         on_message_callback=MagicMock(),
         on_chat_metadata_callback=MagicMock(),
@@ -89,6 +98,8 @@ def _context(*, speech_synthesizer: Any | None = None) -> ChannelPluginContext:
         workspaces=MagicMock(return_value={}),
         send_message=MagicMock(),
         speech_synthesizer=speech_synthesizer,
+        discord_connections=discord_connections or {},
+        discord_audio_cache_dir=discord_audio_cache_dir,
     )
 
 
@@ -134,9 +145,12 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
 
     speech_synthesizer = PocketTtsProvider()
     discord_token = "-".join(("discord", "token"))
-    context = _context(speech_synthesizer=speech_synthesizer)
+    context = _context(
+        speech_synthesizer=speech_synthesizer,
+        discord_connections={"synapse": settings.connections["synapse"].to_runtime_settings()},
+        discord_audio_cache_dir=settings.data_dir / "media" / "discord",
+    )
     with (
-        patch("pynchy.plugins.channels.discord.get_settings", return_value=settings),
         patch(
             "pynchy.plugins.channels.discord._plugin.DiscordChannel",
             wraps=DiscordChannel,
@@ -150,7 +164,7 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
     assert isinstance(channels[0], DiscordChannel)
     channel_class.assert_called_once_with(
         connection_name="synapse",
-        config=settings.connections["synapse"],
+        config=settings.connections["synapse"].to_runtime_settings(),
         bot_token=ANY,
         on_message=context.on_message_callback,
         on_chat_metadata=context.on_chat_metadata_callback,

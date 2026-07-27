@@ -1705,22 +1705,6 @@ imports = ["pynchy.plugins.integrations.caldav", "pynchy.plugins.integrations.li
 reason = "pynchy.operational_canaries still has a runtime-import dependency on integration_adapter; Use an integration-neutral application port instead of importing this concrete integration."
 
 [[violations]]
-importer = "pynchy.plugins.channels.discord"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.discord still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._access"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.models"]
-reason = "pynchy.plugins.channels.discord._access still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.channels.discord._approval"
 target_component = "container_adapter"
 kind = "runtime-import"
@@ -1738,22 +1722,6 @@ reason = "pynchy.plugins.channels.discord._channel still has a runtime-import de
 
 [[violations]]
 importer = "pynchy.plugins.channels.discord._channel"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.discord_refs"]
-reason = "pynchy.plugins.channels.discord._channel still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._channel"
-target_component = "config"
-kind = "type-checking-import"
-count = 1
-imports = ["pynchy.config.models"]
-reason = "pynchy.plugins.channels.discord._channel still has a type-checking-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._channel"
 target_component = "state_adapter"
 kind = "runtime-import"
 count = 1
@@ -1767,38 +1735,6 @@ kind = "runtime-import"
 count = 2
 imports = ["pynchy.host.audio", "pynchy.host.inbound_audio"]
 reason = "pynchy.plugins.channels.discord._events still has a runtime-import dependency on host_adapter; Use a use-case-owned host capability port and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._plugin"
-target_component = "config"
-kind = "runtime-import"
-count = 2
-imports = ["pynchy.config.models", "pynchy.config.settings"]
-reason = "pynchy.plugins.channels.discord._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._provisioning"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.discord_refs"]
-reason = "pynchy.plugins.channels.discord._provisioning still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._targets"
-target_component = "config"
-kind = "type-checking-import"
-count = 2
-imports = ["pynchy.config.discord_refs", "pynchy.config.models"]
-reason = "pynchy.plugins.channels.discord._targets still has a type-checking-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._voice"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.discord_refs"]
-reason = "pynchy.plugins.channels.discord._voice still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.channels.discord._voice"
