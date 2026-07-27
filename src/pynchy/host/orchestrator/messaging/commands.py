@@ -9,28 +9,29 @@ from __future__ import annotations
 
 import re
 
-from pynchy.config import get_settings
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves matcher annotations at runtime.
+    CommandMatcher,
+)
 
 # Matches 2-36 lowercase alphanumeric chars (short_id is 2, full UUID is 32-36)
 _APPROVAL_ID_RE = re.compile(r"^[0-9a-z]{2,36}$")
 
 
-def _strip_trigger(text: str) -> str:
+def _strip_trigger(matcher: CommandMatcher, text: str) -> str:
     """Remove the leading trigger prefix (e.g. ``@pynchy``) if present.
 
     Slack normalises ``<@UBOTID>`` to ``@AgentName`` before the text reaches
     command detection.  A message like ``@pynchy c`` should be treated the
     same as a bare ``c``.
     """
-    s = get_settings()
-    return s.trigger_pattern.sub("", text).strip()
+    return str(matcher.trigger_pattern.sub("", text).strip())
 
 
 def _is_magic_command(
     text: str,
-    verbs: set[str],
-    nouns: set[str],
-    aliases: set[str],
+    verbs: frozenset[str],
+    nouns: frozenset[str],
+    aliases: frozenset[str],
 ) -> bool:
     """Check if text matches a verb+noun pair (either order) or a single alias."""
     words = text.strip().lower().split()
@@ -42,57 +43,57 @@ def _is_magic_command(
     return False
 
 
-def _word_sets(w: object) -> tuple[set[str], set[str], set[str]]:
-    """Return (verbs, nouns, aliases) as frozen sets, avoiding repeated conversion."""
-    return set(w.verbs), set(w.nouns), set(w.aliases)
-
-
-def is_context_reset(text: str) -> bool:
+def is_context_reset(matcher: CommandMatcher, text: str) -> bool:
     """Check if a message is a context reset command."""
-    text = _strip_trigger(text)
-    verbs, nouns, aliases = _word_sets(get_settings().commands.reset)
-    return _is_magic_command(text, verbs, nouns, aliases)
+    text = _strip_trigger(matcher, text)
+    return _is_magic_command(text, matcher.reset.verbs, matcher.reset.nouns, matcher.reset.aliases)
 
 
-def is_end_session(text: str) -> bool:
+def is_end_session(matcher: CommandMatcher, text: str) -> bool:
     """Check if a message is an end session command."""
-    text = _strip_trigger(text)
-    verbs, nouns, aliases = _word_sets(get_settings().commands.end_session)
-    return _is_magic_command(text, verbs, nouns, aliases)
+    text = _strip_trigger(matcher, text)
+    return _is_magic_command(
+        text,
+        matcher.end_session.verbs,
+        matcher.end_session.nouns,
+        matcher.end_session.aliases,
+    )
 
 
-def is_redeploy(text: str) -> bool:
+def is_redeploy(matcher: CommandMatcher, text: str) -> bool:
     """Check if a message is a manual redeploy command."""
-    text = _strip_trigger(text)
-    w = get_settings().commands.redeploy
+    text = _strip_trigger(matcher, text)
     word = text.strip().lower()
-    aliases = set(w.aliases)
-    verbs = set(w.verbs)
-    return word in aliases or word in verbs
+    return word in matcher.redeploy.aliases or word in matcher.redeploy.verbs
 
 
-def is_pause(text: str) -> bool:
+def is_pause(matcher: CommandMatcher, text: str) -> bool:
     """Check if a message is an exact resumable-pause command."""
-    text = _strip_trigger(text)
+    text = _strip_trigger(matcher, text)
     word = text.strip().lower()
-    return word in set(get_settings().commands.pause.aliases)
+    return word in matcher.pause.aliases
 
 
-def is_any_magic_command(text: str) -> bool:
+def is_any_magic_command(matcher: CommandMatcher, text: str) -> bool:
     """Check if a message matches any lifecycle magic command."""
-    return is_pause(text) or is_context_reset(text) or is_end_session(text) or is_redeploy(text)
+    return (
+        is_pause(matcher, text)
+        or is_context_reset(matcher, text)
+        or is_end_session(matcher, text)
+        or is_redeploy(matcher, text)
+    )
 
 
 # -- Approval gate commands ----------------------------------------------------
 
 
-def is_approval_command(text: str) -> tuple[str, str] | None:
+def is_approval_command(matcher: CommandMatcher, text: str) -> tuple[str, str] | None:
     """Check if text is an approve/deny command.
 
     Returns ``(action, short_id)`` or ``None``.
     Accepts bare ``approve <id>`` or with trigger prefix ``@pynchy approve <id>``.
     """
-    text = _strip_trigger(text)
+    text = _strip_trigger(matcher, text)
     words = text.strip().lower().split()
     if len(words) != 2:
         return None
@@ -104,7 +105,7 @@ def is_approval_command(text: str) -> tuple[str, str] | None:
     return (action, short_id)
 
 
-def is_pending_query(text: str) -> bool:
+def is_pending_query(matcher: CommandMatcher, text: str) -> bool:
     """Check if text is a ``pending`` query command."""
-    text = _strip_trigger(text)
+    text = _strip_trigger(matcher, text)
     return text.strip().lower() == "pending"

@@ -36,13 +36,12 @@ from pynchy.host.orchestrator.messaging import (
     channel_handler,
     reaction_handler,
 )
-from pynchy.host.orchestrator.messaging import (
-    pipeline as message_handler,
-)
+from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    CommandMatcher,
     DirectCommandOutput,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
@@ -110,6 +109,9 @@ class PynchyApp(ThreadRouting):
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
         settings = get_settings()
+        self.command_matcher = CommandMatcher.from_values(
+            settings.trigger_pattern, settings.commands.model_dump()
+        )
         self.queue: GroupQueue = GroupQueue(
             QueuePolicy(
                 max_concurrent=settings.container.max_concurrent,
