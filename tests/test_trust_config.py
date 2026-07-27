@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pluggy
@@ -28,6 +29,7 @@ def _make_instance(server_name: str) -> McpInstance:
         kwargs={},
         instance_id=server_name,
         container_name=server_name,
+        project_root=Path("/project"),
     )
 
 
