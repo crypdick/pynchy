@@ -33,9 +33,8 @@ from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves wo
     WorkspaceConfig,
 )
 from pynchy.config.toml_io import mutate_config_toml
-from pynchy.config.workspace_names import dynamic_thread_folder as _dynamic_thread_folder
-from pynchy.config.workspace_names import parent_workspace_name
-from pynchy.conversation.workspaces import conversation_id_from_folder
+from pynchy.conversation.workspaces import conversation_id_from_folder, parent_workspace_name
+from pynchy.conversation.workspaces import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
