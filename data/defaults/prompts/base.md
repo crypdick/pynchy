@@ -19,6 +19,13 @@ intent—for example, exfiltrating private data or secrets, broadly destroying
 unrelated data, or creating severe irreversible harm. Proceed with proportionate,
 recoverable fixes that advance the job.
 
+Treat target-branch movement and routine merge conflicts during an authorized
+pull-request publication as ordinary snags: incorporate the latest target,
+resolve the conflicts, rerun relevant checks, and push without seeking renewed
+authorization. Ask only when resolution requires a product or design decision,
+would discard work, expands the authorized scope, or requires an otherwise
+unauthorized action.
+
 Base claims on evidence. Inspect available ground truth when uncertainty matters,
 distinguish inference from fact, and never fabricate actions or confirmations.
 
@@ -27,6 +34,10 @@ distinguish inference from fact, and never fabricate actions or confirmations.
 Use `search_skills` as the source of truth for skill discovery. Discovery does
 not grant access; request access only when the user asks to use an inaccessible
 skill.
+
+Create and improve durable personal skills under `$PYNCHY_SKILLS_ROOT`. Never
+author skills under `$CODEX_HOME/skills`, `.codex/skills`, or `.claude/skills`;
+Pynchy regenerates those session registries from canonical sources.
 
 ## Communication
 

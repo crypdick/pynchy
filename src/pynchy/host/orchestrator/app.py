@@ -26,7 +26,11 @@ from pynchy.host.orchestrator import (
     session_handler,
     update_offer,
 )
-from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
+from pynchy.host.orchestrator.adapters import (
+    HostMessageBroadcaster,
+    MessageBroadcaster,
+    make_host_message_broadcaster,
+)
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
@@ -112,6 +116,7 @@ class PynchyApp(ThreadRouting):
         self.message_loop_running: bool = False
         settings = get_settings()
         self.agent_name = settings.agent.name
+        self.admin_workspace = settings.notifications.admin_workspace
         self.command_matcher = CommandMatcher.from_values(
             settings.trigger_pattern, settings.commands.model_dump()
         )
@@ -154,7 +159,10 @@ class PynchyApp(ThreadRouting):
         # Shared broadcast infrastructure — single code path for all channel sends.
         # Uses lambda so broadcaster always reads current self.channels reference.
         self._broadcaster = MessageBroadcaster(lambda: self.channels)
-        self._host_broadcaster = self._make_host_broadcaster()
+        self._host_broadcaster = make_host_message_broadcaster(
+            self._broadcaster,
+            self.event_bus.emit,
+        )
 
     @property
     def message_broadcaster(self) -> MessageBroadcaster:
@@ -176,6 +184,17 @@ class PynchyApp(ThreadRouting):
             return False
         self._shutting_down = True
         return True
+
+    def sync_personalization(self, project_root: Path) -> str:
+        """Persist valid changes through the configured Git adapter."""
+        from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - composition root selects the validator.
+            validate_personalization_tree,
+        )
+        from pynchy.host.git_ops.personalization import (  # noqa: PLC0415, RUF100 - composition root selects the Git adapter.
+            sync_personalization_repo,
+        )
+
+        return sync_personalization_repo(project_root, validate_personalization_tree)
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""
@@ -419,37 +438,6 @@ class PynchyApp(ThreadRouting):
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_system_notice(chat_jid, text)
-
-    def _make_host_broadcaster(self) -> HostMessageBroadcaster:
-        """Create a HostMessageBroadcaster wired to this app's store and event bus."""
-
-        async def store_host_message(**kwargs: object) -> None:
-            await self._store_broadcast_message(kwargs, message_type="host")
-
-        async def store_system_notice(**kwargs: object) -> None:
-            await self._store_broadcast_message(kwargs, message_type="user")
-
-        return HostMessageBroadcaster(
-            self._broadcaster, store_host_message, store_system_notice, self.event_bus.emit
-        )
-
-    async def _store_broadcast_message(
-        self,
-        kwargs: dict[str, object],
-        *,
-        message_type: str,
-    ) -> None:
-        await store_message_direct(
-            message_id=str(kwargs["message_id"]),
-            chat_jid=str(kwargs["chat_jid"]),
-            sender=str(kwargs["sender"]),
-            sender_name=str(kwargs["sender_name"]) if kwargs.get("sender_name") else "",
-            content=str(kwargs["content"]),
-            timestamp=str(kwargs["timestamp"]),
-            is_from_me=bool(kwargs.get("is_from_me", True)),
-            message_type=message_type,
-            metadata={"source": "host_broadcaster"},
-        )
 
     async def handle_streamed_output(
         self,

@@ -115,7 +115,6 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
         profile_slug="default",
         vault_root=tmp_path,
         vault_mount_path="/workspace/vault",
-        global_skills_root=tmp_path / "systems" / "pynchy" / "skills",
         profile_root=tmp_path / "profiles" / "default",
         memory_root=tmp_path / "profiles" / "default" / "memory",
         vault_mirror_root=tmp_path / "data" / "learning" / "vault-mirrors" / "default",
@@ -135,7 +134,10 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
     assert env["PYNCHY_IS_ADMIN"] == "1"
     assert env["OBSIDIAN_VAULT_PATH"] == str(tmp_path)
     assert env["PYNCHY_IPC_DIR"] == str(tmp_path / "data" / "ipc" / "pynchy-dev")
-    assert env["PYNCHY_SKILLS_ROOT"] == str(tmp_path / "systems" / "pynchy" / "skills")
+    assert env["PYNCHY_SKILLS_ROOT"] == str(
+        settings.project_root / "data" / "personalization" / "skills"
+    )
+    assert env["GIT_CEILING_DIRECTORIES"] == env["PYNCHY_SKILLS_ROOT"]
     assert "PYNCHY_PROFILE_SKILLS_ROOT" not in env
 
 

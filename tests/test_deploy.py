@@ -7,7 +7,6 @@ leave the service in a broken state or lose deploy context.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import shutil
@@ -17,7 +16,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
 
 from pynchy.host.orchestrator.deploy import finalize_deploy, rollback_deploy_checkout
 from pynchy.types import DeployChangeKind, InFlightTurn, InFlightWorkKind
@@ -28,24 +26,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-@contextlib.contextmanager
-def _patch_settings(*, data_dir: Path):
-    s = make_settings(data_dir=data_dir)
-    with (
-        patch("pynchy.host.orchestrator.deploy.get_settings", return_value=s),
-        patch(
-            "pynchy.state.get_in_flight_turns",
-            new_callable=AsyncMock,
-            return_value=[],
-        ),
-    ):
-        yield
-
-
 @pytest.fixture
 def deploy_dir(tmp_path: Path):
-    """Patch settings data_dir for isolated deploy tests."""
-    with _patch_settings(data_dir=tmp_path):
+    """Provide an isolated continuation directory for deploy tests."""
+    with patch(
+        "pynchy.state.get_in_flight_turns",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
         yield tmp_path
 
 
@@ -63,6 +51,7 @@ class TestFinalizeDeploy:
                 config_hash=_CONFIG_HASH,
                 previous_sha="previous-sha-001",
                 change_kind=DeployChangeKind.CODE,
+                data_dir=deploy_dir,
                 resume_prompt="Deploy complete.",
             )
 
@@ -141,6 +130,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=change_kind,
+                data_dir=deploy_dir,
             )
 
         broadcast.assert_called_once()
@@ -159,6 +149,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CONFIG,
+                data_dir=deploy_dir,
             )
 
         broadcast.assert_not_called()
@@ -174,6 +165,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CODE_AND_CONFIG,
+                data_dir=deploy_dir,
             )
 
         mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
@@ -193,6 +185,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CONFIG,
+                data_dir=deploy_dir,
                 sigterm_delay=2.0,
             )
 
@@ -217,6 +210,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CODE,
+                data_dir=deploy_dir,
             )
 
         assert (deploy_dir / "deploy_continuation.json").exists()
@@ -232,6 +226,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="",
                 change_kind=DeployChangeKind.RESTART,
+                data_dir=deploy_dir,
             )
 
         broadcast.assert_called_once()
@@ -249,6 +244,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CONFIG,
+                data_dir=deploy_dir,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
@@ -283,6 +279,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CODE,
+                data_dir=deploy_dir,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
@@ -306,6 +303,7 @@ class TestRollbackDeployCheckout:
                 config_hash=_CONFIG_HASH,
                 previous_sha="000",
                 change_kind=DeployChangeKind.CODE,
+                data_dir=deploy_dir,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())

@@ -49,14 +49,6 @@ imports = ["pynchy.config", "pynchy.config.settings"]
 reason = "pynchy.host.container_manager.credentials still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.credentials"
-target_component = "learning_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.learning.paths"]
-reason = "pynchy.host.container_manager.credentials still has a runtime-import dependency on learning_adapter; Use a use-case-owned learning capability port and wire the concrete adapter at composition."
-
-[[violations]]
 importer = "pynchy.host.container_manager.gateway"
 target_component = "config"
 kind = "runtime-import"
@@ -215,14 +207,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.config"]
 reason = "pynchy.host.container_manager.ipc.write still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mcp.lifecycle"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.mcp.lifecycle still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mcp.manager"
@@ -575,14 +559,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.host.orchestrator.conversation_control still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.deploy"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.deploy still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.deploy"
@@ -1338,14 +1314,6 @@ reason = "pynchy.host.orchestrator.temporal.workflows still has a runtime-import
 
 [[violations]]
 importer = "pynchy.host.orchestrator.update_offer"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.update_offer still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.update_offer"
 target_component = "git_adapter"
 kind = "runtime-import"
 count = 1
@@ -1839,14 +1807,6 @@ kind = "runtime-import"
 count = 2
 imports = ["pynchy.host.orchestrator.conversation_control", "pynchy.host.orchestrator.workspace_config"]
 reason = "pynchy.plugins.integrations.matrix_connection still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_connection"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.integrations.matrix_connection still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.integrations.matrix_connection"

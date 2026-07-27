@@ -10,7 +10,7 @@ from pynchy.host.container_manager.ipc.deps import (
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.session_prep import is_skill_selected, parse_skill_tier
-from pynchy.host.learning.skills import find_learned_skill_dir
+from pynchy.host.learning.skills import find_personalized_skill_dir
 from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
 )
@@ -27,7 +27,7 @@ def _skill_status(group_folder: str, skill_name: str) -> str:
         return "unavailable"
     if skill_name in resolved.denied_skills:
         return "denied"
-    skill_dir = find_learned_skill_dir(group_folder, skill_name)
+    skill_dir = find_personalized_skill_dir(skill_name)
     if skill_dir is None:
         return "unavailable"
     name, tier = parse_skill_tier(skill_dir)
@@ -52,7 +52,7 @@ async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC h
     action = cast("str", action)
     skill_name = cast("str", skill_name)
 
-    if find_learned_skill_dir(source_group, skill_name) is None:
+    if find_personalized_skill_dir(skill_name) is None:
         _write_result(source_group, request_id, {"status": "unknown", "skill_name": skill_name})
         return
 

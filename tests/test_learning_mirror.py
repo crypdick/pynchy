@@ -19,7 +19,6 @@ def _paths(vault_root: Path) -> LearningPaths:
         profile_slug="research",
         vault_root=vault_root,
         vault_mount_path="/workspace/vault",
-        global_skills_root=vault_root / "systems/pynchy/skills",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
         vault_mirror_root=vault_root.parent / "data" / "learning" / "vault-mirrors" / "research",
@@ -33,32 +32,20 @@ def _paths(vault_root: Path) -> LearningPaths:
     )
 
 
-def test_apple_vault_mirror_round_trips_global_learned_skills(tmp_path: Path) -> None:
+def test_apple_vault_mirror_round_trips_profile_memory(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     profile_note = vault / "systems/pynchy/profiles/research/memory/context.md"
-    existing_skill = vault / "systems/pynchy/skills/remember-routing/SKILL.md"
     profile_note.parent.mkdir(parents=True)
-    existing_skill.parent.mkdir(parents=True)
     profile_note.write_text("profile context\n")
-    existing_skill.write_text("---\nname: remember-routing\ntier: learned\n---\n")
     paths = _paths(vault)
     with (
         patch("pynchy.host.learning.mirror.should_use_vault_mount_mirror", return_value=True),
     ):
         mirror = prepare_vault_mount_root(paths)
-        mirrored_skill = mirror / "systems/pynchy/skills/remember-routing/SKILL.md"
-        assert mirrored_skill.read_text() == existing_skill.read_text()
-
-        new_skill = mirror / "systems/pynchy/skills/coordinate-reviews/SKILL.md"
-        new_skill.parent.mkdir(parents=True)
-        new_skill.write_text("---\nname: coordinate-reviews\ntier: learned\n---\n")
         (mirror / "systems/pynchy/profiles/research/memory/new-note.md").write_text("learned\n")
 
         sync_vault_mount_mirror(paths)
 
-    assert (vault / "systems/pynchy/skills/coordinate-reviews/SKILL.md").read_text() == (
-        "---\nname: coordinate-reviews\ntier: learned\n---\n"
-    )
     assert (
         vault / "systems/pynchy/profiles/research/memory/new-note.md"
     ).read_text() == "learned\n"

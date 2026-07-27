@@ -34,3 +34,7 @@ def test_reference_declares_safe_diagnostics_contract() -> None:
     missing = [text for text in required_text if text not in document]
 
     assert not missing, f"Missing safe diagnostics guidance: {missing}"
+
+
+def test_reference_records_the_spend_log_failure() -> None:
+    assert "exhausted the proxy container" in REFERENCE_PATH.read_text(encoding="utf-8")

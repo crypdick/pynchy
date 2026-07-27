@@ -257,7 +257,7 @@ records an explicit degraded audit event. The cache is an availability
 optimization, not provenance proof. Pynchy does not consult a third-party
 package reputation service.
 
-Package checks do not admit or vet learned skills. Skill discovery and skill
+Package checks do not admit or vet personalized or agent-authored skills. Skill discovery and skill
 access remain their existing separate capability surface. Documentation and
 local caches may make repeated inspection cheaper, but neither counts as
 security evidence.
@@ -513,6 +513,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | System prompts | Scoped via config | Scoped via config |
 | Personalization files through the project mount | Read-write | Not mounted |
+| Canonical personalization skills | Read-write | Read-write |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
 | MCP service tools | Auto-approved | Trust-gated (see [§5](#5-service-trust-policy-lethal-trifecta-defenses)) |

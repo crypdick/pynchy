@@ -160,6 +160,19 @@ def _github_origin_path(origin_url: str) -> tuple[str | None, str | None]:
     return (parsed.path.removeprefix("/"), None) if error is None else (None, error)
 
 
+def github_slug_from_origin(origin_url: str) -> str | None:
+    """Return ``owner/repository`` for a supported GitHub origin."""
+    repo_path, error = _github_origin_path(origin_url)
+    if error is not None or repo_path is None:
+        return None
+    slug = repo_path.removesuffix(".git")
+    try:
+        _slug_to_parts(slug)
+    except ValueError:
+        return None
+    return slug
+
+
 def _origin_identity_error(origin_url: str, expected_slug: str) -> str | None:
     """Return why a GitHub origin cannot represent the configured repository."""
     repo_path, parse_error = _github_origin_path(origin_url)

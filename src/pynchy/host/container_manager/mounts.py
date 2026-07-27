@@ -15,6 +15,11 @@ from pynchy.host.container_manager.security.mount_security import validate_addit
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.mirror import prepare_vault_mount_root
 from pynchy.host.learning.skill_activation import prepare_agent_homes
+from pynchy.host.paths import (
+    PERSONALIZATION_RELATIVE_DIR,
+    PERSONALIZATION_SKILLS_CONTAINER_PATH,
+    SKILLS_DIRNAME,
+)
 from pynchy.plugins.agent_hooks import agent_hook_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
 
@@ -63,6 +68,15 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
                 readonly=False,
             )
         )
+    personalization_skills = project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME
+    personalization_skills.mkdir(parents=True, exist_ok=True)
+    mounts.append(
+        VolumeMount(
+            str(personalization_skills),
+            PERSONALIZATION_SKILLS_CONTAINER_PATH,
+            readonly=False,
+        )
+    )
     _add_workspace_mounts(mounts, group_dir, effective_repo_mounts)
     mounts.append(VolumeMount(str(agent_homes.claude_home), "/home/agent/.claude", readonly=False))
     mounts.append(VolumeMount(str(agent_homes.codex_home), "/home/agent/.codex", readonly=False))

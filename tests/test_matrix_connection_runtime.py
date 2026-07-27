@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from conftest import init_test_database, make_settings
@@ -266,6 +267,7 @@ def _runtime(
         "personal-chats",
         (_route(activation=activation),),
         poll_interval_seconds=interval,
+        state_dir=Path("/state"),
         client=stub,
     )
 
@@ -510,5 +512,6 @@ def test_runtime_rejects_connection_without_an_enabled_route() -> None:
             "unused",
             (),
             poll_interval_seconds=5.0,
+            state_dir=Path("/state"),
             client=_StubGateway([], _portal()),
         )

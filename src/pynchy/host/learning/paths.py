@@ -22,7 +22,6 @@ class LearningPaths:
     profile_slug: str
     vault_root: Path
     vault_mount_path: str
-    global_skills_root: Path
     profile_root: Path
     memory_root: Path
     vault_mirror_root: Path
@@ -70,7 +69,6 @@ def resolve_learning_paths(
     )
     profile_slug = _profile_slug(profile)
 
-    global_skills_root = _resolve_under_vault(vault_root, Path("systems/pynchy/skills"))
     profile_rel = _render_profile_root(obsidian.default_profile_root, profile_slug)
     profile_root = _resolve_under_vault(vault_root, profile_rel)
     memory_root = _resolve_under_vault(vault_root, profile_rel / obsidian.memory_dir_name)
@@ -85,7 +83,6 @@ def resolve_learning_paths(
         profile_slug=profile_slug,
         vault_root=vault_root,
         vault_mount_path=mount_path,
-        global_skills_root=global_skills_root,
         profile_root=profile_root,
         memory_root=memory_root,
         vault_mirror_root=learning_data_root / "vault-mirrors" / profile_slug,

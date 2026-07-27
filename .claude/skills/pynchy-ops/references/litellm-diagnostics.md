@@ -34,6 +34,8 @@ Use `/v1/models` and `/v1/model/info` only to inspect exposed model configuratio
 
 `GET /spend/logs` is unsafe for routine live diagnostics regardless of requested limit or filters. Do not call it until a separate verified LiteLLM repair establishes a caller-independent resource bound.
 
+A bounded request to this route exhausted the proxy container on the live deployment.
+
 `GET /global/spend/logs` is not validated as a substitute and is excluded from routine diagnostics.
 
 Do not use a small limit, filters, or the global route as a workaround. Preserve bounded logs and request identifiers for later offline analysis instead.

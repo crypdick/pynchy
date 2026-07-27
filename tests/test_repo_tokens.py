@@ -651,9 +651,11 @@ class TestGitEnvWithToken:
             assert env is not None
             assert env["GH_TOKEN"] == SCOPED_CREDENTIAL
             assert env["GIT_TERMINAL_PROMPT"] == "0"
-            assert env["GIT_CONFIG_COUNT"] == "2"
+            assert env["GIT_CONFIG_COUNT"] == "4"
             assert "x-access-token" in env["GIT_CONFIG_VALUE_0"]
             assert SCOPED_CREDENTIAL in env["GIT_CONFIG_VALUE_1"]
+            assert env["GIT_CONFIG_VALUE_2"] == "git@github.com:"
+            assert env["GIT_CONFIG_VALUE_3"] == "ssh://git@github.com/"
 
 
 # ---------------------------------------------------------------------------

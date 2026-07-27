@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
 from pynchy.state import clear_pending_deployment
-from pynchy.types import DeployChangeKind, DeployRevision
+from pynchy.types import AgentExecutionRuntime, DeployChangeKind, DeployRevision
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,9 @@ class DeployFailureDeps(Protocol):
     """The notification capability required while recovering a failed deploy."""
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    @property
+    def agent_execution_runtime(self) -> AgentExecutionRuntime: ...
 
 
 def deploy_request_to_payload(request: DeployRequest) -> dict[str, Any]:
@@ -138,7 +141,9 @@ async def run_deploy(payload: dict[str, Any]) -> str:
 
     if request.rebuild:
         try:
-            build = await asyncio.to_thread(build_container_image)
+            build = await asyncio.to_thread(
+                build_container_image, deps.agent_execution_runtime.project_root
+            )
         # This error feeds the admin notification and checkout rollback.
         except Exception as exc:  # noqa: BLE001  # allow: exception-handling
             error = f"Container rebuild failed: {type(exc).__name__}: {exc}"
@@ -173,6 +178,7 @@ async def run_deploy(payload: dict[str, Any]) -> str:
             config_hash=request.config_hash,
             previous_sha=request.previous_sha,
             change_kind=request.change_kind or DeployChangeKind.RESTART,
+            data_dir=deps.agent_execution_runtime.data_dir,
             resume_prompt=request.resume_prompt,
             sigterm_delay=0.25,
         )

@@ -12,6 +12,7 @@ from pynchy.host.learning.packet_models import (  # noqa: TC001, RUF100 - bearty
 from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPaths,
 )
+from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
 
 _EXPLICIT_LEARNING_PATTERNS = (
     re.compile(r"\bremember\b", re.IGNORECASE),
@@ -128,8 +129,9 @@ def build_review_prompt(packet: LearningPacket, paths: LearningPaths) -> str:
         "- Prefer a concise note in the strongest existing semantic folder "
         "over a broad catch-all note.\n\n"
         "Learned skill policy:\n"
-        "- Write learned skills only under the global skill registry.\n"
-        f"- Global skill registry: {paths.vault_mount_path}/systems/pynchy/skills\n"
+        "- Create and update learned skills in the personalization skill registry.\n"
+        f"- Personalization skill registry: {PERSONALIZATION_SKILLS_CONTAINER_PATH}\n"
+        "- Never author skills in a session `.claude/skills` or `.codex/skills` directory.\n"
         "- Learned skills are shared across profiles. A profile receives one only "
         "when its `skills` selection names that skill. Use Pynchy's existing "
         "`SKILL.md` skill format.\n"

@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock
 
 from beartype import beartype
-from conftest import NullChannel, make_settings
+from conftest import NullChannel
 
-from pynchy.config.models import NotificationsConfig
 from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.orchestrator import update_offer
 from pynchy.state import init_test_database, initialize_deployment_state
-from pynchy.types import DeployClaim, DeployClaimStatus, DeployRevision, WorkspaceProfile
+from pynchy.types import (
+    AgentExecutionRuntime,
+    DeployClaim,
+    DeployClaimStatus,
+    DeployRevision,
+    WorkspaceProfile,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -45,6 +50,13 @@ class _InteractiveChannel(NullChannel):
 class _UpdateDeps:
     workspaces: dict[str, WorkspaceProfile]
     broadcast_host_message: AsyncMock
+    admin_workspace: str | None
+    agent_execution_runtime: AgentExecutionRuntime
+
+
+@dataclass
+class _Runtime:
+    project_root: Path
 
 
 def _admin_workspace() -> WorkspaceProfile:
@@ -128,13 +140,13 @@ async def test_accepted_offer_fetches_then_starts_deploy(
     await init_test_database()
     await initialize_deployment_state(DeployRevision(_OLD_SHA, "old-config"))
     workspace = _admin_workspace()
-    deps = _UpdateDeps(workspaces={workspace.jid: workspace}, broadcast_host_message=AsyncMock())
-    settings = make_settings(
-        project_root=tmp_path,
-        notifications=NotificationsConfig(admin_workspace="admin"),
+    deps = _UpdateDeps(
+        workspaces={workspace.jid: workspace},
+        broadcast_host_message=AsyncMock(),
+        admin_workspace="admin",
+        agent_execution_runtime=cast("AgentExecutionRuntime", _Runtime(tmp_path)),
     )
     start_deploy = AsyncMock(return_value=DeployClaim(DeployClaimStatus.CLAIMED))
-    monkeypatch.setattr(update_offer, "get_settings", lambda: settings)
     monkeypatch.setattr(update_offer, "host_update_main", lambda _root: True)
     monkeypatch.setattr(update_offer, "get_local_head_sha", lambda _root: _NEW_SHA)
     monkeypatch.setattr(update_offer, "get_deploy_config_hash", lambda: "new-config")
@@ -166,13 +178,13 @@ async def test_offer_requires_approval_from_the_configured_admin_workspace(
 ) -> None:
     """A button callback from a different channel cannot deploy Pynchy."""
     workspace = _admin_workspace()
-    deps = _UpdateDeps(workspaces={workspace.jid: workspace}, broadcast_host_message=AsyncMock())
-    settings = make_settings(
-        project_root=tmp_path,
-        notifications=NotificationsConfig(admin_workspace="admin"),
+    deps = _UpdateDeps(
+        workspaces={workspace.jid: workspace},
+        broadcast_host_message=AsyncMock(),
+        admin_workspace="admin",
+        agent_execution_runtime=cast("AgentExecutionRuntime", _Runtime(tmp_path)),
     )
     update_main = AsyncMock()
-    monkeypatch.setattr(update_offer, "get_settings", lambda: settings)
     monkeypatch.setattr(update_offer, "host_update_main", update_main)
 
     handled = await update_offer.handle_update_offer_answer(

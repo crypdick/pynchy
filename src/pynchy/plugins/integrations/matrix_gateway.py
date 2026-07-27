@@ -320,6 +320,7 @@ class MatrixGatewayPlugin:
                 connection_name,
                 tuple(route for route in routes if route.connection_name == connection_name),
                 poll_interval_seconds=connection.poll_interval_seconds,
+                state_dir=matrix_connection_state_dir(settings.data_dir, connection_name),
             )
             for connection_name, connection in settings.connections.items()
             if is_matrix_connection(connection)

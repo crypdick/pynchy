@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
@@ -78,6 +80,8 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     ) -> None: ...
 
     async def save_state(self) -> None: ...
+
+    def sync_personalization(self, project_root: Path) -> str: ...
 
     async def review_linear_plan(
         self,
