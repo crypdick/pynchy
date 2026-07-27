@@ -29,6 +29,7 @@ from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
 from pynchy.types import (
+    AgentExecutionRuntime,
     DeployRevision,
     InFlightTurn,
     InFlightWorkKind,
@@ -120,9 +121,7 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.credentials",
             "pynchy.host.container_manager.mounts",
             "pynchy.host.container_manager.session_prep",
-            "pynchy.host.container_manager.orchestrator",
             "pynchy.host.container_manager.session",
-            "pynchy.host.orchestrator._agent_runner_preflight",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
         ):
@@ -353,6 +352,16 @@ async def app(tmp_path: Path):
     """Create a PynchyApp with a fresh in-memory DB and patched dirs."""
     await state.init_test_database()
     a = PynchyApp()
+    a.agent_execution_runtime = AgentExecutionRuntime(
+        project_root=tmp_path,
+        groups_dir=tmp_path / "groups",
+        data_dir=tmp_path / "data",
+        container_timeout=a.agent_execution_runtime.container_timeout,
+        default_core=a.agent_execution_runtime.default_core,
+        idle_timeout=a.agent_execution_runtime.idle_timeout,
+        model=a.agent_execution_runtime.model,
+        model_reasoning_effort=a.agent_execution_runtime.model_reasoning_effort,
+    )
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
             jid="group@g.us",

@@ -83,6 +83,7 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import (
+    AgentExecutionRuntime,
     Channel,
     ContainerOutput,
     GroupFolder,
@@ -115,6 +116,16 @@ class PynchyApp(ThreadRouting):
                 max_retries=settings.queue.max_retries,
                 retry_base_seconds=settings.queue.base_retry_seconds,
             )
+        )
+        self.agent_execution_runtime = AgentExecutionRuntime(
+            project_root=settings.project_root,
+            groups_dir=settings.groups_dir,
+            data_dir=settings.data_dir,
+            container_timeout=settings.container_timeout,
+            default_core=settings.agent.default_core,
+            idle_timeout=settings.idle_timeout,
+            model=settings.agent.model,
+            model_reasoning_effort=settings.agent.model_reasoning_effort,
         )
         self.queue.set_process_messages_fn(
             lambda jid: message_handler.process_group_messages(self, jid)

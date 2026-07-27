@@ -75,6 +75,7 @@ from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.state import SessionSecurityTaint
 from pynchy.types import (
+    AgentExecutionRuntime,
     ChatJid,
     ContainerInput,
     ContainerOutput,
@@ -154,6 +155,7 @@ class _AgentRunnerDeps:
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
+        self.agent_execution_runtime = _agent_runtime(make_settings())
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -175,7 +177,6 @@ _SETTINGS_MODULES = [
     _CR_CREDS,
     "pynchy.host.container_manager.mounts",
     "pynchy.host.container_manager.session_prep",
-    _CR_ORCH,
     "pynchy.host.learning.paths",
     "pynchy.host.learning.mirror",
     "pynchy.host.learning.skills",
@@ -183,6 +184,19 @@ _SETTINGS_MODULES = [
     "pynchy.host.orchestrator.workspace_config",
     "pynchy.host.orchestrator.host_execution",
 ]
+
+
+def _agent_runtime(settings: object) -> AgentExecutionRuntime:
+    return AgentExecutionRuntime(
+        project_root=settings.project_root,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        container_timeout=settings.container_timeout,
+        default_core=settings.agent.default_core,
+        idle_timeout=settings.idle_timeout,
+        model=settings.agent.model,
+        model_reasoning_effort=settings.agent.model_reasoning_effort,
+    )
 
 
 def _settings_overrides(
@@ -1839,7 +1853,7 @@ class TestResolveAgentCore:
 
     def test_returns_defaults_when_no_plugin_manager(self):
         """Covers the `if plugin_manager:` guard for the None case."""
-        module, cls = resolve_agent_core(None)
+        module, cls = resolve_agent_core(None, "openai")
         assert module == "agent_runner.cores.openai"
         assert cls == "OpenAIAgentCore"
 
@@ -1856,7 +1870,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "openai")
         assert module == "agent_runner.cores.openai"
         assert cls == "OpenAIAgentCore"
 
@@ -1878,8 +1892,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="claude"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "claude")
 
         assert module == "cores.claude_v2"
         assert cls == "ClaudeV2Core"
@@ -1900,8 +1913,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="claude"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "claude")
 
         assert module == "cores.openai"
         assert cls == "OpenAICore"
@@ -1922,8 +1934,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="custom"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "custom")
 
         assert module == "cores.custom"
         assert cls == "CustomCore"
@@ -1969,8 +1980,9 @@ class TestContainerInputAgentCoreConfig:
             )
         )
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.agent_core_config is not None
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
@@ -1980,8 +1992,9 @@ class TestContainerInputAgentCoreConfig:
     def test_default_agent_model_flows_to_core_config(self):
         settings = make_settings()
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.agent_core_config is not None
         assert "model" not in result.agent_core_config
@@ -1989,8 +2002,9 @@ class TestContainerInputAgentCoreConfig:
     def test_turn_id_flows_to_container_input_and_core_metadata(self):
         settings = make_settings()
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(turn_id="turn_1"), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(turn_id="turn_1"), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.turn_id == "turn_1"
         assert result.agent_core_config is not None
@@ -2011,14 +2025,13 @@ class TestContainerInputAgentCoreConfig:
             workspaces={TEST_GROUP.folder: workspace},
         )
 
-        with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.get_settings",
-                return_value=settings,
-            ),
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
         ):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input(
+                [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+            )
 
         assert result.agent_core_config is not None
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
@@ -2039,18 +2052,16 @@ class TestContainerInputAgentCoreConfig:
             workspaces={TEST_GROUP.folder: workspace},
         )
 
-        with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.get_settings",
-                return_value=settings,
-            ),
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
         ):
             result = build_container_input(
                 [],
                 self._ctx(),
                 "chat",
                 TEST_GROUP,
+                runtime=_agent_runtime(settings),
                 is_scheduled_task=True,
             )
 
@@ -2099,11 +2110,7 @@ class TestContainerInputAgentCoreConfig:
                 profiles=profiles,
                 workspaces=workspaces,
             ) as settings,
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.get_settings",
-                return_value=settings,
-            ),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
                 new_callable=AsyncMock,
@@ -2200,7 +2207,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings(agent=AgentConfig(model="gpt-5.5"))
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.agent_runner.pre_container_setup",
                 new_callable=AsyncMock,
@@ -2255,7 +2262,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2337,7 +2344,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2417,7 +2424,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2489,7 +2496,7 @@ class TestContainerInputAgentCoreConfig:
         ]
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2573,7 +2580,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2638,7 +2645,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings()
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,

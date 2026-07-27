@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot annotations.
 from typing import Any, Protocol, cast, runtime_checkable
 
-import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config import get_settings
-from pynchy.config.personalization import PersonalizationPaths
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (
     OnOutput,
@@ -20,6 +18,7 @@ from pynchy.host.container_manager import (
 from pynchy.host.container_manager.orchestrator import resolve_container_timeout
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
+from pynchy.host.orchestrator.prompt_loading import read_prompts
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
@@ -31,6 +30,7 @@ from pynchy.state import (
     update_in_flight_session,
 )
 from pynchy.types import (
+    AgentExecutionRuntime,
     ChatJid,
     ContainerInput,
     ContainerOutput,
@@ -73,6 +73,7 @@ class PreContainerSetupRequest:
     input_source: str
     is_scheduled_task: bool
     repo_access_override: str | None
+    runtime: AgentExecutionRuntime
 
 
 def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
@@ -170,6 +171,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
             request.group.folder,
             is_admin=request.group.is_admin,
             repo_access_override=request.repo_access_override,
+            runtime=request.runtime,
         )
     )
     await request.deps.broadcast_agent_input(
@@ -179,6 +181,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.deps,
         request.group.folder,
         is_admin=is_admin,
+        data_dir=request.runtime.data_dir,
     )
     wrapped_on_output = session_tracking_output_handler(
         request.deps,
@@ -195,9 +198,9 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
 
     request.deps.session_cleared.discard(request.group.folder)
     agent_core_module, agent_core_class = resolve_agent_core(
-        cast("Any", request.deps.plugin_manager)
+        cast("Any", request.deps.plugin_manager), request.runtime.default_core
     )
-    config_timeout = resolve_container_timeout(request.group)
+    config_timeout = resolve_container_timeout(request.group, request.runtime.container_timeout)
 
     return PreContainerResult(
         is_admin=is_admin,
@@ -224,14 +227,16 @@ def resolved_pre_container_context(
     *,
     is_admin: bool,
     repo_access_override: str | None,
+    runtime: AgentExecutionRuntime,
 ) -> tuple[bool, str | None, list[str], str | None, str | None]:
     resolved = workspace_config.load_resolved_config(group_folder)
     resolved_repos = list(resolved.repo) if resolved else []
     repo_accesses = [repo_access_override] if repo_access_override is not None else resolved_repos
     repo_access = repo_accesses[0] if repo_accesses else None
-    system_prompt_append = prompt_config.read_prompts(
+    system_prompt_append = read_prompts(
         resolved.prompts if resolved else [],
-        PersonalizationPaths.for_project(get_settings().project_root),
+        personalized_prompts=runtime.project_root / "data" / "personalization" / "prompts",
+        default_prompts=runtime.project_root / "data" / "defaults" / "prompts",
     )
     session_id = deps.sessions.get(group_folder)
     return is_admin, repo_access, repo_accesses, system_prompt_append, session_id
@@ -242,9 +247,9 @@ async def write_container_snapshots(
     group_folder: str,
     *,
     is_admin: bool,
+    data_dir: Path,
 ) -> float:
     snapshot_start = time.monotonic()
-    data_dir = get_settings().data_dir
     tasks = await get_all_tasks()
     host_jobs = await get_all_host_jobs() if is_admin else []
     write_tasks_snapshot(
