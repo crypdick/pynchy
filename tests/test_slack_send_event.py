@@ -21,6 +21,7 @@ def slack_channel() -> SlackChannel:
         bot_token=SLACK_BOT_VALUE,
         app_token=SLACK_APP_VALUE,
         chat_names=["general"],
+        assistant_name="pynchy",
         allow_create=False,
         on_message=MagicMock(),
         on_chat_metadata=MagicMock(),

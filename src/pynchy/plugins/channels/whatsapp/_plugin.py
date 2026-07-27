@@ -76,6 +76,7 @@ class WhatsAppPlugin:
                 channel_cls(
                     connection_name=connection_name,
                     auth_db_path=str(auth_db_path),
+                    assistant_name=s.agent.name,
                     on_message=context.on_message_callback,
                     on_chat_metadata=context.on_chat_metadata_callback,
                     workspaces=context.workspaces,

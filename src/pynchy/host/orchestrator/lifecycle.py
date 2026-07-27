@@ -477,7 +477,9 @@ async def run_app(app: PynchyApp) -> None:
         raise
 
     if not app.workspaces:
-        default_channel = resolve_default_channel(app.channels)
+        default_channel = resolve_default_channel(
+            app.channels, get_settings().command_center.connection
+        )
         await startup_handler.setup_admin_group(app, default_channel)
 
     interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)

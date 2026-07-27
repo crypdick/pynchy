@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
@@ -18,6 +20,7 @@ def _channel() -> DiscordChannel:
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
 
 

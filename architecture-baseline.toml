@@ -1705,14 +1705,6 @@ imports = ["pynchy.plugins.integrations.caldav", "pynchy.plugins.integrations.li
 reason = "pynchy.operational_canaries still has a runtime-import dependency on integration_adapter; Use an integration-neutral application port instead of importing this concrete integration."
 
 [[violations]]
-importer = "pynchy.plugins.channel_runtime"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channel_runtime still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.channels.discord"
 target_component = "config"
 kind = "runtime-import"
@@ -1767,14 +1759,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.plugins.channels.discord._channel still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._events"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.discord._events still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.channels.discord._events"
@@ -1841,14 +1825,6 @@ imports = ["pynchy.host.orchestrator.messaging.formatter", "pynchy.host.orchestr
 reason = "pynchy.plugins.channels.slack._blocks still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
 
 [[violations]]
-importer = "pynchy.plugins.channels.slack._events"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.slack._events still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.channels.slack._plugin"
 target_component = "config"
 kind = "runtime-import"
@@ -1873,28 +1849,12 @@ imports = ["pynchy.config.settings"]
 reason = "pynchy.plugins.channels.whatsapp._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.plugins.channels.whatsapp.auth"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.whatsapp.auth still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.channels.whatsapp.channel"
 target_component = "application"
 kind = "runtime-import"
 count = 2
 imports = ["pynchy.host.orchestrator.messaging.formatters.text", "pynchy.host.orchestrator.messaging.pending_questions"]
 reason = "pynchy.plugins.channels.whatsapp.channel still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.channels.whatsapp.channel"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.whatsapp.channel still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.channels.whatsapp.channel"

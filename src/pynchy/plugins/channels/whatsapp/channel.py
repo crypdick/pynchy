@@ -29,7 +29,6 @@ from neonize.events import (
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 from neonize.utils.jid import Jid2String, build_jid
 
-from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.host.orchestrator.messaging.pending_questions import (
     PENDING_QUESTION_TIMEOUT_SECONDS,
@@ -80,6 +79,7 @@ class WhatsAppChannel:
         self,
         connection_name: str,
         auth_db_path: str,
+        assistant_name: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         workspaces: Callable[[], dict[str, WorkspaceProfile]],
@@ -91,6 +91,7 @@ class WhatsAppChannel:
         self.formatter = TextFormatter()
         self._connection_name = connection_name
         self._auth_db_path = auth_db_path
+        self._assistant_name = assistant_name
         self._on_message = on_message
         self._on_chat_metadata = on_chat_metadata
         self._workspaces = workspaces
@@ -398,9 +399,8 @@ class WhatsAppChannel:
         questions = cast("list[dict[str, Any]]", pending.get("questions", []))
         return pending["request_id"], resolve_ask_user_answer(content, questions)
 
-    @staticmethod
-    def _is_own_agent_echo(context: _InboundMessageContext, content: str) -> bool:
-        return context.is_from_me and content.startswith(f"{get_settings().agent.name}:")
+    def _is_own_agent_echo(self, context: _InboundMessageContext, content: str) -> bool:
+        return context.is_from_me and content.startswith(f"{self._assistant_name}:")
 
     @staticmethod
     def _new_message(context: _InboundMessageContext, content: str) -> NewMessage:
