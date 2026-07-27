@@ -802,14 +802,6 @@ reason = "pynchy.host.orchestrator.capability_status still has a runtime-import 
 
 [[violations]]
 importer = "pynchy.host.orchestrator.concurrency"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.concurrency still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.concurrency"
 target_component = "container_adapter"
 kind = "runtime-import"
 count = 2

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pynchy.host.container_manager.mcp.startup import McpStartupFailure
-from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 
 
@@ -17,7 +17,9 @@ class _Deps:
         self.sessions: dict[str, str] = {}
         self.session_cleared: set[str] = set()
         self.workspaces: dict[str, object] = {}
-        self.queue = GroupQueue()
+        self.queue = GroupQueue(
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+        )
         self.plugin_manager = None
         self.broadcast_host_message = AsyncMock()
 

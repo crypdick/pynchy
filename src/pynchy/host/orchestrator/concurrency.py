@@ -13,9 +13,9 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Awaitable,
     Callable,
 )
+from dataclasses import dataclass
 from typing import TypeVar
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.security.middleware import PolicyDeniedError
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
@@ -35,6 +35,15 @@ from pynchy.utils import create_background_task
 _ResultT = TypeVar("_ResultT")
 
 
+@dataclass(frozen=True, kw_only=True)
+class QueuePolicy:
+    """Resolved admission and retry limits for one runtime queue."""
+
+    max_concurrent: int
+    max_retries: int
+    retry_base_seconds: float
+
+
 class GroupQueue:
     """Serialize every work source that targets the same execution runtime.
 
@@ -42,7 +51,8 @@ class GroupQueue:
     priority over scheduled tasks when draining, since a human is waiting.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, policy: QueuePolicy) -> None:
+        self._policy = policy
         self._registry = RuntimeRegistry()
         self._processes = RuntimeProcessControl(self._registry)
         self._active_count = 0
@@ -74,7 +84,7 @@ class GroupQueue:
             )
             return
 
-        if self._active_count >= get_settings().container.max_concurrent:
+        if self._active_count >= self._policy.max_concurrent:
             state.pending_messages = True
             if target.id not in self._waiting_groups:
                 self._waiting_groups.append(target.id)
@@ -137,7 +147,7 @@ class GroupQueue:
             )
             return True
 
-        if self._active_count >= get_settings().container.max_concurrent:
+        if self._active_count >= self._policy.max_concurrent:
             state.pending_tasks.append(task)
             if target.id not in self._waiting_groups:
                 self._waiting_groups.append(target.id)
@@ -409,9 +419,8 @@ class GroupQueue:
     def _schedule_retry(self, state: GroupState) -> None:
         """Re-enqueue a failed message check after exponential backoff."""
         runtime_id = state.target.id
-        s = get_settings()
         state.retry_count += 1
-        if state.retry_count > s.queue.max_retries:
+        if state.retry_count > self._policy.max_retries:
             logger.error(
                 "Max retries exceeded, dropping messages (will retry on next incoming message)",
                 runtime_id=runtime_id,
@@ -420,7 +429,7 @@ class GroupQueue:
             state.retry_count = 0
             return
 
-        delay = s.queue.base_retry_seconds * (2 ** (state.retry_count - 1))
+        delay = self._policy.retry_base_seconds * (2 ** (state.retry_count - 1))
         logger.info(
             "Scheduling retry with backoff",
             runtime_id=runtime_id,
@@ -482,7 +491,7 @@ class GroupQueue:
 
     def _drain_waiting(self) -> None:
         """Start runs for waiting groups until the concurrency limit is hit."""
-        while self._waiting_groups and self._active_count < get_settings().container.max_concurrent:
+        while self._waiting_groups and self._active_count < self._policy.max_concurrent:
             runtime_id = self._waiting_groups.popleft()
             self._start_next_pending(runtime_id)
 

@@ -16,7 +16,7 @@ from pynchy.host.container_manager.security.gate import (
     resolve_security,
 )
 from pynchy.host.container_manager.session import ContainerSession
-from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState
+from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState, QueuePolicy
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.types import (
@@ -488,7 +488,7 @@ class TestInvocationTsOnContainerInput:
 class TestRegisterHostProcessInvocation:
     def test_release_destroys_matching_invocation_gate(self):
         """A registered host process releases the gate for its invocation."""
-        queue = GroupQueue()
+        queue = GroupQueue(QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0))
         gate = create_gate("test-ws", 42.0, WorkspaceSecurity())
         lease = queue.acquire_host_process(RuntimeTarget.from_binding("test-ws", "test@g.us"))
 
