@@ -25,6 +25,7 @@ from pynchy.logger import logger
 from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
 from pynchy.state.runtime_session_recovery import clear_runtime_session_references
 from pynchy.types import (
+    AgentExecutionRuntime,
     ChatJid,
     ContainerInput,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     GroupFolder,
@@ -37,13 +38,14 @@ from pynchy.types import (
 class BuildContainerInput(Protocol):
     """Build runner input after host session preparation is complete."""
 
-    def __call__(
+    def __call__(  # noqa: PLR0913, RUF100 - mirrors the explicit agent-execution boundary.
         self,
         messages: list[dict[str, Any]],
         ctx: PreContainerResult,
         chat_jid: str,
         group: WorkspaceProfile,
         *,
+        runtime: AgentExecutionRuntime,
         is_scheduled_task: bool = False,
     ) -> ContainerInput: ...
 
@@ -72,6 +74,7 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
     ctx: PreContainerResult,
     host_cwd: Path,
     build_input: BuildContainerInput,
+    runtime: AgentExecutionRuntime,
     *,
     is_scheduled_task: bool,
 ) -> str:
@@ -104,6 +107,7 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
         ctx,
         chat_jid,
         group,
+        runtime=runtime,
         is_scheduled_task=is_scheduled_task,
     )
     input_data.plugin_hooks = host_agent_hook_configs(collect_agent_hook_specs(deps.plugin_manager))

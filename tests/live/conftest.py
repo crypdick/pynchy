@@ -229,8 +229,6 @@ def patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.credentials",
             "pynchy.host.container_manager.mounts",
             "pynchy.host.container_manager.session_prep",
-            "pynchy.host.container_manager.orchestrator",
-            "pynchy.host.orchestrator._agent_runner_preflight",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
         ):

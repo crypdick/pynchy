@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
 import pynchy.host.container_manager.process as container_process
-from pynchy.config import get_settings
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (
     ContainerSession,
@@ -41,7 +40,13 @@ from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
 from pynchy.state import clear_session
-from pynchy.types import ContainerInput, GroupFolder, RuntimeId, WorkspaceProfile
+from pynchy.types import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    GroupFolder,
+    RuntimeId,
+    WorkspaceProfile,
+)
 
 if TYPE_CHECKING:
     import pluggy
@@ -76,6 +81,9 @@ class AgentRunnerDeps(Protocol):
     @property
     def plugin_manager(self) -> pluggy.PluginManager | None: ...
 
+    @property
+    def agent_execution_runtime(self) -> AgentExecutionRuntime: ...
+
     async def get_available_groups(self) -> list[dict[str, Any]]: ...
 
     async def broadcast_agent_input(
@@ -95,6 +103,7 @@ class _SpawnAndAwaitRequest:
     ctx: PreContainerResult
     idle_timeout: float
     label: str
+    runtime: AgentExecutionRuntime
 
 
 @dataclass(frozen=True)
@@ -115,12 +124,13 @@ def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, 
     }
 
 
-def build_container_input(
+def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire inputs keep this boundary inspectable.
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
     chat_jid: str,
     group: WorkspaceProfile,
     *,
+    runtime: AgentExecutionRuntime,
     is_scheduled_task: bool = False,
 ) -> ContainerInput:
     """Build a runner input through this module's patchable settings seam."""
@@ -129,18 +139,10 @@ def build_container_input(
         ctx,
         chat_jid,
         group,
-        agent_core_config=_agent_core_config_from_settings(group.folder),
+        agent_core_config=agent_core_config(
+            runtime.model, runtime.model_reasoning_effort, group.folder
+        ),
         is_scheduled_task=is_scheduled_task,
-    )
-
-
-def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, Any] | None:
-    """Resolve agent config through this module's settings seam for callers and tests."""
-    settings = get_settings()
-    return agent_core_config(
-        settings.agent.model,
-        settings.agent.model_reasoning_effort,
-        group_folder,
     )
 
 
@@ -190,6 +192,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
             request.input_data,
             request.container_name,
             request.deps.plugin_manager,
+            request.runtime,
         )
     except OSError as exc:
         logger.error("Failed to spawn container", error=str(exc), container=request.container_name)
@@ -277,24 +280,23 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _cold_start(
+async def _cold_start(  # noqa: PLR0913, RUF100 - cold-start values remain explicit at the execution boundary.
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
+    runtime: AgentExecutionRuntime,
 ) -> str:
     """Spawn a container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
-    input_data = build_container_input(messages, ctx, chat_jid, group)
+    input_data = build_container_input(messages, ctx, chat_jid, group, runtime=runtime)
 
     # Remove stale container with the same name before spawning.
     # After a service restart or container crash, a dead Docker container may
     # still exist with this stable name, causing `docker run` to fail with
     # exit code 125 (name conflict).
     await container_process.docker_rm_force(container_name)
-
-    idle_timeout = get_settings().idle_timeout
 
     return await _spawn_and_await(
         _SpawnAndAwaitRequest(
@@ -304,8 +306,9 @@ async def _cold_start(
             input_data=input_data,
             container_name=container_name,
             ctx=ctx,
-            idle_timeout=idle_timeout,
+            idle_timeout=runtime.idle_timeout,
             label="cold start",
+            runtime=runtime,
         )
     )
 
@@ -346,6 +349,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     """
     run_agent_start = time.monotonic()
     resolved_turn_id = turn_id or new_turn_id()
+    runtime = deps.agent_execution_runtime
 
     # Pre-container setup is shared by all durable worker paths.
     ctx = await pre_container_setup(
@@ -359,19 +363,22 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             input_source=input_source,
             is_scheduled_task=is_scheduled_task,
             repo_access_override=repo_access_override,
+            runtime=runtime,
         )
     )
     ctx.turn_id = resolved_turn_id
     if resume_session_id is not None:
         ctx.session_id = resume_session_id
 
-    agent_core_config = _agent_core_config_from_settings(group.folder)
-    if _session_model_mismatch(ctx.session_id, agent_core_config):
+    resolved_agent_core_config = agent_core_config(
+        runtime.model, runtime.model_reasoning_effort, group.folder
+    )
+    if _session_model_mismatch(ctx.session_id, resolved_agent_core_config):
         logger.info(
             "Stored Codex session model changed; starting fresh session",
             group=group.name,
             session_id=ctx.session_id,
-            model=(agent_core_config or {}).get("model"),
+            model=(resolved_agent_core_config or {}).get("model"),
         )
         await destroy_session(group.folder)
         await clear_session(GroupFolder(group.folder))
@@ -388,6 +395,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             ctx,
             host_cwd,
             build_container_input,
+            runtime,
             is_scheduled_task=is_scheduled_task,
         )
 
@@ -417,7 +425,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
                     ctx=ctx,
                 )
             )
-        return await _cold_start(deps, group, chat_jid, messages, ctx)
+        return await _cold_start(deps, group, chat_jid, messages, ctx, runtime)
     except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"

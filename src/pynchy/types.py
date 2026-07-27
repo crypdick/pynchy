@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime value annotations.
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypeGuard, runtime_checkable
 
 from pynchy.deployment_types import (  # noqa: TC001, RUF100 - public runtime re-export
@@ -34,6 +35,20 @@ SessionId = NewType("SessionId", str)  # agent session handle
 ChatJid = NewType("ChatJid", str)  # canonical chat identifier
 ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
 OrphanReapAgeMs = NewType("OrphanReapAgeMs", int)  # unowned container retention
+
+
+@dataclass(frozen=True, slots=True)
+class AgentExecutionRuntime:
+    """Concrete values resolved once for agent execution."""
+
+    project_root: Path
+    groups_dir: Path
+    data_dir: Path
+    container_timeout: float
+    default_core: str
+    idle_timeout: float
+    model: str | None
+    model_reasoning_effort: str | None
 
 
 @dataclass(frozen=True)

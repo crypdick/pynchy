@@ -10,7 +10,6 @@ from pathlib import (
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.mcp.startup import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
     McpStartupFailure,
 )
@@ -26,6 +25,7 @@ from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.plugins.runtimes import system_checks
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+    AgentExecutionRuntime,
     ContainerInput,
     VolumeMount,
     WorkspaceProfile,
@@ -36,7 +36,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container 
 # ---------------------------------------------------------------------------
 
 
-def resolve_container_timeout(group: WorkspaceProfile) -> float:
+def resolve_container_timeout(group: WorkspaceProfile, default_timeout: float) -> float:
     """Return the effective container timeout in seconds.
 
     Per-workspace ``container_config.timeout`` takes priority; falls back to
@@ -44,7 +44,7 @@ def resolve_container_timeout(group: WorkspaceProfile) -> float:
     """
     if group.container_config and group.container_config.timeout:
         return group.container_config.timeout
-    return get_settings().container_timeout
+    return default_timeout
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,9 @@ def stable_container_name(group_folder: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str, str]:
+def resolve_agent_core(
+    plugin_manager: pluggy.PluginManager | None, default_core: str
+) -> tuple[str, str]:
     """Look up the agent core module and class from plugins.
 
     Returns (module_path, class_name) for the configured agent core.
@@ -86,7 +88,7 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
             if isinstance(core, AgentCoreSpec)
         ]
         core_info = next(
-            (core for core in cores if core.name == get_settings().agent.default_core),
+            (core for core in cores if core.name == default_core),
             None,
         )
         if core_info is None and cores:
@@ -125,6 +127,7 @@ async def _spawn_container(
     input_data: ContainerInput,
     container_name: str,
     plugin_manager: pluggy.PluginManager | None = None,
+    runtime: AgentExecutionRuntime | None = None,
 ) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount], tuple[McpStartupFailure, ...]]:
     """Resolve environment, build mounts, and spawn a container subprocess.
 
@@ -157,8 +160,9 @@ async def _spawn_container(
     )
     input_data.invocation_ts = invocation_ts
 
-    s = get_settings()
-    group_dir = s.groups_dir / group.folder
+    if runtime is None:
+        raise ValueError("Agent execution runtime is required")
+    group_dir = runtime.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Resolve worktree ---
@@ -231,7 +235,7 @@ async def _spawn_container(
     container_args = build_container_args(mounts, container_name)
 
     # --- Write initial input as file (container reads on startup) ---
-    ipc_input_dir = s.data_dir / "ipc" / group.folder / "input"
+    ipc_input_dir = runtime.data_dir / "ipc" / group.folder / "input"
     write_initial_input(input_data, ipc_input_dir)
 
     pre_spawn_ms = (time.monotonic() - start_time) * 1000

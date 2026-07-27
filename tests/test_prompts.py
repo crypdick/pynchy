@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 
 from pynchy.config.personalization import PersonalizationPaths
-from pynchy.config.prompts import read_prompts
+from pynchy.host.orchestrator.prompt_loading import read_prompts as _read_prompts
+
+
+def read_prompts(names: list[str], paths: PersonalizationPaths) -> str | None:
+    return _read_prompts(
+        names,
+        personalized_prompts=paths.personalized_prompts,
+        default_prompts=paths.default_prompts,
+    )
 
 
 class TestReadPrompts:
