@@ -71684,6 +71684,62 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_state_chat_parents",
+      "label": "chat_parents.py",
+      "file_type": "code",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_ensure_chat_parent",
+      "label": "ensure_chat_parent()",
+      "file_type": "code",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L8",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_py_connection",
+      "label": "Connection",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_backfill_missing_chat_parents",
+      "label": "backfill_missing_chat_parents()",
+      "file_type": "code",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L23",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_rationale_1",
+      "label": "Chat-parent integrity shared by message and outbound writers.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_rationale_13",
+      "label": "Create the parent row required by chat-owned durable records.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_chat_parents_rationale_24",
+      "label": "Restore missing parents without deleting historical child records.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L24",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_state_chats",
       "label": "chats.py",
       "file_type": "code",
@@ -71856,7 +71912,7 @@
       "label": "_safe_update_identifier()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L45",
+      "source_location": "L46",
       "_origin": "ast"
     },
     {
@@ -71864,7 +71920,7 @@
       "label": "atomic_write()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "_origin": "ast"
     },
     {
@@ -71880,7 +71936,7 @@
       "label": "_get_db()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L74",
+      "source_location": "L75",
       "_origin": "ast"
     },
     {
@@ -71888,7 +71944,7 @@
       "label": "_stop_connection()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "_origin": "ast"
     },
     {
@@ -71896,7 +71952,7 @@
       "label": "_update_by_id()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "_origin": "ast"
     },
     {
@@ -71908,11 +71964,19 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_state_connection_enable_foreign_keys",
+      "label": "_enable_foreign_keys()",
+      "file_type": "code",
+      "source_file": "pynchy/state/connection.py",
+      "source_location": "L135",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_state_connection_init_database",
       "label": "init_database()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L134",
+      "source_location": "L143",
       "_origin": "ast"
     },
     {
@@ -71920,7 +71984,7 @@
       "label": "init_test_database()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L145",
+      "source_location": "L155",
       "_origin": "ast"
     },
     {
@@ -71928,7 +71992,7 @@
       "label": "close_test_database()",
       "file_type": "code",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L163",
+      "source_location": "L174",
       "_origin": "ast"
     },
     {
@@ -71948,59 +72012,59 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_46",
+      "id": "pynchy_state_connection_rationale_47",
       "label": "Return an allowlisted SQL identifier, rejecting fragments.",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_54",
+      "id": "pynchy_state_connection_rationale_55",
       "label": "Context manager for multi-statement DB writes.      Acquires the write lock, yie",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L54",
+      "source_location": "L55",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_81",
+      "id": "pynchy_state_connection_rationale_82",
       "label": "Stop the worker thread using the public stop future.      ``aiosqlite.Connection",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L81",
+      "source_location": "L82",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_103",
+      "id": "pynchy_state_connection_rationale_104",
       "label": "Build and execute a dynamic UPDATE for an allowlisted set of fields.      Shared",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L103",
+      "source_location": "L104",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_135",
+      "id": "pynchy_state_connection_rationale_144",
       "label": "Initialize the database connection and schema.",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L135",
+      "source_location": "L144",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_146",
+      "id": "pynchy_state_connection_rationale_156",
       "label": "Create an in-memory database for tests.      Uses ``stop()`` + thread join inste",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L146",
+      "source_location": "L156",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_connection_rationale_164",
+      "id": "pynchy_state_connection_rationale_175",
       "label": "Synchronously stop the in-memory test connection after its loop closes.      Pyt",
       "file_type": "rationale",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L164",
+      "source_location": "L175",
       "_origin": "ast"
     },
     {
@@ -72265,6 +72329,86 @@
       "file_type": "rationale",
       "source_file": "pynchy/state/conversation_events.py",
       "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations",
+      "label": "conversation_identity_migrations.py",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_conversationidentitymigrationconflicterror",
+      "label": "ConversationIdentityMigrationConflictError",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L10",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_py_runtimeerror",
+      "label": "RuntimeError",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "label": "retire_duplicate_linear_conversations()",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_py_connection",
+      "label": "Connection",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_assert_alias_is_retirable",
+      "label": "_assert_alias_is_retirable()",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L56",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_retire_alias",
+      "label": "_retire_alias()",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L106",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_rationale_1",
+      "label": "One-time repairs for historical routed-conversation identities.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_rationale_11",
+      "label": "A duplicate conversation still owns work that cannot be retired safely.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L11",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_identity_migrations_rationale_15",
+      "label": "Retire older aliases created while Linear account namespaces changed.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L15",
       "_origin": "ast"
     },
     {
@@ -74024,7 +74168,7 @@
       "label": "_row_to_message()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L22",
+      "source_location": "L23",
       "_origin": "ast"
     },
     {
@@ -74040,7 +74184,7 @@
       "label": "store_message()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L44",
+      "source_location": "L45",
       "_origin": "ast"
     },
     {
@@ -74048,7 +74192,7 @@
       "label": "store_message_direct()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "_origin": "ast"
     },
     {
@@ -74064,7 +74208,7 @@
       "label": "message_exists()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L104",
+      "source_location": "L105",
       "_origin": "ast"
     },
     {
@@ -74072,7 +74216,7 @@
       "label": "mark_message_as_host()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L114",
+      "source_location": "L115",
       "_origin": "ast"
     },
     {
@@ -74080,7 +74224,7 @@
       "label": "get_new_messages()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L142",
+      "source_location": "L143",
       "_origin": "ast"
     },
     {
@@ -74088,7 +74232,7 @@
       "label": "get_messages_since()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L166",
+      "source_location": "L167",
       "_origin": "ast"
     },
     {
@@ -74096,7 +74240,7 @@
       "label": "get_messaging_stats()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "_origin": "ast"
     },
     {
@@ -74104,7 +74248,7 @@
       "label": "get_latest_inbound_timestamp()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L226",
+      "source_location": "L227",
       "_origin": "ast"
     },
     {
@@ -74112,7 +74256,7 @@
       "label": "prune_messages_by_sender()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L247",
+      "source_location": "L248",
       "_origin": "ast"
     },
     {
@@ -74120,7 +74264,7 @@
       "label": "get_chat_history()",
       "file_type": "code",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L262",
+      "source_location": "L263",
       "_origin": "ast"
     },
     {
@@ -74132,91 +74276,91 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_23",
+      "id": "pynchy_state_messages_rationale_24",
       "label": "Convert a database row to a NewMessage.",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_45",
+      "id": "pynchy_state_messages_rationale_46",
       "label": "Store a message with full content in SQLite.      Args:         msg: The message",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L45",
+      "source_location": "L46",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_76",
+      "id": "pynchy_state_messages_rationale_77",
       "label": "Store a message directly with explicit fields.      Args:         message_type:",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L76",
+      "source_location": "L77",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_105",
+      "id": "pynchy_state_messages_rationale_106",
       "label": "Check if a message with the given ID and chat JID already exists.",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L105",
+      "source_location": "L106",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_120",
+      "id": "pynchy_state_messages_rationale_121",
       "label": "Persistently exclude one consumed human control message from agent context.",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L120",
+      "source_location": "L121",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_143",
+      "id": "pynchy_state_messages_rationale_144",
       "label": "Get inbound messages across multiple groups since a timestamp.",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L143",
+      "source_location": "L144",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_172",
+      "id": "pynchy_state_messages_rationale_173",
       "label": "Get inbound messages for a specific chat since a timestamp.",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L172",
+      "source_location": "L173",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_195",
+      "id": "pynchy_state_messages_rationale_196",
       "label": "Return aggregate messaging stats for the status endpoint.      Combines inbound",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L195",
+      "source_location": "L196",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_227",
+      "id": "pynchy_state_messages_rationale_228",
       "label": "Return the newest persisted inbound timestamp for the selected chats.      This",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_248",
+      "id": "pynchy_state_messages_rationale_249",
       "label": "Delete messages by sender older than a timestamp.      Only deletes rows matchin",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L248",
+      "source_location": "L249",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_messages_rationale_268",
+      "id": "pynchy_state_messages_rationale_269",
       "label": "Get recent messages for a chat, including bot responses. Newest last.      Respe",
       "file_type": "rationale",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L268",
+      "source_location": "L269",
       "_origin": "ast"
     },
     {
@@ -74232,7 +74376,7 @@
       "label": "OutboundDeliveryOperation",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "_origin": "ast"
     },
     {
@@ -74248,7 +74392,7 @@
       "label": "OutboundDelivery",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L32",
+      "source_location": "L33",
       "_origin": "ast"
     },
     {
@@ -74256,7 +74400,7 @@
       "label": "PendingDelivery",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L41",
+      "source_location": "L42",
       "_origin": "ast"
     },
     {
@@ -74264,7 +74408,7 @@
       "label": "record_outbound()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "_origin": "ast"
     },
     {
@@ -74288,7 +74432,7 @@
       "label": "record_outbound_deliveries()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "_origin": "ast"
     },
     {
@@ -74296,7 +74440,7 @@
       "label": "mark_delivered()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L103",
+      "source_location": "L105",
       "_origin": "ast"
     },
     {
@@ -74304,7 +74448,7 @@
       "label": "mark_delivery_succeeded()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L115",
+      "source_location": "L117",
       "_origin": "ast"
     },
     {
@@ -74312,7 +74456,7 @@
       "label": "mark_delivery_error()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L133",
+      "source_location": "L135",
       "_origin": "ast"
     },
     {
@@ -74320,7 +74464,7 @@
       "label": "get_pending_outbound()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "_origin": "ast"
     },
     {
@@ -74328,7 +74472,7 @@
       "label": "gc_delivered()",
       "file_type": "code",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L175",
+      "source_location": "L177",
       "_origin": "ast"
     },
     {
@@ -74340,83 +74484,83 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_24",
+      "id": "pynchy_state_outbound_rationale_25",
       "label": "Remote mutation represented by one per-channel ledger delivery.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L24",
+      "source_location": "L25",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_33",
+      "id": "pynchy_state_outbound_rationale_34",
       "label": "How one channel should deliver an outbound ledger entry.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L33",
+      "source_location": "L34",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_42",
+      "id": "pynchy_state_outbound_rationale_43",
       "label": "A row from the outbound ledger awaiting delivery to a specific channel.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L42",
+      "source_location": "L43",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_59",
+      "id": "pynchy_state_outbound_rationale_60",
       "label": "Write an outbound message and create delivery rows for each channel.      Return",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_77",
+      "id": "pynchy_state_outbound_rationale_78",
       "label": "Write outbound content with explicit per-channel mutation semantics.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L77",
+      "source_location": "L78",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_104",
+      "id": "pynchy_state_outbound_rationale_106",
       "label": "Mark a delivery as successful.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L104",
+      "source_location": "L106",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_121",
+      "id": "pynchy_state_outbound_rationale_123",
       "label": "Record the mutation that actually succeeded for one delivery attempt.",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L121",
+      "source_location": "L123",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_134",
+      "id": "pynchy_state_outbound_rationale_136",
       "label": "Record a delivery failure (leaves delivered_at NULL for retry).",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L134",
+      "source_location": "L136",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_146",
+      "id": "pynchy_state_outbound_rationale_148",
       "label": "Get undelivered outbound messages for a (channel, group) pair.      Ordered by l",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L146",
+      "source_location": "L148",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_outbound_rationale_176",
+      "id": "pynchy_state_outbound_rationale_178",
       "label": "Delete ledger entries older than max_age where all channels delivered.      Retu",
       "file_type": "rationale",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L176",
+      "source_location": "L178",
       "_origin": "ast"
     },
     {
@@ -74488,7 +74632,7 @@
       "label": "_parse_schema_columns()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L260",
+      "source_location": "L265",
       "_origin": "ast"
     },
     {
@@ -74496,7 +74640,7 @@
       "label": "_ensure_columns()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L287",
+      "source_location": "L292",
       "_origin": "ast"
     },
     {
@@ -74512,7 +74656,7 @@
       "label": "_rename_conversation_event_trace_ref()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L303",
+      "source_location": "L308",
       "_origin": "ast"
     },
     {
@@ -74520,7 +74664,7 @@
       "label": "_migrate_renamed_columns()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L315",
+      "source_location": "L320",
       "_origin": "ast"
     },
     {
@@ -74528,7 +74672,7 @@
       "label": "_drop_is_god_column()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L329",
+      "source_location": "L334",
       "_origin": "ast"
     },
     {
@@ -74536,7 +74680,7 @@
       "label": "_migrate_repo_access_column()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L347",
+      "source_location": "L352",
       "_origin": "ast"
     },
     {
@@ -74544,7 +74688,23 @@
       "label": "_seed_channel_cursors()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L381",
+      "source_location": "L386",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_schema_repair_runtime_integrity",
+      "label": "_repair_runtime_integrity()",
+      "file_type": "code",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L442",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_schema_assert_foreign_key_integrity",
+      "label": "_assert_foreign_key_integrity()",
+      "file_type": "code",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L459",
       "_origin": "ast"
     },
     {
@@ -74552,7 +74712,7 @@
       "label": "create_schema()",
       "file_type": "code",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L437",
+      "source_location": "L469",
       "_origin": "ast"
     },
     {
@@ -74564,67 +74724,67 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_261",
+      "id": "pynchy_state_schema_rationale_266",
       "label": "Parse CREATE TABLE statements and return {table: [(col_name, col_def), ...]}.",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L261",
+      "source_location": "L266",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_288",
+      "id": "pynchy_state_schema_rationale_293",
       "label": "Add any columns present in _SCHEMA but missing from existing tables.",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L288",
+      "source_location": "L293",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_304",
+      "id": "pynchy_state_schema_rationale_309",
       "label": "Rename the provider-specific projection ref column after the Phoenix rollback.",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L304",
+      "source_location": "L309",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_316",
+      "id": "pynchy_state_schema_rationale_321",
       "label": "Copy source column values into their renamed counterparts (idempotent).      Onl",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L316",
+      "source_location": "L321",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_330",
+      "id": "pynchy_state_schema_rationale_335",
       "label": "Drop the is_god column from registered_groups (idempotent).      is_admin alread",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L330",
+      "source_location": "L335",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_348",
+      "id": "pynchy_state_schema_rationale_353",
       "label": "Convert pynchy_repo_access INTEGER -> repo_access TEXT (idempotent).      1. If",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L348",
+      "source_location": "L353",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_382",
+      "id": "pynchy_state_schema_rationale_387",
       "label": "Seed channel_cursors from existing last_agent_timestamp (one-time migration).",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L382",
+      "source_location": "L387",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_schema_rationale_438",
+      "id": "pynchy_state_schema_rationale_470",
       "label": "Apply schema DDL and run all migrations.",
       "file_type": "rationale",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L438",
+      "source_location": "L470",
       "_origin": "ast"
     },
     {
@@ -282679,6 +282839,89 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_state_chat_parents",
+      "target": "aiosqlite",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents_ensure_chat_parent",
+      "target": "pynchy_state_chat_parents_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents",
+      "target": "pynchy_state_chat_parents_backfill_missing_chat_parents",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents_backfill_missing_chat_parents",
+      "target": "pynchy_state_chat_parents_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents_rationale_1",
+      "target": "pynchy_state_chat_parents",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents_rationale_13",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_chat_parents_rationale_24",
+      "target": "pynchy_state_chat_parents_backfill_missing_chat_parents",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/chat_parents.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_state_chats",
       "target": "datetime",
       "relation": "imports_from",
@@ -283028,7 +283271,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L45",
+      "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283038,7 +283281,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283049,7 +283292,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283059,7 +283302,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L74",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283070,7 +283313,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L74",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283080,7 +283323,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283091,7 +283334,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283101,7 +283344,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283112,7 +283355,28 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L97",
+      "source_location": "L98",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_connection",
+      "target": "pynchy_state_connection_enable_foreign_keys",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/connection.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_connection_enable_foreign_keys",
+      "target": "pynchy_state_connection_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/connection.py",
+      "source_location": "L135",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283122,7 +283386,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L134",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283133,7 +283397,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L134",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283143,7 +283407,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L145",
+      "source_location": "L155",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283153,7 +283417,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L163",
+      "source_location": "L174",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283164,7 +283428,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283175,7 +283439,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L113",
+      "source_location": "L114",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283186,7 +283450,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L125",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_connection_init_database",
+      "target": "pynchy_state_connection_enable_foreign_keys",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/connection.py",
+      "source_location": "L150",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283197,7 +283472,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L156",
+      "source_location": "L166",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_connection_init_test_database",
+      "target": "pynchy_state_connection_enable_foreign_keys",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/connection.py",
+      "source_location": "L169",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283222,72 +283508,72 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_46",
+      "source": "pynchy_state_connection_rationale_47",
       "target": "pynchy_state_connection_safe_update_identifier",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_54",
+      "source": "pynchy_state_connection_rationale_55",
       "target": "pynchy_state_connection_atomic_write",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L54",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_81",
+      "source": "pynchy_state_connection_rationale_82",
       "target": "pynchy_state_connection_stop_connection",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L81",
+      "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_103",
+      "source": "pynchy_state_connection_rationale_104",
       "target": "pynchy_state_connection_update_by_id",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L103",
+      "source_location": "L104",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_135",
+      "source": "pynchy_state_connection_rationale_144",
       "target": "pynchy_state_connection_init_database",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L135",
+      "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_146",
+      "source": "pynchy_state_connection_rationale_156",
       "target": "pynchy_state_connection_init_test_database",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L146",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_connection_rationale_164",
+      "source": "pynchy_state_connection_rationale_175",
       "target": "pynchy_state_connection_close_test_database",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L164",
+      "source_location": "L175",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284015,6 +284301,174 @@
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_events.py",
       "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "datetime",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "aiosqlite",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "pynchy_state_conversation_identity_migrations_conversationidentitymigrationconflicterror",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_conversationidentitymigrationconflicterror",
+      "target": "pynchy_state_conversation_identity_migrations_py_runtimeerror",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "target": "pynchy_state_conversation_identity_migrations_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "pynchy_state_conversation_identity_migrations_assert_alias_is_retirable",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_assert_alias_is_retirable",
+      "target": "pynchy_state_conversation_identity_migrations_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations",
+      "target": "pynchy_state_conversation_identity_migrations_retire_alias",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_retire_alias",
+      "target": "pynchy_state_conversation_identity_migrations_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "target": "pynchy_state_conversation_identity_migrations_assert_alias_is_retirable",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "target": "pynchy_state_conversation_identity_migrations_retire_alias",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_assert_alias_is_retirable",
+      "target": "pynchy_state_conversation_identity_migrations_conversationidentitymigrationconflicterror",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L101",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_rationale_1",
+      "target": "pynchy_state_conversation_identity_migrations",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_rationale_11",
+      "target": "pynchy_state_conversation_identity_migrations_conversationidentitymigrationconflicterror",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_identity_migrations_rationale_15",
+      "target": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_identity_migrations.py",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289127,7 +289581,7 @@
     },
     {
       "source": "pynchy_state_messages",
-      "target": "pynchy_state_connection",
+      "target": "pynchy_state_chat_parents",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -289138,7 +289592,7 @@
     },
     {
       "source": "pynchy_state_messages",
-      "target": "pynchy_types",
+      "target": "pynchy_state_connection",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -289149,11 +289603,22 @@
     },
     {
       "source": "pynchy_state_messages",
+      "target": "pynchy_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/messages.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_messages",
       "target": "pynchy_state_messages_row_to_message",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L22",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289164,7 +289629,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L22",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289175,7 +289640,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L22",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289185,7 +289650,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L44",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289196,7 +289661,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L44",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289206,7 +289671,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289217,7 +289682,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L64",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289227,7 +289692,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L104",
+      "source_location": "L105",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289237,7 +289702,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L114",
+      "source_location": "L115",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289247,7 +289712,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L142",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289258,7 +289723,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L142",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289268,7 +289733,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L166",
+      "source_location": "L167",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289279,7 +289744,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L166",
+      "source_location": "L167",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289289,7 +289754,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289299,7 +289764,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L226",
+      "source_location": "L227",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289309,7 +289774,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L247",
+      "source_location": "L248",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289319,7 +289784,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L262",
+      "source_location": "L263",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289330,7 +289795,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L262",
+      "source_location": "L263",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289341,7 +289806,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L31",
+      "source_location": "L32",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289352,7 +289817,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L51",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289363,7 +289828,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L161",
+      "source_location": "L162",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289374,7 +289839,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L191",
+      "source_location": "L192",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289385,7 +289850,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L305",
+      "source_location": "L306",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289400,112 +289865,112 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_23",
+      "source": "pynchy_state_messages_rationale_24",
       "target": "pynchy_state_messages_row_to_message",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_45",
+      "source": "pynchy_state_messages_rationale_46",
       "target": "pynchy_state_messages_store_message",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L45",
+      "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_76",
+      "source": "pynchy_state_messages_rationale_77",
       "target": "pynchy_state_messages_store_message_direct",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L76",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_105",
+      "source": "pynchy_state_messages_rationale_106",
       "target": "pynchy_state_messages_message_exists",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L105",
+      "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_120",
+      "source": "pynchy_state_messages_rationale_121",
       "target": "pynchy_state_messages_mark_message_as_host",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L120",
+      "source_location": "L121",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_143",
+      "source": "pynchy_state_messages_rationale_144",
       "target": "pynchy_state_messages_get_new_messages",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L143",
+      "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_172",
+      "source": "pynchy_state_messages_rationale_173",
       "target": "pynchy_state_messages_get_messages_since",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L172",
+      "source_location": "L173",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_195",
+      "source": "pynchy_state_messages_rationale_196",
       "target": "pynchy_state_messages_get_messaging_stats",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L195",
+      "source_location": "L196",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_227",
+      "source": "pynchy_state_messages_rationale_228",
       "target": "pynchy_state_messages_get_latest_inbound_timestamp",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_248",
+      "source": "pynchy_state_messages_rationale_249",
       "target": "pynchy_state_messages_prune_messages_by_sender",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L248",
+      "source_location": "L249",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_messages_rationale_268",
+      "source": "pynchy_state_messages_rationale_269",
       "target": "pynchy_state_messages_get_chat_history",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L268",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289544,7 +290009,7 @@
     },
     {
       "source": "pynchy_state_outbound",
-      "target": "pynchy_state_connection",
+      "target": "pynchy_state_chat_parents",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -289555,7 +290020,7 @@
     },
     {
       "source": "pynchy_state_outbound",
-      "target": "pynchy_types",
+      "target": "pynchy_state_connection",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -289566,11 +290031,22 @@
     },
     {
       "source": "pynchy_state_outbound",
+      "target": "pynchy_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/outbound.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_outbound",
       "target": "pynchy_state_outbound_outbounddeliveryoperation",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289580,7 +290056,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L23",
+      "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289590,7 +290066,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L32",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289600,7 +290076,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L41",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289610,7 +290086,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289621,7 +290097,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289632,7 +290108,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L53",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289642,7 +290118,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289653,7 +290129,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289664,7 +290140,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L71",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289674,7 +290150,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L103",
+      "source_location": "L105",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289684,7 +290160,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L115",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289695,7 +290171,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L115",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289705,7 +290181,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L133",
+      "source_location": "L135",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289715,7 +290191,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289726,7 +290202,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289737,7 +290213,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289748,7 +290224,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L143",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289758,7 +290234,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L175",
+      "source_location": "L177",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289769,7 +290245,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L63",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289780,7 +290256,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289791,7 +290267,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L162",
+      "source_location": "L164",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289802,7 +290278,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L168",
+      "source_location": "L170",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -289817,102 +290293,102 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_24",
+      "source": "pynchy_state_outbound_rationale_25",
       "target": "pynchy_state_outbound_outbounddeliveryoperation",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L24",
+      "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_33",
+      "source": "pynchy_state_outbound_rationale_34",
       "target": "pynchy_state_outbound_outbounddelivery",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L33",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_42",
+      "source": "pynchy_state_outbound_rationale_43",
       "target": "pynchy_state_outbound_pendingdelivery",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L42",
+      "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_59",
+      "source": "pynchy_state_outbound_rationale_60",
       "target": "pynchy_state_outbound_record_outbound",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_77",
+      "source": "pynchy_state_outbound_rationale_78",
       "target": "pynchy_state_outbound_record_outbound_deliveries",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L77",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_104",
+      "source": "pynchy_state_outbound_rationale_106",
       "target": "pynchy_state_outbound_mark_delivered",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L104",
+      "source_location": "L106",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_121",
+      "source": "pynchy_state_outbound_rationale_123",
       "target": "pynchy_state_outbound_mark_delivery_succeeded",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L121",
+      "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_134",
+      "source": "pynchy_state_outbound_rationale_136",
       "target": "pynchy_state_outbound_mark_delivery_error",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L134",
+      "source_location": "L136",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_146",
+      "source": "pynchy_state_outbound_rationale_148",
       "target": "pynchy_state_outbound_get_pending_outbound",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L146",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_outbound_rationale_176",
+      "source": "pynchy_state_outbound_rationale_178",
       "target": "pynchy_state_outbound_gc_delivered",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L176",
+      "source_location": "L178",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290080,7 +290556,7 @@
     },
     {
       "source": "pynchy_state_schema",
-      "target": "pynchy_state_external_routing_schema",
+      "target": "pynchy_state_chat_parents",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -290091,7 +290567,7 @@
     },
     {
       "source": "pynchy_state_schema",
-      "target": "pynchy_state_in_flight_turn_schema",
+      "target": "pynchy_state_conversation_identity_migrations",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -290102,18 +290578,18 @@
     },
     {
       "source": "pynchy_state_schema",
-      "target": "pynchy_state_in_flight_turn_schema_migrations",
+      "target": "pynchy_state_external_routing_schema",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L22",
+      "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_state_schema",
-      "target": "pynchy_state_task_schema_migrations",
+      "target": "pynchy_state_in_flight_turn_schema",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -290124,12 +290600,34 @@
     },
     {
       "source": "pynchy_state_schema",
+      "target": "pynchy_state_in_flight_turn_schema_migrations",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
+      "target": "pynchy_state_task_schema_migrations",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
       "target": "pynchy_state_work_item_schema_migrations",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L31",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290139,7 +290637,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L260",
+      "source_location": "L265",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290149,7 +290647,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L287",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290160,7 +290658,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L287",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290170,7 +290668,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L303",
+      "source_location": "L308",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290181,7 +290679,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L303",
+      "source_location": "L308",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290191,7 +290689,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L315",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290202,7 +290700,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L315",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290212,7 +290710,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L329",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290223,7 +290721,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L329",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290233,7 +290731,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L347",
+      "source_location": "L352",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290244,7 +290742,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L347",
+      "source_location": "L352",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290254,7 +290752,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L381",
+      "source_location": "L386",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290265,7 +290763,49 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L381",
+      "source_location": "L386",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
+      "target": "pynchy_state_schema_repair_runtime_integrity",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L442",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_repair_runtime_integrity",
+      "target": "pynchy_state_schema_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L442",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
+      "target": "pynchy_state_schema_assert_foreign_key_integrity",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L459",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_assert_foreign_key_integrity",
+      "target": "pynchy_state_schema_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L459",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290275,7 +290815,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L437",
+      "source_location": "L469",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290286,7 +290826,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L437",
+      "source_location": "L469",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290297,7 +290837,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L289",
+      "source_location": "L294",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290308,7 +290848,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L440",
+      "source_location": "L472",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290319,7 +290859,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L441",
+      "source_location": "L473",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_create_schema",
+      "target": "pynchy_state_schema_repair_runtime_integrity",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L474",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290330,7 +290881,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L443",
+      "source_location": "L476",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290341,7 +290892,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L444",
+      "source_location": "L477",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290352,7 +290903,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L445",
+      "source_location": "L478",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290363,7 +290914,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L451",
+      "source_location": "L484",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_create_schema",
+      "target": "pynchy_state_schema_assert_foreign_key_integrity",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L485",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -290378,82 +290940,82 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_261",
+      "source": "pynchy_state_schema_rationale_266",
       "target": "pynchy_state_schema_parse_schema_columns",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L261",
+      "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_288",
+      "source": "pynchy_state_schema_rationale_293",
       "target": "pynchy_state_schema_ensure_columns",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L288",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_304",
+      "source": "pynchy_state_schema_rationale_309",
       "target": "pynchy_state_schema_rename_conversation_event_trace_ref",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L304",
+      "source_location": "L309",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_316",
+      "source": "pynchy_state_schema_rationale_321",
       "target": "pynchy_state_schema_migrate_renamed_columns",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L316",
+      "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_330",
+      "source": "pynchy_state_schema_rationale_335",
       "target": "pynchy_state_schema_drop_is_god_column",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L330",
+      "source_location": "L335",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_348",
+      "source": "pynchy_state_schema_rationale_353",
       "target": "pynchy_state_schema_migrate_repo_access_column",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L348",
+      "source_location": "L353",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_382",
+      "source": "pynchy_state_schema_rationale_387",
       "target": "pynchy_state_schema_seed_channel_cursors",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L382",
+      "source_location": "L387",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_rationale_438",
+      "source": "pynchy_state_schema_rationale_470",
       "target": "pynchy_state_schema_create_schema",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L438",
+      "source_location": "L470",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331413,7 +331975,7 @@
     },
     {
       "source": "pynchy_state_messages",
-      "target": "pynchy_state_connection_get_db",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -331424,12 +331986,23 @@
     },
     {
       "source": "pynchy_state_messages",
+      "target": "pynchy_state_connection_get_db",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/messages.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_messages",
       "target": "pynchy_state_connection_atomic_write",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L16",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331440,7 +332013,18 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L17",
+      "source_location": "L18",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_outbound",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/outbound.py",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331451,7 +332035,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L14",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331462,7 +332046,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L14",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331479,12 +332063,34 @@
     },
     {
       "source": "pynchy_state_schema",
+      "target": "pynchy_state_chat_parents_backfill_missing_chat_parents",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
+      "target": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema",
       "target": "pynchy_state_in_flight_turn_schema_migrations_drop_legacy_scheduled_runtime_metadata",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L22",
+      "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331495,7 +332101,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L25",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331506,7 +332112,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L25",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331517,7 +332123,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L25",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331528,7 +332134,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L31",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -331539,7 +332145,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L31",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -348523,7 +349129,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L142",
+      "source_location": "L152",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -348534,7 +349140,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/connection.py",
-      "source_location": "L160",
+      "source_location": "L171",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349453,12 +350059,23 @@
     },
     {
       "source": "pynchy_state_messages_store_message_direct",
-      "target": "pynchy_state_connection_get_db",
+      "target": "pynchy_state_connection_atomic_write",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L82",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_messages_store_message_direct",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/messages.py",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349469,7 +350086,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L106",
+      "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349480,7 +350097,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L121",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349491,7 +350108,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L147",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349502,7 +350119,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L175",
+      "source_location": "L176",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349513,7 +350130,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L204",
+      "source_location": "L205",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349524,7 +350141,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L235",
+      "source_location": "L236",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349535,7 +350152,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L253",
+      "source_location": "L254",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349546,7 +350163,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/messages.py",
-      "source_location": "L274",
+      "source_location": "L275",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349557,7 +350174,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L79",
+      "source_location": "L80",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_outbound_record_outbound_deliveries",
+      "target": "pynchy_state_chat_parents_ensure_chat_parent",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/outbound.py",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349568,7 +350196,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L105",
+      "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349579,7 +350207,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L122",
+      "source_location": "L124",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349590,7 +350218,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L135",
+      "source_location": "L137",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349601,7 +350229,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L150",
+      "source_location": "L152",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349612,7 +350240,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L180",
+      "source_location": "L182",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349623,7 +350251,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/outbound.py",
-      "source_location": "L199",
+      "source_location": "L201",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349639,19 +350267,19 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_create_schema",
-      "target": "pynchy_state_in_flight_turn_schema_migrations_drop_legacy_scheduled_runtime_metadata",
+      "source": "pynchy_state_schema_repair_runtime_integrity",
+      "target": "pynchy_state_chat_parents_backfill_missing_chat_parents",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L442",
+      "source_location": "L445",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_schema_create_schema",
-      "target": "pynchy_state_task_schema_migrations_migrate_scheduled_session_policy",
+      "source": "pynchy_state_schema_repair_runtime_integrity",
+      "target": "pynchy_state_conversation_identity_migrations_retire_duplicate_linear_conversations",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -349662,12 +350290,34 @@
     },
     {
       "source": "pynchy_state_schema_create_schema",
+      "target": "pynchy_state_in_flight_turn_schema_migrations_drop_legacy_scheduled_runtime_metadata",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L475",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_create_schema",
+      "target": "pynchy_state_task_schema_migrations_migrate_scheduled_session_policy",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/schema.py",
+      "source_location": "L479",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_schema_create_schema",
       "target": "pynchy_state_task_schema_migrations_migrate_cached_task_thread_binding",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L447",
+      "source_location": "L480",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349678,7 +350328,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L448",
+      "source_location": "L481",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349689,7 +350339,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L449",
+      "source_location": "L482",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349700,7 +350350,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/schema.py",
-      "source_location": "L450",
+      "source_location": "L483",
       "weight": 1.0,
       "_origin": "ast"
     },

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.state.chat_parents import ensure_chat_parent
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves state API annotations.
@@ -79,26 +80,26 @@ async def store_message_direct(  # noqa: PLR0913, RUF100 - DB row writer keeps t
         message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'
         metadata: Optional metadata dict (e.g., severity, tool_use_id, etc.)
     """
-    db = _get_db()
     metadata_json = json.dumps(metadata) if metadata else None
-    await db.execute(
-        "INSERT OR REPLACE INTO messages "
-        "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, "
-        "message_type, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            message_id,
-            chat_jid,
-            sender,
-            sender_name,
-            content,
-            timestamp,
-            1 if is_from_me else 0,
-            message_type,
-            metadata_json,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await ensure_chat_parent(db, chat_jid, timestamp)
+        await db.execute(
+            "INSERT OR REPLACE INTO messages "
+            "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, "
+            "message_type, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                message_id,
+                chat_jid,
+                sender,
+                sender_name,
+                content,
+                timestamp,
+                1 if is_from_me else 0,
+                message_type,
+                metadata_json,
+            ),
+        )
 
 
 async def message_exists(msg_id: str, chat_jid: str) -> bool:

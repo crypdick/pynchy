@@ -40,6 +40,7 @@ _SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _UPDATE_TABLES = frozenset({"scheduled_tasks", "host_jobs"})
 _UNSAFE_SQL_IDENTIFIER_MESSAGE = "Unsafe SQL identifier: {identifier!r}"
 _DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call init_database() first."
+_FOREIGN_KEYS_NOT_ENABLED_MESSAGE = "SQLite foreign-key enforcement could not be enabled"
 
 
 def _safe_update_identifier(identifier: str, *, allowed: frozenset[str]) -> str:
@@ -131,6 +132,14 @@ async def _update_by_id(
     await db.commit()
 
 
+async def _enable_foreign_keys(db: aiosqlite.Connection) -> None:
+    await db.execute("PRAGMA foreign_keys = ON")
+    cursor = await db.execute("PRAGMA foreign_keys")
+    row = await cursor.fetchone()
+    if row is None or row[0] != 1:
+        raise RuntimeError(_FOREIGN_KEYS_NOT_ENABLED_MESSAGE)
+
+
 async def init_database(config: StateRuntimeConfig) -> None:
     """Initialize the database connection and schema."""
     db_path = config.database_path
@@ -138,6 +147,7 @@ async def init_database(config: StateRuntimeConfig) -> None:
 
     db = await aiosqlite.connect(str(db_path))
     db.row_factory = aiosqlite.Row
+    await _enable_foreign_keys(db)
     _state.db = db
     await create_schema(db)
 
@@ -156,6 +166,7 @@ async def init_test_database() -> None:
         await _stop_connection(_state.db)
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
+    await _enable_foreign_keys(db)
     _state.db = db
     await create_schema(db)
 
