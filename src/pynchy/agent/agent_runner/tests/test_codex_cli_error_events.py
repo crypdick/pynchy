@@ -129,6 +129,23 @@ def test_query_synthesizes_latest_error_when_process_exits_without_turn_failure(
     assert events[0].data["result_metadata"]["is_error"] is True
 
 
+def test_query_marks_clean_exit_without_terminal_turn_as_error():
+    events = _run_query(
+        [
+            {"type": "item.started", "item": {"type": "command_execution", "command": "ls"}},
+            {
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "ls", "exit_code": 0},
+            },
+            {"type": "turn.completed", "usage": {"input_tokens": 1}},
+        ]
+    )
+
+    assert events[-1].data["result"] is None
+    assert events[-1].data["result_metadata"]["subtype"] == "missing_terminal_turn"
+    assert events[-1].data["result_metadata"]["is_error"] is True
+
+
 def test_query_discards_retry_notice_after_successful_turn():
     events = _run_query(
         [

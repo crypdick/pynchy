@@ -134,8 +134,13 @@ def _make_deps(
     deps.emit = MagicMock()
     deps.start_interactive_turn = AsyncMock()
     deps.start_interrupted_turn = AsyncMock()
-    deps.run_agent = AsyncMock(return_value="success")
-    deps.handle_streamed_output = AsyncMock(return_value=True)
+
+    async def successful_agent(*args, **_kwargs):
+        await args[3](ContainerOutput(status="success", result="done"))
+        return "success"
+
+    deps.run_agent = AsyncMock(side_effect=successful_agent)
+    deps.handle_streamed_output = AsyncMock(return_value=False)
 
     # Queue mock
     deps.queue = MagicMock()
@@ -884,9 +889,10 @@ class TestProcessGroupMessages:
         agent_entered = asyncio.Event()
         release_agent = asyncio.Event()
 
-        async def run_agent(*_args, **_kwargs):
+        async def run_agent(*args, **_kwargs):
             agent_entered.set()
             await release_agent.wait()
+            await args[3](ContainerOutput(status="success", result="done"))
             return "success"
 
         deps.run_agent.side_effect = run_agent
@@ -975,7 +981,11 @@ class TestProcessGroupMessages:
             assert delivery.claim_id == external.metadata["conversation_claim_id"]
             assert not deps.last_agent_timestamp.get(jid, "")
 
-            deps.run_agent = AsyncMock(return_value="success")
+            async def completed_agent(*args, **_kwargs):
+                await args[3](ContainerOutput(status="success", result="done"))
+                return "success"
+
+            deps.run_agent = AsyncMock(side_effect=completed_agent)
             assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         handle_approval.assert_awaited_once()
@@ -1004,9 +1014,10 @@ class TestProcessGroupMessages:
         agent_entered = asyncio.Event()
         release_agent = asyncio.Event()
 
-        async def run_agent(*_args, **_kwargs):
+        async def run_agent(*args, **_kwargs):
             agent_entered.set()
             await release_agent.wait()
+            await args[3](ContainerOutput(status="success", result="done"))
             return "success"
 
         deps.run_agent.side_effect = run_agent
@@ -1184,6 +1195,7 @@ class TestProcessGroupMessages:
                     tool_result_content="done",
                 )
             )
+            await on_output(ContainerOutput(status="success", result="done"))
             return "success"
 
         deps.run_agent.side_effect = run_agent
@@ -1731,6 +1743,53 @@ class TestProcessGroupMessages:
         assert "error" in host_text.lower()
 
     @pytest.mark.asyncio
+    async def test_missing_terminal_result_keeps_checkpoint_for_recovery(self, tmp_path):
+        """Text and tools alone never acknowledge the inbound turn."""
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        msg = _make_message("finish SYN-36", chat_jid=jid, timestamp="new-ts")
+
+        async def resultless_run(_group, _jid, _messages, on_output=None, *_args, **_kwargs):
+            assert on_output is not None
+            await on_output(ContainerOutput(status="success", type="text", text="working"))
+            await on_output(
+                ContainerOutput(
+                    status="success",
+                    type="tool_result",
+                    tool_result_id="tool-1",
+                    tool_result_content="done",
+                )
+            )
+            await on_output(
+                ContainerOutput(
+                    status="error",
+                    result_metadata={"subtype": "missing_terminal_turn"},
+                )
+            )
+            return "error"
+
+        deps.run_agent = AsyncMock(side_effect=resultless_run)
+        deps.handle_streamed_output = AsyncMock(return_value=False)
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            _patch_msgs_since([msg]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+        ):
+            assert await process_group_messages(deps, jid) is TurnOutcome.RETRY
+
+        checkpoint = await get_in_flight_turn_for_chat(jid, {InFlightWorkKind.INTERACTIVE})
+        assert checkpoint is not None
+        assert checkpoint.claimed_at is None
+        assert deps.last_agent_timestamp[jid] == "old-ts"
+        deps.broadcast_host_message.assert_not_awaited()
+
+        recovered = await prepare_in_flight_turn_recovery("deploy-sha")
+        assert [turn.turn_id for turn in recovered] == [checkpoint.turn_id]
+
+    @pytest.mark.asyncio
     async def test_agent_error_after_output_sent_no_rollback(self, tmp_path):
         """Agent error after output was sent → no rollback."""
         group = _make_group(is_admin=True)
@@ -1952,7 +2011,7 @@ class TestProcessGroupMessages:
 
         # run_agent must invoke the on_output callback so output_sent_to_user
         # is set to True inside process_group_messages.
-        fake_result = ContainerOutput(status="success")
+        fake_result = ContainerOutput(status="success", result="done")
 
         async def _run_agent_with_callback(_group, _jid, _msgs, on_output=None, *a, **kw):
             if on_output:
