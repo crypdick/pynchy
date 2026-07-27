@@ -231,6 +231,7 @@ def collect_hook_results[T](
     label: str,
     *,
     pm: pluggy.PluginManager | None = None,
+    **hook_kwargs: object,
 ) -> list[T]:
     """Call a pluggy hook and return validated results.
 
@@ -250,7 +251,7 @@ def collect_hook_results[T](
 
     hook_caller = getattr(pm.hook, hook_attr)  # AttributeError = bug in calling code
     try:
-        provided = hook_caller()
+        provided = hook_caller(**hook_kwargs)
     except Exception:  # noqa: BLE001, RUF100 - plugin hook isolation; one bad plugin shouldn't crash the caller.
         # Individual plugin hook implementations can raise arbitrary errors.
         # One bad plugin shouldn't crash the caller — log and return empty.
