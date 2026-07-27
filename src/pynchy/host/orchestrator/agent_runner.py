@@ -209,7 +209,8 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         request.group.folder,
         container_name,
         proc,
-        idle_timeout_override=request.idle_timeout,
+        data_dir=request.runtime.data_dir,
+        idle_timeout=request.idle_timeout,
         invocation_ts=request.input_data.invocation_ts,
     )
     request.deps.queue.register_process(

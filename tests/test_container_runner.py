@@ -4199,6 +4199,8 @@ class TestGetSessionOutputHandler:
             "handler-test",
             "pynchy-handler-test",
             FakeProcess(),
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
         )
         handler = AsyncMock()
         session.set_output_handler(handler)
@@ -4220,6 +4222,8 @@ class TestGetSessionOutputHandler:
             "no-handler-test",
             "pynchy-no-handler-test",
             FakeProcess(),
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
         )
 
         try:

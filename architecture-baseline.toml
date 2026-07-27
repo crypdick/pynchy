@@ -385,14 +385,6 @@ imports = ["pynchy.config"]
 reason = "pynchy.host.container_manager.security.mount_security still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.session"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.session still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.session_prep"
 target_component = "config"
 kind = "runtime-import"

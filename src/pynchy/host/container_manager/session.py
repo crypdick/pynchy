@@ -27,9 +27,11 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves session
     Callable,
     Coroutine,
 )
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves session path annotations at runtime.
+)
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
     write_ipc_close_sentinel,
@@ -98,7 +100,7 @@ class ContainerSession:
         self._died_before_pulse = False
         self._runtime_alive_after_proc_exit = False
         self._idle_handle: asyncio.TimerHandle | None = None
-        self._idle_timeout: float = get_settings().idle_timeout
+        self._idle_timeout = 0.0
         self._on_idle_expire: Callable[[], Coroutine[Any, Any, None]] | None = None
         self._runtime_probe = runtime_probe
         self._runtime_monitor_policy = runtime_monitor_policy
@@ -485,12 +487,13 @@ def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     return session.output_handler
 
 
-async def create_session(
+async def create_session(  # noqa: PLR0913, RUF100 - session creation needs explicit process, path, and timeout inputs.
     group_folder: str,
     container_name: str,
     proc: asyncio.subprocess.Process,
-    idle_timeout_override: float | None = None,
     *,
+    data_dir: Path,
+    idle_timeout: float,
     invocation_ts: float = 0.0,
 ) -> ContainerSession:
     """Create and register a session for a group.
@@ -513,15 +516,14 @@ async def create_session(
     # preserve_initial=True because the container is still starting and
     # reads initial.json on boot.
     clean_ipc_input_dir(group_folder, preserve_initial=True)
-    _clean_ipc_output(group_folder)
+    _clean_ipc_output(data_dir, group_folder)
 
     session = ContainerSession(
         group_folder,
         container_name,
         invocation_ts=invocation_ts,
     )
-    if idle_timeout_override is not None:
-        session.set_idle_timeout(idle_timeout_override)
+    session.set_idle_timeout(idle_timeout)
     session.start(proc)
     _sessions[group_folder] = session
 
@@ -558,7 +560,7 @@ async def destroy_all_sessions() -> None:
     )
 
 
-def _clean_ipc_output(group_folder: str) -> None:
+def _clean_ipc_output(data_dir: Path, group_folder: str) -> None:
     """Remove stale IPC output files for a group.
 
     Called when creating a session to prevent replay of output events
@@ -566,8 +568,7 @@ def _clean_ipc_output(group_folder: str) -> None:
     artefacts — they have no value once the session that produced them is
     gone.
     """
-    s = get_settings()
-    output_dir = s.data_dir / "ipc" / group_folder / "output"
+    output_dir = data_dir / "ipc" / group_folder / "output"
     if not output_dir.is_dir():
         return
     for f in output_dir.iterdir():
