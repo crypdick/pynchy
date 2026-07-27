@@ -133,6 +133,35 @@ class TaskHandlerDeps(IpcDeps, Protocol):
     def scheduled_work_store(self) -> ScheduledWorkStore: ...
 
 
+@runtime_checkable
+class MessagingSourceHealth(Protocol):
+    """Read-only host projection for messaging-source health."""
+
+    def configured_connections(self) -> dict[str, str]: ...
+
+    def personal_providers(self) -> tuple[str, ...]: ...
+
+    def personal_provider_for(self, source_name: str) -> str | None: ...
+
+    async def project_personal_source(self, provider: str) -> dict[str, object]: ...
+
+    async def get_latest_inbound_timestamp(self, chat_jids: tuple[str, ...]) -> str | None: ...
+
+
+@runtime_checkable
+class SourceHealthDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for source-health queries."""
+
+    def messaging_source_health(self) -> MessagingSourceHealth: ...
+
+
+@runtime_checkable
+class IpcMessageDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for inbound-message presentation."""
+
+    def default_agent_name(self) -> str: ...
+
+
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
     """Look up the chat JID for a group folder from the workspace registry."""
     for jid, ws in deps.workspaces().items():

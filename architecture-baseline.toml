@@ -185,38 +185,6 @@ imports = ["pynchy.host.learning.skills"]
 reason = "pynchy.host.container_manager.ipc.handlers_skills still has a runtime-import dependency on learning_adapter; Use a use-case-owned learning capability port and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_source_health"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.ipc.handlers_source_health still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_source_health"
-target_component = "host_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.personal_messaging_health"]
-reason = "pynchy.host.container_manager.ipc.handlers_source_health still has a runtime-import dependency on host_adapter; Use a use-case-owned host capability port and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_source_health"
-target_component = "state_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.state"]
-reason = "pynchy.host.container_manager.ipc.handlers_source_health still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.input_processing"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.ipc.input_processing still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.skill_access"
 target_component = "application"
 kind = "runtime-import"
@@ -879,14 +847,6 @@ kind = "runtime-import"
 count = 2
 imports = ["pynchy.config", "pynchy.config.jobs"]
 reason = "pynchy.host.orchestrator.job_sources still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.mcp_notifications"
-target_component = "container_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.container_manager.mcp.startup"]
-reason = "pynchy.host.orchestrator.mcp_notifications still has a runtime-import dependency on container_adapter; Use a use-case-owned execution or container capability port and wire this adapter at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.approval_handler"

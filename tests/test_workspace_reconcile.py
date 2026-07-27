@@ -854,6 +854,45 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].status == "paused"
 
+    @pytest.mark.parametrize(
+        ("task_status", "retained"),
+        [("active", True), ("paused", True), ("completed", False), ("cancelled", False)],
+    )
+    async def test_orphan_workspace_retention_follows_task_status(
+        self, db, groups_dir, task_status, retained
+    ):
+        orphan_jid = "orphan@g.us"
+        await create_task(
+            ScheduledTask(
+                id="scheduled-work",
+                group_folder="orphan-agent",
+                chat_jid=orphan_jid,
+                prompt="Resume the work.",
+                schedule_type="once",
+                schedule_value="2025-01-01T04:00:00+00:00",
+                session_policy=SessionPolicy.CONTINUE,
+                status=task_status,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
+        registered = {
+            orphan_jid: WorkspaceProfile(
+                jid=orphan_jid,
+                name="Orphan",
+                folder="orphan-agent",
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        unregister_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], AsyncMock(), unregister_fn=unregister_fn)
+
+        if retained:
+            unregister_fn.assert_not_awaited()
+        else:
+            unregister_fn.assert_awaited_once_with(orphan_jid)
+
     async def test_removes_orphaned_workspace_registration(self, db, groups_dir):
         """Workspace in DB but not in config should be unregistered."""
         orphan_jid = "orphan@g.us"

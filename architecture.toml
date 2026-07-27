@@ -14,6 +14,7 @@ composition_roots = [
   "pynchy.host.orchestrator.app",
   "pynchy.host.orchestrator.dep_factory",
   "pynchy.host.orchestrator.lifecycle",
+  "pynchy.host.orchestrator.source_health_deps",
 ]
 
 [[components]]

@@ -61,6 +61,15 @@ class DeployClaim:
     change_kind: DeployChangeKind | None = None
 
 
+@dataclass(frozen=True)
+class McpStartupFailure:
+    """One MCP startup failure that callers can surface to users."""
+
+    instance_id: str
+    server_name: str
+    reason: str
+
+
 @dataclass
 class AdditionalMount:
     host_path: str  # Absolute path on host (supports ~ for home)
