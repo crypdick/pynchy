@@ -1010,14 +1010,6 @@ reason = "pynchy.host.orchestrator.messaging.router still has a runtime-import d
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.run_context"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.host.orchestrator.messaging.run_context still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.run_context"
 target_component = "git_adapter"
 kind = "runtime-import"
 count = 1
@@ -1055,14 +1047,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.host.orchestrator.messaging.turn_control still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.turn_recovery"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.host.orchestrator.messaging.turn_recovery still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.turn_recovery"

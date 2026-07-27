@@ -133,7 +133,7 @@ async def prepare_agent_batch(
         return resumed
 
     reset_file = settings.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    if await handle_reset_handoff(deps, chat_jid, group, reset_file, settings) is False:
+    if await handle_reset_handoff(deps, chat_jid, group, reset_file, settings.data_dir) is False:
         return TurnOutcome.RETRY
 
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
@@ -152,7 +152,7 @@ async def prepare_agent_batch(
         return TurnOutcome.COMPLETED
 
     messages, reset_system_notices = prepare_message_context(
-        settings,
+        settings.data_dir,
         group,
         missed_messages,
         is_admin_group=group.is_admin,
