@@ -562,6 +562,18 @@ class LinearTool(_ToolTrustConfig):
     project_per_workspace: bool | None = None
     project_name_template: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_environment_selectors(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        migrated = dict(data)
+        if "api_key_env" in migrated:
+            migrated.setdefault("required_env", [migrated.pop("api_key_env")])
+        if "team_key_env" in migrated:
+            migrated.setdefault("optional_env", [migrated.pop("team_key_env")])
+        return migrated
+
     @model_validator(mode="after")
     def validate_linear_environment_shape(self) -> LinearTool:
         if len(self.required_env) != 1:
