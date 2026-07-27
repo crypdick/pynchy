@@ -57,6 +57,7 @@ _CANCELLABLE_TERMINAL_EXECUTION_STATUSES = frozenset(
         WorkItemExecutionStatus.UNKNOWN,
     }
 )
+_PROJECT_ASSIGNMENT_UPDATE_FIELDS = frozenset({"addedtoprojectat", "projectid", "updatedat"})
 
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
@@ -70,6 +71,16 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     runtime_workspace = conversation.workspace
     if runtime_workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
+    if _is_project_assignment_only_update(event):
+        # Preparation already resolved the issue's durable workspace ownership.
+        # Project placement alone carries no agent work.
+        return replace(
+            event,
+            instructions=None,
+            external_context=None,
+            ignored_reason="issue_project_assignment_does_not_wake_agent",
+            conversation=None,
+        )
     controller_workspace = conversation.controller_workspace or runtime_workspace
     try:
         if not await _reopen_verified_conversation_control(conversation, runtime_workspace):
@@ -123,6 +134,11 @@ async def _process_linear_issue_update(
         # event still cannot enter the routed agent-turn FIFO.
         conversation=conversation,
     )
+
+
+def _is_project_assignment_only_update(event: WebhookEvent) -> bool:
+    changed_fields = frozenset(field.casefold() for field in event.changed_fields)
+    return "projectid" in changed_fields and changed_fields <= _PROJECT_ASSIGNMENT_UPDATE_FIELDS
 
 
 def _stale_linear_control_state_event(event: WebhookEvent) -> WebhookEvent:
