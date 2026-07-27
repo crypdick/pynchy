@@ -1,46 +1,99 @@
 # LiteLLM Diagnostics Reference
 
-All commands assume you are on the Pynchy host. When running remotely, set `PYNCHY_HOST` to the deployment-specific hostname and use `ssh "$PYNCHY_HOST" '<command>'`.
+Use this reference to collect bounded, low-risk LiteLLM evidence during an incident. All commands assume you are on the Pynchy host. When running remotely, set `PYNCHY_HOST` to the deployment-specific hostname and use `ssh "$PYNCHY_HOST" '<command>'`.
 
-## Health & readiness
+Set `KEY` through an approved secret mechanism in the current shell. Do not echo, log, or paste the master key into command output or shell history.
 
-```bash
-# Model deployment health (lists healthy/unhealthy endpoints)
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/health
+## Routine proxy and database readiness
 
-# DB + cache connectivity
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/health/readiness
-```
-
-## Available models
+Use authenticated `/health/readiness` for routine proxy and database liveness.
 
 ```bash
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/v1/models
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  http://localhost:4000/health/readiness
 ```
 
-With wildcard routing, this lists all models the provider supports.
+Do not use `/health` as a routine check. Pynchy's status collector documents that endpoint as performing provider model calls, which can make it provider-shape-sensitive.
 
-## Request evidence
+## Model configuration inspection
 
-Do not call LiteLLM's `/spend/logs` or `/global/spend/logs` routes. A bounded
-request to the spend-log route exhausted the proxy container on the live
-deployment. Query Pynchy's `/status` endpoint, inspect bounded container logs,
-and use the Pynchy SQLite message and trace queries in the main Pynchy Ops skill
-instead. Use the LiteLLM dashboard only for narrow, interactive spend review.
+```bash
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  http://localhost:4000/v1/models
+
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  http://localhost:4000/v1/model/info
+```
+
+Use `/v1/models` and `/v1/model/info` only to inspect exposed model configuration. They do not prove that a provider request path is live.
+
+## Spend-log quarantine
+
+`GET /spend/logs` is unsafe for routine live diagnostics regardless of requested limit or filters. Do not call it until a separate verified LiteLLM repair establishes a caller-independent resource bound.
+
+A bounded request to this route exhausted the proxy container on the live deployment.
+
+`GET /global/spend/logs` is not validated as a substitute and is excluded from routine diagnostics.
+
+Do not use a small limit, filters, or the global route as a workaround. Preserve bounded logs and request identifiers for later offline analysis instead.
 
 ## Virtual keys
 
 ```bash
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/key/list
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/key/info?key=<key_hash>"
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  http://localhost:4000/key/list
+
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  "http://localhost:4000/key/info?key=<key_hash>"
 ```
 
-## Container logs
+## Bounded lifecycle logs
+
+Bound both the lookback window and record count before examining lifecycle evidence.
 
 ```bash
-docker logs pynchy-litellm --since 15m --tail 300 2>&1 | grep -i "error\|fail\|exception"
-docker logs pynchy-litellm --since 15m --tail 100
+docker logs --since 15m --tail 200 pynchy-litellm 2>&1
+
+docker logs --since 5m --tail 100 pynchy-litellm 2>&1
 ```
+
+Inspect bounded output directly and preserve any Docker error with the incident evidence. Record the bounded window, container name, request identifiers, and timestamps. Do not increase bounds until the existing evidence has been reviewed.
+
+## Optional configured-model SSE canary
+
+Run this only after readiness succeeds and only with a configured model name. It makes a real provider request and can incur provider cost. It proves post-recovery request-path liveness only; it does not identify or prove an OOM cause.
+
+```bash
+(
+  CANARY_MODEL="<configured-model>"
+  CANARY_BODY="$(mktemp)"
+  trap 'rm -f "$CANARY_BODY"' EXIT
+
+  CANARY_STATUS="$(
+    curl --fail --silent --show-error --no-buffer \
+      --connect-timeout 2 --max-time 15 \
+      --output "$CANARY_BODY" --write-out "%{http_code}" \
+      -H "Authorization: Bearer $KEY" \
+      -H "Accept: text/event-stream" \
+      -H "Content-Type: application/json" \
+      --data "{\"model\":\"$CANARY_MODEL\",\"input\":\"Reply with OK.\",\"stream\":true,\"max_output_tokens\":8}" \
+      http://localhost:4000/v1/responses
+  )" &&
+  test "$CANARY_STATUS" = "200" &&
+  awk '{ sub(/\r$/, "") } NF { last = $0 } END { exit (last == "data: [DONE]") ? 0 : 1 }' "$CANARY_BODY"
+)
+```
+
+Require HTTP 200 and `data: [DONE]` as the final nonempty SSE line. Use `/v1/model/info` to select a configured model; do not turn this canary into a retry loop.
+
+## SYN-94 `stream_disconnected` correlation
+
+Keep SYN-94 `stream_disconnected` investigation separate from this spend-log containment. Correlate bounded proxy logs, client timestamps, and request identifiers, but do not make a causal claim from their co-occurrence. The optional SSE canary can establish request-path liveness after recovery; it cannot establish why a prior stream disconnected.
 
 ## Common failure patterns
 
@@ -48,7 +101,7 @@ docker logs pynchy-litellm --since 15m --tail 100
 |---|---|---|
 | `ProxyModelNotFoundError` | Model not in config | Use wildcard routing (`anthropic/*`) or add model explicitly |
 | `BadRequestError` + "no healthy deployments" | All deployments in cooldown or failed health probes | See "Failover & cooldown" below |
-| `BaseLLMException` + "rate_limit_error" | Account quota exhausted or RPM/TPM limit hit | If persistent, check account spend; see "Failover & cooldown" |
+| `BaseLLMException` + "rate_limit_error" | Account quota exhausted or RPM/TPM limit hit | If persistent, inspect approved provider billing and bounded lifecycle logs; see "Failover & cooldown" |
 | `BaseLLMException` + "OAuth token has expired" | Token expired between refreshes | Transient; retries handle it. If persistent, run `claude setup-token` on server |
 | `BaseLLMException` + "x-api-key header is required" | Auth header missing during key rotation | Transient; resolves on retry |
 | `BaseLLMException` + "invalid x-api-key" | Invalid/placeholder key or stale key after rotation | Check .env; if placeholder, pynchy should filter it at startup |
@@ -110,15 +163,14 @@ When a model group has multiple deployments, increase `num_retries` to the desir
 
 ### Diagnosing failover issues
 
+1. Confirm `/health/readiness` before investigating routes.
+2. Review the bounded lifecycle logs for the affected window and retain request identifiers.
+3. Inspect the loaded model metadata without making provider calls:
+
 ```bash
-# Check deployment health
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/health | python3 -m json.tool
-
-# Check recent bounded proxy errors
-docker logs pynchy-litellm --since 15m --tail 300 2>&1 | grep -i "cooldown\|429\|rate.limit\|no healthy"
-
-# Check which deployments LiteLLM loaded
-curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/v1/model/info | python3 -c "
+curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+  -H "Authorization: Bearer $KEY" \
+  http://localhost:4000/v1/model/info | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 for m in data.get('data', []):
