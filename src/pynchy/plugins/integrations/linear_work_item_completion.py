@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ConversationLifecycleFence,
+)
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
@@ -10,6 +13,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 from pynchy.state import (
     WorkItemTransitionRequest,
     begin_work_item_transition,
+    begin_work_item_transition_if_lifecycle_current,
     get_latest_unresolved_work_item_transition,
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
@@ -22,6 +26,7 @@ async def complete_reviewed_work_item(
     issue_id: str,
     delivery_id: str,
     *,
+    lifecycle_fence: ConversationLifecycleFence | None = None,
     controller_workspace: str | None = None,
 ) -> WorkItemExecution | None:
     """Complete owner-local work against the board that reported Done."""
@@ -41,22 +46,37 @@ async def complete_reviewed_work_item(
         WorkItemExecutionStatus.BLOCKED,
     }:
         if transition is None:
-            transition = await begin_work_item_transition(
-                WorkItemTransitionRequest(
-                    execution=execution,
-                    request_id=request_id,
-                    operation="complete_after_linear_done",
-                    target_status="done",
-                    result_execution_status=WorkItemExecutionStatus.COMPLETED,
-                    summary=execution.summary,
-                    evidence_refs=execution.evidence_refs,
-                )
+            request = WorkItemTransitionRequest(
+                execution=execution,
+                request_id=request_id,
+                operation="complete_after_linear_done",
+                target_status="done",
+                result_execution_status=WorkItemExecutionStatus.COMPLETED,
+                summary=execution.summary,
+                evidence_refs=execution.evidence_refs,
             )
+            if lifecycle_fence is None:
+                transition = await begin_work_item_transition(request)
+            else:
+                transition = await begin_work_item_transition_if_lifecycle_current(
+                    request,
+                    lifecycle_fence=lifecycle_fence,
+                )
+                if transition is None:
+                    return None
     else:
         return None
     board_workspace = controller_workspace or execution_workspace
     async with linear_client(workspace=board_workspace) as client:
-        resolved = await reconcile_work_item(client, board_workspace, issue_id, transition)
+        resolved = await reconcile_work_item(
+            client,
+            board_workspace,
+            issue_id,
+            transition,
+            lifecycle_fence=lifecycle_fence,
+        )
+    if resolved is None:
+        return None
     if resolved.status is not WorkItemExecutionStatus.COMPLETED:
         raise LinearError("Linear review completion could not be reconciled")
     return resolved

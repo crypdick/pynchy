@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from pynchy.conversation.models import (
     ConversationId,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
+    ConversationLifecycleFence,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationSubject,  # noqa: TC001, RUF100 - beartype resolves webhook targets.
     ExternalDeliveryIdentity,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
 )
@@ -51,6 +52,7 @@ class WebhookConversation:
     subject: ConversationSubject
     control_title: str
     control_closed: bool | None = None
+    control_state_revision: str | None = None
     # Runtime ownership and provider controller placement are distinct.
     workspace: str | None = None
     controller_workspace: str | None = None
@@ -59,6 +61,8 @@ class WebhookConversation:
     def __post_init__(self) -> None:
         if not self.control_title.strip():
             raise ValueError("Webhook conversation control title cannot be blank")
+        if self.control_state_revision is not None and not self.control_state_revision.strip():
+            raise ValueError("Webhook conversation control revision cannot be blank")
 
 
 WebhookExternalContext = str | Mapping[str, object]
@@ -66,11 +70,11 @@ WebhookExternalContext = str | Mapping[str, object]
 
 @dataclass(frozen=True)
 class WebhookLifecycle:
-    """Provider-owned lifecycle work that must run at a conversation FIFO head.
+    """Provider-owned terminal work with durable callback retry.
 
-    The optional context is durable route-owned data, not prompt content.  A
-    lifecycle delivery closes its existing control before the route callback
-    runs, then completes without starting an agent turn.
+    The optional context is durable route-owned data, not prompt content. The
+    host records terminal intent and retires active routed work at ingress;
+    its callback completes without starting an agent turn.
     """
 
     context: Mapping[str, object] | None = None
@@ -86,13 +90,14 @@ class WebhookLifecycle:
 
 @dataclass(frozen=True)
 class WebhookLifecycleDelivery:
-    """Durable provider context supplied to a lifecycle callback at FIFO head."""
+    """Durable provider context supplied to a lifecycle callback."""
 
     identity: ExternalDeliveryIdentity
     conversation_id: ConversationId
     subject_id: str
     workspace: GroupFolder
     context: Mapping[str, object] | None
+    lifecycle_fence: ConversationLifecycleFence | None = None
 
 
 @dataclass(frozen=True)

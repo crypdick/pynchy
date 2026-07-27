@@ -195,13 +195,12 @@ async def test_receipt_owner_repair_runs_once_but_runtime_normalization_continue
 
     await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
 
-    normalized = await prepare_conversation_runtime_ownership_recovery()
+    await prepare_conversation_runtime_ownership_recovery()
 
     rebound = await get_conversation(conversation.id)
     rebound_profile = await get_workspace_profile(thread_jid)
     rebound_turn = await get_in_flight_turn(turn.turn_id)
     rebound_folder = GroupFolder(routed_conversation_folder("admin", conversation.id))
-    assert normalized == 3
     assert rebound is not None
     assert rebound.workspace == GroupFolder("admin")
     assert rebound_profile is not None

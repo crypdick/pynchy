@@ -382,6 +382,8 @@ async def handle_webhook(request: web.Request) -> web.Response:
     disposition: Literal["accepted", "routed", "lifecycle", "notified", "ignored"]
     if task is not None:
         disposition = "accepted"
+    elif event.ignored_reason is not None:
+        disposition = "ignored"
     elif event.lifecycle is not None:
         disposition = "lifecycle"
     elif event.conversation is not None:

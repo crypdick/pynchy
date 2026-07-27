@@ -29,8 +29,12 @@ from pynchy.config.models import (
 from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import (
     ControlSurface,
+    Conversation,
     ConversationControlBinding,
     ConversationId,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
 )
 from pynchy.host.container_manager import process as process_mod
 from pynchy.host.container_manager import session as session_mod
@@ -71,12 +75,15 @@ from pynchy.host.learning.skill_activation import (
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerResult,
+    PreContainerSetupRequest,
     build_admin_system_notices,
     build_container_input,
+    pre_container_setup,
     run_agent,
     session_tracking_output_handler,
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.state import SessionSecurityTaint
@@ -2685,6 +2692,75 @@ class TestContainerInputAgentCoreConfig:
 
 
 class TestAgentRunnerPreContainerHelpers:
+    @pytest.mark.asyncio
+    async def test_terminal_control_blocks_preflight_before_side_effects(self):
+        deps = _AgentRunnerDeps()
+        deps.session_cleared.add("project__thread_conversation-conv_terminal")
+        conversation_id = ConversationId("conv_terminal")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("project"),
+            parent_jid=ChatJid("discord:channel:project"),
+            thread_jid=ChatJid("discord:channel:terminal"),
+            title="Terminal issue",
+            updated_at="2026-07-27T00:00:00+00:00",
+            closed=True,
+        )
+        conversation = Conversation(
+            id=conversation_id,
+            workspace=GroupFolder("project"),
+            subject=ConversationSubject(
+                namespace=ConversationSubjectNamespace("linear:org:issue"),
+                key=ConversationSubjectKey("issue-terminal"),
+            ),
+            session_id=None,
+            created_at="2026-07-27T00:00:00+00:00",
+            updated_at="2026-07-27T00:00:00+00:00",
+            control_closed=True,
+        )
+        taint = AsyncMock()
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation",
+                new_callable=AsyncMock,
+                return_value=conversation,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.mark_session_security_taint",
+                taint,
+            ),
+            pytest.raises(ConversationControlClosedError, match="conv_terminal"),
+        ):
+            await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    runtime=deps.agent_execution_runtime,
+                    group=WorkspaceProfile(
+                        jid="discord:channel:terminal",
+                        name="Terminal issue",
+                        folder="project__thread_conversation-conv_terminal",
+                        trigger="@Pynchy",
+                    ),
+                    chat_jid="discord:channel:terminal",
+                    messages=[{"content": "stale run"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="external:linear",
+                    is_scheduled_task=False,
+                    repo_access_override=None,
+                )
+            )
+
+        taint.assert_not_awaited()
+        assert deps.session_cleared == {"project__thread_conversation-conv_terminal"}
+
     @pytest.mark.asyncio
     async def test_session_tracking_output_handler_records_session(self):
         deps = _AgentRunnerDeps()

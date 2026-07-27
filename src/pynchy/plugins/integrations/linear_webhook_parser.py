@@ -259,6 +259,13 @@ def _issue_control_closed(payload: _LinearWebhookPayload) -> bool | None:
     return state.state_type in TERMINAL_STATE_TYPES
 
 
+def _issue_control_state_revision(payload: _LinearWebhookPayload) -> str | None:
+    """Return the provider revision that orders one typed issue-state observation."""
+    nested_issue = payload.data.get("issue")
+    issue = nested_issue if isinstance(nested_issue, dict) else {}
+    return _optional_text(payload.data.get("updatedAt")) or _optional_text(issue.get("updatedAt"))
+
+
 def _issue_label(payload: _LinearWebhookPayload, issue_id: str) -> str:
     identifier, _title = _issue_display_fields(payload)
     return identifier or issue_id
@@ -343,6 +350,7 @@ def _conversation(
     issue_id: str,
     *,
     control_closed: bool | None = None,
+    control_state_revision: str | None = None,
 ) -> WebhookConversation:
     return WebhookConversation(
         subject=ConversationSubject(
@@ -351,6 +359,7 @@ def _conversation(
         ),
         control_title=_control_title(payload),
         control_closed=control_closed,
+        control_state_revision=control_state_revision,
     )
 
 
@@ -394,10 +403,12 @@ def _issue_event(
             reason="issue_creation_does_not_authorize_work",
         )
     control_closed = _issue_control_closed(payload)
+    control_state_revision = _issue_control_state_revision(payload)
     conversation = _conversation(
         payload,
         issue_id,
         control_closed=control_closed,
+        control_state_revision=control_state_revision,
     )
     if control_closed is True:
         return WebhookEvent(

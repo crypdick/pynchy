@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves admission results at runtime.
     ConversationId,
 )
+from pynchy.host.orchestrator.conversation_control import sync_existing_open_conversation_control
 from pynchy.host.orchestrator.webhook_conversations import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs at runtime.
     WebhookConversationDispatcher,
 )
@@ -50,15 +51,34 @@ async def admit_prepared_event(
 ) -> tuple[WebhookAdmission, ConversationId | None]:
     """Commit either an isolated receipt or an atomic routed FIFO envelope."""
     receipt = request.receipt
+    open_conversation_id: ConversationId | None = None
+    if (
+        dispatcher is not None
+        and event.conversation is not None
+        and event.conversation.control_closed is False
+    ):
+        # Project a newer provider reopen before terminal retirement can retire
+        # an otherwise valid FIFO delivery during its durable cleanup phase.
+        open_conversation_id = await dispatcher.project_open_control(route, event)
     if event.conversation is None or receipt.disposition not in {"routed", "lifecycle"}:
-        return (
-            await admit_webhook_receipt(
-                receipt,
-                request.task,
-                effect_evidence=event.effect_evidence,
-            ),
-            None,
+        admission = await admit_webhook_receipt(
+            receipt,
+            request.task,
+            effect_evidence=event.effect_evidence,
         )
+        if (
+            receipt.disposition == "ignored"
+            and event.conversation is not None
+            and event.conversation.control_closed is False
+            and dispatcher is not None
+        ):
+            await sync_existing_open_conversation_control(
+                dispatcher.deps.channels(),
+                event.conversation.subject,
+            )
+            if open_conversation_id is not None:
+                await dispatcher.restore_existing_open_control_runtime(open_conversation_id)
+        return admission, None
     if dispatcher is None:
         raise RuntimeError("Routed webhook dispatcher disappeared after startup")
     prompt = prompt_for_event(route, event) if receipt.disposition == "routed" else None

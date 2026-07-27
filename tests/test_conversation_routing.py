@@ -39,15 +39,19 @@ from pynchy.host.orchestrator.session_handler import send_clear_confirmation
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.state import (
+    ConversationControlWorkspaceChangedError,
     WebhookReceipt,
     admit_conversation_delivery,
     admit_external_delivery_receipt,
     admit_webhook_receipt,
+    apply_conversation_control_state,
+    begin_in_flight_turn,
     claim_next_conversation_delivery,
     complete_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
     get_conversation_delivery,
+    get_in_flight_turn,
     get_session,
     get_session_security_taint,
     get_webhook_receipt,
@@ -57,6 +61,7 @@ from pynchy.state import (
     prepare_conversation_runtime_ownership_recovery,
     rebind_conversation_workspace,
     resolve_conversation,
+    retire_conversation_for_terminal,
     set_chat_cleared_at,
     set_conversation_control_binding,
     set_conversation_session,
@@ -69,6 +74,8 @@ from pynchy.types import (
     ChatJid,
     GroupFolder,
     InboundFetchResult,
+    InFlightTurn,
+    InFlightWorkKind,
     OutboundEvent,
     SessionId,
     WorkspaceProfile,
@@ -217,6 +224,36 @@ async def test_control_binding_does_not_replace_conversation_workspace_owner() -
     assert binding is not None
     assert binding == ensured.binding
     assert binding.parent_workspace == GroupFolder("admin")
+
+
+async def test_stale_control_binding_cannot_revert_newer_workspace_owner() -> None:
+    conversation = await resolve_conversation(
+        _subject("issue-stale-control-owner"),
+        GroupFolder("triage"),
+    )
+    stale_binding = ConversationControlBinding(
+        conversation_id=conversation.id,
+        surface=ControlSurface.DISCORD,
+        parent_workspace=GroupFolder("triage"),
+        parent_jid=ChatJid("discord:channel:triage"),
+        thread_jid=ChatJid("discord:channel:stale-control-owner"),
+        title="[SYN-89] Stale control",
+        updated_at="2026-07-27T00:00:00+00:00",
+    )
+
+    await resolve_conversation(conversation.subject, GroupFolder("engineering"))
+
+    with pytest.raises(ConversationControlWorkspaceChangedError):
+        await set_conversation_control_binding(
+            stale_binding,
+            owner_workspace=GroupFolder("triage"),
+            expected_workspace=GroupFolder("triage"),
+        )
+
+    current = await get_conversation(conversation.id)
+    assert current is not None
+    assert current.workspace == GroupFolder("engineering")
+    assert await get_conversation_control_binding(conversation.id) is None
 
 
 async def test_authenticated_deliveries_dedupe_and_join_by_stable_subject() -> None:
@@ -396,6 +433,106 @@ async def test_clear_boundary_retires_older_work_and_forgets_routed_session() ->
     assert retained_pending is not None
     assert retained_pending.status is ConversationDeliveryStatus.PENDING
     assert [completion.conversation_id for completion in completions] == [conversation.id]
+
+
+async def test_terminal_retirement_clears_legacy_folders_and_rejects_session_revival() -> None:
+    thread_jid = ChatJid("discord:channel:terminal-legacy")
+    conversation = await resolve_conversation(
+        _subject("issue-terminal-legacy"),
+        GroupFolder("owner"),
+    )
+    await _bind_control_thread(
+        conversation.id,
+        thread_jid,
+        parent_workspace=GroupFolder("control"),
+    )
+    await set_conversation_session(conversation.id, SessionId("conversation-session"))
+    folders = (
+        GroupFolder(routed_conversation_folder(conversation.workspace, conversation.id)),
+        GroupFolder(dynamic_thread_folder(conversation.workspace, thread_jid)),
+        GroupFolder(dynamic_thread_folder("control", thread_jid)),
+    )
+    for index, folder in enumerate(folders):
+        await set_session(folder, SessionId(f"session-{index}"))
+        await mark_session_security_taint(folder, corruption_tainted=True)
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id=f"terminal-turn-{index}",
+                chat_jid=thread_jid,
+                group_folder=folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-27T00:00:00+00:00",
+            )
+        )
+
+    retirement = await retire_conversation_for_terminal(
+        conversation.id,
+        preserve_delivery=_delivery("terminal-lifecycle"),
+    )
+    retired = await get_conversation(conversation.id)
+    late_session = await set_conversation_session(conversation.id, SessionId("late-session"))
+
+    assert set(retirement.runtime_folders) == set(folders)
+    assert thread_jid in retirement.runtime_workspace_jids
+    assert retired is not None
+    assert retired.control_closed is True
+    assert retired.session_id is None
+    assert late_session.session_id is None
+    for index, folder in enumerate(folders):
+        assert await get_session(folder) is None
+        assert (await get_session_security_taint(folder)).corruption_tainted is False
+        assert await get_in_flight_turn(f"terminal-turn-{index}") is None
+
+
+async def test_unversioned_terminal_cannot_retire_a_versioned_terminal_state() -> None:
+    conversation = await resolve_conversation(
+        _subject("issue-versioned-terminal"),
+        GroupFolder("owner"),
+    )
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision="2026-07-27T00:00:02+00:00",
+    )
+
+    retirement = await retire_conversation_for_terminal(
+        conversation.id,
+        preserve_delivery=_delivery("unversioned-terminal"),
+    )
+    current = await get_conversation(conversation.id)
+
+    assert retirement.is_current is False
+    assert retirement.control_state_revision == "2026-07-27T00:00:02+00:00"
+    assert current is not None
+    assert current.control_closed is True
+    assert current.control_state_revision == "2026-07-27T00:00:02+00:00"
+
+
+async def test_unversioned_open_intent_reopens_an_unversioned_terminal_control() -> None:
+    conversation = await resolve_conversation(
+        _subject("issue-unversioned-reopen"),
+        GroupFolder("owner"),
+    )
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=None,
+    )
+
+    applied = await apply_conversation_control_state(
+        conversation.id,
+        closed=False,
+        control_state_revision=None,
+    )
+    reopened = await get_conversation(conversation.id)
+
+    assert applied is True
+    assert reopened is not None
+    assert reopened.control_closed is False
+    assert reopened.control_state_revision is None
 
 
 async def test_startup_recovery_repairs_legacy_reset_orphan() -> None:

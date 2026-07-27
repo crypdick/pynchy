@@ -18,7 +18,18 @@ from pynchy.plugins.integrations.linear_webhooks import (
     parse_linear_webhook,
 )
 from pynchy.plugins.webhooks import WebhookRoute
-from pynchy.state import delete_workspace_profile, set_workspace_profile
+from pynchy.state import (
+    complete_conversation_delivery,
+    conversation_control_state_matches,
+    delete_workspace_profile,
+    get_conversation,
+    get_conversation_control_binding,
+    get_terminal_conversation_retirement,
+    set_workspace_profile,
+)
+from pynchy.state import (
+    retire_conversation_for_terminal as retire_terminal_state,
+)
 from pynchy.types import (
     InboundFetchResult,
     NewMessage,
@@ -32,6 +43,12 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from aiohttp.test_utils import TestClient
+
+    from pynchy.conversation.models import (
+        ConversationId,
+        ExternalDeliveryIdentity,
+        TerminalConversationRetirement,
+    )
 
 SIGNING_KEY = "linear-webhook-test-signing-key-long-enough"
 DELIVERY_ID = "234d1a4e-b617-4388-90fe-adc3633d6b72"
@@ -176,6 +193,14 @@ class LinearWebhookHarness:
         self.dispatched: list[ScheduledTask] = []
         self.ingested: list[NewMessage] = []
         self.bound_sessions: list[tuple[str, SessionId]] = []
+        self.retired_folders: list[str] = []
+        self.retired_task_conversations: list[str] = []
+
+    complete_conversation_delivery = staticmethod(complete_conversation_delivery)
+    conversation_control_state_matches = staticmethod(conversation_control_state_matches)
+    get_conversation = staticmethod(get_conversation)
+    get_conversation_control_binding = staticmethod(get_conversation_control_binding)
+    get_terminal_conversation_retirement = staticmethod(get_terminal_conversation_retirement)
 
     async def persist_parent(self) -> None:
         await set_workspace_profile(self.workspace)
@@ -211,6 +236,25 @@ class LinearWebhookHarness:
 
     async def bind_session(self, folder: str, session_id: SessionId) -> None:
         self.bound_sessions.append((folder, session_id))
+
+    async def retire_conversation_for_terminal(
+        self,
+        conversation_id: ConversationId,
+        *,
+        preserve_delivery: ExternalDeliveryIdentity,
+        control_state_revision: str | None,
+    ) -> TerminalConversationRetirement:
+        return await retire_terminal_state(
+            conversation_id,
+            preserve_delivery=preserve_delivery,
+            control_state_revision=control_state_revision,
+        )
+
+    async def retire_conversation_runtime(self, folder: str) -> None:
+        self.retired_folders.append(folder)
+
+    async def retire_conversation_tasks(self, conversation_id: str) -> None:
+        self.retired_task_conversations.append(conversation_id)
 
     async def ingest_message(self, jid: str, message: NewMessage) -> None:
         assert jid == message.chat_jid

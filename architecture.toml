@@ -15,6 +15,7 @@ composition_roots = [
   "pynchy.host.orchestrator.dep_factory",
   "pynchy.host.orchestrator.lifecycle",
   "pynchy.host.orchestrator.source_health_deps",
+  "pynchy.host.orchestrator.terminal_task_retirement",
 ]
 
 [[components]]

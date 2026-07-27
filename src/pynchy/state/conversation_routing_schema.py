@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS routed_conversations (
     subject_namespace TEXT NOT NULL,
     subject_key TEXT NOT NULL,
     session_id TEXT,
+    control_closed INTEGER NOT NULL DEFAULT 0,
+    control_state_revision TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (subject_namespace, subject_key)
