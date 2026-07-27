@@ -11,6 +11,9 @@ import hashlib
 import json
 import subprocess  # noqa: S404, TC003, RUF100 - beartype resolves tracked MCP process annotations at runtime.
 from dataclasses import dataclass, field
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves MCP instance annotations at runtime.
+)
 from typing import Any
 
 from pynchy.config import (
@@ -45,6 +48,7 @@ class McpInstance:
     kwargs: dict[str, str]
     instance_id: str  # server_name + short hash of kwargs
     container_name: str  # Docker container name (for type=docker)
+    project_root: Path
     port: int | None = None  # host-side port (auto-assigned for host-process instances)
     last_activity: float = 0.0  # monotonic timestamp
     process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script/stdio)
@@ -310,6 +314,7 @@ def resolve_all_instances(
                     kwargs=kwargs,
                     instance_id=iid,
                     container_name=container_name,
+                    project_root=settings.project_root,
                     port=instance_port,
                 )
 

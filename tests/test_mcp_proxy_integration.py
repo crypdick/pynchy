@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -39,6 +40,7 @@ def _make_instance(
         kwargs={},
         instance_id=instance_id or server_name,
         container_name=server_name,
+        project_root=Path("/project"),
         port=port,
     )
 
