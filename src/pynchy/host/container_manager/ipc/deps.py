@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    CreatePeriodicAgentRequest,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
     Channel,
     OutboundEvent,
@@ -60,6 +63,15 @@ class IpcDeps(Protocol):
     ) -> None: ...
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None: ...
+
+    async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None: ...
+
+    async def get_scheduled_work_status(
+        self,
+        *,
+        source_group: str,
+        is_admin: bool,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]: ...
 
 
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:

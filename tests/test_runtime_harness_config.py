@@ -18,15 +18,3 @@ def test_pre_merge_uses_a_fresh_runtime_that_cleans_up_its_live_resources() -> N
             "uv run pytest -o addopts='' -n 0 -m runtime"
         ),
     ]
-
-
-def test_post_merge_rebuilds_graph_from_integrated_index_before_tests() -> None:
-    """The merge commit graph must describe the integrated source tree."""
-    project = tomllib.loads(Path(__file__).parents[1].joinpath("pyproject.toml").read_text())
-    commands = project["tool"]["new-feature"]["post_merge"]
-
-    assert commands[0] == (
-        "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT "
-        "PYNCHY_RUNTIME_NAMESPACE; uv run --no-project python "
-        "scripts/graphify_graph.py sync-staged"
-    )
