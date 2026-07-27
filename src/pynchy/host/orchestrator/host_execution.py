@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import os
-import shutil
-import tempfile
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -21,10 +18,16 @@ from pynchy.host.container_manager.security.gate import create_gate, resolve_sec
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.skill_activation import prepare_agent_homes
+from pynchy.host.orchestrator.codex_rollouts import (
+    CodexRolloutInspectionError as _CodexRolloutInspectionError,
+)
+from pynchy.host.orchestrator.codex_rollouts import (
+    migrate_rollout,
+    rollout_exists,
+)
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
-from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput, RuntimeId  # noqa: TC001, RUF100
 
 if TYPE_CHECKING:
@@ -34,11 +37,8 @@ if TYPE_CHECKING:
 
     from pynchy.host.orchestrator.queue_state import HostProcessLease
 _CODEX_SESSION_PREFIX = "codex:"
+CodexRolloutInspectionError = _CodexRolloutInspectionError
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
-
-
-class CodexRolloutInspectionError(RuntimeError):
-    """The host could not determine whether a Codex rollout is durable."""
 
 
 @runtime_checkable
@@ -89,46 +89,9 @@ def codex_thread_exists_in_host_runtime(
     if thread_id is None:
         return True
 
-    # Codex does not add every `exec` thread to session_index.jsonl, so that
-    # file cannot prove whether a thread is resumable. The rollout is the
-    # durable conversation state consumed by `codex exec resume`.
-    sessions_path = (codex_home or _codex_home()) / "sessions"
-    expected_suffix = f"-{thread_id}.jsonl"
-    try:
-        rollouts = (
-            path
-            for path in sessions_path.rglob("*.jsonl")
-            if path.name.startswith("rollout-") and path.name.endswith(expected_suffix)
-        )
-        return any(_rollout_has_session_header(path, thread_id) for path in rollouts)
-    except OSError as exc:
-        raise CodexRolloutInspectionError(
-            f"Could not inspect Codex rollout sessions at {sessions_path}"
-        ) from exc
-
-
-def _rollout_has_session_header(path: Path, thread_id: str) -> bool:
-    """Return whether a rollout contains the durable header for this thread."""
-    try:
-        with path.open(encoding="utf-8") as rollout:
-            first_record = next((line for line in rollout if line.strip()), None)
-    except UnicodeDecodeError:
-        logger.warning("Ignoring non-UTF-8 Codex rollout header", path=str(path))
-        return False
-    if first_record is None:
-        logger.warning("Ignoring empty Codex rollout", path=str(path))
-        return False
-    try:
-        header = json.loads(first_record)
-    except json.JSONDecodeError:
-        logger.warning("Ignoring corrupt Codex rollout header", path=str(path))
-        return False
-    return (
-        isinstance(header, dict)
-        and header.get("type") == "session_meta"
-        and isinstance(header.get("payload"), dict)
-        and header["payload"].get("id") == thread_id
-    )
+    # session_index.jsonl is incomplete for `exec` threads; only the exact
+    # rollout header proves that `codex exec resume` has durable state.
+    return rollout_exists(codex_home or _codex_home(), thread_id)
 
 
 def host_execution_cwd(group_folder: str) -> Path | None:
@@ -163,53 +126,15 @@ def migrate_host_codex_thread(
     if codex_thread_exists_in_host_runtime(session_id, codex_home=codex_home):
         return True
 
-    source_home = legacy_codex_home or _codex_home()
-    source_sessions = source_home / "sessions"
-    expected_suffix = f"-{thread_id}.jsonl"
-    try:
-        rollout = next(
-            (
-                path
-                for path in source_sessions.rglob("*.jsonl")
-                if path.name.startswith("rollout-")
-                and path.name.endswith(expected_suffix)
-                and _rollout_has_session_header(path, thread_id)
-            ),
-            None,
+    return (
+        migrate_rollout(
+            thread_id,
+            codex_home=codex_home,
+            legacy_codex_home=legacy_codex_home or _codex_home(),
+            scoped_sessions_root=get_settings().data_dir / "sessions",
         )
-    except OSError as exc:
-        raise CodexRolloutInspectionError(
-            f"Could not inspect legacy Codex rollouts at {source_sessions}"
-        ) from exc
-    if rollout is None:
-        return False
-
-    destination = codex_home / "sessions" / rollout.relative_to(source_sessions)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        _copy_rollout_atomic(rollout, destination)
-    except OSError as exc:
-        raise CodexRolloutInspectionError(
-            f"Could not scope legacy Codex rollout from {rollout} to {destination}"
-        ) from exc
-    logger.info("Scoped legacy Codex rollout", thread_id=thread_id, destination=str(destination))
-    return True
-
-
-def _copy_rollout_atomic(source: Path, destination: Path) -> None:
-    """Publish a complete rollout without exposing a partial file."""
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=destination.parent,
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
+        is not None
     )
-    os.close(descriptor)
-    temporary = Path(temporary_name)
-    try:
-        shutil.copy2(source, temporary)
-        temporary.replace(destination)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def host_agent_env_vars(

@@ -356,13 +356,8 @@ async def _start_temporal_scheduler(app: PynchyApp) -> None:
 async def _activate_runtime_owners(
     app: PynchyApp,
     prepared_http: http_server.PreparedHttpServer,
-    interrupted_recovery: startup_handler.InterruptedTurnRecovery,
 ) -> None:
-    """Resolve deploy state, restore routes, and start critical pollers."""
-    await startup_handler.resolve_deploy_startup(
-        interrupted_recovery,
-        active_revision=current_deploy_revision(),
-    )
+    """Restore durable routes and start critical pollers behind their gates."""
     await http_server.recover_http_routes(prepared_http)
     await _start_temporal_scheduler(app)
     await start_connection_runtimes(app)
@@ -373,10 +368,23 @@ async def _publish_runtime_owners(
     prepared_http: http_server.PreparedHttpServer,
     interrupted_recovery: startup_handler.InterruptedTurnRecovery,
 ) -> None:
-    """Publish request and IPC surfaces after rollback evidence is retired."""
-    await startup_handler.finalize_deploy_startup(interrupted_recovery)
+    """Commit startup success, then publish request and activity surfaces."""
+    # Deployment success follows every critical owner readiness handshake.
+    # HTTP publication and IPC task registration below are synchronous gate
+    # releases, not additional readiness handshakes.
+    await startup_handler.resolve_deploy_startup(
+        interrupted_recovery,
+        active_revision=current_deploy_revision(),
+    )
+    try:
+        await startup_handler.finalize_deploy_startup(interrupted_recovery)
+    except OSError:
+        # A retained claimed continuation is safe and retryable on the next
+        # startup; it must not invalidate an otherwise healthy deployment.
+        logger.exception("Deploy continuation cleanup deferred")
     http_server.publish_http_server(prepared_http)
     _start_ipc_watcher(app)
+    app.startup_readiness.mark_ready()
 
 
 async def _start_runtime_owners(
@@ -385,7 +393,7 @@ async def _start_runtime_owners(
 ) -> None:
     """Start preflighted runtime owners in dependency order."""
     prepared_http = await _prepare_and_bind_control_plane(app)
-    await _activate_runtime_owners(app, prepared_http, interrupted_recovery)
+    await _activate_runtime_owners(app, prepared_http)
     await _publish_runtime_owners(app, prepared_http, interrupted_recovery)
 
 
@@ -402,6 +410,7 @@ async def _prepare_state_and_subsystems(
         )
         await _start_runtime_owners(app, interrupted_recovery)
     except BaseException as exc:  # noqa: BLE001, RUF100 - rollback must also release waiters during cancellation.
+        app.startup_readiness.mark_failed(exc)
         await app.subsystem_tasks.stop()
         try:
             await app.cleanup_http_runner()

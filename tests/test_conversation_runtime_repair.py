@@ -27,6 +27,7 @@ from pynchy.state import (
     begin_in_flight_turn,
     get_conversation,
     get_in_flight_turn,
+    get_router_state,
     get_session,
     get_session_security_taint,
     get_workspace_profile,
@@ -51,6 +52,8 @@ from pynchy.types import (
     SessionId,
     WorkspaceProfile,
 )
+
+RUNTIME_OWNER_MIGRATION_KEY = "migration:conversation_runtime_receipt_owner:v1"
 
 
 @pytest.fixture(autouse=True)
@@ -143,7 +146,7 @@ def _turn(
     )
 
 
-async def test_authenticated_delivery_repairs_corrupt_profile_and_runtime() -> None:
+async def test_receipt_owner_repair_runs_once_but_runtime_normalization_continues() -> None:
     thread_jid = ChatJid("discord:channel:corrupt-runtime-owner")
     conversation = (
         await _admit(
@@ -188,6 +191,25 @@ async def test_authenticated_delivery_repairs_corrupt_profile_and_runtime() -> N
     assert await get_session(repaired_folder) == session_id
     assert repaired_turn is not None
     assert repaired_turn.group_folder == repaired_folder
+    assert await get_router_state(RUNTIME_OWNER_MIGRATION_KEY) == "complete"
+
+    await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
+
+    normalized = await prepare_conversation_runtime_ownership_recovery()
+
+    rebound = await get_conversation(conversation.id)
+    rebound_profile = await get_workspace_profile(thread_jid)
+    rebound_turn = await get_in_flight_turn(turn.turn_id)
+    rebound_folder = GroupFolder(routed_conversation_folder("admin", conversation.id))
+    assert normalized == 3
+    assert rebound is not None
+    assert rebound.workspace == GroupFolder("admin")
+    assert rebound_profile is not None
+    assert rebound_profile.folder == rebound_folder
+    assert await get_session(repaired_folder) is None
+    assert await get_session(rebound_folder) == session_id
+    assert rebound_turn is not None
+    assert rebound_turn.group_folder == rebound_folder
 
 
 async def test_authenticated_delivery_repairs_runtime_without_profile() -> None:
@@ -275,6 +297,7 @@ async def test_authoritative_owner_conflict_aborts_without_partial_mutation() ->
     assert await get_session(original_folder) == session_id
     assert await get_session(target_folder) is None
     assert await get_in_flight_turn(turn.turn_id) == turn
+    assert await get_router_state(RUNTIME_OWNER_MIGRATION_KEY) is None
 
 
 async def test_repair_does_not_overwrite_conflicting_target_session() -> None:

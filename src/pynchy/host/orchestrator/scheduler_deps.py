@@ -19,6 +19,13 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotation
 
 
 @runtime_checkable
+class StartupReadinessGate(Protocol):
+    """Wait capability for work that depends on completed startup recovery."""
+
+    async def wait(self) -> None: ...
+
+
+@runtime_checkable
 class SchedulerDependencies(Protocol):
     """Dependencies shared by the task scheduler and Temporal activities."""
 
@@ -30,6 +37,9 @@ class SchedulerDependencies(Protocol):
 
     @property
     def queue(self) -> GroupQueue: ...
+
+    @property
+    def startup_readiness(self) -> StartupReadinessGate: ...
 
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 

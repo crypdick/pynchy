@@ -39,6 +39,7 @@ from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
+from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_registration import (
@@ -106,6 +107,7 @@ class PynchyApp(ThreadRouting):
         self._memory: MemoryProvider | None = None
         self._speech_synthesizer: SpeechSynthesizer | None = None
         self.subsystem_tasks = RuntimeTaskOwner()
+        self.startup_readiness = StartupReadiness()
         self.connection_runtime_owner = ConnectionRuntimeOwner()
         self.plugin_manager: pluggy.PluginManager | None = None
 

@@ -10,6 +10,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.models import NotificationsConfig
+from pynchy.host.orchestrator import startup_handler, startup_rollback
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
@@ -18,6 +19,7 @@ from pynchy.host.orchestrator.startup_handler import (
     finalize_deploy_startup,
     prepare_interrupted_turn_recovery,
     send_boot_notification,
+    terminate_failed_startup,
     validate_plugin_credentials,
 )
 from pynchy.state import (
@@ -152,12 +154,12 @@ class TestAutoRollback:
             patch(
                 "pynchy.host.orchestrator.startup_handler.run_git", return_value=FakeResult()
             ) as mock_git,
-            pytest.raises(SystemExit) as exc_info,
+            patch("pynchy.host.orchestrator.startup_handler.terminate_failed_startup") as terminate,
         ):
             await auto_rollback(cont_path, RuntimeError("startup failed"))
 
         mock_git.assert_called_once_with("reset", "--hard", "prev-sha-1")
-        assert exc_info.value.code == 1
+        terminate.assert_called_once_with()
 
         updated = json.loads(cont_path.read_text())
         assert "ROLLBACK" in updated["resume_prompt"]
@@ -195,6 +197,59 @@ class TestAutoRollback:
             "RuntimeError: startup failed. "
             "Rolled back to prev-sha-1. Server health: healthy (recovered after rollback).",
         )
+
+    def test_failed_startup_uses_immediate_process_exit(self, monkeypatch) -> None:
+        """Non-daemon plugin threads must not survive a rollback via SystemExit."""
+        exit_codes: list[int] = []
+
+        def record_exit(exit_code: int) -> None:
+            exit_codes.append(exit_code)
+            raise SystemExit(exit_code)
+
+        monkeypatch.setattr(startup_rollback.os, "_exit", record_exit)
+
+        with pytest.raises(SystemExit, match="1"):
+            terminate_failed_startup()
+
+        assert exit_codes == [1]
+
+    @pytest.mark.asyncio
+    async def test_fsyncs_rollback_evidence_before_immediate_exit(
+        self,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        """The hard exit follows durable continuation and warning renames."""
+        cont_path = tmp_path / "continuation.json"
+        cont_path.write_text(
+            json.dumps(
+                {
+                    "previous_commit_sha": "prev-sha-1",
+                    "commit_sha": "failed-sha-2",
+                }
+            )
+        )
+        events: list[str] = []
+
+        class FakeResult:
+            returncode = 0
+            stderr = ""
+
+        monkeypatch.setattr(startup_handler, "run_git", lambda *_args: FakeResult())
+        monkeypatch.setattr(
+            startup_rollback.os,
+            "fsync",
+            lambda _descriptor: events.append("fsync"),
+        )
+        monkeypatch.setattr(
+            startup_handler,
+            "terminate_failed_startup",
+            lambda: events.append("terminate"),
+        )
+
+        await auto_rollback(cont_path, RuntimeError("startup failed"))
+
+        assert events == ["fsync", "fsync", "fsync", "terminate"]
 
     @pytest.mark.asyncio
     async def test_returns_when_git_reset_fails(self, tmp_path):
