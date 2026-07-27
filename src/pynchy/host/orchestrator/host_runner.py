@@ -11,7 +11,6 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
@@ -57,8 +56,8 @@ class _HostRunnerProcess(Protocol):
     def kill(self) -> None: ...
 
 
-def _host_runner_command() -> list[str]:
-    project = get_settings().project_root / _HOST_RUNNER_PROJECT
+def _host_runner_command(project_root: Path) -> list[str]:
+    project = project_root / _HOST_RUNNER_PROJECT
     return ["uv", "run", "--project", str(project), "python", "-m", "agent_runner.host_direct"]
 
 
@@ -134,6 +133,7 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
     input_data: ContainerInput,
     *,
     cwd: Path,
+    project_root: Path,
     on_output: OnOutput,
     timeout_seconds: int | float,
     env: dict[str, str] | None = None,
@@ -142,7 +142,7 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
 ) -> str:
     """Run one agent turn directly on the host via a child process."""
     proc = await asyncio.create_subprocess_exec(
-        *_host_runner_command(),
+        *_host_runner_command(project_root),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
