@@ -83,6 +83,11 @@ async def test_stdio_bridge_proxies_tool_discovery_and_calls(tmp_path):
     try:
         await _wait_for_bridge(url, process)
         async with (
+            aiohttp.ClientSession() as client,
+            client.get(f"http://127.0.0.1:{port}/") as response,
+        ):
+            assert response.status == 204
+        async with (
             streamable_http_client(url) as (read_stream, write_stream, _),
             ClientSession(read_stream, write_stream) as session,
         ):
