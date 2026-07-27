@@ -2148,6 +2148,7 @@ class TestTemporalSchedulerRuntime:
             deps.workspaces,
             boards,
             review_plan=deps.review_linear_plan,
+            broadcast_host_message=deps.broadcast_host_message,
         )
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["tracked_results"]["linear-work-item-reconciliation"]["result"] == (

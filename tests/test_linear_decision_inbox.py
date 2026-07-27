@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pytest
 
@@ -55,6 +55,12 @@ class _Workspace:
 @dataclass(frozen=True)
 class _LinearAccount:
     name: str
+
+
+@dataclass(frozen=True)
+class _ControlBinding:
+    thread_jid: str
+    closed: bool
 
 
 def _state(status: str) -> dict[str, str]:
@@ -314,6 +320,88 @@ async def test_planned_work_is_reviewed_before_execution_lease() -> None:
     assert request.issue_id == "issue-execute"
     assert request.workspace == "beta"
     assert await get_active_work_item_execution("issue-execute") is not None
+
+
+async def test_planned_work_reports_actual_review_status_to_its_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"][0]["description"] = (
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Implement the approved change.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.PROCEED,
+            "The plan still matches the current implementation.",
+        )
+    )
+    broadcaster = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value="conversation-1"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.get_conversation_control_binding",
+        AsyncMock(
+            return_value=_ControlBinding(
+                thread_jid="discord:channel:issue-1",
+                closed=False,
+            )
+        ),
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        review_plan=reviewer,
+        broadcast_host_message=broadcaster,
+    )
+
+    assert len(created) == 1
+    assert broadcaster.await_args_list == [
+        call(
+            "discord:channel:issue-1",
+            "🔎 Rechecking the approved plan against the current checkout.",
+        ),
+        call("discord:channel:issue-1", "✅ Plan check passed. Starting work."),
+    ]
+
+
+async def test_reconcile_continues_after_one_issue_admission_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-ready"] = [
+        _issue(
+            "issue-bad-runtime",
+            "SYN-99",
+            "Leave this malformed runtime alone",
+            "ready_for_planning",
+            "project-beta",
+        )
+    ]
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.admit_planning_issue",
+        AsyncMock(
+            side_effect=RuntimeError(
+                "Provider subject key resolves to multiple routed conversations"
+            )
+        ),
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+    )
+
+    assert len(created) == 1
+    assert created[0].id.startswith("linear-execute-syn-3-")
 
 
 async def test_stale_plan_is_replaced_without_acquiring_a_lease() -> None:

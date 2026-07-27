@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these annotations at runtime.
+    Awaitable,
+    Callable,
     Iterable,
     Mapping,
 )
@@ -132,12 +134,19 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913, RUF100 - explicit c
     now: datetime | None = None,
     public_source: bool = True,
     review_plan: LinearPlanReviewer | None = None,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None,
 ) -> list[ScheduledTask]:
     """Admit one issue-conversation task for every actionable decision."""
     project_workspaces = _project_workspaces(workspaces, boards)
     created: list[ScheduledTask] = []
     observed_at = now or datetime.now(UTC)
-    admission = DecisionAdmission(client, observed_at, public_source, review_plan)
+    admission = DecisionAdmission(
+        client,
+        observed_at,
+        public_source,
+        review_plan,
+        broadcast_host_message,
+    )
     sample_board = next(iter(boards.values()), None)
     if sample_board is None:
         return created
@@ -147,21 +156,30 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913, RUF100 - explicit c
             workspace = project_workspaces.get(issue.project_id)
             if workspace is None or issue.state_id != state_id:
                 continue
-            if status == READY_FOR_PLANNING_STATUS:
-                admitted = await admit_planning_issue(
-                    issue,
-                    workspace,
-                    observed_at=observed_at,
-                    public_source=public_source,
+            try:
+                if status == READY_FOR_PLANNING_STATUS:
+                    admitted = await admit_planning_issue(
+                        issue,
+                        workspace,
+                        observed_at=observed_at,
+                        public_source=public_source,
+                    )
+                else:
+                    admitted = await admit_decision_issue(
+                        issue,
+                        workspace,
+                        boards[workspace.folder],
+                        status,
+                        admission,
+                    )
+            except Exception:  # noqa: BLE001, RUF100 - one malformed issue must not strand others.
+                logger.exception(
+                    "Linear work item admission failed",
+                    issue=issue.identifier,
+                    workspace=workspace.folder,
+                    status=status,
                 )
-            else:
-                admitted = await admit_decision_issue(
-                    issue,
-                    workspace,
-                    boards[workspace.folder],
-                    status,
-                    admission,
-                )
+                continue
             if admitted is not None:
                 created.append(admitted)
     return created
@@ -172,6 +190,7 @@ async def reconcile_all_linear_work_items(
     boards: Mapping[str, LinearWorkspaceBoard],
     *,
     review_plan: LinearPlanReviewer,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
@@ -189,6 +208,7 @@ async def reconcile_all_linear_work_items(
                         account_boards,
                         public_source=account.config.public_source is not False,
                         review_plan=review_plan,
+                        broadcast_host_message=broadcast_host_message,
                     )
                 )
         except Exception:  # noqa: BLE001, RUF100 - one optional account must not stop other accounts.

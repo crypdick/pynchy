@@ -117,7 +117,8 @@ reviewer uses implementation judgment: ordinary drift can proceed, while a
 materially stale plan returns a complete replacement plan to `Awaiting Plan
 Approval` with an explanatory comment. A reviewer error also adds a comment and
 returns the issue to `Awaiting Plan Approval`. Neither outcome acquires a lease.
-Items approved without a marked plan skip this review.
+The issue's Discord thread posts when this check starts and whether it admitted
+work. Items approved without a marked plan skip this review.
 
 `linear_create_todo` creates an unapproved `Agent Proposed` item. An autonomous
 agent can't set `Ready for Planning`, `Human Approved`, or `Rejected`.
