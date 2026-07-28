@@ -119,6 +119,29 @@ _CREDENTIAL_NAMES = frozenset(
         "private_key",
     }
 )
+_CODEX_SKILLS_PATH = re.compile(
+    r"(?:^|/)\.codex/skills(?:/|$)|\$\{?codex_home\}?/skills(?:/|$)",
+    re.IGNORECASE,
+)
+_GENERATED_CODEX_SKILLS_WRITE_REASON = (
+    "Generated Codex skills are read-only; write durable skills under $PYNCHY_SKILLS_ROOT"
+)
+_SHELL_MUTATION_COMMANDS = frozenset(
+    {
+        "chmod",
+        "chown",
+        "cp",
+        "install",
+        "ln",
+        "mkdir",
+        "mv",
+        "rm",
+        "rmdir",
+        "tee",
+        "touch",
+        "truncate",
+    }
+)
 
 
 def _tool_key(tool_name: str) -> str:
@@ -244,6 +267,31 @@ def _persistence_path(path: str) -> bool:
     )
 
 
+def _generated_codex_skills_path(path: str) -> bool:
+    """Return whether a path targets Pynchy's generated Codex skill registry."""
+    return _CODEX_SKILLS_PATH.search(path.replace("\\", "/")) is not None
+
+
+def _command_writes_generated_codex_skills(command: str) -> bool:
+    """Detect ordinary shell mutations targeting the generated skill registry."""
+    if not _generated_codex_skills_path(command):
+        return False
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        tokens = command.split()
+    for index, token in enumerate(tokens):
+        if (
+            token in {">", ">>"}
+            and index + 1 < len(tokens)
+            and _generated_codex_skills_path(tokens[index + 1])
+        ):
+            return True
+        if ">" in token and _generated_codex_skills_path(token.rpartition(">")[2]):
+            return True
+    return bool({token.casefold() for token in tokens} & _SHELL_MUTATION_COMMANDS)
+
+
 def _credential_path(path: str) -> bool:
     normalized = path.replace("\\", "/").casefold()
     parts = {part for part in normalized.split("/") if part}
@@ -328,6 +376,11 @@ def _artifact_findings(artifact: SecurityArtifact) -> tuple[RuleFinding, ...]:
                 "PERSIST001",
                 "Writing to an autostart or persistence path is prohibited",
             ),
+            (
+                _command_writes_generated_codex_skills(artifact.value),
+                "SKILL001",
+                _GENERATED_CODEX_SKILLS_WRITE_REASON,
+            ),
         )
         findings.extend(
             RuleFinding(rule_id, reason) for matched, rule_id, reason in checks if matched
@@ -337,6 +390,13 @@ def _artifact_findings(artifact: SecurityArtifact) -> tuple[RuleFinding, ...]:
             RuleFinding(
                 "PERSIST001",
                 "Writing to an autostart or persistence path is prohibited",
+            )
+        )
+    elif artifact.kind is ArtifactKind.PATH_WRITE and _generated_codex_skills_path(artifact.value):
+        findings.append(
+            RuleFinding(
+                "SKILL001",
+                _GENERATED_CODEX_SKILLS_WRITE_REASON,
             )
         )
     elif _credential_taint_candidate(artifact):
