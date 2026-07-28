@@ -160,6 +160,8 @@ __all__ = [
     "interactive_message_workflow_id",
     "interrupted_turn_workflow_id",
     "learning_review_workflow_id",
+    "publish_scheduler_config",
+    "reconcile_schedules_with_config",
     "reset_temporal_scheduler_status",
     "scheduler_workflow_runner",
     "start_channel_reconciliation_workflow",
@@ -175,6 +177,20 @@ __all__ = [
 def temporal_scheduler_runtime_active() -> bool:
     """Return whether this process currently has an active Temporal runtime."""
     return _state.active_runtime is not None
+
+
+async def reconcile_schedules_with_config(config: SchedulerRuntimeConfig) -> None:
+    """Reconcile schedules against a validated candidate runtime snapshot."""
+    runtime = await _require_active_runtime()
+    await runtime.reconcile_schedules_with_config(config)
+
+
+def publish_scheduler_config(config: SchedulerRuntimeConfig) -> None:
+    """Publish a reconciled scheduler snapshot to the active runtime."""
+    runtime = _state.active_runtime
+    if runtime is None:
+        raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
+    runtime.scheduler_config = config
 
 
 def interrupted_turn_workflow_id(turn_id: str) -> str:
@@ -558,11 +574,15 @@ class TemporalSchedulerRuntime:
 
     async def reconcile_schedules(self) -> None:
         """Reconcile Pynchy's desired scheduled work into Temporal schedules."""
+        await self.reconcile_schedules_with_config(self.scheduler_config)
+
+    async def reconcile_schedules_with_config(self, config: SchedulerRuntimeConfig) -> None:
+        """Reconcile desired work using one explicit runtime snapshot."""
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         await reconcile_temporal_schedules(
             self,
-            scheduler_runtime=self.scheduler_config,
+            scheduler_runtime=config,
             get_tasks=get_all_tasks,
             get_host_jobs=get_all_host_jobs,
         )

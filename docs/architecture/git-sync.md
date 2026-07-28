@@ -23,12 +23,16 @@ A background loop polls every 5 seconds and detects three types of drift:
 |-----------|-----------------|--------|
 | **Origin drift** | Remote main has new commits (e.g. pushed from another machine) | Offer the configured admin a fetch-and-upgrade action; with `scheduler.auto_deploy = true`, pull, notify running agents, and deploy eligible source changes |
 | **Local HEAD drift** | Local HEAD differs from the SHA at last deploy (e.g. admin agent committed and pushed) | Offer the configured admin an upgrade action; with `scheduler.auto_deploy = true`, deploy eligible source changes |
-| **Config drift** | `.env`, layered `pynchy.toml`, `litellm.yaml`, or an automation changed | Trigger restart (no rebuild needed) |
+| **Config drift** | `.env`, restart-sensitive layered `pynchy.toml` fields, or `litellm.yaml` changed | Trigger restart (no rebuild needed) |
+| **Automation drift** | A file-backed automation definition or referenced prompt changed | Reconcile configured tasks and Temporal schedules without restarting |
 
 Source-file changes (anything under `src/` or `pyproject.toml`) trigger a full
 deploy with container rebuild. Restart-sensitive config changes trigger a
-lighter restart. Prompt and skill changes do not restart Pynchy; personalized
-skills refresh into session registries before the next turn.
+lighter restart. Valid automation changes reconcile configured task rows, host
+cron snapshots, and Temporal schedules after startup recovery completes.
+Invalid or incomplete edits keep the previous runtime snapshot and retry on a
+later poll. Personalized skills refresh into session registries before the next
+turn.
 `scheduler.auto_deploy` defaults to `false`; it only changes
 repository-revision updates, not direct local configuration changes.
 

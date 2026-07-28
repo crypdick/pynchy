@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import cast
-from unittest.mock import Mock
+from typing import Any, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import (
     ProfileConfig,
     Settings,
+    automation_projection,
     configuration_source_digest,
     get_settings,
     load_runtime_candidate,
@@ -25,18 +28,35 @@ from pynchy.host.orchestrator.api import (
     configure_config_refresh_runtime,
     refresh_host_config,
 )
+from pynchy.host.orchestrator.startup_readiness import StartupReadiness
+
+
+class _ConfigRefreshApp(app_module.PynchyApp):
+    """Focused app owner for live-configuration publication tests."""
+
+    def __init__(self, readiness: StartupReadiness, scheduler_runtime: object) -> None:
+        self.startup_readiness = readiness
+        self.workspaces = {}
+        self.scheduler_runtime = cast("Any", scheduler_runtime)
 
 
 @pytest.fixture(autouse=True)
 def _enable_runtime_sources(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(Settings.model_config, "env_file", ".env")
+
+    def publish_candidate(candidate: object, **_kwargs: object) -> None:
+        publish_settings(cast("Settings", candidate))
+
     configure_config_refresh_runtime(
         ConfigRefreshRuntime(
             project_root=Path(),
+            apply_candidate=AsyncMock(side_effect=publish_candidate),
+            automation_projection=lambda candidate: automation_projection(
+                cast("Settings", candidate)
+            ),
             configuration_source_digest=lambda _root: configuration_source_digest(Path.cwd()),
             get_settings=get_settings,
             load_runtime_candidate=load_runtime_candidate,
-            publish_settings=lambda candidate: publish_settings(cast("Settings", candidate)),
             restart_fingerprint=lambda candidate: restart_fingerprint(cast("Settings", candidate)),
             skill_policy_projection=lambda candidate: skill_policy_projection(
                 cast("Settings", candidate)
@@ -69,6 +89,22 @@ def _write_runtime_tree(root: Path, *, personalized: str = "") -> Path:
     return personalization / "pynchy.toml"
 
 
+def _write_automation(root: Path, *, prompt: str = "initial prompt") -> Path:
+    automations = root / "data/personalization/automations"
+    automations.mkdir()
+    prompt_path = automations / "prompt.md"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    (automations / "weekly.toml").write_text(
+        "schema_version = 1\n"
+        "\n[job]\n"
+        'workspace = "test"\n'
+        'schedule = "0 9 * * 1"\n'
+        'prompt_file = "prompt.md"\n',
+        encoding="utf-8",
+    )
+    return prompt_path
+
+
 def test_runtime_candidate_preserves_dotenv_and_environment_precedence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -91,7 +127,7 @@ def test_runtime_candidate_preserves_dotenv_and_environment_precedence(
         '[agent]\nmodel = "missing-route"\n',
     ],
 )
-def test_invalid_candidate_keeps_published_settings(
+async def test_invalid_candidate_keeps_published_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     personalized: str,
@@ -103,13 +139,13 @@ def test_invalid_candidate_keeps_published_settings(
     applied_hash = restart_fingerprint(published)
     config_path.write_text(personalized, encoding="utf-8")
 
-    result = refresh_host_config(applied_hash)
+    result = await refresh_host_config(applied_hash)
 
     assert result.status is ConfigRefreshStatus.INVALID
     assert get_settings() is published
 
 
-def test_source_change_during_load_defers_publication(
+async def test_source_change_during_load_defers_publication(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -122,25 +158,30 @@ def test_source_change_during_load_defers_publication(
     candidate = load_runtime_candidate()
 
     source_digest = Mock(side_effect=("before", "after"))
+
+    def publish_candidate(value: object, **_kwargs: object) -> None:
+        publish_settings(cast("Settings", value))
+
     configure_config_refresh_runtime(
         ConfigRefreshRuntime(
             project_root=tmp_path,
+            apply_candidate=AsyncMock(side_effect=publish_candidate),
+            automation_projection=lambda value: automation_projection(cast("Settings", value)),
             configuration_source_digest=source_digest,
             get_settings=get_settings,
             load_runtime_candidate=lambda: candidate,
-            publish_settings=lambda value: publish_settings(cast("Settings", value)),
             restart_fingerprint=lambda value: restart_fingerprint(cast("Settings", value)),
             skill_policy_projection=lambda value: skill_policy_projection(cast("Settings", value)),
         )
     )
 
-    result = refresh_host_config(applied_hash)
+    result = await refresh_host_config(applied_hash)
 
     assert result.status is ConfigRefreshStatus.DEFERRED
     assert get_settings() is published
 
 
-def test_pure_skill_policy_change_publishes_without_restart(
+async def test_pure_skill_policy_change_publishes_without_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -154,7 +195,7 @@ def test_pure_skill_policy_change_publishes_without_restart(
         encoding="utf-8",
     )
 
-    result = refresh_host_config(applied_hash)
+    result = await refresh_host_config(applied_hash)
 
     assert result.status is ConfigRefreshStatus.REFRESHED
     assert get_settings() is not published
@@ -170,7 +211,7 @@ def test_pure_skill_policy_change_publishes_without_restart(
         '[agent]\nname = "Changed"\n[profiles.base]\nskills = ["beta"]\n',
     ],
 )
-def test_restart_sensitive_and_mixed_changes_do_not_publish(
+async def test_restart_sensitive_and_mixed_changes_do_not_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     personalized: str,
@@ -182,7 +223,7 @@ def test_restart_sensitive_and_mixed_changes_do_not_publish(
     applied_hash = restart_fingerprint(published)
     config_path.write_text(personalized, encoding="utf-8")
 
-    result = refresh_host_config(applied_hash)
+    result = await refresh_host_config(applied_hash)
 
     assert result.status is ConfigRefreshStatus.RESTART_REQUIRED
     assert result.restart_hash != applied_hash
@@ -235,7 +276,124 @@ def test_restart_fingerprint_covers_raw_restart_owned_sources(
     assert restart_fingerprint(settings) != baseline
     litellm.write_text(original_litellm, encoding="utf-8")
 
-    automation = tmp_path / "data/personalization/automations/prompt.md"
-    automation.parent.mkdir()
-    automation.write_text("changed prompt", encoding="utf-8")
-    assert restart_fingerprint(settings) != baseline
+
+def test_automation_projection_ignores_files_absent_from_loaded_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    settings = load_runtime_candidate()
+    automations = tmp_path / "data/personalization/automations"
+    automations.mkdir()
+    (automations / "not-loaded.toml").touch()
+
+    assert automation_projection(settings) == ()
+
+
+async def test_automation_prompt_change_reconciles_without_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    prompt_path = _write_automation(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    published = load_runtime_candidate()
+    publish_settings(published)
+    applied_hash = restart_fingerprint(published)
+    before = automation_projection(published)
+    prompt_path.write_text("updated prompt", encoding="utf-8")
+
+    candidate = load_runtime_candidate()
+    assert restart_fingerprint(candidate) == applied_hash
+    assert automation_projection(candidate) != before
+
+    result = await refresh_host_config(applied_hash)
+
+    assert result.status is ConfigRefreshStatus.AUTOMATIONS_RECONCILED
+    assert get_settings() is not published
+
+
+async def test_automation_candidate_waits_for_startup_and_publishes_after_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    _write_automation(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    candidate = load_runtime_candidate()
+    readiness = StartupReadiness()
+    previous_runtime = object()
+    candidate_runtime = object()
+    app = _ConfigRefreshApp(readiness, previous_runtime)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        app_module,
+        "_scheduler_runtime_config",
+        lambda _settings: candidate_runtime,
+    )
+    monkeypatch.setattr(
+        app_module,
+        "reconcile_automation_jobs",
+        AsyncMock(side_effect=lambda *_args: calls.append("jobs")),
+    )
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "reconcile_schedules_with_config",
+        AsyncMock(side_effect=lambda *_args: calls.append("schedules")),
+    )
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "publish_scheduler_config",
+        lambda _runtime: calls.append("publish-scheduler"),
+    )
+    monkeypatch.setattr(app_module, "publish_settings", lambda _settings: calls.append("publish"))
+
+    task = asyncio.create_task(
+        app.apply_config_candidate(
+            candidate,
+            reconcile_automations=True,
+        )
+    )
+    await asyncio.sleep(0)
+    assert calls == []
+
+    readiness.mark_ready()
+    await task
+
+    assert calls == ["jobs", "schedules", "publish", "publish-scheduler"]
+    assert app.scheduler_runtime is candidate_runtime
+
+
+async def test_failed_automation_reconciliation_keeps_published_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    _write_automation(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    candidate = load_runtime_candidate()
+    readiness = StartupReadiness()
+    readiness.mark_ready()
+    previous_runtime = object()
+    app = _ConfigRefreshApp(readiness, previous_runtime)
+    publish = Mock()
+
+    monkeypatch.setattr(app_module, "_scheduler_runtime_config", lambda _settings: object())
+    monkeypatch.setattr(app_module, "reconcile_automation_jobs", AsyncMock())
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "reconcile_schedules_with_config",
+        AsyncMock(side_effect=RuntimeError("Temporal unavailable")),
+    )
+    monkeypatch.setattr(app_module, "publish_settings", publish)
+
+    with pytest.raises(RuntimeError, match="Temporal unavailable"):
+        await app.apply_config_candidate(
+            candidate,
+            reconcile_automations=True,
+        )
+
+    publish.assert_not_called()
+    assert app.scheduler_runtime is previous_runtime

@@ -39,6 +39,7 @@ from pynchy.config.api import (
     WorkspaceConfig,
     access,
     apply_tool_access,
+    automation_projection,
     configuration_source_digest,
     get_settings,
     load_runtime_candidate,
@@ -263,6 +264,7 @@ from pynchy.host.orchestrator.workspace_config import (
     configure_workspace_config_runtime,
     load_resolved_config,
     load_resolved_tool_access,
+    reconcile_automation_jobs,
     static_workspace_folder,
     update_profile_skill_policy,
 )
@@ -788,15 +790,43 @@ class PynchyApp(ThreadRouting):
             self.event_bus.emit,
         )
 
+    async def apply_config_candidate(
+        self,
+        candidate: object,
+        *,
+        reconcile_automations: bool,
+    ) -> None:
+        """Publish a validated candidate after its durable work converges."""
+        settings = cast("Settings", candidate)
+        if not reconcile_automations:
+            publish_settings(settings)
+            return
+
+        await self.startup_readiness.wait()
+        scheduler_runtime = _scheduler_runtime_config(settings)
+        await reconcile_automation_jobs(self.workspaces, settings)
+        await temporal_scheduler.reconcile_schedules_with_config(scheduler_runtime)
+
+        # Temporal has no transaction across schedule mutations. Keep the published
+        # execution snapshot visible until the idempotent reconciliation pass
+        # succeeds; a partial failure is retried by the next host-sync poll.
+        publish_settings(settings)
+        self.scheduler_runtime = scheduler_runtime
+        temporal_scheduler.publish_scheduler_config(scheduler_runtime)
+
     def _configure_runtime_dependencies(self, settings: Settings) -> None:
         """Wire concrete host adapters into subsystem-local runtime seams."""
         configure_config_refresh_runtime(
             ConfigRefreshRuntime(
                 project_root=settings.project_root,
+                apply_candidate=self.apply_config_candidate,
+                automation_projection=cast(
+                    "Callable[[object], object]",
+                    automation_projection,
+                ),
                 configuration_source_digest=configuration_source_digest,
                 get_settings=get_settings,
                 load_runtime_candidate=load_runtime_candidate,
-                publish_settings=cast("Callable[[object], None]", publish_settings),
                 restart_fingerprint=cast("Callable[[object], str]", restart_fingerprint),
                 skill_policy_projection=cast(
                     "Callable[[object], object]",

@@ -531,9 +531,11 @@ def reset_settings(monkeypatch):
                 last_notified_sha=last_notified_sha,
                 needs_deploy=needs_deploy,
                 probe_origin_main_sha=probe_origin_main_sha,
-                refresh_host_config=lambda config_hash: orchestrator_api.ConfigRefreshResult(
-                    orchestrator_api.ConfigRefreshStatus.UNCHANGED,
-                    config_hash,
+                refresh_host_config=AsyncMock(
+                    side_effect=lambda config_hash: orchestrator_api.ConfigRefreshResult(
+                        orchestrator_api.ConfigRefreshStatus.UNCHANGED,
+                        config_hash,
+                    )
                 ),
             )
         )

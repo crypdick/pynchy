@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from conftest import make_settings
@@ -123,9 +123,11 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     monkeypatch.setattr(
         git_sync,
         "refresh_host_config",
-        lambda _applied: ConfigRefreshResult(
-            ConfigRefreshStatus.RESTART_REQUIRED,
-            "new-config",
+        AsyncMock(
+            return_value=ConfigRefreshResult(
+                ConfigRefreshStatus.RESTART_REQUIRED,
+                "new-config",
+            )
         ),
     )
     monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
@@ -207,7 +209,7 @@ async def test_host_git_sync_publishes_skill_policy_without_deploy(
     monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
     monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
     monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
-    refresh = Mock(
+    refresh = AsyncMock(
         return_value=ConfigRefreshResult(
             ConfigRefreshStatus.REFRESHED,
             applied.config_hash,
@@ -221,7 +223,7 @@ async def test_host_git_sync_publishes_skill_policy_without_deploy(
     )
 
     assert await git_sync.run_host_git_sync() == "config_refreshed"
-    refresh.assert_called_once_with(applied.config_hash)
+    refresh.assert_awaited_once_with(applied.config_hash)
 
 
 async def test_host_git_sync_uses_restart_hash_from_validated_candidate(
@@ -244,7 +246,7 @@ async def test_host_git_sync_uses_restart_hash_from_validated_candidate(
     monkeypatch.setattr(
         git_sync,
         "refresh_host_config",
-        Mock(
+        AsyncMock(
             return_value=ConfigRefreshResult(
                 ConfigRefreshStatus.RESTART_REQUIRED,
                 "new-restart-hash",
@@ -295,7 +297,7 @@ async def test_code_deployment_state_suppresses_config_refresh(
     )
     monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
     monkeypatch.setattr(git_sync, "needs_deploy", lambda _old, _new: True)
-    refresh = Mock()
+    refresh = AsyncMock()
     monkeypatch.setattr(git_sync, "refresh_host_config", refresh)
     monkeypatch.setattr(
         git_sync,
@@ -313,7 +315,7 @@ async def test_code_deployment_state_suppresses_config_refresh(
             "approval": "update_pending",
         }[suppression]
     )
-    refresh.assert_not_called()
+    refresh.assert_not_awaited()
 
 
 async def test_external_git_sync_unavailable_fails_temporal_and_status(
