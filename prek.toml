@@ -101,7 +101,7 @@ files = "^src/"
 [[repos.hooks]]
 id = "check-test-file-length"
 name = "Enforce 600-logical-line test file budget"
-entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600 --baseline test-file-length-baseline.toml"
+entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600"
 language = "system"
 types = ["python"]
 files = "^tests/"

@@ -1,4 +1,0 @@
-# Transitional ratchet: these test modules must not grow and must lose this
-# entry once split below the 600-logical-line test budget.
-[files]
-"tests/conftest.py" = 929
