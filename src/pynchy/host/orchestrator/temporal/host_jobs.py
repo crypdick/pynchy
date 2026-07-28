@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import cast
 
@@ -54,7 +55,12 @@ async def run_database_host_job(job_id: str) -> str:
 
     scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
     try:
-        with scheduler_deps.automation_memory_dir(job.id) as memory_dir:
+        memory_context = (
+            scheduler_deps.automation_memory_dir(job.id)
+            if job.memory_enabled
+            else nullcontext(None)
+        )
+        with memory_context as memory_dir:
             await _run_database_host_job(job, memory_dir, scheduler_deps)
     except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(job_id, "error", str(exc))
@@ -74,7 +80,12 @@ async def run_config_host_cron_job(job_name: str) -> str:
         return "skipped"
 
     try:
-        with scheduler_deps.automation_memory_dir(f"host-cron-{job_name}") as memory_dir:
+        memory_context = (
+            scheduler_deps.automation_memory_dir(f"host-cron-{job_name}")
+            if job.memory_enabled
+            else nullcontext(None)
+        )
+        with memory_context as memory_dir:
             await _run_config_host_cron_job(
                 job_name,
                 job,
@@ -136,7 +147,8 @@ async def _run_database_host_job(
     log_shell_result(result, label="Database host job", job_id=job.id)
     _raise_for_failed_command(result, job.id)
 
-    scheduler_deps.sync_automation_memory(job.id)
+    if job.memory_enabled:
+        scheduler_deps.sync_automation_memory(job.id)
     await record_host_job_completion(job.id, completed=job.schedule_type == "once")
 
 

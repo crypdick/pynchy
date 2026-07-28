@@ -488,9 +488,9 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
         )
 
     session = cast("AgentSession | None", operations.get_session(GroupFolder(group.folder)))
-    if session is not None and session.is_alive and automation_memory_dir is not None:
-        # A scheduled occurrence needs its task-owned mount and environment even
-        # when this durable thread previously started an interactive worker.
+    if session is not None and session.is_alive and is_scheduled_task:
+        # A scheduled occurrence needs its exact task-owned mount set even when
+        # this durable thread previously ran with memory enabled or disabled.
         await operations.destroy_session(group.folder)
         session = None
 

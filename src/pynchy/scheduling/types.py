@@ -30,6 +30,7 @@ class ScheduledTask:
     last_result: str | None = None
     status: Literal["active", "paused", "completed", "cancelled"] = "active"
     created_at: str = ""
+    memory_enabled: bool = True
     repo_access: str | None = None
     input_source: str = "scheduled_task"
     config_job_name: str | None = None
@@ -134,6 +135,7 @@ class HostJob:
     cwd: str | None = None
     timeout_seconds: int = 600
     enabled: bool = True
+    memory_enabled: bool = True
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format consumed by task snapshots."""

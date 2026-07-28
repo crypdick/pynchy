@@ -617,6 +617,7 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
             cwd=job.cwd,
             timeout_seconds=job.timeout_seconds,
             quiet_on_success=job.quiet_on_success is True,
+            memory_enabled=job.memory,
         )
 
     repo_slugs: set[str] = set()

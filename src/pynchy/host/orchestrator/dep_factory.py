@@ -578,6 +578,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
                         "workspace": request.name,
                         "schedule": request.schedule,
                         "prompt": request.prompt,
+                        "memory": request.memory_enabled,
                     }
                 ),
             )
@@ -622,6 +623,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
                     schedule_type="cron",
                     schedule_value=request.schedule,
                     session_policy=SessionPolicy.RESET_BEFORE_RUN,
+                    memory_enabled=request.memory_enabled,
                     status="active",
                     created_at=datetime.now(UTC).isoformat(),
                 )

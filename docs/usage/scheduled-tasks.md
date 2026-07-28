@@ -21,6 +21,10 @@ pre-run gates, deterministic workspace commands, and host commands. Container
 agents see `/workspace/automation-memory`; host processes receive an absolute
 host path.
 
+Memory defaults on. Set `memory = false` in an automation's `[job]` table to
+omit the directory, mount, and environment variable for that automation.
+Disabling memory doesn't delete an existing task directory.
+
 This memory belongs to the task ID, not its thread or provider session, so both
 `continue` and `reset_before_run` preserve it. Pausing or removing a task leaves
 its directory intact. Renaming a config-backed job creates a new task ID and
