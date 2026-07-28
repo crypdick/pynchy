@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.event_bus import AgentTraceEvent, EventBus
+from pynchy.host.orchestrator.plugin_configuration import configure_observer_plugins
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import ChannelPluginContext, attach_observers
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
@@ -75,6 +76,15 @@ class TestObserverPluginRuntimeTypes:
             plugin_manager = get_plugin_manager({"sqlite-observer": False})
 
         assert attach_observers(plugin_manager, EventBus()) == []
+
+    def test_builtin_sqlite_observer_is_configured_and_attached(self):
+        """Startup composition should attach the registered SQLite observer."""
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            plugin_manager = get_plugin_manager()
+
+        configure_observer_plugins(plugin_manager)
+
+        assert isinstance(attach_observers(plugin_manager, EventBus())[0], SqliteEventObserver)
 
     def test_sqlite_observer_subscribes_to_event_bus(self):
         """SqliteEventObserver.subscribe should accept a real EventBus."""
