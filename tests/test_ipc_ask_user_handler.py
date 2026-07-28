@@ -9,9 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import AskUserDeps
-from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS
+from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS, dispatch
 from pynchy.plugins.api import Channel
 from pynchy.workspace.api import WorkspaceProfile
 

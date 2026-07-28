@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pynchy.plugins.integrations.gog._config import GogConfig, gog_runtime
-from pynchy.utils import filtered_process_environment
+from pynchy.process_environment import filtered_process_environment
 
 _MAX_OUTPUT_CHARS = 2_000_000
 _OAUTH_SERVICES = "gmail,contacts,docs,sheets,drive"

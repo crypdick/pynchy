@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from temporalio.service import RPCError
 
-from pynchy.canaries import (
+from pynchy.canaries.api import (
     register_canary_scenario,
     register_security_canary_scenario,
     registered_canary_scenarios,
@@ -166,6 +166,7 @@ from pynchy.plugins.integrations.operational_canaries import (
 )
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin, PeekabooConfig
 from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
+from pynchy.process_environment import filtered_process_environment
 from pynchy.state.api import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
@@ -215,7 +216,6 @@ from pynchy.state.api import (
     store_event,
     update_task,
 )
-from pynchy.utils import filtered_process_environment
 from pynchy.workspace.api import (
     CapabilityRule,
     WorkspaceProfile,  # beartype resolves composition callback annotations at runtime.

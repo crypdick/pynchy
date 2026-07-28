@@ -30,6 +30,7 @@ from pynchy.agent_protocol.api import (
     InFlightWorkKind,
 )
 from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig
+from pynchy.host.orchestrator.host_shell import ShellResult
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent
 from pynchy.scheduling.api import (
     ScheduledTask,
@@ -43,7 +44,6 @@ from pynchy.state import (
     init_test_database,
 )
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.utils import ShellResult
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )

@@ -9,7 +9,7 @@ import aiohttp
 import pluggy
 
 from pynchy.logger import logger
-from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
+from pynchy.plugins.speech.api import SpeechSynthesisResult, SpeechSynthesizerHealth
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

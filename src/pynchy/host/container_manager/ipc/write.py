@@ -16,7 +16,7 @@ import time
 from pathlib import Path  # noqa: TC003 - beartype resolves IPC write signatures at runtime.
 from typing import Any
 
-from pynchy.utils import write_json_atomic
+from pynchy.atomic_json import write_json_atomic
 
 _ipc_base_dir: Path | None = None
 

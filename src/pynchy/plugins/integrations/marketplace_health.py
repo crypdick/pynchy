@@ -16,7 +16,7 @@ from typing import Any, Literal
 import pluggy
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,

@@ -356,6 +356,37 @@ def compare_root_module_inbound_import_baseline(
     return diagnostics
 
 
+def package_public_surface_diagnostics(
+    modules: dict[str, SourceModule],
+    classified: dict[str, Package],
+    packages: tuple[Package, ...],
+    policy_path: Path,
+) -> list[Diagnostic]:
+    """Require one conventional façade for every public multi-module package."""
+    owned_module_counts: defaultdict[str, int] = defaultdict(int)
+    for module_name in modules:
+        package = classified.get(module_name)
+        if package is not None:
+            owned_module_counts[package.root] += 1
+
+    return [
+        Diagnostic(
+            policy_path.as_posix(),
+            0,
+            "architecture-policy",
+            (
+                f"multi-module package {package.root!r} must expose exactly "
+                f"{package.root}.api; declared public modules: "
+                f"{', '.join(sorted(package.public_modules))}"
+            ),
+        )
+        for package in packages
+        if owned_module_counts[package.root] > 1
+        and package.public_modules
+        and package.public_modules != {f"{package.root}.api"}
+    ]
+
+
 def check_architecture(
     root: Path,
     policy_path: Path,
@@ -366,6 +397,14 @@ def check_architecture(
     packages, diagnostics = resolve_packages(modules, policy, policy_path)
     classified, classification_diagnostics = classify_modules(modules, packages)
     diagnostics.extend(classification_diagnostics)
+    diagnostics.extend(
+        package_public_surface_diagnostics(
+            modules,
+            classified,
+            packages,
+            policy_path,
+        )
+    )
     dependencies, import_diagnostics = collect_dependencies(
         modules,
         classified,

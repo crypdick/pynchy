@@ -18,7 +18,8 @@ from pynchy.agent_protocol.api import (
     parse_container_output,
 )
 from pynchy.logger import logger
-from pynchy.utils import ProgressTimeoutError, filtered_process_environment, wait_for_progress
+from pynchy.process_environment import filtered_process_environment
+from pynchy.progress_wait import ProgressTimeoutError, wait_for_progress
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 IsInterrupted = Callable[[], bool]

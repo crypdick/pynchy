@@ -17,7 +17,7 @@ from pynchy.async_tasks import create_background_task
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.ipc import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
 )
 from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
@@ -108,7 +108,7 @@ from pynchy.plugins.api import (  # beartype resolves dependency adapter annotat
     NewMessage,
 )
 from pynchy.plugins.integrations.api import work_item_execution_to_dict
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.scheduling.api import (  # beartype resolves dependency adapter annotations at runtime.

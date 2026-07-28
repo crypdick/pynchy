@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pynchy.event_bus import MessageEvent
+from pynchy.host.orchestrator.host_shell import run_shell_command
 from pynchy.host.orchestrator.messaging.deps import DirectCommandDeps, DirectCommandOutput
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
-from pynchy.utils import run_shell_command
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves direct-command annotations at runtime.
 )

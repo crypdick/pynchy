@@ -64,9 +64,7 @@ runtime behavior behind these invariants.
 ## Dependency enforcement
 
 `architecture.toml` defines current roles, owned package roots, and exact public
-modules. It still lists legacy public modules for packages that have not
-completed their façade migration. Every cross-package import must pass two
-independent checks:
+modules. Every cross-package import must pass two independent checks:
 
 1. **Visibility:** The imported module appears in the target package's
    `public_modules` allowlist.
@@ -78,11 +76,12 @@ the same role do not receive automatic permission to depend on each other.
 Named composition-root modules may import private implementations to construct
 and wire them.
 
-The required end state for every multi-module package with cross-package
-consumers is one package-local `api.py` as its sole declared public module. The
-façade may consist entirely of curated re-exports; its job is to define the
-enforced public surface, not to add behavior. A single-module owned unit may
-expose its root module directly.
+Every public multi-module package must declare one package-local `api.py` as its
+sole public module; the architecture checker enforces that shape. The façade may
+consist entirely of curated re-exports; its job is to define the enforced public
+surface, not to add behavior. A single-module owned unit may expose its root
+module directly, and an implementation-only package may declare no public
+modules.
 
 A package façade migration finishes only when the pass:
 

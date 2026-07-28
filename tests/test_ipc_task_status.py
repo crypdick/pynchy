@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 
 from conftest import init_test_database, make_settings
 
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.scheduling.api import (

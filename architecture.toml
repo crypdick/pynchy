@@ -151,10 +151,22 @@ role = "foundation"
 public_modules = ["pynchy.logger"]
 
 [[packages]]
-name = "utils"
-root = "pynchy.utils"
+name = "atomic_json"
+root = "pynchy.atomic_json"
 role = "foundation"
-public_modules = ["pynchy.utils"]
+public_modules = ["pynchy.atomic_json"]
+
+[[packages]]
+name = "process_environment"
+root = "pynchy.process_environment"
+role = "foundation"
+public_modules = ["pynchy.process_environment"]
+
+[[packages]]
+name = "progress_wait"
+root = "pynchy.progress_wait"
+role = "foundation"
+public_modules = ["pynchy.progress_wait"]
 
 [[packages]]
 name = "async_tasks"
@@ -239,7 +251,7 @@ public_modules = ["pynchy.ipc_snapshots"]
 name = "actions"
 root = "pynchy.actions"
 role = "domain"
-public_modules = ["pynchy.actions"]
+public_modules = ["pynchy.actions.api"]
 
 [[packages]]
 name = "event_bus"
@@ -257,13 +269,13 @@ public_modules = ["pynchy.plugins.api"]
 name = "plugin_speech_api"
 root = "pynchy.plugins.speech"
 role = "domain"
-public_modules = ["pynchy.plugins.speech", "pynchy.plugins.speech._api"]
+public_modules = ["pynchy.plugins.speech.api"]
 
 [[packages]]
 name = "plugin_tunnel_api"
 root = "pynchy.plugins.tunnels"
 role = "domain"
-public_modules = ["pynchy.plugins.tunnels", "pynchy.plugins.tunnels._api"]
+public_modules = ["pynchy.plugins.tunnels.api"]
 
 [[packages]]
 name = "channel_plugin_api"

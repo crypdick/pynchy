@@ -15,8 +15,8 @@ import pytest
 from conftest import NullChannel, NullIpcDeps, init_test_database, make_settings
 
 from pynchy.config.api import CommandCenterConfig
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.scheduling.api import SessionPolicy

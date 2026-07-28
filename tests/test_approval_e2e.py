@@ -16,8 +16,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
+import pynchy.host.container_manager.ipc.handlers_approval as handlers_approval
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy import state
-from pynchy.host.container_manager.ipc import handlers_approval, registry
+from pynchy.atomic_json import write_json_atomic
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.approval import (
@@ -29,7 +31,6 @@ from pynchy.host.container_manager.security.gate import create_gate, destroy_gat
 from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 from pynchy.host.orchestrator.messaging.deps import ApprovalRuntimeOperations
 from pynchy.plugins.api import OutboundEventType
-from pynchy.utils import write_json_atomic
 from pynchy.workspace.api import (
     ServiceTrustConfig,
     WorkspaceProfile,

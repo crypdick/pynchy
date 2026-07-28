@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
     recover_ipc_runtime,
     start_ipc_watcher,

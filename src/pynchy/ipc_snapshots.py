@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves snapshot paths at runtime.
 from typing import Any
 
-from pynchy.utils import write_json_atomic
+from pynchy.atomic_json import write_json_atomic
 
 
 def write_tasks_snapshot(

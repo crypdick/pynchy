@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy import state
-from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 from pynchy.host.container_manager.security.cop import (
     CopCommandDecision,

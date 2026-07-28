@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase
 
-from pynchy.canaries import declared_canary_scenarios
+from pynchy.canaries.api import declared_canary_scenarios
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.state import (

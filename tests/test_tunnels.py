@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pluggy
 
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
+from pynchy.plugins.tunnels.api import TunnelProvider, check_tunnels
 
 
 def _get_pm():

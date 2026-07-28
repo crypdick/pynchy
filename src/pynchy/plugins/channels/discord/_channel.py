@@ -34,7 +34,7 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (

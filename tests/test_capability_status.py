@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy import state
-from pynchy.actions import (
+from pynchy.actions.api import (
     ActionId,
     ActionSpec,
     ActionSurface,
@@ -26,7 +27,6 @@ from pynchy.config.api import (
     WorkspaceConfig,
     apply_tool_access,
 )
-from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     build_workspace_security,

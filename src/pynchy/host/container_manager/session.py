@@ -53,7 +53,7 @@ from pynchy.identifiers import (
     GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.utils import ProgressTimeoutError, wait_for_progress
+from pynchy.progress_wait import ProgressTimeoutError, wait_for_progress
 
 
 class SessionDiedError(Exception):

@@ -10,7 +10,7 @@ from collections.abc import (  # capability operations are stored at runtime.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from pynchy.actions import ActionId, ActionSpec, EvidenceRequirement
+from pynchy.actions.api import ActionId, ActionSpec, EvidenceRequirement
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     CapabilityProbeContext,

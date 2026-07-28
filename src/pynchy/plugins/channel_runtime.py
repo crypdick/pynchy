@@ -30,7 +30,7 @@ from pynchy.plugins.contracts import (  # noqa: TC001 - beartype resolves these 
     InboundAudioProcessingResult,
     NewMessage,
 )
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (

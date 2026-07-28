@@ -23,10 +23,10 @@ from pynchy.config.api import (
 from pynchy.deployments import (
     DeployChangeKind,
 )
+from pynchy.host.orchestrator.host_shell import ShellResult
 from pynchy.scheduling.api import (
     HostJob,
 )
-from pynchy.utils import ShellResult
 from tests.temporal_scheduler_support import (
     DeduplicatingFakeScheduleClient,
     FakeScheduleClient,

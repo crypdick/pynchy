@@ -8,7 +8,7 @@ from dataclasses import FrozenInstanceError, replace
 import pluggy
 import pytest
 
-from pynchy.actions import ACTION_SPECS, ActionId, ActionSpec, ActionSurface, ActionTransport
+from pynchy.actions.api import ACTION_SPECS, ActionId, ActionSpec, ActionSurface, ActionTransport
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     evaluate_host_action_policy,

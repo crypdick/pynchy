@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.config.api import (
     MatrixConnectionConfig,
     MatrixEndpointConfig,

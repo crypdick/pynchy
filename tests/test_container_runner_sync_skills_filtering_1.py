@@ -21,7 +21,7 @@ from pynchy.agent_protocol.api import (
     input_to_dict,
 )
 from pynchy.host.container_manager import session as session_mod
-from pynchy.utils import ProgressTimeoutError
+from pynchy.progress_wait import ProgressTimeoutError
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )
