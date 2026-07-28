@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.config.api import (
     AgentConfig,
     CanaryConfig,

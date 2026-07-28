@@ -212,6 +212,25 @@ def test_public_surface_and_role_direction_are_independent(tmp_path: Path) -> No
     assert "expose names through acme.adapters.api" in diagnostics[0].message
 
 
+def test_public_multi_module_package_must_expose_only_api(tmp_path: Path) -> None:
+    policy = _policy().replace(
+        'public_modules = ["acme.domain.api"]',
+        'public_modules = ["acme.domain", "acme.domain.api"]',
+    )
+    _initialize_repo(tmp_path, "", policy=policy)
+
+    diagnostics, current = _check(tmp_path)
+
+    assert current == []
+    assert [(item.path, item.code) for item in diagnostics] == [
+        ("architecture.toml", "architecture-policy")
+    ]
+    assert (
+        "multi-module package 'acme.domain' must expose exactly acme.domain.api"
+        in diagnostics[0].message
+    )
+
+
 def test_exact_baseline_allows_only_recorded_rule_and_import_occurrences(
     tmp_path: Path,
 ) -> None:

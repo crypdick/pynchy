@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy import state
-from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.plugins.api import OutboundEventType
 from pynchy.workspace.api import (

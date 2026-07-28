@@ -11,7 +11,7 @@ from typing import Any
 import pluggy
 from pydantic import ValidationError
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.plugins.api import (
     ApprovalContract,
     ApprovalMode,

@@ -8,6 +8,7 @@ from typing import cast
 
 from temporalio import activity
 
+from pynchy.host.orchestrator.host_shell import ShellResult, log_shell_result, run_shell_command
 from pynchy.host.orchestrator.scheduler_deps import (
     ConfigHostCronJob,  # noqa: TC001 - beartype resolves config host-job annotations at runtime.
     SchedulerDependencies,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
@@ -25,7 +26,6 @@ from pynchy.scheduling.api import (
     HostJob,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
-from pynchy.utils import ShellResult, log_shell_result, run_shell_command
 
 
 def _resolve_job_cwd(cwd: str | None, project_root: Path) -> str:

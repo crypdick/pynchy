@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,

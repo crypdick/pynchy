@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
-from pynchy.host.container_manager.ipc import registry
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
 
 

@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database
 
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.orchestrator.host_shell import ShellResult
 from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 from pynchy.host.orchestrator.temporal.runtime_state import (
     TemporalActivityInfo,
@@ -22,7 +23,6 @@ from pynchy.state import (
     get_host_job_by_id,
     get_host_job_by_name,
 )
-from pynchy.utils import ShellResult
 
 if TYPE_CHECKING:
     from pathlib import Path

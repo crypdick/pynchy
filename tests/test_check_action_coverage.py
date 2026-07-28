@@ -13,7 +13,7 @@ from scripts.prek_hooks.check_action_coverage import (
     pytest_collection_command,
 )
 
-from pynchy.actions import ActionId, ActionSpec
+from pynchy.actions.api import ActionId, ActionSpec
 
 
 def _spec(action_id: str) -> ActionSpec:

@@ -21,7 +21,7 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.actions import ActionSpec
+    from pynchy.actions.api import ActionSpec
     from pynchy.plugins.capabilities import HostActionRegistration
     from pynchy.plugins.channel_runtime import ChannelPluginContext
     from pynchy.plugins.computer_use import ComputerUseBackend
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
     )
     from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
-    from pynchy.plugins.speech import SpeechSynthesizer
-    from pynchy.plugins.tunnels import TunnelProvider
+    from pynchy.plugins.speech.api import SpeechSynthesizer
+    from pynchy.plugins.tunnels.api import TunnelProvider
     from pynchy.plugins.webhooks import WebhookRoute
 
 hookspec = pluggy.HookspecMarker("pynchy")

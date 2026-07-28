@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.state import (
     create_host_job,
     get_all_host_jobs,

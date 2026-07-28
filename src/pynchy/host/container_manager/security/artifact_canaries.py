@@ -25,7 +25,7 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager.ipc import IpcDeps
+    from pynchy.host.container_manager.ipc.deps import IpcDeps
 
 
 @dataclass(frozen=True)

@@ -41,12 +41,33 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves terminal outcome annotations at runtime.
     TurnOutcome,
 )
-from pynchy.utils import IdleTimer
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 SCHEDULED_TURN_INTERRUPTED = "__scheduled_turn_interrupted__"
+
+
+class _IdleTimer:
+    """Resettable scheduled-turn idle timer."""
+
+    def __init__(self, timeout: float, callback: Callable[[], None]) -> None:
+        self._timeout = timeout
+        self._callback = callback
+        self._handle: asyncio.TimerHandle | None = None
+        self._loop = asyncio.get_running_loop()
+
+    def reset(self) -> None:
+        """Cancel any pending timer and start a fresh countdown."""
+        if self._handle is not None:
+            self._handle.cancel()
+        self._handle = self._loop.call_later(self._timeout, self._callback)
+
+    def cancel(self) -> None:
+        """Cancel the timer without firing the callback."""
+        if self._handle is not None:
+            self._handle.cancel()
+            self._handle = None
 
 
 @dataclass(frozen=True)
@@ -102,7 +123,7 @@ def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
 
 def _scheduled_idle_timer(
     request: TaskAgentRequest,
-) -> IdleTimer | None:
+) -> _IdleTimer | None:
     if not request.idle_enabled:
         return None
 
@@ -110,7 +131,7 @@ def _scheduled_idle_timer(
         logger.debug("Scheduled task idle timeout, closing stdin", task_id=request.task.id)
         request.deps.queue.close_stdin(RuntimeId(request.group.folder))
 
-    return IdleTimer(request.idle_timeout, _idle_timeout_callback)
+    return _IdleTimer(request.idle_timeout, _idle_timeout_callback)
 
 
 def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
@@ -151,7 +172,7 @@ def _task_output_handler(
     request: TaskAgentRequest,
     state: _TaskAgentStreamState,
     turn_id: str,
-    idle_timer: IdleTimer | None,
+    idle_timer: _IdleTimer | None,
 ) -> OnOutput:
     async def _on_output(streamed: ContainerOutput) -> None:
         sent = await request.deps.handle_streamed_output(

@@ -28,6 +28,7 @@ from pynchy.agent_protocol.api import (
     ContainerInput,
     ContainerOutput,
 )
+from pynchy.atomic_json import write_json_atomic
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime, run_declared_canaries
 from pynchy.canary_contracts import (  # noqa: TC001 - beartype resolves method annotations.
     CanaryRun,
@@ -300,7 +301,7 @@ from pynchy.plugins.runtimes.api import (
     ensure_agent_image_available,
     get_runtime,
 )
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves app annotations at runtime.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.scheduling.api import (
@@ -331,11 +332,10 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.utils import write_json_atomic
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager.ipc import IpcDeps
+    from pynchy.host.container_manager.ipc.deps import IpcDeps
 
 from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
     LearningPacket,

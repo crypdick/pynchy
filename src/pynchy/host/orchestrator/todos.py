@@ -21,7 +21,7 @@ from pathlib import (
 )
 from typing import Any, cast
 
-from pynchy.utils import write_json_atomic
+from pynchy.atomic_json import write_json_atomic
 
 
 def _todos_path(data_dir: Path, group_folder: str) -> Path:

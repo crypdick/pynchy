@@ -22,7 +22,6 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.state.api import clear_session, store_message_direct
-from pynchy.utils import generate_message_id
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -30,6 +29,11 @@ from pynchy.workspace.api import (
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]
 EmitEventFn = Callable[..., None]
+
+
+def _generate_message_id(prefix: str) -> str:
+    """Generate the timestamp-shaped identifiers used for host-authored messages."""
+    return f"{prefix}-{int(datetime.now(UTC).timestamp() * 1000)}"
 
 
 class MessageBroadcaster:
@@ -102,7 +106,7 @@ class HostMessageBroadcaster:
         """
         ts = datetime.now(UTC).isoformat()
         await request.store_fn(
-            message_id=generate_message_id(request.id_prefix),
+            message_id=_generate_message_id(request.id_prefix),
             chat_jid=request.chat_jid,
             sender=request.sender,
             sender_name=request.sender_name,

@@ -7,7 +7,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves annotations at 
 )
 from typing import TYPE_CHECKING, Protocol
 
-from pynchy.actions import ACTION_SPECS
+from pynchy.actions.api import ACTION_SPECS
 from pynchy.config.jobs import (  # noqa: TC001 - beartype resolves annotations at runtime.
     JobConfig,
 )

@@ -26,7 +26,7 @@ from agent_runner.agent_tools import (
     use_agent_tool_runtime,
 )
 
-from pynchy.actions import ACTION_SPECS, ActionTransport
+from pynchy.actions.api import ACTION_SPECS, ActionTransport
 
 
 def _read_request_file(path: Path) -> tuple[dict, dict]:

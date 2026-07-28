@@ -13,8 +13,8 @@ import pytest
 from conftest import NullIpcDeps
 
 from pynchy.config.api import CalDAVConfig, CalDAVServerConfig, CalDAVTool
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.plugins.integrations.caldav import (
     CalDAVMcpServerPlugin,

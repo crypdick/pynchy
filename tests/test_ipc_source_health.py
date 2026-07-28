@@ -15,8 +15,8 @@ from pynchy.config.api import (
     MessagingSourceHealthConfig,
     WhatsAppConnectionConfig,
 )
-from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.state import init_test_database, store_message_direct

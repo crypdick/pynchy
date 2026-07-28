@@ -21,7 +21,7 @@ from dataclasses import dataclass
 import aiohttp
 
 from pynchy.logger import logger
-from pynchy.utils import filtered_process_environment
+from pynchy.process_environment import filtered_process_environment
 
 
 def docker_available() -> bool:

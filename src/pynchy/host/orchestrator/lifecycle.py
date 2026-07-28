@@ -21,12 +21,15 @@ from typing import Any
 
 import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
+import pynchy.plugins.speech.api as speech_plugins
+import pynchy.plugins.tunnels.api as tunnel_plugins
 from pynchy.async_tasks import create_background_task
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config.api import get_settings
 from pynchy.host.audio import process_inbound_audio_attachments, transcribe_audio_file
 from pynchy.host.container_manager import gateway as gateway_manager
-from pynchy.host.container_manager import ipc as ipc_manager
+from pynchy.host.container_manager.ipc.bootstrap import register_builtin_handlers
+from pynchy.host.container_manager.ipc.watcher import start_ipc_watcher
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.git_ops.api import reconcile_worktrees_at_startup
 from pynchy.host.orchestrator import adapters as orchestrator_adapters
@@ -51,8 +54,6 @@ from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.logger import logger
-from pynchy.plugins import speech as speech_plugins
-from pynchy.plugins import tunnels as tunnel_plugins
 from pynchy.plugins.api import (
     ChannelPluginContext,
     ConnectionRuntimeContext,
@@ -425,16 +426,12 @@ async def _prepare_and_bind_control_plane(
 
 
 def _start_ipc_watcher(app: PynchyApp) -> None:
-    """Start IPC only after the deploy continuation is finalized."""
-    app.subsystem_tasks.add(
-        create_background_task(
-            ipc_manager.start_ipc_watcher(
-                dep_factory.make_ipc_deps(app),
-                ipc_base_dir=get_settings().data_dir / "ipc",
-            ),
-            name="ipc-watcher",
-        )
+    register_builtin_handlers()
+    watcher = start_ipc_watcher(
+        dep_factory.make_ipc_deps(app),
+        ipc_base_dir=get_settings().data_dir / "ipc",
     )
+    app.subsystem_tasks.add(create_background_task(watcher, name="ipc-watcher"))
 
 
 async def _start_temporal_scheduler(app: PynchyApp) -> None:

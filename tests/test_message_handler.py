@@ -20,6 +20,7 @@ from pynchy.agent_protocol.api import (
     InFlightWorkKind,
 )
 from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator.host_shell import ShellResult
 from pynchy.host.orchestrator.messaging.pipeline import (
     execute_direct_command,
     intercept_special_command,
@@ -34,7 +35,6 @@ from pynchy.state import (
     init_test_database,
     store_message,
 )
-from pynchy.utils import ShellResult
 from tests.message_handler_support import (
     _make_deps,
     _make_group,

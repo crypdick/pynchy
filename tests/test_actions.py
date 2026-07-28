@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.actions import (
+from pynchy.actions.api import (
     ACTION_SPECS,
     ActionId,
     ActionSpec,
