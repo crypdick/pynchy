@@ -24,6 +24,7 @@ from pynchy.agent_protocol.api import (
 from pynchy.deployments import DeployChangeKind
 from pynchy.host.orchestrator.deploy import (
     DeployGitRuntime,
+    build_container_image,
     configure_deploy_git_runtime,
     finalize_deploy,
     rollback_deploy_checkout,
@@ -322,3 +323,21 @@ class TestRollbackDeployCheckout:
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert continuation["interrupted_turns"] == []
         assert "active_sessions" not in continuation
+
+
+class TestBuildContainerImage:
+    """Tests for the bounded container-image build invocation."""
+
+    def test_uses_the_short_default_timeout(self, tmp_path: Path) -> None:
+        build_script = tmp_path / "src" / "pynchy" / "agent" / "build.sh"
+        build_script.parent.mkdir(parents=True)
+        build_script.touch()
+        completed = subprocess.CompletedProcess(
+            args=[str(build_script)], returncode=0, stdout="", stderr=""
+        )
+
+        with patch("pynchy.host.orchestrator.deploy.subprocess.run", return_value=completed) as run:
+            result = build_container_image(tmp_path)
+
+        assert result.success is True
+        assert run.call_args.kwargs["timeout"] == 180
