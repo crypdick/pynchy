@@ -175,12 +175,15 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
     if [ "$RUNTIME" = "container" ]; then
         echo "  Serializing builds for Apple Container"
     fi
-    cd "${SCRIPT_DIR}/../../.."  # project root — Dockerfiles use paths relative to it
     MCP_FAILED=0
     for df in "${MCP_DIR}"/*.Dockerfile; do
         base="$(basename "$df" .Dockerfile)"
         mcp_image="pynchy-mcp-${base}:${TAG}"
         mcp_fingerprint=""
+        mcp_context="$MCP_DIR"
+        if [ "$base" = "notebook" ]; then
+            mcp_context="$PROJECT_ROOT/src/pynchy/plugins/integrations"
+        fi
         if [ "$RUNTIME" = "container" ]; then
             # Normal deploys reuse content-identical MCP images. Scheduled
             # maintenance sets PYNCHY_REBUILD_MCP=1 to refresh floating bases.
@@ -192,7 +195,7 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
         fi
         echo "  Building ${mcp_image} from ${df}"
         if [ "$RUNTIME" = "container" ]; then
-            if ! $RUNTIME build -t "${mcp_image}" -f "${df}" .; then
+            if ! $RUNTIME build -t "${mcp_image}" -f "${df}" "$mcp_context"; then
                 echo "MCP image build failed: ${mcp_image}"
                 MCP_FAILED=1
             else
@@ -201,7 +204,7 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
                 fi
             fi
         else
-            $RUNTIME build -t "${mcp_image}" -f "${df}" . &
+            $RUNTIME build -t "${mcp_image}" -f "${df}" "$mcp_context" &
             MCP_PIDS+=($!)
         fi
     done

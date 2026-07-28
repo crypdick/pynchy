@@ -80,6 +80,27 @@ def test_build_script_prunes_before_and_after_build(tmp_path: Path) -> None:
     assert any(call.startswith("build -t pynchy-agent:latest") for call in result.runtime_calls)
 
 
+def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
+    result = _run_build_script(tmp_path)
+    project_root = Path(__file__).resolve().parents[1]
+    mcp_dir = project_root / "src" / "pynchy" / "agent" / "mcp"
+    integrations_dir = project_root / "src" / "pynchy" / "plugins" / "integrations"
+
+    assert (
+        f"build -t pynchy-mcp-gcal:latest -f {mcp_dir / 'gcal.Dockerfile'} {mcp_dir}"
+        in result.runtime_calls
+    )
+    assert (
+        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {mcp_dir}"
+        in result.runtime_calls
+    )
+    notebook_build = (
+        f"build -t pynchy-mcp-notebook:latest -f {mcp_dir / 'notebook.Dockerfile'} "
+        f"{integrations_dir}"
+    )
+    assert notebook_build in result.runtime_calls
+
+
 def test_build_script_refuses_build_when_preflight_prune_fails(tmp_path: Path) -> None:
     result = _run_build_script(tmp_path, fail_prune_call=1)
 

@@ -6,9 +6,9 @@
 # single Server instance that crashes on reconnection ("Already connected
 # to a transport").  streamableHttp handles multiple sessions correctly.
 #
-# Build: docker build -t pynchy-mcp-gdrive -f src/pynchy/agent/mcp/gdrive.Dockerfile .
+# Build: docker build -t pynchy-mcp-gdrive -f src/pynchy/agent/mcp/gdrive.Dockerfile src/pynchy/agent/mcp
 FROM mcp/gdrive:latest
 RUN npm install -g supergateway
-COPY src/pynchy/agent/mcp/gdrive-wrapper.mjs /app/gdrive-wrapper.mjs
+COPY gdrive-wrapper.mjs /app/gdrive-wrapper.mjs
 ENV PORT=3100
 ENTRYPOINT ["sh", "-c", "supergateway --stdio 'node /app/gdrive-wrapper.mjs' --outputTransport streamableHttp --port $PORT"]
