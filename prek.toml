@@ -139,6 +139,14 @@ pass_filenames = false
 always_run = true
 
 [[repos.hooks]]
+id = "check-coverage-ratchet"
+name = "Forbid lowering the coverage ratchet"
+entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
 id = "check-test-simple-namespace"
 name = "Ban SimpleNamespace in tests"
 entry = "uv run python scripts/prek_hooks/check_test_simple_namespace.py"
@@ -201,6 +209,15 @@ files = "^(src/pynchy/.*action.*\\.py|tests/|scripts/prek_hooks/check_action_cov
 id = "pytest"
 name = "Run host tests with branch coverage"
 entry = "uv run pytest --cov=pynchy --cov-report=term-missing"
+language = "system"
+pass_filenames = false
+files = "^(src/|tests/)"
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "update-coverage-ratchet"
+name = "Raise the coverage ratchet from the full test run"
+entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"
