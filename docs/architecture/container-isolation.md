@@ -23,7 +23,7 @@ The default runtime on macOS. Uses Apple's native container framework for lower 
 
 ## Container Lifecycle
 
-Pynchy labels agent containers and removes stopped agent containers when it observes a session exit or starts the host service. Running or paused agent containers owned by an active in-process session stay protected. Unowned running or paused agent containers are reaped after `[container].orphan_reap_age_ms` (default: `604800000`, seven days). Before startup image validation, Pynchy removes stale build-only state and prunes dangling image layers while preserving tagged images. It repeats that cleanup after Pynchy-controlled image builds. Timed-out host commands first receive `SIGTERM` as a process group so shell cleanup traps can run, then receive `SIGKILL` only if the group outlives the grace period.
+Pynchy labels agent containers and removes stopped agent containers when it observes a session exit or starts the host service. Running or paused agent containers owned by an active in-process session stay protected. Unowned running or paused agent containers are reaped after `[container].orphan_reap_age_ms` (default: `604800000`, seven days). Before startup image validation, Pynchy prunes dangling image layers while preserving tagged images and a healthy Apple Container BuildKit cache. A failed Apple Container build discards its builder before the next attempt. Timed-out host commands first receive `SIGTERM` as a process group so shell cleanup traps can run, then receive `SIGKILL` only if the group outlives the grace period.
 
 ## Container Mounts
 

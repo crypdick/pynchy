@@ -40,7 +40,6 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
     ),
     agent_action("memory.forget", "sqlite-memory", "Delete a memory.", "forget_memory"),
     agent_action("memory.list", "sqlite-memory", "List memories in a workspace.", "list_memories"),
-    agent_action("task.schedule", "agent-tools", "Create a scheduled agent task.", "schedule_task"),
     agent_action("task.list", "agent-tools", "List scheduled tasks.", "list_tasks"),
     agent_action("task.pause", "agent-tools", "Pause a scheduled task.", "pause_task"),
     agent_action("task.resume", "agent-tools", "Resume a scheduled task.", "resume_task"),
