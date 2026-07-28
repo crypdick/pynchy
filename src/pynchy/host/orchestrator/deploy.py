@@ -24,6 +24,8 @@ from pynchy.logger import logger
 from pynchy.state import api as pynchy_state
 from pynchy.utils import write_json_atomic
 
+_CONTAINER_BUILD_TIMEOUT_SECONDS = 180
+
 
 @dataclass
 class BuildResult:
@@ -109,7 +111,9 @@ def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
     return RollbackResult(success=True, actual_sha=actual_sha)
 
 
-def build_container_image(project_root: Path, *, timeout: int = 600) -> BuildResult:
+def build_container_image(
+    project_root: Path, *, timeout: int = _CONTAINER_BUILD_TIMEOUT_SECONDS
+) -> BuildResult:
     """Run src/pynchy/agent/build.sh to rebuild the container image.
 
     Returns a BuildResult so callers can decide how to handle success/failure.
@@ -120,6 +124,8 @@ def build_container_image(project_root: Path, *, timeout: int = 600) -> BuildRes
         logger.warning("Container rebuild requested but build.sh not found")
         return BuildResult(success=True, skipped=True)
 
+    # A build that exceeds this limit signals a problem. Check whether its build
+    # context is bundling unnecessary files before increasing the timeout.
     logger.info("Rebuilding container image...")
     result = subprocess.run(  # noqa: S603 - executable is the repo-local build.sh path and no shell is used.
         [str(build_script)],
