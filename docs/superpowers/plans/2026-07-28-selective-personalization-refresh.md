@@ -24,7 +24,20 @@ The profile name and every other `pynchy.toml` field remain restart-sensitive. A
 
 Skill file content under `data/personalization/skills/` and prompt content already refresh without a restart. This plan does not change those paths.
 
-Automations remain restart-sensitive. Hot-reconciling automations would require a separate plan covering agent jobs, host cron jobs, Temporal schedules, workspace registration, and removal semantics.
+Every other personalization change remains restart-sensitive. The follow-up
+work is split into bounded design briefs:
+
+- [Automation hot reconciliation](../future-work/automation-hot-reconciliation.md)
+  covers agent jobs, host cron jobs, and Temporal schedules.
+- [Workspace topology hot reconciliation](../future-work/workspace-topology-hot-reconciliation.md)
+  covers workspace registrations, threads, profile assignments, and removals.
+- [Affected-workspace runtime policy refresh](../future-work/workspace-runtime-policy-refresh.md)
+  classifies remaining workspace policy by whether it can refresh before the
+  next turn, requires affected-session retirement, or must retain a host
+  restart.
+
+These briefs are not implementation plans. Promote one to a dated plan only
+after its entry criteria are resolved.
 
 ## File map
 
@@ -1003,9 +1016,10 @@ git log --oneline main..HEAD
 
 Expected:
 
-- Only the files in this plan changed.
+- Implementation changes are limited to the files named by Tasks 1-4.
 - No automation reconciliation or generic settings hot-reload code exists.
-- Four implementation/documentation commits appear after the plan commit.
+- The planning commits are followed by the four implementation and
+  documentation commits described above.
 
 - [ ] **Step 5: Use Pynchy's managed delivery path**
 
