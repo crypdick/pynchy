@@ -13,6 +13,13 @@ from pynchy.host.orchestrator.action_intents import (
 )
 from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.config_refresh import (
+    ConfigRefreshResult,
+    ConfigRefreshRuntime,
+    ConfigRefreshStatus,
+    configure_config_refresh_runtime,
+    refresh_host_config,
+)
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -99,6 +106,9 @@ def resolve_agent_core(
 
 __all__ = [
     "PENDING_QUESTION_TIMEOUT_SECONDS",
+    "ConfigRefreshResult",
+    "ConfigRefreshRuntime",
+    "ConfigRefreshStatus",
     "ContainerRuntimeOperations",
     "ConversationControlRequest",
     "ConversationWorkspaceContext",
@@ -109,6 +119,7 @@ __all__ = [
     "SessionManager",
     "TextFormatter",
     "build_container_image",
+    "configure_config_refresh_runtime",
     "dispatch_interrupted_turn",
     "ensure_conversation_workspace",
     "ensure_scheduled_task_binding",
@@ -123,6 +134,7 @@ __all__ = [
     "policy_approval_timestamp",
     "prepare_action_intent",
     "reconcile_all_channels",
+    "refresh_host_config",
     "register_runtime_workspace_restriction",
     "resolve_admin_notification_jid",
     "resolve_agent_core",
