@@ -19,6 +19,7 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING
 
+from pynchy.async_tasks import create_background_task
 from pynchy.conversation.api import (
     ConversationClaimId,
     ConversationId,
@@ -59,7 +60,6 @@ from pynchy.plugins.integrations.matrix_route_registry import (
 from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001 - beartype resolves runtime route annotations.
     ResolvedMatrixRoute,
 )
-from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from asyncio import Task

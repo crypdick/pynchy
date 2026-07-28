@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import discord
 
+from pynchy.async_tasks import create_background_task
 from pynchy.discord import DiscordChatTarget, DiscordConnectionSettings, resolve_discord_chat_target
 from pynchy.host.orchestrator.api import (  # beartype resolves this runtime annotation.
     RenderedMessage,
@@ -36,7 +37,6 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
 from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
 )

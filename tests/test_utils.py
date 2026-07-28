@@ -11,12 +11,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pynchy.utils import (
-    compute_next_run,
-    create_background_task,
-    generate_message_id,
-    run_shell_command,
-)
+from pynchy.async_tasks import create_background_task
+from pynchy.utils import compute_next_run, generate_message_id, run_shell_command
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from pynchy.async_tasks import create_background_task
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.identifiers import GroupFolder
@@ -21,7 +22,7 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.state.api import clear_session, store_message_direct
-from pynchy.utils import create_background_task, generate_message_id
+from pynchy.utils import generate_message_id
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
