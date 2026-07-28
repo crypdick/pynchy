@@ -75,6 +75,22 @@ def test_free_form_patch_transport_is_not_parsed_as_a_shell_command() -> None:
         ("Bash", {"command": "printf x | tee ~/.config/autostart/x.desktop"}, "PERSIST001"),
         ("Bash", {"command": "cp x ~/.config/systemd/user/x.service"}, "PERSIST001"),
         ("Bash", {"command": "install x /etc/systemd/system/x.service"}, "PERSIST001"),
+        (
+            "Write",
+            {"file_path": "/home/agent/.codex/skills/sample-skill/SKILL.md", "content": "x"},
+            "SKILL001",
+        ),
+        (
+            "apply_patch",
+            {"patch": "*** Begin Patch\n*** Add File: .codex/skills/sample-skill/SKILL.md\n+x\n"},
+            "SKILL001",
+        ),
+        ("Bash", {"command": 'mkdir -p "$CODEX_HOME/skills/sample-skill"'}, "SKILL001"),
+        (
+            "Bash",
+            {"command": 'printf x > "$CODEX_HOME/skills/sample-skill/SKILL.md"'},
+            "SKILL001",
+        ),
     ],
 )
 def test_deterministic_rules_apply_across_tool_spellings(
@@ -82,6 +98,21 @@ def test_deterministic_rules_apply_across_tool_spellings(
 ) -> None:
     request = normalize_tool_request(tool_name, tool_input)
     assert rule_id in {finding.rule_id for finding in deterministic_findings(request)}
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_input"),
+    [
+        ("Read", {"file_path": "/home/agent/.codex/skills/sample-skill/SKILL.md"}),
+        ("Bash", {"command": "ls /home/agent/.codex/skills"}),
+    ],
+)
+def test_generated_codex_skill_registry_remains_readable(
+    tool_name: str, tool_input: dict[str, object]
+) -> None:
+    request = normalize_tool_request(tool_name, tool_input)
+
+    assert "SKILL001" not in {finding.rule_id for finding in deterministic_findings(request)}
 
 
 @pytest.mark.asyncio
