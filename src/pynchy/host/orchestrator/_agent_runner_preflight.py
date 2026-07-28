@@ -58,6 +58,7 @@ class PreContainerResult:
     turn_id: str | None = None
     input_source: str = "user"
     is_scheduled_task: bool = False
+    automation_memory_dir: str | None = None
     corruption_tainted: bool = False
     secret_tainted: bool = False
 
@@ -74,6 +75,7 @@ class PreContainerSetupRequest:
     is_scheduled_task: bool
     repo_access_override: str | None
     runtime: AgentExecutionRuntime
+    automation_memory_dir: str | None = None
 
 
 def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
@@ -109,6 +111,7 @@ def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire input
         is_admin=ctx.is_admin,
         system_notices=ctx.system_notices or None,
         is_scheduled_task=is_scheduled_task or ctx.is_scheduled_task,
+        automation_memory_dir=ctx.automation_memory_dir,
         input_source=ctx.input_source,
         corruption_tainted=ctx.corruption_tainted,
         secret_tainted=ctx.secret_tainted,
@@ -232,6 +235,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         snapshot_ms=snapshot_ms,
         input_source=request.input_source,
         is_scheduled_task=request.is_scheduled_task,
+        automation_memory_dir=request.automation_memory_dir,
         corruption_tainted=taint.corruption_tainted,
         secret_tainted=taint.secret_tainted,
     )

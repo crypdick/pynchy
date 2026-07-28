@@ -2,8 +2,10 @@
 
 from pynchy.host.learning import capture
 from pynchy.host.learning.mirror import (
+    automation_memory_dir,
     prepare_full_vault_host_root,
     prepare_vault_mount_root,
+    sync_automation_memory,
 )
 from pynchy.host.learning.paths import (
     LearningPathsRuntime,
@@ -20,6 +22,7 @@ from pynchy.host.learning.skills import find_personalized_skill_dir
 
 __all__ = [
     "LearningPathsRuntime",
+    "automation_memory_dir",
     "capture",
     "configure_learning_paths_runtime",
     "find_personalized_skill_dir",
@@ -30,4 +33,5 @@ __all__ = [
     "refresh_personalized_agent_skills",
     "resolve_learning_paths",
     "run_learning_review",
+    "sync_automation_memory",
 ]

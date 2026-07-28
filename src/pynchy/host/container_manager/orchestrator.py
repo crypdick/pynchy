@@ -109,6 +109,8 @@ def _container_agent_environment(
             "PYNCHY_SKILLS_ROOT": PERSONALIZATION_SKILLS_CONTAINER_PATH,
         }
     )
+    if input_data.automation_memory_dir is not None:
+        environment["PYNCHY_AUTOMATION_MEMORY_DIR"] = "/workspace/automation-memory"
     return environment
 
 
@@ -194,6 +196,11 @@ async def _spawn_container(
         plugin_manager=plugin_manager,
         repo_mounts=repo_mounts,
         agent_hooks=agent_hooks,
+        automation_memory_dir=(
+            Path(input_data.automation_memory_dir)
+            if input_data.automation_memory_dir is not None
+            else None
+        ),
     )
     mounts_ms = (time.monotonic() - phase_start) * 1000
 

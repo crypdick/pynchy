@@ -9,12 +9,15 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
 _DYNAMIC_THREAD_DELIMITER = "__thread_"
+_AUTOMATION_MEMORY_ROOT = Path("wiki/systems/pynchy/automation-memory")
 _VAULT_ROOT_REQUIRED_ERROR = "learning.obsidian.vault_root is required when learning is enabled"
 _PROFILE_ROOT_TEMPLATE_ERROR = "learning.obsidian.default_profile_root must be a valid template"
 _PATH_OUTSIDE_VAULT_ERROR = "learning paths must stay inside learning.obsidian.vault_root"
+_INVALID_TASK_ID_ERROR = "automation task id must not be empty"
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,15 @@ class LearningPaths:
     host_vault_mirror_root: Path
     mounted_profile_root: str
     mounted_memory_root: str
+
+
+@dataclass(frozen=True)
+class AutomationMemoryPaths:
+    """Canonical vault storage plus the Apple-runtime working mirror."""
+
+    canonical: Path
+    mirror: Path
+    dirty_marker: Path
 
 
 @dataclass(frozen=True)
@@ -110,6 +122,27 @@ def resolve_learning_paths(
         host_vault_mirror_root=learning_data_root / "host-vault-mirrors" / profile_slug,
         mounted_profile_root=_mounted_path(mount_path, profile_vault_rel),
         mounted_memory_root=_mounted_path(mount_path, memory_vault_rel),
+    )
+
+
+def resolve_automation_memory_paths(task_id: str) -> AutomationMemoryPaths | None:
+    """Resolve one task-owned automation-memory directory."""
+    runtime = _runtime
+    if not runtime.enabled:
+        return None
+    if not task_id:
+        raise LearningConfigError(_INVALID_TASK_ID_ERROR)
+    if not runtime.vault_root:
+        raise LearningConfigError(_VAULT_ROOT_REQUIRED_ERROR)
+
+    vault_root = Path(runtime.vault_root).expanduser().resolve()
+    path_id = quote(task_id, safe="._-")
+    canonical = _resolve_under_vault(vault_root, _AUTOMATION_MEMORY_ROOT / path_id)
+    mirror = runtime.data_dir / "learning" / "automation-memory-mirrors" / path_id
+    return AutomationMemoryPaths(
+        canonical=canonical,
+        mirror=mirror,
+        dirty_marker=mirror.parent / f"{path_id}.dirty",
     )
 
 

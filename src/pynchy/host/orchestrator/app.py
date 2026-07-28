@@ -169,6 +169,7 @@ from pynchy.host.git_ops.worktree import (
 )
 from pynchy.host.learning.api import (
     LearningPathsRuntime,
+    automation_memory_dir,
     configure_learning_paths_runtime,
     prepare_agent_homes,
     prepare_full_vault_host_root,
@@ -176,6 +177,7 @@ from pynchy.host.learning.api import (
     profile_name_for_group,
     refresh_personalized_agent_skills,
     resolve_learning_paths,
+    sync_automation_memory,
 )
 from pynchy.host.learning.api import (
     capture as learning_capture,
@@ -1132,6 +1134,8 @@ class PynchyApp(ThreadRouting):
 
     run_agent = agent_runner.run_agent
     review_linear_plan = linear_plan_review.review_linear_plan
+    automation_memory_dir = staticmethod(automation_memory_dir)
+    sync_automation_memory = staticmethod(sync_automation_memory)
 
     def emit(self, event: Event) -> None:
         self.event_bus.emit(event)

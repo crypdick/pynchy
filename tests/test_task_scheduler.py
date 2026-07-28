@@ -306,6 +306,12 @@ class MockSchedulerDeps:
         # Configurable side effect for run_agent (to call on_output)
         self._run_agent_side_effect = None
 
+    def automation_memory_dir(self, _task_id: str):
+        return contextlib.nullcontext(None)
+
+    def sync_automation_memory(self, _task_id: str) -> None:
+        pass
+
     async def save_state(self) -> None:
         return None
 
@@ -416,6 +422,7 @@ class MockSchedulerDeps:
         input_source="user",
         turn_id=None,
         resume_session_id=None,
+        automation_memory_dir=None,
     ) -> str:
         self.agent_runs.append(
             {
@@ -428,6 +435,7 @@ class MockSchedulerDeps:
                 "input_source": input_source,
                 "turn_id": turn_id,
                 "resume_session_id": resume_session_id,
+                "automation_memory_dir": automation_memory_dir,
             }
         )
         if self._run_agent_side_effect:
@@ -802,16 +810,25 @@ class TestRunScheduledAgent:
         """Should call run_agent with is_scheduled_task=True and input_source='scheduled_task'."""
         mock_deps.groups["test-jid"] = sample_group
 
-        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
+        with patch.object(
+            mock_deps,
+            "automation_memory_dir",
+            return_value=contextlib.nullcontext(tmp_path / sample_task.id),
+        ):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                "pynchy.host.orchestrator.task_scheduler.log_task_run",
                 new_callable=AsyncMock,
             ):
                 with patch(
-                    "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
+                    "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                    new_callable=AsyncMock,
                 ):
-                    with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
-                        await _run_due_task_via_scheduler(mock_deps, sample_task)
+                    with patch(
+                        "pynchy.host.orchestrator.task_scheduler.update_task",
+                        new_callable=AsyncMock,
+                    ):
+                        with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                            await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(mock_deps.agent_runs) == 1
         run = mock_deps.agent_runs[0]
@@ -820,6 +837,7 @@ class TestRunScheduledAgent:
         assert isinstance(run["turn_id"], str)
         assert run["turn_id"].startswith("turn_")
         assert run["chat_jid"] == "test@g.us"
+        assert run["automation_memory_dir"].name == sample_task.id
         # Verify prompt was passed as a user message
         assert len(run["messages"]) == 1
         assert run["messages"][0]["content"] == "Test task"
