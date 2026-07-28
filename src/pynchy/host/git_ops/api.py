@@ -11,7 +11,10 @@ from pynchy.host.git_ops._worktree_notify import (
 from pynchy.host.git_ops.personalization import sync_personalization_repo
 from pynchy.host.git_ops.repo import (
     RepoContext,
+    RepoSettings,
+    ResolvedRepoWorkspace,
     check_token_expiry,
+    configure_repo_runtime,
     ensure_repo_cloned,
     get_repo_token,
     repo_container_path,
@@ -84,6 +87,8 @@ __all__ = [
     "GitSyncRuntime",
     "HostSyncState",
     "RepoContext",
+    "RepoSettings",
+    "ResolvedRepoWorkspace",
     "WorktreeError",
     "WorktreeResult",
     "build_rebase_notice",
@@ -91,6 +96,7 @@ __all__ = [
     "check_origin_drift",
     "check_token_expiry",
     "configure_git_sync_runtime",
+    "configure_repo_runtime",
     "count_commits",
     "count_unpushed_commits",
     "detect_main_branch",

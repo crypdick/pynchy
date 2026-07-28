@@ -990,6 +990,10 @@ def reset_settings(monkeypatch):
         def resolve_repositories(folder: str):
             return repo.resolve_repos_for_group(folder)
 
+        repo.configure_repo_runtime(
+            get_settings=settings_source,
+            resolve_workspace_config=resolve_workspace_config,
+        )
         configure_gateway_runtime(is_apple_container=False, get_settings=settings_source)
         configure_mcp_resolution_runtime(
             apply_tool_access=apply_tool_access,

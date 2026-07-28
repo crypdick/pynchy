@@ -9,28 +9,6 @@ count = 30
 reason = "Shared helpers must be narrowed or moved to their owning packages."
 
 [[violations]]
-importer = "pynchy.host.git_ops.repo"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.api",
-]
-reason = "pynchy.host.git_ops.repo still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.git_ops.repo"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.git_ops.repo still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.config_jobs"
 target_role = "config"
 rule = "direction"

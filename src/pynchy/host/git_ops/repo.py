@@ -12,18 +12,80 @@ import re
 import shutil
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 import uuid
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves repository runtime annotations.
+    Callable,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
-import pynchy.config.api as pynchy_config
 from pynchy.logger import logger
 
 # Warn when a token expires within this many days
 _EXPIRY_WARNING_DAYS = 30
 _GITHUB_SCP_ORIGIN = re.compile(r"git@github\.com:(?P<path>[^?#]+)", re.IGNORECASE)
 _UNSUPPORTED_GITHUB_ORIGIN = "checkout origin URL is not a supported GitHub HTTPS or SSH URL"
+
+
+@runtime_checkable
+class _SecretValue(Protocol):
+    def get_secret_value(self) -> str: ...
+
+
+@runtime_checkable
+class _RepoOverride(Protocol):
+    path: Path | str | None
+    token: _SecretValue | None
+
+
+@runtime_checkable
+class _ReposConfig(Protocol):
+    root: Path | str
+    overrides: Mapping[str, _RepoOverride]
+
+
+@runtime_checkable
+class _SecretsConfig(Protocol):
+    gh_token: _SecretValue | None
+
+
+@runtime_checkable
+class RepoSettings(Protocol):
+    repos: _ReposConfig
+    secrets: _SecretsConfig
+    worktrees_dir: Path
+
+
+@runtime_checkable
+class ResolvedRepoWorkspace(Protocol):
+    @property
+    def repo(self) -> Sequence[str]: ...
+
+
+def _unconfigured_settings() -> RepoSettings:
+    raise RuntimeError("Repository settings have not been composed")
+
+
+def _unconfigured_workspace(_group_folder: str) -> ResolvedRepoWorkspace | None:
+    raise RuntimeError("Repository workspace resolution has not been composed")
+
+
+_get_settings: Callable[[], RepoSettings] = _unconfigured_settings
+load_resolved_config: Callable[[str], ResolvedRepoWorkspace | None] = _unconfigured_workspace
+
+
+def configure_repo_runtime(
+    *,
+    get_settings: Callable[[], RepoSettings],
+    resolve_workspace_config: Callable[[str], ResolvedRepoWorkspace | None],
+) -> None:
+    """Bind repository paths and workspace access at host composition."""
+    global _get_settings, load_resolved_config  # noqa: PLW0603, RUF100 - one host process owns this repository configuration.
+    _get_settings = get_settings
+    load_resolved_config = resolve_workspace_config
 
 
 @dataclass(frozen=True)
@@ -59,7 +121,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
     explicit override supplies a different path or token. Container mounts
     remain owner-qualified via :func:`repo_container_path`.
     """
-    s = pynchy_config.get_settings()
+    s = _get_settings()
 
     owner, repo_name = _slug_to_parts(slug)
     root = repo_host_root(s, slug)
@@ -69,12 +131,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
 
 
-@runtime_checkable
-class _RepoSettings(Protocol):
-    repos: pynchy_config.ReposConfig
-
-
-def repo_host_root(settings: _RepoSettings, slug: str) -> Path | None:
+def repo_host_root(settings: RepoSettings, slug: str) -> Path | None:
     """Return the host checkout path for a repo slug."""
     repo_cfg = settings.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.path is not None:
@@ -100,7 +157,7 @@ def get_repo_token(slug: str) -> str | None:
     2. secrets.gh_token — host's broad token (medium priority)
     3. gh auth token — auto-discovered from gh CLI (lowest priority)
     """
-    s = pynchy_config.get_settings()
+    s = _get_settings()
     repo_cfg = s.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
         return repo_cfg.token.get_secret_value()
@@ -360,7 +417,7 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     if readiness_error is None and _path_present(repo_ctx.root):
         return True
 
-    settings = pynchy_config.get_settings()
+    settings = _get_settings()
     repo_config = settings.repos.overrides.get(repo_ctx.slug)
     if repo_config is not None and repo_config.path is not None:
         logger.error(
@@ -400,10 +457,6 @@ def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
 
 def resolve_repos_for_group(group_folder: str) -> list[RepoContext]:
     """Return every resolved repo context for a workspace, preserving profile order."""
-    from pynchy.host.orchestrator.api import (  # noqa: PLC0415, RUF100 - workspace config is orchestrator-owned and only needed for group resolution.
-        load_resolved_config,
-    )
-
     resolved = load_resolved_config(group_folder)
     if resolved is None or not resolved.repo:
         return []

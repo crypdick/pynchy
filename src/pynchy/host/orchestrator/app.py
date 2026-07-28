@@ -124,7 +124,10 @@ from pynchy.host.container_manager.session import (
 )
 from pynchy.host.git_ops.api import (
     GitSyncRuntime,
+    RepoSettings,
+    ResolvedRepoWorkspace,
     configure_git_sync_runtime,
+    configure_repo_runtime,
     count_unpushed_commits,
     detect_main_branch,
     get_deploy_config_hash,
@@ -412,6 +415,12 @@ def _resolve_mcp_workspace_config(
 
 def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     """Wire container policy readers to the current host configuration."""
+    configure_repo_runtime(
+        get_settings=cast("Callable[[], RepoSettings]", get_settings),
+        resolve_workspace_config=cast(
+            "Callable[[str], ResolvedRepoWorkspace | None]", load_resolved_config
+        ),
+    )
     configure_mcp_resolution_runtime(
         apply_tool_access=cast(
             "Callable[[Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]]",
@@ -538,7 +547,7 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
     external_repo_sync_slugs = tuple(
         repo_slug
         for repo_slug in sorted(repo_slugs)
-        if (repo_root := repo_host_root(settings, repo_slug)) is not None
+        if (repo_root := repo_host_root(cast("RepoSettings", settings), repo_slug)) is not None
         and repo_root.resolve() != settings.project_root.resolve()
     )
 
