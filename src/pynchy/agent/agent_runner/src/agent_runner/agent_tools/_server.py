@@ -5,8 +5,9 @@ Discovers tools from the registry instead of hardcoding them.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -40,11 +41,18 @@ for module_name in _TOOL_MODULES:
 
 server = Server("pynchy")
 
+type ListToolsHandler = Callable[[], Awaitable[list[Tool]]]
+type ListToolsDecorator = Callable[[ListToolsHandler], ListToolsHandler]
+
+# mcp 1.26 leaves Server.list_tools() untyped. Its runtime contract returns the
+# decorated function unchanged, so contain the missing third-party type here.
+_list_tools_decorator = cast("Callable[[], ListToolsDecorator]", server.list_tools)
+
 
 # mcp's Server.list_tools()/call_tool() decorators are themselves untyped, so
 # mypy flags the wrapped handlers as untyped-decorator; nothing in our code
 # consumes these functions directly (the server registers them).
-@server.list_tools()  # type: ignore[untyped-decorator]
+@_list_tools_decorator()
 async def list_tools() -> list[Tool]:  # noqa: RUF029 - async MCP callback API.
     return all_tools()
 

@@ -1,9 +1,4 @@
-"""Shared utility functions.
-
-Small helpers used across multiple modules. Avoids duplication of common
-patterns like timestamped ID generation, schedule calculations, async shell
-execution, atomic file writing, and idle timer management.
-"""
+"""Shared process, persistence, identifier, scheduling, and shell helpers."""
 
 from __future__ import annotations
 
@@ -17,13 +12,12 @@ from asyncio.subprocess import PIPE, Process
 from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
-    Coroutine,
     Mapping,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
-from typing import Any, Literal
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -202,40 +196,6 @@ def compute_next_run(
 
     # 'once' tasks: no next run after execution
     return None
-
-
-def create_background_task(
-    coro: Coroutine[Any, Any, Any],
-    *,
-    name: str | None = None,
-) -> asyncio.Task[Any]:
-    """Create an asyncio task that logs exceptions instead of swallowing them.
-
-    A drop-in replacement for ``asyncio.create_task`` for fire-and-forget
-    work (worktree merges, container stops) where we don't await the result
-    but still want failures to appear in logs.
-    """
-    task = asyncio.create_task(coro)
-    if name is not None:
-        task.set_name(name)
-    task.add_done_callback(_log_task_exception)
-    return task
-
-
-def _log_task_exception(task: asyncio.Future[Any]) -> None:
-    """Callback attached to background tasks — logs unhandled exceptions."""
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        # Pass the exception to exc_info so structlog renders the full
-        # traceback. ``logger.exception()`` won't work here because we're
-        # in a done-callback, not an except handler.
-        _LOGGER.error(
-            "Background task failed: task_name=%s",
-            task.get_name() if isinstance(task, asyncio.Task) else None,
-            exc_info=exc,
-        )
 
 
 @dataclass

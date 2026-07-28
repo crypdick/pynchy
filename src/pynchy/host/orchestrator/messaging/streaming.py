@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pynchy.async_tasks import create_background_task
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.host.orchestrator.messaging.updating import (
     UpdatingMessage,
@@ -23,7 +24,6 @@ from pynchy.plugins.api import (  # beartype resolves streaming annotations at r
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves streaming annotations at runtime.
 )

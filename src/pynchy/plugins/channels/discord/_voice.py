@@ -15,19 +15,19 @@ from ctypes.util import find_library
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import uuid4
 
 import discord
 from discord import opus
 
+from pynchy.async_tasks import create_background_task
 from pynchy.discord import DiscordChatTarget
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     AudioTranscriptionResult,
     NewMessage,
 )
-from pynchy.utils import create_background_task
 
 from ._access import InboundContext
 from ._ids import voice_jid
@@ -53,6 +53,14 @@ _OPUS_LIBRARY_CANDIDATES = (
     "/opt/homebrew/opt/opus/lib/libopus.0.dylib",
     "/usr/local/opt/opus/lib/libopus.0.dylib",
 )
+
+
+class _OpusDecoder(Protocol):
+    def decode(self, data: bytes, **_kwargs: bool) -> bytes: ...
+
+
+# discord.py ships no type information for its Opus decoder.
+_new_opus_decoder = cast("Callable[[], _OpusDecoder]", opus.Decoder)
 
 
 def _load_opus() -> bool:
@@ -256,7 +264,7 @@ class _VoiceSession:
         self._voice_client = voice_client
         self._allowed_members = allowed_members
         self._speech_synthesizer = speech_synthesizer
-        self._decoders: dict[str, opus.Decoder] = {}
+        self._decoders: dict[str, _OpusDecoder] = {}
         self._turns: dict[str, _TurnBuffer] = {}
         self._speaking_lock = asyncio.Lock()
         self._receiving = False
@@ -315,7 +323,7 @@ class _VoiceSession:
     def _on_packet(self, speaker_id: str, opus_packet: bytes) -> None:
         if speaker_id not in self._allowed_members:
             return
-        decoder = self._decoders.setdefault(speaker_id, opus.Decoder())
+        decoder = self._decoders.setdefault(speaker_id, _new_opus_decoder())
         try:
             pcm = decoder.decode(opus_packet, fec=False)
         except opus.OpusError as exc:

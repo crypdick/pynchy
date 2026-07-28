@@ -1,0 +1,311 @@
+"""Tests for DiscordChannel outbound behavior and protocol conformance.
+
+The discord.py client is faked; these cover the channel's own logic (jid
+ownership, chunked sending with safe mention defaults, reaction id handling,
+history catch-up filtering) rather than the gateway glue in _lifecycle.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from pynchy.config.api import DiscordConnectionConfig
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
+from tests.discord_channel_support import (
+    _channel,
+    _DirectMessageClient,
+    _FakeStreamChannel,
+    _FakeTypingChannel,
+    _FakeUser,
+    _HistoryAuthor,
+    _HistoryChannel,
+    _HistoryMessage,
+)
+
+DISCORD_BOT_ENV = "X"
+DISCORD_BOT_VALUE = "token"
+
+
+@pytest.mark.asyncio
+async def test_send_approval_event_posts_controls_and_routes_decision():
+    decision_callback = MagicMock()
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="open"),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _msg: None,
+        on_chat_metadata=lambda _jid, _ts, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        on_approval_decision=decision_callback,
+    )
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_event(
+        "discord:direct:42",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approval required\n\n→ approve js / deny js",
+            metadata={"short_id": "js"},
+        ),
+    )
+
+    view = fake.sends[0][1]["view"]
+    assert [item.label for item in view.children] == ["Approve", "Deny"]
+
+    interaction = MagicMock()
+    interaction.user.id = "42"
+    interaction.user.bot = False
+    interaction.user.roles = []
+    interaction.channel.id = "42"
+    interaction.channel.parent = None
+    interaction.channel.parent_id = None
+    interaction.channel.name = None
+    interaction.guild = None
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+
+    approve = view.children[0]
+    await approve.callback(interaction)
+
+    decision_callback.assert_called_once_with("discord:direct:42", "approve", "js", "42")
+    interaction.response.edit_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_reaction_ignores_non_discord_message_id():
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for a non-Discord message id")
+    )
+    # slack-style id must be a no-op, not an error
+    await ch.send_reaction("discord:channel:1", "slack-123", "u1", "👀")
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_caches_direct_message_channels():
+    ch = _channel()
+
+    user = _FakeUser()
+    fetch_user = AsyncMock(return_value=user)
+    ch.client = _DirectMessageClient(
+        get_user=lambda _snowflake: None,
+        fetch_user=fetch_user,
+    )
+
+    first = await ch.resolve_channel("discord:direct:42")
+    second = await ch.resolve_channel("discord:direct:42")
+
+    assert first is second
+    assert fetch_user.await_count == 1
+    assert user.create_dm_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_disconnect_clears_direct_message_cache():
+    ch = _channel()
+    user = _FakeUser()
+    fetch_user = AsyncMock(return_value=user)
+    ch.client = _DirectMessageClient(
+        get_user=lambda _snowflake: None,
+        fetch_user=fetch_user,
+    )
+    ch.lifecycle.disconnect = AsyncMock()
+
+    await ch.resolve_channel("discord:direct:42")
+    await ch.disconnect()
+    await ch.resolve_channel("discord:direct:42")
+
+    assert fetch_user.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_set_typing_starts_background_refresh_and_stops_cleanly():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    await ch.set_typing("discord:channel:1", is_typing=True)
+    await asyncio.sleep(0)
+
+    assert fake.typing_calls >= 1
+
+    await ch.set_typing("discord:channel:1", is_typing=False)
+    calls_after_stop = fake.typing_calls
+    await asyncio.sleep(0)
+
+    assert fake.typing_calls == calls_after_stop
+
+
+@pytest.mark.asyncio
+async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyPatch):
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeTypingChannel()
+    sleep_calls = 0
+    orig_sleep = asyncio.sleep
+
+    async def _fake_sleep(_seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        await orig_sleep(0)
+        if sleep_calls >= 2:
+            raise asyncio.CancelledError
+
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
+
+    await ch.set_typing("discord:channel:1", is_typing=True)
+    for _ in range(3):
+        await orig_sleep(0)
+
+    assert fake.typing_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_inbound_since_filters_bot_and_self():
+    ch = _channel()
+    ch.client = object()
+    ch.bot_user_id = "self"
+
+    def _msg(mid: str, author_id: str, *, bot: bool) -> _HistoryMessage:
+        return _HistoryMessage(
+            id=mid,
+            author=_HistoryAuthor(id=author_id, bot=bot, display_name=f"user{author_id}"),
+            channel=_HistoryChannel(id="1"),
+            content=f"msg {mid}",
+            created_at=datetime(2026, 7, 7, tzinfo=UTC),
+        )
+
+    class _HistChannel:
+        def history(self, **kwargs):
+            async def gen():
+                await asyncio.sleep(0)
+                yield _msg("1", "human", bot=False)
+                yield _msg("2", "otherbot", bot=True)
+                yield _msg("3", "self", bot=False)
+
+            return gen()
+
+    ch.resolve_channel = AsyncMock(return_value=_HistChannel())  # type: ignore[method-assign]
+
+    result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
+    ids = [m.id for m in result.messages]
+    assert ids == ["discord-1"]  # bot + own filtered out
+    assert result.high_water_mark
+
+
+def test_plugin_returns_none_without_context():
+    assert DiscordChannelPlugin().pynchy_create_channel(context=None) is None
+
+
+@pytest.mark.asyncio
+async def test_post_event_sends_preview_and_returns_message_id():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    msg_id = await ch.post_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi there")
+    )
+    assert msg_id == "discord-101"
+    assert fake.sends[0][0] == "hi there"
+    # streamed previews must also use safe mention defaults
+    assert fake.sends[0][1]["allowed_mentions"] is not None
+
+
+@pytest.mark.asyncio
+async def test_post_event_returns_none_for_empty_text():
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for empty text")
+    )
+    result = await ch.post_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_post_event_returns_none_when_too_large_to_stream():
+    # A message over the single-message limit can't be an editable preview;
+    # returning None makes core route it through chunked send_event instead.
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve when text exceeds the limit")
+    )
+    result = await ch.post_event(
+        "discord:channel:1",
+        OutboundEvent(type=OutboundEventType.TEXT, content="x" * 2001),
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_event_edits_message_in_place():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    msg = await fake.send("initial", allowed_mentions=None)
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    await ch.update_event(
+        "discord:channel:1",
+        f"discord-{msg.id}",
+        OutboundEvent(type=OutboundEventType.TEXT, content="updated text"),
+    )
+    assert msg.edits[-1][0] == "updated text"
+
+
+@pytest.mark.asyncio
+async def test_update_result_uses_discord_identity_without_mutating_shared_event():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    msg = await fake.send("initial", allowed_mentions=None)
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    event = OutboundEvent(
+        type=OutboundEventType.RESULT,
+        content="final reply",
+        metadata={"prefix_assistant_name": True, "turn_id": "turn-1"},
+    )
+
+    await ch.update_event("discord:channel:1", f"discord-{msg.id}", event)
+
+    assert msg.edits[-1][0] == "final reply"
+    assert event.metadata == {"prefix_assistant_name": True, "turn_id": "turn-1"}
+
+
+@pytest.mark.asyncio
+async def test_update_event_raises_when_too_large_so_core_falls_back():
+    # Discord can't edit a message beyond the limit; raising lets sender.py
+    # fall back to chunked send_event.
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    with pytest.raises(ValueError, match="exceeds 2000 chars"):
+        await ch.update_event(
+            "discord:channel:1",
+            "discord-101",
+            OutboundEvent(type=OutboundEventType.TEXT, content="x" * 2001),
+        )
+
+
+def test_streaming_channel_satisfies_protocol_and_is_detected():
+    ch = _channel()
+    # core detects streaming targets via hasattr on both methods
+    assert hasattr(ch, "post_event")
+    assert hasattr(ch, "update_event")

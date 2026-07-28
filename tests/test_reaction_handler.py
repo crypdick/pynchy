@@ -80,7 +80,9 @@ class TestHandleReaction:
     async def test_x_interrupt_when_active(self):
         """X emoji with active task should stop the process and broadcast."""
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP}, is_active=True)
-        with patch("pynchy.utils.create_background_task") as mock_bg:
+        with patch(
+            "pynchy.host.orchestrator.messaging.reaction_handler.create_background_task"
+        ) as mock_bg:
             await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "x")
 
         runtime_id = RuntimeId(TEST_GROUP.folder)

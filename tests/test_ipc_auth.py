@@ -6,7 +6,6 @@ import json
 from unittest.mock import patch
 
 import pytest
-from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.scheduling.api import (
@@ -16,14 +15,17 @@ from pynchy.scheduling.api import (
 from pynchy.state import (
     create_host_job,
     create_task,
-    get_all_host_jobs,
     get_all_tasks,
     get_host_job_by_id,
     get_task_by_id,
     get_task_run_logs,
-    set_workspace_profile,
 )
 from pynchy.workspace.api import WorkspaceProfile
+from tests.ipc_auth_support import (
+    _test_settings,
+)
+
+pytest_plugins = ("tests.ipc_auth_support",)
 
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",
@@ -49,87 +51,6 @@ THIRD_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
-
-
-def _test_settings(*, data_dir=None):
-    return make_settings(**({"data_dir": data_dir} if data_dir is not None else {}))
-
-
-class MockDeps(NullIpcDeps):
-    """Mock IPC dependencies."""
-
-    def __init__(self, groups: dict[str, WorkspaceProfile]):
-        self._groups = groups
-        self.broadcast_messages: list[tuple[str, str]] = []
-        self.host_messages: list[tuple[str, str]] = []
-        self.system_notices: list[tuple[str, str]] = []
-        self.cleared_sessions: list[str] = []
-        self.cleared_chats: list[str] = []
-        self.enqueued_checks: list[str] = []
-        self.requested_deploys: list[tuple[str | None, str, bool, str]] = []
-
-    async def broadcast_to_channels(self, jid: str, event: object) -> None:
-        content = event.content if hasattr(event, "content") else str(event)
-        self.broadcast_messages.append((jid, content))
-
-    async def broadcast_host_message(self, jid: str, text: str) -> None:
-        self.host_messages.append((jid, text))
-
-    async def broadcast_system_notice(self, jid: str, text: str) -> None:
-        self.system_notices.append((jid, text))
-
-    async def send_message(self, jid: str, text: str) -> None:
-        pass
-
-    def workspaces(self) -> dict[str, WorkspaceProfile]:
-        return self._groups
-
-    def register_workspace(self, profile: WorkspaceProfile) -> None:
-        # Only update the in-memory dict — no DB write needed.
-        # The real adapter fires a background task for the DB, but in tests
-        # we check deps.workspaces() (the dict), not the DB.  Avoiding the
-        # fire-and-forget future prevents aiosqlite's worker thread from
-        # racing against pytest's per-test event-loop teardown.
-        self._groups[profile.jid] = profile
-
-    async def clear_session(self, group_folder: str) -> None:
-        self.cleared_sessions.append(group_folder)
-
-    async def clear_chat_history(self, chat_jid: str) -> None:
-        self.cleared_chats.append(chat_jid)
-
-    def enqueue_message_check(self, group_jid: str) -> None:
-        self.enqueued_checks.append(group_jid)
-
-    async def request_deploy(
-        self,
-        *,
-        chat_jid: str | None,
-        commit_sha: str,
-        rebuild: bool,
-        resume_prompt: str,
-    ) -> None:
-        self.requested_deploys.append((chat_jid, commit_sha, rebuild, resume_prompt))
-
-
-@pytest.fixture
-async def deps():
-    await init_test_database()
-
-    groups = {
-        "admin-1@g.us": ADMIN_GROUP,
-        "other@g.us": OTHER_GROUP,
-        "third@g.us": THIRD_GROUP,
-    }
-
-    await set_workspace_profile(ADMIN_GROUP)
-    await set_workspace_profile(OTHER_GROUP)
-    await set_workspace_profile(THIRD_GROUP)
-
-    return MockDeps(groups)
-
-
-# --- pause_task authorization ---
 
 
 class TestPauseTaskAuth:
@@ -193,9 +114,6 @@ class TestPauseTaskAuth:
         assert task.status == "active"
 
 
-# --- resume_task authorization ---
-
-
 class TestResumeTaskAuth:
     @pytest.fixture(autouse=True)
     async def _create_tasks(self, deps):
@@ -243,9 +161,6 @@ class TestResumeTaskAuth:
         task = await get_task_by_id("task-paused")
         assert task is not None
         assert task.status == "paused"
-
-
-# --- cancel_task authorization ---
 
 
 class TestCancelTaskAuth:
@@ -317,9 +232,6 @@ class TestCancelTaskAuth:
         assert await get_task_by_id("task-foreign") is not None
 
 
-# --- register_group authorization ---
-
-
 class TestRegisterGroupAuth:
     async def test_non_admin_cannot_register_a_group(self, deps):
         await dispatch(
@@ -336,9 +248,6 @@ class TestRegisterGroupAuth:
         )
 
         assert deps.workspaces().get("new@g.us") is None
-
-
-# --- IPC message authorization ---
 
 
 class TestIpcMessageAuth:
@@ -373,9 +282,6 @@ class TestIpcMessageAuth:
     def test_admin_can_send_to_unregistered(self, deps):
         groups = deps.workspaces()
         assert self.is_message_authorized("admin-1", True, "unknown@g.us", groups)
-
-
-# --- register_group success ---
 
 
 @pytest.mark.action("workspace.group.register")
@@ -416,9 +322,6 @@ class TestRegisterGroupSuccess:
         assert deps.workspaces().get("partial@g.us") is None
 
 
-# --- authorized_task_action edge cases ---
-
-
 class TestAuthorizedTaskActionEdges:
     """Edge cases for _authorized_task_action used by pause/resume/cancel."""
 
@@ -455,7 +358,6 @@ class TestAuthorizedTaskActionEdges:
             True,
             deps,
         )
-        # No exception raised — the function logs a warning and returns
 
     async def test_cancel_nonexistent_task_is_safe(self, deps):
         """Cancelling a task that doesn't exist should not crash."""
@@ -474,9 +376,6 @@ class TestAuthorizedTaskActionEdges:
             True,
             deps,
         )
-
-
-# --- deploy authorization ---
 
 
 @pytest.mark.action("deployment.apply")
@@ -514,9 +413,6 @@ class TestDeployAuth:
             deps,
         )
         assert deps.requested_deploys == [("admin-1@g.us", "abc123", False, "Deploy complete.")]
-
-
-# --- reset_context execution ---
 
 
 @pytest.mark.action("lifecycle.context.reset")
@@ -616,9 +512,6 @@ class TestResetContextExecution:
             assert not reset_file.exists()
 
 
-# --- create_periodic_agent authorization ---
-
-
 class TestCreatePeriodicAgentAuth:
     """Tests for create_periodic_agent authorization and validation."""
 
@@ -671,9 +564,6 @@ class TestCreatePeriodicAgentAuth:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 0
-
-
-# --- host job pause/resume/cancel authorization ---
 
 
 class TestHostJobPauseAuth:
@@ -750,101 +640,3 @@ class TestHostJobResumeAuth:
         job = await get_host_job_by_id("host-paused-1")
         assert job is not None
         assert job.status == "paused"
-
-
-class TestHostJobCancelAuth:
-    """Tests for cancel_task routing host job IDs to delete_host_job."""
-
-    async def test_admin_can_cancel_host_job(self, deps):
-        await create_host_job(
-            {
-                "id": "host-cancel-1",
-                "name": "cancel-me",
-                "command": "echo bye",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-                "next_run": "2025-06-01T09:00:00Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "admin-1",
-                "enabled": True,
-            }
-        )
-
-        await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "admin-1", True, deps)
-        assert await get_host_job_by_id("host-cancel-1") is None
-
-    async def test_non_admin_cannot_cancel_host_job(self, deps):
-        await create_host_job(
-            {
-                "id": "host-cancel-2",
-                "name": "dont-cancel-me",
-                "command": "echo stay",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-                "next_run": "2025-06-01T09:00:00Z",
-                "status": "active",
-                "created_at": "2024-01-01T00:00:00.000Z",
-                "created_by": "admin-1",
-                "enabled": True,
-            }
-        )
-
-        await dispatch(
-            {"type": "cancel_task", "taskId": "host-cancel-2"},
-            "other-group",
-            False,
-            deps,
-        )
-        assert await get_host_job_by_id("host-cancel-2") is not None
-
-
-# --- schedule_host_job missing fields ---
-
-
-class TestScheduleHostJobMissingFields:
-    """schedule_host_job requires name, command, schedule_type, and schedule_value."""
-
-    async def test_missing_name_creates_no_job(self, deps):
-        await dispatch(
-            {
-                "type": "schedule_host_job",
-                "command": "echo hi",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-            },
-            "admin-1",
-            True,
-            deps,
-        )
-        assert len(await get_all_host_jobs()) == 0
-
-    async def test_missing_command_creates_no_job(self, deps):
-        await dispatch(
-            {
-                "type": "schedule_host_job",
-                "name": "no-cmd",
-                "schedule_type": "cron",
-                "schedule_value": "0 9 * * *",
-            },
-            "admin-1",
-            True,
-            deps,
-        )
-        assert len(await get_all_host_jobs()) == 0
-
-    async def test_rejects_unknown_schedule_type(self, deps):
-        await dispatch(
-            {
-                "type": "schedule_host_job",
-                "name": "bad-type",
-                "command": "echo hi",
-                "schedule_type": "weekly-ish",
-                "schedule_value": "every friday",
-            },
-            "admin-1",
-            True,
-            deps,
-        )
-
-        assert len(await get_all_host_jobs()) == 0

@@ -101,7 +101,7 @@ files = "^src/"
 [[repos.hooks]]
 id = "check-test-file-length"
 name = "Enforce 600-logical-line test file budget"
-entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600 --baseline test-file-length-baseline.toml"
+entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600"
 language = "system"
 types = ["python"]
 files = "^tests/"
@@ -134,6 +134,14 @@ files = "(^tests/|^src/pynchy/agent/agent_runner/tests/)"
 id = "check-architecture-boundaries"
 name = "Enforce first-party architecture boundaries"
 entry = "uv run python -m scripts.prek_hooks.check_architecture_boundaries"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check-coverage-ratchet"
+name = "Forbid lowering the coverage ratchet"
+entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -201,6 +209,15 @@ files = "^(src/pynchy/.*action.*\\.py|tests/|scripts/prek_hooks/check_action_cov
 id = "pytest"
 name = "Run host tests with branch coverage"
 entry = "uv run pytest --cov=pynchy --cov-report=term-missing"
+language = "system"
+pass_filenames = false
+files = "^(src/|tests/)"
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "update-coverage-ratchet"
+name = "Raise the coverage ratchet from the full test run"
+entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"

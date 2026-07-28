@@ -104,7 +104,9 @@ pre_merge = [
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx prek run --all-files",
 ]
 post_merge = [
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run pytest",
+    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run pytest --cov=pynchy --cov-report=term-missing",
+    "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update",
+    "git add pyproject.toml",
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run --directory src/pynchy/agent/agent_runner --locked pytest",
 ]
 teardown = ["uv run python scripts/runtime_harness.py stop"]
@@ -280,12 +282,9 @@ warn_unused_configs = true
 show_error_codes = true
 pretty = true
 # Pragmatic exceptions for this project's frameworks:
-#   no-untyped-def/no-untyped-call — codebase is only partially annotated (ratchet later)
 #   attr-defined/union-attr/override — pluggy hooks use dynamic attrs
 #   call-arg — Pydantic model constructors trip false positives
 disable_error_code = [
-    "no-untyped-def",
-    "no-untyped-call",
     "attr-defined",
     "union-attr",
     "override",
@@ -326,8 +325,7 @@ disable_error_code = ["unused-ignore"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # coverage — the prek test gate collects branch coverage for host production
-# code. The 81% floor comes from the measured 81.26% branch baseline; ratchet
-# it up as coverage improves, never down.
+# code. The integer floor tracks rounded full-suite coverage and may only rise.
 # ─────────────────────────────────────────────────────────────────────────────
 [tool.coverage.run]
 branch = true
@@ -335,7 +333,7 @@ source = ["pynchy"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
-fail_under = 81
+fail_under = 82
 skip_empty = true
 exclude_also = [
     "def __repr__",

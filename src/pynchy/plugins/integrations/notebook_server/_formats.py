@@ -8,10 +8,21 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import nbformat
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# nbformat publishes no type information. Keep that boundary at its constructors
+# and I/O functions rather than letting untyped calls flow through this module.
+_new_notebook = cast("Callable[[], object]", new_notebook)
+_new_code_cell = cast("Callable[..., object]", new_code_cell)
+_new_markdown_cell = cast("Callable[..., object]", new_markdown_cell)
+_read_notebook = cast("Callable[..., object]", nbformat.read)
+_write_notebook = cast("Callable[..., None]", nbformat.write)
 
 
 def generate_name() -> str:
@@ -38,7 +49,7 @@ def notebook_path(name: str, notebook_dir: Path) -> Path:
 
 
 def _empty_notebook() -> object:
-    nb = new_notebook()
+    nb = _new_notebook()
     nb.metadata["kernelspec"] = {
         "display_name": "Python 3",
         "language": "python",
@@ -52,12 +63,12 @@ def _flush_markdown_cell(nb: object, lines: list[str]) -> list[str]:
         return []
     content = "\n".join(lines).strip()
     if content:
-        nb.cells.append(new_markdown_cell(source=content))
+        nb.cells.append(_new_markdown_cell(source=content))
     return []
 
 
 def _append_code_cell(nb: object, lines: list[str]) -> list[str]:
-    nb.cells.append(new_code_cell(source="\n".join(lines)))
+    nb.cells.append(_new_code_cell(source="\n".join(lines)))
     return []
 
 
@@ -120,7 +131,7 @@ def load_notebook(path: Path) -> object:
     """Load a notebook from disk (.ipynb or .qmd)."""
     if path.suffix == ".qmd":
         return parse_qmd(path.read_text(encoding="utf-8"))
-    return cast("object", nbformat.read(str(path), as_version=4))
+    return _read_notebook(str(path), as_version=4)
 
 
 def save_notebook(nb: object, path: Path) -> None:
@@ -129,4 +140,4 @@ def save_notebook(nb: object, path: Path) -> None:
     if path.suffix == ".qmd":
         path.write_text(serialize_qmd(nb), encoding="utf-8")
     else:
-        nbformat.write(nb, str(path))
+        _write_notebook(nb, str(path))

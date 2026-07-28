@@ -21,6 +21,7 @@ from typing import Any
 
 import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
+from pynchy.async_tasks import create_background_task
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config.api import get_settings
 from pynchy.host.audio import process_inbound_audio_attachments, transcribe_audio_file
@@ -86,7 +87,6 @@ from pynchy.state.api import (
     update_chat_name,
 )
 from pynchy.state.connection import StateRuntimeConfig
-from pynchy.utils import create_background_task
 
 # ---------------------------------------------------------------------------
 # Shutdown

@@ -10,9 +10,14 @@ The kernel-manager protocol keeps this module importable without
 from __future__ import annotations
 
 import asyncio
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from nbformat.v4 import new_notebook
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+_new_notebook = cast("Callable[[], object]", new_notebook)
 
 
 @runtime_checkable
@@ -43,7 +48,7 @@ class KernelSession:
         self.km = km
         self.client = client  # must already have start_channels() called
         self.name = name  # notebook name (without extension)
-        self.nb = new_notebook()
+        self.nb = _new_notebook()
         self.nb.metadata["kernelspec"] = {
             "display_name": "Python 3",
             "language": "python",

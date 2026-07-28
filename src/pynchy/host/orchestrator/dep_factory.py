@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.agent_home import is_skill_selected, parse_skill_tier
+from pynchy.async_tasks import create_background_task
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
@@ -143,7 +144,6 @@ from pynchy.state.api import (
     update_host_job,
     update_task,
 )
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import (  # beartype resolves dependency adapter annotations at runtime.
     WorkspaceProfile,
     WorkspaceSecurity,

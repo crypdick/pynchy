@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from pynchy.agent_protocol.api import (
     ContainerOutput,  # noqa: TC001 - beartype validates query-done output at runtime.
 )
+from pynchy.async_tasks import create_background_task
 from pynchy.logger import logger
-from pynchy.utils import create_background_task
 
 DEFAULT_RM_FORCE_TIMEOUT_SECONDS = 15.0
 DEFAULT_RM_FORCE_KILL_WAIT_SECONDS = 2.0

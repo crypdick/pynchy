@@ -19,6 +19,9 @@ from pynchy.logger import logger
 RECONNECT_INITIAL_DELAY_SECONDS = 5.0
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from typing import Any
+
     from ._channel import SlackChannel, _SlackApp
 else:
     # beartype resolves the ``channel: SlackChannel`` forward ref at call time
@@ -60,7 +63,8 @@ class SlackLifecycle:
         ch.register_inbound_handlers()
 
         ch.handler = AsyncSocketModeHandler(app, ch.app_token)
-        ch.handler_task = asyncio.create_task(ch.handler.start_async(), name="slack-socket-mode")
+        start_socket_mode = cast("Callable[[], Coroutine[Any, Any, None]]", ch.handler.start_async)
+        ch.handler_task = asyncio.create_task(start_socket_mode(), name="slack-socket-mode")
         ch.handler_task.add_done_callback(ch.handle_socket_mode_exit)
         ch.connected = True
         logger.info(

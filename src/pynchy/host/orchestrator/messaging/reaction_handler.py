@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy import utils
+from pynchy.async_tasks import create_background_task
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.plugins.api import (
@@ -68,7 +68,7 @@ async def handle_reaction(
         if deps.queue.is_active_task(runtime_id):
             deps.queue.clear_pending_tasks(runtime_id)
 
-            utils.create_background_task(
+            create_background_task(
                 deps.queue.stop_active_process(runtime_id),
                 name=f"reaction-interrupt-{jid[:20]}",
             )

@@ -27,7 +27,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastmcp import FastMCP
 from jupyter_client import KernelManager
@@ -49,6 +49,15 @@ from ._output import (
     outputs_for_agent,
     save_cell_images,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# nbformat publishes no type information. Restrict its dynamic values to these
+# constructors and conversion boundary functions.
+_from_dict = cast("Callable[[dict[str, object]], object]", from_dict)
+_new_code_cell = cast("Callable[..., object]", new_code_cell)
+_new_markdown_cell = cast("Callable[..., object]", new_markdown_cell)
 
 CONTAINER_BIND_HOST = "0.0.0.0"  # noqa: S104 - notebook MCP/Jupyter run in Docker and must be reachable from sibling containers and Tailscale.
 
@@ -186,7 +195,7 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
             if cell.cell_type == "code":
                 code_count += 1
                 outputs = await execute_code(session, cell.source)
-                cell.outputs = [from_dict(output) for output in outputs]
+                cell.outputs = [_from_dict(output) for output in outputs]
                 errors.extend(
                     f"Cell {code_count}: {out.get('ename')}: {out.get('evalue')}"
                     for out in outputs
@@ -227,14 +236,14 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
     outputs = await execute_code(session, code)
 
     # Append the code cell before deriving its image filenames from its final position.
-    cell = new_code_cell(source=code)
+    cell = _new_code_cell(source=code)
     session.nb.cells.append(cell)
     cell_number = len(session.nb.cells)
 
     # Save images to disk (mutates outputs in-place with _image_path)
     save_cell_images(session.name, cell_number, outputs, NOTEBOOK_DIR)
     # nbformat serializers require NotebookNode outputs, not plain dictionaries.
-    cell.outputs = [from_dict(output) for output in outputs]
+    cell.outputs = [_from_dict(output) for output in outputs]
 
     # Auto-save
     save_notebook(session.nb, notebook_path(session.name, NOTEBOOK_DIR))
@@ -261,7 +270,7 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:  # noqa:
     if not session:
         return {"error": f"No active kernel with id '{kernel_id}'. Use start_kernel first."}
 
-    session.nb.cells.append(new_markdown_cell(source=content))
+    session.nb.cells.append(_new_markdown_cell(source=content))
     nb_path = notebook_path(session.name, NOTEBOOK_DIR)
     save_notebook(session.nb, nb_path)
 
