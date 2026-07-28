@@ -8,7 +8,7 @@ from collections.abc import (
     Sequence,  # noqa: TC003 - beartype resolves channel collections at runtime.
 )
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
@@ -103,6 +103,7 @@ from pynchy.ipc_snapshots import write_groups_snapshot as _write_groups_snapshot
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # beartype resolves dependency adapter annotations at runtime.
     Channel,
+    HostActionDescriptor,
     NewMessage,
 )
 from pynchy.plugins.integrations.api import work_item_execution_to_dict
@@ -147,9 +148,6 @@ from pynchy.workspace.api import (  # beartype resolves dependency adapter annot
     WorkspaceProfile,
     WorkspaceSecurity,
 )
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import HostActionDescriptor
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
