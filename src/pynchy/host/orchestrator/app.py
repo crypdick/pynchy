@@ -14,6 +14,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves composi
     Awaitable,
     Callable,
     Coroutine,
+    Mapping,
     Sequence,
 )
 from datetime import UTC, datetime
@@ -31,7 +32,13 @@ from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime, run_dec
 from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
     CanaryRun,
 )
-from pynchy.config.api import Settings, access, get_settings
+from pynchy.config.api import (
+    Settings,
+    access,
+    apply_tool_access,
+    get_settings,
+    tool_process_environment,
+)
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
     Conversation,
     ConversationId,
@@ -73,7 +80,14 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_message,
     write_ipc_response,
 )
-from pynchy.host.container_manager.mcp.manager import get_mcp_manager
+from pynchy.host.container_manager.mcp.manager import (
+    configure_mcp_manager_runtime,
+    get_mcp_manager,
+)
+from pynchy.host.container_manager.mcp.resolution import (
+    ResolvedMcpWorkspace,
+    configure_mcp_resolution_runtime,
+)
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
@@ -202,6 +216,7 @@ from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
     load_resolved_tool_access,
+    static_workspace_folder,
     update_profile_skill_policy,
 )
 from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
@@ -384,8 +399,32 @@ def _resolve_security_workspace_config(
     )
 
 
+def _resolve_mcp_workspace_config(
+    folder: str,
+    settings: object,
+) -> ResolvedMcpWorkspace | None:
+    """Resolve effective MCP tools from the manager's configuration snapshot."""
+    return cast(
+        "ResolvedMcpWorkspace | None",
+        load_resolved_config(folder, settings=cast("Settings", settings)),
+    )
+
+
 def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     """Wire container policy readers to the current host configuration."""
+    configure_mcp_resolution_runtime(
+        apply_tool_access=cast(
+            "Callable[[Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]]",
+            apply_tool_access,
+        ),
+        tool_process_environment=cast(
+            "Callable[[object], dict[str, str]]", tool_process_environment
+        ),
+    )
+    configure_mcp_manager_runtime(
+        static_workspace_folder=static_workspace_folder,
+        load_resolved_workspace_config=_resolve_mcp_workspace_config,
+    )
     configure_gateway_runtime(
         is_apple_container=is_apple_container,
         get_settings=cast("Callable[[], GatewaySettings]", get_settings),

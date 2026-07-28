@@ -30,7 +30,9 @@ from pynchy.config.api import (
     ServerConfig,
     Settings,
     access,
+    apply_tool_access,
     repository_settings_sources,
+    tool_process_environment,
 )
 from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
 from pynchy.host.container_manager.credentials import configure_workspace_environment
@@ -42,6 +44,8 @@ from pynchy.host.container_manager.ipc.handlers_lifecycle import (
 )
 from pynchy.host.container_manager.ipc.handlers_service import configure_service_runtime
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
+from pynchy.host.container_manager.mcp.manager import configure_mcp_manager_runtime
+from pynchy.host.container_manager.mcp.resolution import configure_mcp_resolution_runtime
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
 from pynchy.host.container_manager.process import configure_container_process_runtime
@@ -987,6 +991,14 @@ def reset_settings(monkeypatch):
             return repo.resolve_repos_for_group(folder)
 
         configure_gateway_runtime(is_apple_container=False, get_settings=settings_source)
+        configure_mcp_resolution_runtime(
+            apply_tool_access=apply_tool_access,
+            tool_process_environment=tool_process_environment,
+        )
+        configure_mcp_manager_runtime(
+            static_workspace_folder=workspace_config.static_workspace_folder,
+            load_resolved_workspace_config=resolve_workspace_config,
+        )
         configure_security_resolution(
             get_settings=settings_source,
             resolve_workspace_config=resolve_workspace_config,

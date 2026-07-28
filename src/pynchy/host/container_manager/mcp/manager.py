@@ -20,6 +20,7 @@ import asyncio
 import time
 from collections.abc import (
     AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves lease return annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves MCP manager runtime annotations.
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -47,13 +48,13 @@ from pynchy.host.container_manager.mcp.litellm import (
 from pynchy.host.container_manager.mcp.proxy import McpBackendUnavailableError, McpProxy
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
+    ResolvedMcpWorkspace,
     WorkspaceTeam,
     build_trust_map,
     merged_mcp_servers,
     resolve_all_instances,
 )
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
-from pynchy.host.orchestrator import api as workspace_config
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
@@ -69,6 +70,33 @@ from pynchy.workspace.api import (
 
 
 _MCP_FAILURE_RETRY_SECONDS = 300.0
+
+
+def _unconfigured_workspace_folder(_group_folder: str) -> str:
+    raise RuntimeError("MCP workspace policy has not been composed")
+
+
+def _unconfigured_workspace_config(
+    _group_folder: str, _settings: object
+) -> ResolvedMcpWorkspace | None:
+    raise RuntimeError("MCP workspace policy has not been composed")
+
+
+_static_workspace_folder: Callable[[str], str] = _unconfigured_workspace_folder
+_load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | None] = (
+    _unconfigured_workspace_config
+)
+
+
+def configure_mcp_manager_runtime(
+    *,
+    static_workspace_folder: Callable[[str], str],
+    load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | None],
+) -> None:
+    """Bind workspace policy lookups at host composition."""
+    global _static_workspace_folder, _load_resolved_workspace_config  # noqa: PLW0603, RUF100 - one host process owns these MCP policy operations.
+    _static_workspace_folder = static_workspace_folder
+    _load_resolved_workspace_config = load_resolved_workspace_config
 
 
 @dataclass(frozen=True)
@@ -463,14 +491,11 @@ class McpManager:
 
     def get_workspace_instance_ids(self, group_folder: str) -> list[str]:
         """Get only MCP instances still authorized by effective workspace policy."""
-        static_folder = workspace_config.static_workspace_folder(group_folder)
+        static_folder = _static_workspace_folder(group_folder)
         instance_ids = self._workspace_instances.get(static_folder, [])
         if static_folder == group_folder:
             return list(instance_ids)
-        resolved = workspace_config.load_resolved_config(
-            group_folder,
-            settings=self._settings,
-        )
+        resolved = _load_resolved_workspace_config(group_folder, self._settings)
         if resolved is None:
             return []
         allowed_tools = set(resolved.tools)
