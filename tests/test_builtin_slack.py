@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,11 +18,16 @@ from pynchy.plugins.channels.slack import (
     jid,
     split_text,
 )
-
-SLACK_BOT_VALUE = "xoxb-fake"
-SLACK_APP_VALUE = "xapp-fake"
-SLACK_BOT_ENV = "BOT"
-SLACK_APP_ENV = "APP"
+from tests.slack_test_support import (
+    SLACK_APP_ENV,
+    SLACK_BOT_ENV,
+)
+from tests.slack_test_support import (
+    attach_slack_app as _attach_slack_app,
+)
+from tests.slack_test_support import (
+    make_slack_channel as _make_channel,
+)
 
 
 def _plugin_context(
@@ -38,35 +42,7 @@ def _plugin_context(
     )
 
 
-class _FakeSlackClient:
-    def __init__(self) -> None:
-        self.chat_postMessage = AsyncMock()
-        self.chat_update = AsyncMock()
-        self.reactions_add = AsyncMock()
-        self.conversations_history = AsyncMock()
-        self.users_info = AsyncMock()
-        self.conversations_info = AsyncMock()
-
-
-class _FakeSlackApp:
-    def __init__(self) -> None:
-        self.client = _FakeSlackClient()
-
-
-def _fake_slack_app() -> _FakeSlackApp:
-    return _FakeSlackApp()
-
-
 _HISTORY_SINCE = datetime.fromtimestamp(1_700_000_000, tz=UTC).isoformat()
-
-
-def _attach_slack_app(ch: SlackChannel) -> _FakeSlackApp:
-    """Attach an SDK-shaped fake with observable identity lookups."""
-    app = _fake_slack_app()
-    app.client.users_info.return_value = {"user": {"profile": {"display_name": "Alice"}}}
-    app.client.conversations_info.return_value = {"channel": {"name": "general"}}
-    ch.slack_app = app
-    return app
 
 
 # ------------------------------------------------------------------
@@ -116,26 +92,6 @@ class TestSplitText:
 # ------------------------------------------------------------------
 # SlackChannel — unit tests (no real Slack connection)
 # ------------------------------------------------------------------
-
-
-def _make_channel(
-    on_message: Any = None,
-    on_chat_metadata: Any = None,
-) -> SlackChannel:
-    ch = SlackChannel(
-        connection_name="connection.slack.main",
-        bot_token=SLACK_BOT_VALUE,
-        app_token=SLACK_APP_VALUE,
-        chat_names=["general"],
-        assistant_name="pynchy",
-        allow_create=False,
-        on_message=on_message or MagicMock(),
-        on_chat_metadata=on_chat_metadata or MagicMock(),
-    )
-    # Pre-register a couple of channel IDs for allowlist-dependent tests.
-    ch.register_allowed_channel("general", "C12345")
-    ch.register_allowed_channel("general", "C1")
-    return ch
 
 
 class TestSlackChannelProtocol:
