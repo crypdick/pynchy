@@ -3,37 +3,37 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves IPC callback annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves IPC callback annotations at runtime.
 )
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.action_intents import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.action_intents import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     ActionIntent,
 )
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     ConversationControlBinding,
     ConversationId,
 )
-from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     CreatePeriodicAgentRequest,
 )
-from pynchy.host.container_manager.security.cop import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.host.container_manager.security.cop import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     CopInspectionContext,
 )
 from pynchy.identifiers import (
-    ChatJid,  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    ChatJid,  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
 )
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     Channel,
     HostActionDescriptor,
     OutboundEvent,
 )
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     HostJob,
     ScheduledTask,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
 )
 
 
@@ -160,7 +160,7 @@ class IpcDeps(Protocol):
 class PendingQuestionStore(Protocol):
     """Persistence boundary for interactive questions raised over IPC."""
 
-    def create(  # noqa: PLR0913, RUF100 - file-backed payload mirrors the channel callback contract.
+    def create(  # noqa: PLR0913 - file-backed payload mirrors the channel callback contract.
         self,
         *,
         request_id: str,

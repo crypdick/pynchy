@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
-    Mapping,  # noqa: TC003, RUF100 - beartype resolves CalDAV runtime annotations at runtime.
-    Sequence,  # noqa: TC003, RUF100 - beartype resolves CalDAV protocol annotations at runtime.
+    Mapping,  # noqa: TC003 - beartype resolves CalDAV runtime annotations at runtime.
+    Sequence,  # noqa: TC003 - beartype resolves CalDAV protocol annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -92,7 +92,7 @@ def configure_caldav_runtime(runtime: CalDAVRuntime) -> None:
 
 def get_caldav_client(name: str, server_cfg: CalDAVServerOptions) -> object:
     """Get or create a cached DAVClient for a named server."""
-    import caldav  # noqa: PLC0415, RUF100 - optional integration dependency loaded only when CalDAV is used.
+    import caldav  # noqa: PLC0415 - optional integration dependency loaded only when CalDAV is used.
 
     if name not in _caldav_client_cache:
         password = os.environ.get(server_cfg.password_env) if server_cfg.password_env else None
@@ -236,7 +236,7 @@ def _parse_event(component: object) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
+async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029 - service_tool awaits handlers.
     """Discover all visible calendars across all configured servers."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -254,7 +254,7 @@ async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:  # no
 
 
 @service_tool
-async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
+async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029 - service_tool awaits handlers.
     """List calendar events within a date range."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -288,7 +288,7 @@ async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:  # noqa
 
 
 @service_tool
-async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
+async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029 - service_tool awaits handlers.
     """Create a calendar event."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -320,7 +320,7 @@ async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa:
 
 
 @service_tool
-async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
+async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029 - service_tool awaits handlers.
     """Delete a calendar event by UID."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):

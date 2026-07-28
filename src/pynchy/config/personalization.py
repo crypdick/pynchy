@@ -12,7 +12,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - Pydantic resolves the field annotation at runtime.
+    JobConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
 )
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 

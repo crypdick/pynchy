@@ -24,12 +24,12 @@ import hashlib
 import json
 import secrets
 import string
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves expiry callback annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves expiry callback annotations at runtime.
     Awaitable,
     Callable,
 )
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves approval file paths at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves approval file paths at runtime.
 from typing import Any, cast
 
 from pynchy.host.container_manager.ipc.write import (
@@ -67,7 +67,7 @@ _approval_root: Path | None = None
 
 def configure_approval_state_root(path: Path) -> None:
     """Set host-only approval storage during application composition."""
-    global _approval_root  # noqa: PLW0603, RUF100 - one host process owns one approval root.
+    global _approval_root  # noqa: PLW0603 - one host process owns one approval root.
     _approval_root = path
 
 
@@ -179,7 +179,7 @@ def generate_short_id(source_group: str) -> str:
 # -- State operations ----------------------------------------------------------
 
 
-def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intentionally keep the request payload explicit.
+def create_pending_approval(  # noqa: PLR0913 - approval files intentionally keep the request payload explicit.
     request_id: str,
     tool_name: str,
     source_group: str,

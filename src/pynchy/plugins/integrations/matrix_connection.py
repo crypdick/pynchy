@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import secrets
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix operation annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves Matrix operation annotations.
     Awaitable,
     Callable,
     Iterable,
@@ -15,7 +15,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix 
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves Matrix runtime annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves Matrix runtime annotations at runtime.
 )
 from typing import TYPE_CHECKING
 
@@ -37,7 +37,7 @@ from pynchy.identifiers import (
     GroupFolder,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations.
+from pynchy.plugins.api import (  # beartype resolves lifecycle annotations.
     ConnectionRuntimeContext,
     NewMessage,
 )
@@ -56,7 +56,7 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     clear_active_matrix_connection,
     get_active_matrix_route,
 )
-from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves runtime route annotations.
+from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001 - beartype resolves runtime route annotations.
     ResolvedMatrixRoute,
 )
 from pynchy.utils import create_background_task
@@ -146,7 +146,7 @@ def _validate_portal(
 class MatrixConnectionRuntime:
     """Poll one owner identity and route its configured rooms fail closed."""
 
-    def __init__(  # noqa: PLR0913, RUF100 - Matrix runtime binds explicit provider dependencies.
+    def __init__(  # noqa: PLR0913 - Matrix runtime binds explicit provider dependencies.
         self,
         connection_name: str,
         routes: tuple[ResolvedMatrixRoute, ...],
@@ -201,7 +201,7 @@ class MatrixConnectionRuntime:
                 self._ready = True
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001, RUF100 - provider corruption must degrade readiness without killing the long-lived poller.
+            except Exception as exc:  # noqa: BLE001 - provider corruption must degrade readiness without killing the long-lived poller.
                 self._ready = False
                 logger.warning(
                     "Matrix connection poll failed",
@@ -356,7 +356,7 @@ class MatrixConnectionRuntime:
         except asyncio.CancelledError:
             await self._operations.release_delivery_claim(claim_id)
             raise
-        except Exception:  # noqa: BLE001, RUF100 - ingestion is the provider delivery boundary.
+        except Exception:  # ingestion is the provider delivery boundary.
             await self._operations.release_delivery_claim(claim_id)
             raise
 

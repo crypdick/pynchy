@@ -6,12 +6,14 @@ import asyncio
 import time
 from collections.abc import Callable
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves container orchestration signatures at runtime.
+    Path,  # noqa: TC003 - beartype resolves container orchestration signatures at runtime.
 )
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
+import pluggy  # noqa: TC002 - beartype resolves agent core lookup signatures at runtime.
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+from pynchy.agent_protocol.api import (
+    # beartype resolves container orchestration signatures at runtime.
+    # beartype resolves container orchestration signatures at runtime.
     AgentExecutionRuntime,
     ContainerInput,
     McpStartupFailure,
@@ -27,7 +29,7 @@ from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_co
 from pynchy.runtime_names import runtime_container_name
 from pynchy.utils import filtered_process_environment
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves container orchestration signatures at runtime.
 )
 
 type EnsureAgentImage = Callable[..., None]
@@ -45,7 +47,7 @@ def configure_container_spawn_runtime(
     resolve_repo_mounts: ResolveRepoMounts,
 ) -> None:
     """Inject the selected container runtime at host composition."""
-    global _container_cli, _ensure_agent_image, _resolve_repo_mounts  # noqa: PLW0603, RUF100 - one host process owns one spawn runtime.
+    global _container_cli, _ensure_agent_image, _resolve_repo_mounts  # noqa: PLW0603 - one host process owns one spawn runtime.
     _container_cli = container_cli
     _ensure_agent_image = ensure_agent_image
     _resolve_repo_mounts = resolve_repo_mounts
@@ -87,7 +89,7 @@ def write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     Uses atomic write (write to .tmp then rename) so the container's file
     watcher never sees a partially-written file.
     """
-    from pynchy.utils import (  # noqa: PLC0415, RUF100 - keep container orchestration import surface narrow at module load.
+    from pynchy.utils import (  # noqa: PLC0415 - keep container orchestration import surface narrow at module load.
         write_json_atomic,
     )
 
@@ -135,7 +137,7 @@ async def _spawn_container(
 
     # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
     # Must exist before the container starts so IPC/MCP handlers can look it up.
-    from pynchy.host.container_manager.security.gate import (  # noqa: PLC0415, RUF100 - security gate setup is only needed during container spawn.
+    from pynchy.host.container_manager.security.gate import (  # noqa: PLC0415 - security gate setup is only needed during container spawn.
         create_gate,
         resolve_security,
     )
@@ -199,7 +201,7 @@ async def _spawn_container(
 
     # --- MCP gateway: ensure containers running and pass credentials ---
     phase_start = time.monotonic()
-    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - MCP manager is only needed during container spawn.
+    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415 - MCP manager is only needed during container spawn.
         get_mcp_manager,
     )
 

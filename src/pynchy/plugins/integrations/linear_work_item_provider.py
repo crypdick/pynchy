@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured work-item callbacks at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves configured work-item callbacks at runtime.
     Awaitable,
     Callable,
 )
@@ -11,7 +11,7 @@ from typing import Any, overload
 
 import aiohttp
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.logger import logger
@@ -416,7 +416,7 @@ async def transition_issue(
     """Check Linear immediately before writing; uncertain writes remain explicitly unknown."""
     try:
         outcome = await _apply_transition(client, attempt)
-    except Exception as exc:  # noqa: BLE001, RUF100 - provider errors can leave a write ambiguous.
+    except Exception as exc:  # noqa: BLE001 - provider errors can leave a write ambiguous.
         logger.warning("Linear work-item transition outcome is unknown", err=str(exc))
         return await _configured_runtime().resolve_transition(
             transition=attempt.transition,

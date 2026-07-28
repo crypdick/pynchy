@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations at runtime.
     Awaitable,
     Callable,
 )
@@ -27,13 +27,13 @@ from pynchy.host.orchestrator.runtime_process_control import (
 )
 from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeId,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
-    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeTarget,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 _ResultT = TypeVar("_ResultT")
@@ -371,7 +371,7 @@ class GroupQueue:
         error: BaseException | None = None
         try:
             result = await self._process_group_messages(state)
-        except Exception:  # noqa: BLE001, RUF100 - message-processing is a task boundary; retry happens on drain.
+        except Exception:  # noqa: BLE001 - message-processing is a task boundary; retry happens on drain.
             error = RuntimeError(f"Error processing messages for runtime {runtime_id}")
             logger.exception(
                 "Error processing messages for runtime",
@@ -407,7 +407,7 @@ class GroupQueue:
 
         try:
             await task.fn()
-        except Exception:  # noqa: BLE001, RUF100 - task execution is a queue boundary and failures stay scoped.
+        except Exception:  # noqa: BLE001 - task execution is a queue boundary and failures stay scoped.
             logger.exception(
                 "Error running task",
                 runtime_id=runtime_id,

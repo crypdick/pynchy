@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 def _install_module(name: str, *, package: bool = False) -> ModuleType:
     module = ModuleType(name)
     if package:
-        module.__path__ = []  # type: ignore[attr-defined]  # noqa: RUF100 - import package marker.
+        module.__path__ = []  # type: ignore[attr-defined]  # import package marker.
     sys.modules[name] = module
     return module
 
@@ -269,9 +269,9 @@ class _MediaPart:
 @dataclass(frozen=True)
 class _MessageBody:
     conversation: str
-    extendedTextMessage: _TextPart = field(default_factory=_TextPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
-    imageMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
-    videoMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
+    extendedTextMessage: _TextPart = field(default_factory=_TextPart)  # noqa: N815 - WhatsApp SDK field name.
+    imageMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815 - WhatsApp SDK field name.
+    videoMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815 - WhatsApp SDK field name.
 
 
 @dataclass(frozen=True)

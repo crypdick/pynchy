@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves assessor annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves assessor annotations at runtime.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves the canary response path at runtime.
+    Path,  # noqa: TC003 - beartype resolves the canary response path at runtime.
 )
 from typing import Any
 
@@ -187,7 +187,7 @@ def _static_package_decision(
 async def handle_artifact_security_check(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
     *,
     response_path_override: Path | None = None,
@@ -299,7 +299,7 @@ async def _reject_missing_gate(
     )
 
 
-async def _request_package_approval(  # noqa: PLR0913, RUF100 - approval boundary fields stay explicit.
+async def _request_package_approval(  # noqa: PLR0913 - approval boundary fields stay explicit.
     *,
     source_group: str,
     request_id: str,
@@ -311,7 +311,7 @@ async def _request_package_approval(  # noqa: PLR0913, RUF100 - approval boundar
     gate: SecurityGate,
     deps: IpcDeps,
 ) -> None:
-    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - avoid approval/import cycle.
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - avoid approval/import cycle.
         approval_event,
         create_pending_approval,
     )

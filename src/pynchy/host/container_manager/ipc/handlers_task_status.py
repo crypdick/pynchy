@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves registered handler signatures.
+    IpcDeps,  # noqa: TC001 - beartype resolves registered handler signatures.
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -15,7 +15,7 @@ from pynchy.logger import logger
 async def _handle_task_status(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Project current scheduled-work health without exposing prompts or commands."""

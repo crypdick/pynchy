@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import subprocess  # noqa: S404, RUF100 - used only for subprocess exception types.
+import subprocess  # noqa: S404 - used only for subprocess exception types.
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves git sync helpers at runtime.
 
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+    RepoContext,  # beartype resolves git sync helpers at runtime.
     get_repo_context,
 )
 from pynchy.host.git_ops.sync import (
-    GitSyncDeps,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
 )
 from pynchy.host.git_ops.utils import (
     detect_main_branch,
@@ -56,7 +56,7 @@ _git_sync_runtime: GitSyncRuntime | None = None
 
 def configure_git_sync_runtime(runtime: GitSyncRuntime) -> None:
     """Install host sync inputs at application composition."""
-    global _git_sync_runtime  # noqa: PLW0603, RUF100 - one host process owns sync configuration.
+    global _git_sync_runtime  # noqa: PLW0603 - one host process owns sync configuration.
     _git_sync_runtime = runtime
 
 

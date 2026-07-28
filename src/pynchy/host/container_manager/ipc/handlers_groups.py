@@ -8,7 +8,7 @@ from typing import Any
 from croniter import croniter
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves group handler signatures at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves group handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.protocol import (
     CreatePeriodicAgentRequest,
@@ -23,7 +23,7 @@ from pynchy.workspace.api import WorkspaceProfile
 async def _handle_register_group(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not is_admin:
@@ -73,7 +73,7 @@ async def _handle_register_group(
 async def _handle_create_periodic_agent(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Create a periodic agent: folder, personalized workspace, instructions, and task."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess  # noqa: S404, RUF100 - installer invokes fixed system managers with argv and no shell.
+import subprocess  # noqa: S404 - installer invokes fixed system managers with argv and no shell.
 import sys
 from pathlib import Path
 
@@ -25,7 +25,7 @@ def is_launchd_managed() -> bool:
 
 def is_launchd_loaded(label: str) -> bool:
     """Check if a launchd job is loaded."""
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    result = subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "print", f"{_launchd_domain()}/{label}"],
         capture_output=True,
         check=False,
@@ -41,7 +41,7 @@ def _launchd_domain() -> str:
 def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
     """Bootstrap a LaunchAgent and verify launchd registered the label."""
     domain = _launchd_domain()
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    result = subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
@@ -57,16 +57,16 @@ def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
         stderr=result.stderr.strip() or None,
     )
     label_target = f"{domain}/{label}"
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "bootout", label_target], capture_output=True, check=False
     )
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "disable", label_target], capture_output=True, check=False
     )
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "enable", label_target], capture_output=True, check=False
     )
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed absolute launchctl argv; no shell.
+    result = subprocess.run(  # noqa: S603 - fixed absolute launchctl argv; no shell.
         [_LAUNCHCTL, "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
@@ -92,7 +92,7 @@ def _remove_launchd_extended_attrs(path: Path) -> None:
     config, so the installer strips them from the rendered service definition.
     """
     for attr in ("com.apple.quarantine", "com.apple.provenance"):
-        subprocess.run(  # noqa: S603, RUF100 - fixed absolute xattr argv; no shell.
+        subprocess.run(  # noqa: S603 - fixed absolute xattr argv; no shell.
             [_XATTR, "-d", attr, str(path)], capture_output=True, check=False
         )
 
@@ -244,18 +244,18 @@ WantedBy=default.target
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(unit, encoding="utf-8")
     logger.info("Installed systemd user service", dest=str(dest))
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute systemctl argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute systemctl argv; no shell.
         [_SYSTEMCTL, "--user", "daemon-reload"],
         capture_output=True,
         check=False,
     )
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute systemctl argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute systemctl argv; no shell.
         [_SYSTEMCTL, "--user", "enable", "pynchy.service"],
         capture_output=True,
         check=False,
     )
     # Enable lingering so the user service runs without an active login session
-    subprocess.run(  # noqa: S603, RUF100 - fixed absolute sudo argv; no shell.
+    subprocess.run(  # noqa: S603 - fixed absolute sudo argv; no shell.
         [_SUDO, _LOGINCTL, "enable-linger", home.name],
         capture_output=True,
         check=False,

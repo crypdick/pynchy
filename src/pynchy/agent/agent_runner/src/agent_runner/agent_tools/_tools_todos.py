@@ -65,7 +65,7 @@ def _write_todos(todos: list[dict[str, Any]]) -> None:
         },
     },
 )
-async def _list_todos_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _list_todos_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     todos = _read_todos()
@@ -101,7 +101,7 @@ async def _list_todos_handle(  # noqa: RUF029, RUF100 - async tool API.
         "required": ["todo_id"],
     },
 )
-async def _complete_todo_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _complete_todo_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent] | CallToolResult:
     todo_id = arguments.get("todo_id", "")

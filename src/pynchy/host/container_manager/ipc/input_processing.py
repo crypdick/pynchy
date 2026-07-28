@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC paths at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves IPC paths at runtime.
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC deps at runtime.
+    IpcDeps,  # beartype resolves IPC deps at runtime.
     IpcMessageDeps,
 )
 from pynchy.host.container_manager.ipc.protocol import InboundChatMessage, parse_ipc_file

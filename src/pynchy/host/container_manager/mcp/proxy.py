@@ -127,7 +127,7 @@ def create_proxy_app(
     return app
 
 
-async def _start_http_session(app: object) -> None:  # noqa: RUF029, RUF100 - aiohttp startup callbacks are async.
+async def _start_http_session(app: object) -> None:  # noqa: RUF029 - aiohttp startup callbacks are async.
     cast("web.Application", app)[_STATE_KEY].http_session = aiohttp.ClientSession()
 
 

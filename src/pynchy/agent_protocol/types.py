@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, fields
 from enum import StrEnum
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves agent-runtime annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves agent-runtime annotations at runtime.
 )
 from typing import Any, Literal
 

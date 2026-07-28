@@ -5,7 +5,7 @@ from __future__ import annotations
 import posixpath
 import re
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves learning runtime annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves learning runtime annotations at runtime.
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,7 +61,7 @@ _runtime = LearningPathsRuntime(
 
 def configure_learning_paths_runtime(runtime: LearningPathsRuntime) -> None:
     """Set the learning path values selected by the application composition root."""
-    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one learning-path configuration.
+    global _runtime  # noqa: PLW0603 - one host process owns one learning-path configuration.
     _runtime = runtime
 
 

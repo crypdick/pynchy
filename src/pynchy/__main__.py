@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import subprocess  # noqa: S404, RUF100 - fixed no-shell container runtime argv below.
+import subprocess  # noqa: S404 - fixed no-shell container runtime argv below.
 import sys
 import urllib.parse
 import urllib.request
@@ -22,7 +22,7 @@ _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
 _DEFAULT_CONTROL_SOCKET = Path("data/pynchy.sock")
 _DEFAULT_CONTROL_TOKEN_FILE = Path("data/control-plane.token")
-_DEFAULT_CONTROL_TOKEN_ENV = "PYNCHY_CONTROL_TOKEN"  # noqa: S105, RUF100 - environment variable name, not a credential value.
+_DEFAULT_CONTROL_TOKEN_ENV = "PYNCHY_CONTROL_TOKEN"  # noqa: S105 - environment variable name, not a credential value.
 
 
 def _stdout_line(message: str) -> None:
@@ -36,13 +36,13 @@ def _stderr_line(message: str) -> None:
 
 
 def _run() -> None:
-    from dotenv import (  # noqa: PLC0415, RUF100 - CLI entrypoint keeps heavy app imports lazy.
+    from dotenv import (  # noqa: PLC0415 - CLI entrypoint keeps heavy app imports lazy.
         load_dotenv,
     )
 
     load_dotenv()  # Materialize host credentials for explicitly declared tool access.
 
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - startup validates deployment-owned configuration before app imports.  # noqa: PLC0415, RUF100 - startup validates the composed settings before app construction.
+    from pynchy.config.api import (  # noqa: PLC0415 - startup validates deployment-owned configuration before app imports.  # noqa: PLC0415 - startup validates the composed settings before app construction.
         LITELLM_FILENAME,
         PersonalizationError,
         validate_litellm_model_names,
@@ -61,13 +61,13 @@ def _run() -> None:
         _stderr_line(f"Personalization validation failed: {exc}")
         sys.exit(2)
 
-    from pynchy.logger import (  # noqa: PLC0415, RUF100 - configure the error log before application startup.
+    from pynchy.logger import (  # noqa: PLC0415 - configure the error log before application startup.
         configure_error_log,
     )
 
     configure_error_log(Path("logs/pynchy.error.log"))
 
-    from pynchy.host.orchestrator.app import (  # noqa: PLC0415, RUF100 - avoid importing the orchestrator for --help and other subcommands.
+    from pynchy.host.orchestrator.app import (  # noqa: PLC0415 - avoid importing the orchestrator for --help and other subcommands.
         PynchyApp,
     )
 
@@ -77,10 +77,10 @@ def _run() -> None:
 
 def whatsapp_auth() -> None:
     """Run the WhatsApp QR login with the configured credential database."""
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - CLI composition resolves the auth database path.
+    from pynchy.config.api import (  # noqa: PLC0415 - CLI composition resolves the auth database path.
         get_settings,
     )
-    from pynchy.plugins.channels.whatsapp.auth import (  # noqa: PLC0415, RUF100 - QR support is only needed for this command.
+    from pynchy.plugins.channels.whatsapp.auth import (  # noqa: PLC0415 - QR support is only needed for this command.
         main as authenticate,
     )
 
@@ -102,7 +102,7 @@ def _control_client_target(
 
 
 def _control_client_token(token_file: Path | None) -> str | None:
-    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415, RUF100 - client auth is only needed for control-plane commands.
+    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415 - client auth is only needed for control-plane commands.
         load_control_plane_client_token,
     )
 
@@ -113,13 +113,13 @@ def _control_client_token(token_file: Path | None) -> str | None:
 
 
 def _build() -> None:
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - build command loads settings only when invoked.
+    from pynchy.config.api import (  # noqa: PLC0415 - build command loads settings only when invoked.
         get_settings,
     )
-    from pynchy.plugins.runtimes.cleanup import (  # noqa: PLC0415, RUF100 - runtime cleanup is build-command specific.
+    from pynchy.plugins.runtimes.cleanup import (  # noqa: PLC0415 - runtime cleanup is build-command specific.
         cleanup_runtime_build_state,
     )
-    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime probing is build-command specific.
+    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415 - runtime probing is build-command specific.
         configure_runtime_override,
         get_runtime,
     )
@@ -140,7 +140,7 @@ def _build() -> None:
         sys.exit(1)
     build_state_cleaned = False
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is selected by trusted runtime detection and argv is fixed.
             [runtime.cli, "build", "-t", s.container.image, "."],
             cwd=str(container_dir),
             check=False,
@@ -154,7 +154,7 @@ def _build() -> None:
 
 
 def _validate_personalization(path: Path) -> int:
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - validation command keeps service imports lazy.  # noqa: PLC0415, RUF100 - validation command explicitly validates the composed mapping.
+    from pynchy.config.api import (  # noqa: PLC0415 - validation command keeps service imports lazy.  # noqa: PLC0415 - validation command explicitly validates the composed mapping.
         LITELLM_FILENAME,
         PersonalizationError,
         validate_litellm_model_names,
@@ -181,10 +181,10 @@ def _validate_personalization(path: Path) -> int:
 
 
 def _bootstrap_control_plane_token(*, rotate: bool) -> int:
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - bootstrap reads settings only for this subcommand.
+    from pynchy.config.api import (  # noqa: PLC0415 - bootstrap reads settings only for this subcommand.
         get_settings,
     )
-    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415, RUF100 - token creation is isolated to the control-plane command.
+    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415 - token creation is isolated to the control-plane command.
         ControlPlaneConfigurationError,
         bootstrap_control_plane_token,
     )
@@ -205,10 +205,10 @@ def _bootstrap_control_plane_token(*, rotate: bool) -> int:
 
 
 def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
-    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - prune command loads settings only when invoked.
+    from pynchy.config.api import (  # noqa: PLC0415 - prune command loads settings only when invoked.
         get_settings,
     )
-    from pynchy.host.migration_backups import (  # noqa: PLC0415, RUF100 - prune implementation is command specific.
+    from pynchy.host.migration_backups import (  # noqa: PLC0415 - prune implementation is command specific.
         prune_migration_backups,
     )
 
@@ -276,7 +276,7 @@ async def _read_unix_json(
     *,
     bearer_token: str | None,
 ) -> object:
-    import aiohttp  # noqa: PLC0415, RUF100 - Unix HTTP client is only needed by local CLI control.
+    import aiohttp  # noqa: PLC0415 - Unix HTTP client is only needed by local CLI control.
 
     headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else None
     connector = aiohttp.UnixConnector(path=str(socket_path))
@@ -333,11 +333,11 @@ def _fetch_doctor_payload(
     url = _doctor_url(selected_host, workspace)
     request: str | urllib.request.Request = url
     if token:
-        request = urllib.request.Request(  # noqa: S310, RUF100 - operator-selected endpoint with bearer auth.
+        request = urllib.request.Request(  # noqa: S310 - operator-selected endpoint with bearer auth.
             url,
             headers={"Authorization": f"Bearer {token}"},
         )
-    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310, RUF100 - operator-selected Pynchy status endpoint is intentionally queried.
+    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - operator-selected Pynchy status endpoint is intentionally queried.
         return json.loads(response.read())
 
 

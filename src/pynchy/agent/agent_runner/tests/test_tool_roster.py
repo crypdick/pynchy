@@ -43,7 +43,7 @@ def test_interactive_tools_are_disallowed():
 def test_both_cores_draw_from_the_shared_roster():
     # Parity by construction: both core modules import the same constant object.
     pytest.importorskip("claude_agent_sdk")
-    from agent_runner.cores import (  # noqa: PLC0415, RUF100 - optional SDK import.
+    from agent_runner.cores import (  # noqa: PLC0415 - optional SDK import.
         claude,
         claude_cli,
     )

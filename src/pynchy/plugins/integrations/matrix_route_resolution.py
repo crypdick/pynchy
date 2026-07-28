@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix route annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves Matrix route annotations.
     Callable,
     Iterable,
     Mapping,
@@ -10,13 +10,13 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix 
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.integration_contracts import (  # noqa: TC001, RUF100 - beartype resolves Matrix route annotations.
+from pynchy.integration_contracts import (  # noqa: TC001 - beartype resolves Matrix route annotations.
     MatrixActivation,
     MatrixConnection,
     MatrixEndpoint,
     MatrixOutbound,
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves Matrix route annotations.
+from pynchy.workspace.api import (  # beartype resolves Matrix route annotations.
     CapabilityRule,
     capability_pattern_matches,
     most_restrictive_capability_rule,

@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
     Iterable,
     Sequence,
 )
@@ -24,7 +24,7 @@ from pydantic_settings import (
 
 from pynchy.config import settings_validation
 from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    JobConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
@@ -48,7 +48,7 @@ from pynchy.config.models import (
     WorkspaceTool,
 )
 from pynchy.config.profiles import (
-    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
 from pynchy.config.scheduler_models import (
     CanaryConfig,

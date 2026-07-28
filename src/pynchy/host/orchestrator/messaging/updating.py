@@ -11,7 +11,7 @@ from pynchy.identifiers import (
     ChatJid,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
     Channel,
     OutboundEvent,
 )
@@ -144,7 +144,7 @@ async def _record_deliveries(
                     for _, plan in indexed_plans
                 ],
             )
-        except Exception:  # noqa: BLE001, RUF100 - ledger failure must not block channel delivery.
+        except Exception:  # noqa: BLE001 - ledger failure must not block channel delivery.
             logger.debug("Outbound update ledger write failed (fire-and-forget fallback)")
             continue
         for index, _ in indexed_plans:
@@ -174,7 +174,7 @@ async def _update_or_fallback(
         raise TypeError("edit delivery requires channel update support")
     try:
         await update_event(plan.target_jid, previous.message_id, plan.event)
-    except Exception as exc:  # noqa: BLE001, RUF100 - a failed edit must fall back to a visible post.
+    except Exception as exc:  # noqa: BLE001 - a failed edit must fall back to a visible post.
         logger.warning(
             "Channel update failed, falling back to a new message",
             channel=plan.channel.name,
@@ -205,7 +205,7 @@ async def _post_or_send(
     if callable(post_event):
         try:
             message_id = await post_event(plan.target_jid, plan.event)
-        except Exception as exc:  # noqa: BLE001, RUF100 - failed editable posts use send_event.
+        except Exception as exc:  # noqa: BLE001 - failed editable posts use send_event.
             logger.warning(
                 "Channel post failed, falling back to send_event",
                 channel=plan.channel.name,
@@ -229,7 +229,7 @@ async def _post_or_send(
 
     try:
         await plan.channel.send_event(plan.target_jid, plan.event)
-    except Exception as exc:  # noqa: BLE001, RUF100 - failed delivery remains retryable in the ledger.
+    except Exception as exc:  # noqa: BLE001 - failed delivery remains retryable in the ledger.
         logger.warning("Channel send failed", channel=plan.channel.name, err=str(exc))
         await _mark_error(ledger_id, plan.channel.name, str(exc))
         return _PostResult(delivered=False, message=None)
@@ -253,7 +253,7 @@ async def _mark_delivery_result(
             operation,
             remote_message_id,
         )
-    except Exception:  # noqa: BLE001, RUF100 - ledger marking is best-effort bookkeeping.
+    except Exception:  # noqa: BLE001 - ledger marking is best-effort bookkeeping.
         logger.debug("Ledger delivery result failed (best-effort)", channel=channel_name)
 
 
@@ -262,5 +262,5 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
         return
     try:
         await state.mark_delivery_error(ledger_id, channel_name, error)
-    except Exception:  # noqa: BLE001, RUF100 - ledger error marking is best-effort bookkeeping.
+    except Exception:  # noqa: BLE001 - ledger error marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivery_error failed (best-effort)", channel=channel_name)

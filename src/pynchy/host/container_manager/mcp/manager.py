@@ -19,8 +19,8 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves lease return annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves MCP manager runtime annotations.
+    AsyncIterator,  # noqa: TC003 - beartype resolves lease return annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves MCP manager runtime annotations.
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -57,11 +57,11 @@ from pynchy.host.container_manager.mcp.resolution import (
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
+    McpServerConfig,  # noqa: TC001 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
-    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 # ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ def configure_mcp_manager_runtime(
     load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | None],
 ) -> None:
     """Bind workspace policy lookups at host composition."""
-    global _static_workspace_folder, _load_resolved_workspace_config  # noqa: PLW0603, RUF100 - one host process owns these MCP policy operations.
+    global _static_workspace_folder, _load_resolved_workspace_config  # noqa: PLW0603 - one host process owns these MCP policy operations.
     _static_workspace_folder = static_workspace_folder
     _load_resolved_workspace_config = load_resolved_workspace_config
 
@@ -318,7 +318,7 @@ class McpManager:
 
             try:
                 await self._ensure_running_unlocked(instance_id)
-            except Exception as exc:  # noqa: BLE001, RUF100 - proxy lifecycle boundary records cooldown.
+            except Exception as exc:  # proxy lifecycle boundary records cooldown.
                 self._unavailable_until[instance_id] = time.monotonic() + _MCP_FAILURE_RETRY_SECONDS
                 logger.warning(
                     "Failed to start proxied MCP instance",
@@ -540,7 +540,7 @@ class McpManager:
             await asyncio.sleep(60)
             try:
                 await self.stop_idle()
-            except Exception:  # noqa: BLE001, RUF100 - idle checker is a background cleanup boundary.
+            except Exception:  # noqa: BLE001 - idle checker is a background cleanup boundary.
                 logger.exception("Error in MCP idle checker")
 
 

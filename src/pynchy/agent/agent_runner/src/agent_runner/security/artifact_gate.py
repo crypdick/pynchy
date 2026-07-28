@@ -27,7 +27,7 @@ async def _notify_host(
     taint_evidence: tuple[dict[str, str], ...],
     packages: tuple[dict[str, str | bool | None], ...],
 ) -> HookDecision:
-    from agent_runner.agent_tools._ipc_request import (  # noqa: PLC0415, PLC2701, RUF100 - avoid loading IPC until a file-capable tool runs.
+    from agent_runner.agent_tools._ipc_request import (  # noqa: PLC0415 - avoid loading IPC until a file-capable tool runs.
         ipc_service_request,
     )
 
@@ -45,7 +45,7 @@ async def _notify_host(
             type_override="security:artifact_check",
             guarded_action_id=str(current_guarded_action_id()),
         )
-    except Exception as exc:  # allow: exception-handling  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling  # noqa: BLE001
         reason = f"Host artifact notification failed closed: {type(exc).__name__}"
         _log(reason)
         return HookDecision(allowed=False, reason=reason)

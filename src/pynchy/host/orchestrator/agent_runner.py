@@ -7,16 +7,16 @@ Supports two execution paths:
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003, RUF100 - beartype resolves container-operation annotations.
+import asyncio  # noqa: TC003 - beartype resolves container-operation annotations.
 import time
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves container-operation annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves container-operation annotations.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
     AgentExecutionRuntime,
     ContainerInput,
     McpStartupFailure,
@@ -41,7 +41,7 @@ from pynchy.identifiers import (
 from pynchy.logger import logger
 from pynchy.state.api import clear_session
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -187,7 +187,7 @@ def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, 
     }
 
 
-def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire inputs keep this boundary inspectable.
+def build_container_input(  # noqa: PLR0913 - explicit runner wire inputs keep this boundary inspectable.
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
     chat_jid: str,
@@ -361,7 +361,7 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _cold_start(  # noqa: PLR0913, RUF100 - cold-start values remain explicit at the execution boundary.
+async def _cold_start(  # noqa: PLR0913 - cold-start values remain explicit at the execution boundary.
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
@@ -399,7 +399,7 @@ async def _cold_start(  # noqa: PLR0913, RUF100 - cold-start values remain expli
 # ---------------------------------------------------------------------------
 
 
-async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point preserves the full dependency contract.
+async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserves the full dependency contract.
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
@@ -510,6 +510,6 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
                 )
             )
         return await _cold_start(deps, group, chat_jid, messages, ctx, runtime, operations)
-    except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
+    except Exception:  # noqa: BLE001 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"

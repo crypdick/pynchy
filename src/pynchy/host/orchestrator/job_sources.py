@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves plugin-job runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves plugin-job runtime annotations.
 )
 from dataclasses import dataclass, field
 from typing import Any, NoReturn, cast
@@ -32,7 +32,7 @@ _runtime = PluginJobsRuntime(
 
 def configure_plugin_jobs_runtime(runtime: PluginJobsRuntime) -> None:
     """Bind plugin-job validation and settings mutation at composition."""
-    global _runtime  # noqa: PLW0603, RUF100 - one host process owns plugin job configuration.
+    global _runtime  # noqa: PLW0603 - one host process owns plugin job configuration.
     _runtime = runtime
 
 

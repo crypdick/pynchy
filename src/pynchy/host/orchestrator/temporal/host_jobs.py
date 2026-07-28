@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 from temporalio import activity
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    ConfigHostCronJob,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
+    ConfigHostCronJob,  # noqa: TC001 - beartype resolves config host-job annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    HostJob,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    HostJob,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 from pynchy.utils import ShellResult, log_shell_result, run_shell_command
@@ -56,7 +56,7 @@ async def run_database_host_job(job_id: str) -> str:
 
     try:
         await _run_database_host_job(job)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(job_id, "error", str(exc))
         raise
     _record_activity_result(job_id, "completed")
@@ -77,7 +77,7 @@ async def run_config_host_cron_job(job_name: str) -> str:
         await _run_config_host_cron_job(
             job_name, job, scheduler_deps.scheduler_runtime.project_root
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(job_name, "error", str(exc))
         raise
     _record_activity_result(job_name, "completed")

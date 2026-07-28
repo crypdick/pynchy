@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 # allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
-import subprocess  # noqa: S404, RUF100 - status adapter catches Docker command timeouts.
+import subprocess  # noqa: S404 - status adapter catches Docker command timeouts.
 from collections.abc import (
-    Sequence,  # noqa: TC003, RUF100 - beartype resolves channel collections at runtime.
+    Sequence,  # noqa: TC003 - beartype resolves channel collections at runtime.
 )
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
@@ -16,10 +16,10 @@ from pynchy.agent_home import is_skill_selected, parse_skill_tier
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.container_manager.ipc import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
 )
-from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     CreatePeriodicAgentRequest,
 )
 from pynchy.host.container_manager.security.cop import (
@@ -34,7 +34,8 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.host.container_manager.session import destroy_session
-from pynchy.host.git_ops.api import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.git_ops.api import (
+    # beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
     count_unpushed_commits,
     detect_main_branch,
@@ -62,7 +63,7 @@ from pynchy.host.orchestrator.adapters import (
     SessionManager,
     resolve_admin_notification_jid,
 )
-from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.app import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     PynchyApp,
 )
 from pynchy.host.orchestrator.capability_status import (
@@ -70,18 +71,20 @@ from pynchy.host.orchestrator.capability_status import (
     CapabilityStatusOperations,
     WorkspaceCapabilityConfiguration,
 )
-from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.http_server import (
+    # beartype resolves dependency factory annotations at runtime.
     HttpDeployOperations,
     HttpServerDeps,
 )
 from pynchy.host.orchestrator.messaging import pending_questions
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
-from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.status import (
+    # beartype resolves dependency factory annotations at runtime.
     GitStatusOperations,
     StatusDeps,
 )
-from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
@@ -91,22 +94,22 @@ from pynchy.host.orchestrator.temporal.scheduler import (
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.host.orchestrator.terminal_task_retirement import retire_conversation_tasks
-from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.identifiers import (  # beartype resolves dependency adapter annotations at runtime.
     GroupFolder,
     RuntimeId,
     SessionId,
 )
 from pynchy.ipc_snapshots import write_groups_snapshot as _write_groups_snapshot
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.plugins.api import (  # beartype resolves dependency adapter annotations at runtime.
     Channel,
     NewMessage,
 )
 from pynchy.plugins.integrations.api import work_item_execution_to_dict
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.scheduling.api import (  # beartype resolves dependency adapter annotations at runtime.
     HostJob,
     ScheduledTask,
     SessionPolicy,
@@ -140,7 +143,7 @@ from pynchy.state.api import (
     update_task,
 )
 from pynchy.utils import create_background_task
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.workspace.api import (  # beartype resolves dependency adapter annotations at runtime.
     WorkspaceProfile,
     WorkspaceSecurity,
 )

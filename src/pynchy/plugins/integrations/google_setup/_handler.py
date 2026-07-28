@@ -6,7 +6,7 @@ import asyncio
 import os
 import shutil
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
@@ -187,7 +187,7 @@ async def _run_interactive_setup(
             vnc_procs, novnc_url = start_virtual_display()
         return await _run_interactive_setup_body(setup, kp, steps_done, novnc_url)
 
-    except Exception as exc:  # noqa: BLE001, RUF100 - interactive setup failure is converted into a caller-facing error.
+    except Exception as exc:  # noqa: BLE001 - interactive setup failure is converted into a caller-facing error.
         logger.error("setup_google failed", profile=profile_name, error=str(exc))
         return _interactive_error_result(str(exc), novnc_url)
 
@@ -205,7 +205,7 @@ async def _run_interactive_setup_body(
     steps_done: list[str],
     novnc_url: str | None,
 ) -> dict[str, object]:
-    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+    from playwright.async_api import (  # noqa: PLC0415 - optional browser automation dependency.
         async_playwright,
     )
 

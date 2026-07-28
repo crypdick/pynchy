@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    ContainerOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -66,7 +66,7 @@ class PlanReviewDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
+    async def run_agent(  # noqa: PLR0913 - mirrors the orchestrator contract.
         self,
         group: WorkspaceProfile,
         chat_jid: str,
@@ -144,7 +144,7 @@ async def _run_queued_review(
     async def run_review() -> LinearPlanReviewResult:
         final_results: list[str] = []
 
-        async def on_output(  # noqa: RUF029, RUF100 - run_agent requires an async callback.
+        async def on_output(  # noqa: RUF029 - run_agent requires an async callback.
             output: ContainerOutput,
         ) -> None:
             if output.type == "result" and output.result:
@@ -166,7 +166,7 @@ async def _run_queued_review(
             if result != "success" or not final_results:
                 raise RuntimeError(_REVIEWER_RESULT_ERROR)
             return _parse_result(final_results[-1])
-        except Exception as exc:  # noqa: BLE001, RUF100 - reviewer failures become typed admission results.
+        except Exception as exc:  # noqa: BLE001 - reviewer failures become typed admission results.
             logger.exception(
                 "Hidden Linear plan review failed",
                 issue=request.identifier,

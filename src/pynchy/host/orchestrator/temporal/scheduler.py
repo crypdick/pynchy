@@ -6,14 +6,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
 from dataclasses import dataclass, replace
 from datetime import (
-    timedelta,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    timedelta,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
 from types import (
-    TracebackType,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    TracebackType,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
 from typing import Any, cast
 
@@ -25,7 +25,7 @@ from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from pynchy.canary_contracts import (
-    CanaryRun,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    CanaryRun,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.deployments import (
     DeployClaim,
@@ -37,7 +37,7 @@ from pynchy.host.orchestrator.api import (
     ensure_scheduled_task_conversation_open,
     run_scheduled_agent,
 )
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001 - beartype resolves Temporal scheduler annotations at runtime.
     SchedulerDependencies,
     SchedulerRuntimeConfig,
 )
@@ -119,12 +119,12 @@ from pynchy.host.orchestrator.temporal.workflows import (
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.learning_packets import (
-    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    LearningPacket,  # beartype resolves Temporal scheduler annotations at runtime.
     packet_to_payload,
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import (
     claim_deployment,
@@ -134,7 +134,7 @@ from pynchy.state.api import (
     get_all_tasks,
     get_task_by_id,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves nested activity annotations.
+from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves nested activity annotations.
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget
@@ -276,7 +276,7 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         logger.info("Terminal conversation scheduled task skipped", task_id=task_id)
         _record_activity_result(task_id, "skipped")
         return "skipped"
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
     return settle_turn_activity(
@@ -337,7 +337,7 @@ async def run_scheduled_canaries() -> str:
                 scheduler_runtime.canary_scenario_ids,
             )
         await _notify_canary_transitions(results, scheduler_deps)
-    except Exception as exc:  # noqa: BLE001, RUF100 - persist operational failure without exposing provider details.
+    except Exception as exc:  # persist operational failure without exposing provider details.
         _record_activity_result("canaries", "error", type(exc).__name__)
         raise
     _record_activity_result("canaries", "completed")
@@ -427,7 +427,7 @@ class TemporalSchedulerRuntime:
                 workflow_runner=scheduler_workflow_runner(),
             )
             await self._worker_stack.enter_async_context(self._worker)
-        except BaseException as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; startup cleanup then re-raise.
+        except BaseException as exc:  # allow: exception-handling; startup cleanup then re-raise.
             await self._worker_stack.aclose()
             bind_scheduler_deps(None)
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
@@ -624,7 +624,7 @@ class TemporalSchedulerRuntime:
                 workflow_id=workflow_id,
             )
             return
-        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record dispatch failure.
+        except Exception as exc:  # allow: exception-handling; record dispatch failure.
             _update_temporal_scheduler_status(
                 last_workflow_id=workflow_id,
                 last_task_id=status_id,

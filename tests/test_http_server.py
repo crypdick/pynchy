@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch

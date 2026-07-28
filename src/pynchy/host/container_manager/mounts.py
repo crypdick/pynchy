@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves mount operation annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves mount operation annotations at runtime.
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +24,7 @@ from pynchy.host.paths import (
 )
 from pynchy.plugins.api import agent_hook_mounts
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves mount annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves mount annotations at runtime.
 )
 
 
@@ -42,7 +42,7 @@ _mount_operations: MountOperations | None = None
 
 def configure_mount_operations(operations: MountOperations) -> None:
     """Install composition-owned mount operations for this host process."""
-    global _mount_operations  # noqa: PLW0603, RUF100 - one host process owns mount composition.
+    global _mount_operations  # noqa: PLW0603 - one host process owns mount composition.
     _mount_operations = operations
 
 
@@ -52,7 +52,7 @@ def _configured_mount_operations() -> MountOperations:
     return _mount_operations
 
 
-def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point with explicit mount inputs.
+def build_volume_mounts(  # noqa: PLR0913 - orchestration entry point with explicit mount inputs.
     group: WorkspaceProfile,
     *,
     is_admin: bool,
@@ -251,11 +251,11 @@ def build_container_args(
     env_names: tuple[str, ...] = (),
 ) -> list[str]:
     """Build CLI args for `container run`."""
-    from pynchy.container_labels import (  # noqa: PLC0415, RUF100 - labels are only needed when building container argv.
+    from pynchy.container_labels import (  # noqa: PLC0415 - labels are only needed when building container argv.
         AGENT_CONTAINER_LABEL,
         AGENT_CONTAINER_LABEL_VALUE,
     )
-    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415 - keep gateway lookup lazy and patchable for container arg tests.
         get_gateway,
     )
 

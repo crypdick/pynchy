@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - test invokes a fixed interpreter import probe.
+import subprocess  # noqa: S404 - test invokes a fixed interpreter import probe.
 import sys
 
 
@@ -23,7 +23,7 @@ from pynchy.plugins.channels.discord import DiscordChannel
 
 assert DiscordChannel.__name__ == 'DiscordChannel'
 """
-    subprocess.run(  # noqa: S603, RUF100 - fixed interpreter import-isolation probe.
+    subprocess.run(  # noqa: S603 - fixed interpreter import-isolation probe.
         [sys.executable, "-c", probe],
         check=True,
         capture_output=True,

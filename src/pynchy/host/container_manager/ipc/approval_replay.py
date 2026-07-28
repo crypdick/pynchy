@@ -5,29 +5,29 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves replay policy callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves replay policy callbacks at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves evidence annotations.
     ConversationId,
 )
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves approval replay dependencies at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves approval replay dependencies at runtime.
 )
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
+from pynchy.plugins.api import (  # beartype resolves evidence annotations.
     HostActionDescriptor,
     missing_workspace_tool,
 )
 from pynchy.workspace.api import (
-    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceSecurity,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 type WorkspaceTools = tuple[str, ...] | None

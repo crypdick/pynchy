@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from pynchy.config.profiles import (
-    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
 from pynchy.workspace.api import CapabilityRule
 

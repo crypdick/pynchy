@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context manager annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves context manager annotations.
     AsyncIterator,
 )
 from contextlib import asynccontextmanager
@@ -197,7 +197,7 @@ class LinearClient:
             )
         return _nodes(data, "issues")
 
-    async def create_issue(  # noqa: PLR0913, RUF100 - Linear issue creation follows the API field set.
+    async def create_issue(  # noqa: PLR0913 - Linear issue creation follows the API field set.
         self,
         *,
         team_id: str,

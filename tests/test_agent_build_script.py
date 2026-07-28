@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess  # noqa: S404, RUF100 - test invokes a repository-owned script with a controlled environment.
+import subprocess  # noqa: S404 - test invokes a repository-owned script with a controlled environment.
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,7 +46,7 @@ def _run_build_script(tmp_path: Path, *, fail_prune_call: int | None = None) -> 
         "PYNCHY_TEST_PRUNE_COUNT": str(prune_count),
         "PYNCHY_TEST_RUNTIME_LOG": str(runtime_log),
     }
-    result = subprocess.run(  # noqa: S603, RUF100 - executable is the repository-owned build script.
+    result = subprocess.run(  # noqa: S603 - executable is the repository-owned build script.
         [str(project_root / "src" / "pynchy" / "agent" / "build.sh")],
         cwd=project_root,
         env=env,

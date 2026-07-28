@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves binding annotations.
     ConversationId,
 )
 from pynchy.identifiers import (
-    ChatJid,  # noqa: TC001, RUF100 - beartype resolves binding annotations.
+    ChatJid,  # noqa: TC001 - beartype resolves binding annotations.
 )
-from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.
+from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001 - beartype resolves binding annotations.
     MatrixPortalAssertion,
 )
-from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.
+from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001 - beartype resolves binding annotations.
     ResolvedMatrixRoute,
 )
 

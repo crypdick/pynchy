@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from pynchy.host.learning.mirror import sync_vault_mount_mirror
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
-from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves this runtime annotation.
     LearningPacket,
 )
 from pynchy.workspace.api import WorkspaceProfile
@@ -33,7 +33,7 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
             )
         )
 
-    async def on_output(_output: object) -> None:  # noqa: RUF029, RUF100 - run_agent expects an async output callback.
+    async def on_output(_output: object) -> None:  # noqa: RUF029 - run_agent expects an async output callback.
         return None
 
     reviewer_jid = f"learning-review:{paths.profile_slug}"

@@ -6,13 +6,13 @@ Built-in backends live under ``plugins/memory/``.
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Protocol, TypeGuard, runtime_checkable
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.identifiers import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
 
@@ -76,7 +76,7 @@ def get_memory_provider(
     """Discover memory plugin and return provider (first valid one wins)."""
     try:
         candidates = plugin_manager.hook.pynchy_memory(database_path=database_path)
-    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break memory discovery.
+    except Exception:  # noqa: BLE001 - one plugin must not break memory discovery.
         logger.exception("Failed to resolve memory plugins")
         return None
     providers = [candidate for candidate in candidates if _is_valid_provider(candidate)]

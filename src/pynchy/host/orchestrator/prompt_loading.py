@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves prompt directory annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves prompt directory annotations.
 
 from pynchy.logger import logger
 

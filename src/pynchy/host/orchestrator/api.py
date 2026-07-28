@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves agent-core annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves agent-core annotations at runtime.
 
 from pynchy.host.orchestrator.action_intents import (
     execute_action_intent,
@@ -54,7 +54,7 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.plugins.api import AgentCoreSpec
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 
 async def dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:
     """Resume one durable turn after the application composition is ready."""
-    from pynchy.host.orchestrator.interrupted_turns import (  # noqa: PLC0415, RUF100 - interrupted turns import the messaging pipeline, which initializes learning capabilities.
+    from pynchy.host.orchestrator.interrupted_turns import (  # noqa: PLC0415 - interrupted turns import the messaging pipeline, which initializes learning capabilities.
         dispatch_interrupted_turn as dispatch,
     )
 

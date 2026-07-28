@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves recovery annotations at runtime.
+from pynchy.identifiers import (  # noqa: TC001 - beartype resolves recovery annotations at runtime.
     ChatJid,
     GroupFolder,
     SessionId,

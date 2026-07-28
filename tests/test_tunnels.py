@@ -7,7 +7,7 @@ that verify the plugin is auto-discovered by get_plugin_manager().
 from __future__ import annotations
 
 import json
-import subprocess  # noqa: S404, RUF100 - tests need TimeoutExpired, not process execution.
+import subprocess  # noqa: S404 - tests need TimeoutExpired, not process execution.
 from unittest.mock import MagicMock, patch
 
 import pluggy

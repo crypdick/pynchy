@@ -8,7 +8,7 @@ Project plus shared team workflow states.
 from __future__ import annotations
 
 from collections.abc import (
-    Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Iterable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from dataclasses import dataclass, replace
 from typing import Any, Protocol, runtime_checkable

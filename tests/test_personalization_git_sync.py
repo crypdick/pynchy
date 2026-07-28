@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - tests invoke fixed git argv.
+import subprocess  # noqa: S404 - tests invoke fixed git argv.
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603, RUF100 - fixed test-only git argv.
+    return subprocess.run(  # noqa: S603 - fixed test-only git argv.
         ["/usr/bin/git", *args],
         cwd=cwd,
         check=True,

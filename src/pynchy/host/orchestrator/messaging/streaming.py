@@ -18,14 +18,14 @@ from pynchy.host.orchestrator.messaging.updating import (
     deliver_updating_event,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
+from pynchy.plugins.api import (  # beartype resolves streaming annotations at runtime.
     Channel,
     OutboundEvent,
     OutboundEventType,
 )
 from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves streaming annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -156,7 +156,7 @@ async def _deliver_stream_update(ch: Channel, target_jid: str, state: StreamStat
             await _post_stream_message(ch, target_jid, state, ch_name)
             return
         await ch.update_event(target_jid, msg_id, state.event)
-    except Exception as exc:  # noqa: BLE001, RUF100 - stream delivery failure is scoped to the current channel update.
+    except Exception as exc:  # noqa: BLE001 - stream delivery failure is scoped to the current channel update.
         logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
 
 

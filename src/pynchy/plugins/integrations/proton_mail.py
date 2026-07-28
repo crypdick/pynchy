@@ -194,7 +194,7 @@ def build_app(
     return app
 
 
-async def _handle_health(  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_health(  # noqa: RUF029 - aiohttp route handlers are async.
     _request: web.Request,
 ) -> web.Response:
     return web.json_response({"status": "ok", "service": "pynchy-proton-mail"})
@@ -208,7 +208,7 @@ async def _handle_mcp(request: web.Request) -> web.StreamResponse:
 
     try:
         return await _dispatch_mcp_request(payload, request.app)
-    except Exception as exc:  # noqa: BLE001, RUF100 - MCP boundary reports tool failures to callers.
+    except Exception as exc:  # noqa: BLE001 - MCP boundary reports tool failures to callers.
         logger.exception("Proton Mail MCP request failed", method=payload.method)
         return _jsonrpc_result(
             payload.id,

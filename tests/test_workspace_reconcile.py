@@ -7,7 +7,7 @@ logic — bugs here mean periodic agents silently don't run or get double-schedu
 
 from __future__ import annotations
 
-from collections.abc import Callable  # noqa: TC003, RUF100 - dataclass field type.
+from collections.abc import Callable  # noqa: TC003 - dataclass field type.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, call

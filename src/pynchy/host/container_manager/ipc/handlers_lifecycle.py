@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle runtime annotations.
-    Sequence,  # noqa: TC003, RUF100 - beartype resolves lifecycle runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
+    Sequence,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves lifecycle settings annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
 from typing import Any, NoReturn, Protocol
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler signatures at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
@@ -72,9 +72,9 @@ class LifecycleRuntime:
 
 def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
     """Bind settings and source-control operations at host composition."""
-    global _get_settings, _resolve_repos_for_group  # noqa: PLW0603, RUF100 - one host process owns these composed operations.
-    global detect_main_branch, host_create_pr_from_worktree  # noqa: PLW0603, RUF100 - one host process owns these composed operations.
-    global redact_git_diagnostic, run_git  # noqa: PLW0603, RUF100 - one host process owns these composed operations.
+    global _get_settings, _resolve_repos_for_group  # noqa: PLW0603 - one host process owns these composed operations.
+    global detect_main_branch, host_create_pr_from_worktree  # noqa: PLW0603 - one host process owns these composed operations.
+    global redact_git_diagnostic, run_git  # noqa: PLW0603 - one host process owns these composed operations.
     _get_settings = runtime.settings
     _resolve_repos_for_group = runtime.resolve_repos_for_group
     detect_main_branch = runtime.detect_main_branch
@@ -160,7 +160,7 @@ def _publication_patch_context(
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -201,7 +201,7 @@ async def _handle_reset_context(
 async def _handle_sync_worktree_to_main(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     request_id = data.get("request_id", "")

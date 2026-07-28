@@ -14,7 +14,7 @@ import secrets
 import shutil
 import signal
 import socket
-import subprocess  # noqa: S404, RUF100 - fixed lifecycle commands launch local runtime processes.
+import subprocess  # noqa: S404 - fixed lifecycle commands launch local runtime processes.
 import sys
 import time
 import urllib.request
@@ -504,7 +504,7 @@ def _start_process(
         # The static shell waits for the real child instead of exec'ing it, so
         # its unique ``$0`` marker remains visible in ``ps``. A persisted PID
         # alone becomes unsafe after the operating system reuses it.
-        return subprocess.Popen(  # noqa: S603, RUF100 - fixed supervisor script and local lifecycle argv.
+        return subprocess.Popen(  # noqa: S603 - fixed supervisor script and local lifecycle argv.
             [_executable("sh"), "-c", _PROCESS_SUPERVISOR_SCRIPT, process_marker, *command],
             cwd=cwd,
             env=env,
@@ -527,7 +527,7 @@ def _run_docker(
     check: bool = True,
     timeout: int = 300,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603, RUF100 - Docker argv is assembled from validated runtime names.
+    return subprocess.run(  # noqa: S603 - Docker argv is assembled from validated runtime names.
         [docker, *args],
         capture_output=True,
         check=check,
@@ -692,7 +692,7 @@ def _wait_for_runtime(spec: RuntimeSpec, process: subprocess.Popen[bytes]) -> No
                 f"Pynchy exited during startup; inspect {spec.log_dir / 'pynchy.general.log'}"
             )
         try:
-            with urllib.request.urlopen(url, timeout=2) as response:  # noqa: S310, RUF100 - fixed loopback status URL.
+            with urllib.request.urlopen(url, timeout=2) as response:  # fixed loopback status URL.
                 if response.status == 200:
                     last_status = json.loads(response.read())
                     if is_runtime_ready(last_status):
@@ -720,7 +720,7 @@ def _process_has_marker(pid: int, marker: str) -> bool:
     if ps is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - ps receives a validated PID and marker lookup only.
+        result = subprocess.run(  # noqa: S603 - ps receives a validated PID and marker lookup only.
             [ps, "-ww", "-p", str(pid), "-o", "command="],
             capture_output=True,
             check=False,
@@ -793,7 +793,7 @@ def _process_group_has_live_member(process_group_id: int) -> bool:
     if ps is None:
         return True
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - fixed local process-status probe for an owned group.
+        result = subprocess.run(  # noqa: S603 - fixed local process-status probe for an owned group.
             [ps, "-eo", "pgid=,stat="],
             capture_output=True,
             check=False,
@@ -1009,7 +1009,7 @@ def setup(spec: RuntimeSpec, *, reset_data: bool = True) -> dict[str, object]:
         _initialize_runtime_data(spec)
         _start_runtime_services(spec, state)
     # allow: exception-handling - partial startup must remove every owned runtime resource.
-    except Exception as error:  # noqa: BLE001, RUF100
+    except Exception as error:
         archive_path: Path | None = None
         with contextlib.suppress(OSError):
             archive_path = _archive_failed_new_feature_setup(spec)
@@ -1036,7 +1036,7 @@ def run(spec: RuntimeSpec, command: list[str]) -> int:
     state = setup(spec)
     result: subprocess.CompletedProcess[bytes] | None = None
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - caller explicitly supplies the CI or developer command.
+        result = subprocess.run(  # noqa: S603 - caller explicitly supplies the CI or developer command.
             command,
             cwd=spec.root,
             env=_test_environment(spec, state),
@@ -1071,7 +1071,7 @@ def execute(root: Path, command: list[str]) -> int:
             "Run stop, then setup or run first"
         )
     spec = _spec_from_state(root, state)
-    result = subprocess.run(  # noqa: S603, RUF100 - caller explicitly supplies the developer command.
+    result = subprocess.run(  # noqa: S603 - caller explicitly supplies the developer command.
         command,
         cwd=spec.root,
         env=_test_environment(spec, state),

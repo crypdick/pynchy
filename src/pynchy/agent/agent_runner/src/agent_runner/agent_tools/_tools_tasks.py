@@ -152,7 +152,7 @@ def _schedule_task_definition() -> Tool:
     )
 
 
-async def _schedule_task_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _schedule_task_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent] | CallToolResult:
     task_type = _task_type(arguments)
@@ -312,7 +312,7 @@ def _list_tasks_definition() -> Tool:
     )
 
 
-async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _list_tasks_handle(  # async tool API.
     _arguments: dict[str, Any],
 ) -> tuple[list[TextContent], dict[str, Any]] | CallToolResult:
     live_result = await ipc_service_request(
@@ -380,21 +380,21 @@ def _task_action(action: str, task_id: str) -> list[TextContent]:
     "Pause a scheduled task or host job. It will not run until resumed.",
     _TASK_ID_SCHEMA,
 )
-async def _pause_task_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _pause_task_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     return _task_action("pause_task", arguments["task_id"])
 
 
 @tool("resume_task", "Resume a paused task or host job.", _TASK_ID_SCHEMA)
-async def _resume_task_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _resume_task_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     return _task_action("resume_task", arguments["task_id"])
 
 
 @tool("cancel_task", "Cancel and delete a scheduled task or host job.", _TASK_ID_SCHEMA)
-async def _cancel_task_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _cancel_task_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     return _task_action("cancel_task", arguments["task_id"])

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003, RUF100 - capability operations are stored at runtime.
+from collections.abc import (  # capability operations are stored at runtime.
     Callable,
     Mapping,
 )
@@ -24,7 +24,7 @@ from pynchy.plugins.api import (
     missing_workspace_tool,
 )
 from pynchy.workspace.api import (
-    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    WorkspaceSecurity,  # noqa: TC001 - beartype resolves runtime annotations.
 )
 
 
@@ -195,7 +195,7 @@ async def _resolve_action(
     if action.capability.probe is not None:
         try:
             probe_result = await action.capability.probe(CapabilityProbeContext(context.workspace))
-        except Exception as exc:  # noqa: BLE001, RUF100 - each plugin probe is an isolation boundary.
+        except Exception as exc:  # noqa: BLE001 - each plugin probe is an isolation boundary.
             logger.exception(
                 "Capability availability probe failed",
                 capability_id=str(action.capability.id),

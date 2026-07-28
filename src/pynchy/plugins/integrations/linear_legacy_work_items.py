@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured transition callbacks at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves configured transition callbacks at runtime.
     Awaitable,
     Callable,
 )
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves migration annotations.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves migration annotations.
     LinearWorkspaceBoard,
     WorkspaceLike,
 )

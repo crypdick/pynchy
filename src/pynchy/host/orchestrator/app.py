@@ -10,7 +10,7 @@ import asyncio
 import json
 import time
 import uuid
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves composition callback annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves composition callback annotations.
     Awaitable,
     Callable,
     Coroutine,
@@ -18,10 +18,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves composi
     Sequence,
 )
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves method annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves method annotations.
 from typing import TYPE_CHECKING, Any, cast
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
 
 from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,
@@ -29,7 +29,7 @@ from pynchy.agent_protocol.api import (
     ContainerOutput,
 )
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime, run_declared_canaries
-from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+from pynchy.canary_contracts import (  # noqa: TC001 - beartype resolves method annotations.
     CanaryRun,
 )
 from pynchy.config.api import (
@@ -45,14 +45,14 @@ from pynchy.config.api import (
     resolve_tool_access,
     tool_process_environment,
 )
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves scheduled-binding annotations.
     Conversation,
     ConversationId,
 )
 from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager.api import (
-    AgentHomeMounts,  # noqa: TC001, RUF100 - beartype resolves composition contracts at runtime.
-    McpStartupFailure,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    AgentHomeMounts,  # beartype resolves composition contracts at runtime.
+    McpStartupFailure,  # beartype resolves contract annotations at runtime.
     RepoMount,
     RepoMountResolution,
 )
@@ -220,7 +220,7 @@ from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.messaging.ask_user_handler import AskUserRuntimeOperations
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+from pynchy.host.orchestrator.messaging.deps import (  # beartype resolves method annotations.
     ApprovalRuntimeOperations,
     CommandMatcher,
     DirectCommandOutput,
@@ -228,7 +228,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
 from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
 from pynchy.host.orchestrator.runtime_process_control import ContainerRuntimeOperations
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+from pynchy.host.orchestrator.scheduler_deps import (  # beartype resolves method annotations.
     ConfigHostCronJob,
     ScheduledExecutionLifecycle,
     SchedulerRuntimeConfig,
@@ -267,7 +267,9 @@ from pynchy.identifiers import (
     SessionId,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+from pynchy.plugins.api import (
+    # beartype resolves app annotations at runtime.
+    # beartype resolves app annotations at runtime.
     Channel,
     MemoryProvider,
     NewMessage,
@@ -287,11 +289,11 @@ from pynchy.plugins.runtimes.api import (
     ensure_agent_image_available,
     get_runtime,
 )
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
@@ -315,7 +317,7 @@ from pynchy.state.api import (
     store_message_direct,
     update_task,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
     TurnOutcome,
 )
 from pynchy.utils import write_json_atomic
@@ -324,7 +326,7 @@ from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc import IpcDeps
 
-from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
     LearningPacket,
 )
 
@@ -967,10 +969,10 @@ class PynchyApp(ThreadRouting):
 
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
-        from pynchy.config.api import (  # noqa: PLC0415, RUF100 - composition root selects the validator.
+        from pynchy.config.api import (  # noqa: PLC0415 - composition root selects the validator.
             validate_personalization_tree,
         )
-        from pynchy.host.git_ops.api import (  # noqa: PLC0415, RUF100 - composition root selects the Git adapter.
+        from pynchy.host.git_ops.api import (  # noqa: PLC0415 - composition root selects the Git adapter.
             sync_personalization_repo,
         )
 
@@ -1248,7 +1250,7 @@ class PynchyApp(ThreadRouting):
     async def run_learning_review(self, packet: LearningPacket) -> str:
         """Run a hidden learning review through the workspace-owned queue."""
 
-        async def run_agent_via_queue(  # noqa: PLR0913, RUF100 - callback mirrors the agent runner.
+        async def run_agent_via_queue(  # noqa: PLR0913 - callback mirrors the agent runner.
             group: WorkspaceProfile,
             chat_jid: str,
             messages: list[dict[str, Any]],
@@ -1280,7 +1282,7 @@ class PynchyApp(ThreadRouting):
                     if not result_future.done():
                         result_future.cancel()
                     raise
-                except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; propagate queued run failure.
+                except Exception as exc:  # noqa: BLE001 - allow: exception-handling; propagate queued run failure.
                     logger.exception("Queued learning run failed", err=str(exc))
                     if not result_future.done():
                         result_future.set_exception(exc)
@@ -1533,7 +1535,7 @@ class PynchyApp(ThreadRouting):
             await self.start_channel_reconciliation()
         except temporal_scheduler.TemporalRuntimeUnavailableError:
             logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
-        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; history catch-up is best-effort startup work.
+        except Exception as exc:  # noqa: BLE001 - allow: exception-handling; history catch-up is best-effort startup work.
             logger.warning(
                 "Channel reconciliation skipped after startup dispatch failure",
                 exc_type=type(exc).__name__,
@@ -1546,7 +1548,7 @@ class PynchyApp(ThreadRouting):
 
     async def run(self) -> None:
         """Main entry point — see :func:`pynchy.host.orchestrator.lifecycle.run_app`."""
-        from pynchy.host.orchestrator.lifecycle import (  # noqa: PLC0415, RUF100 - lifecycle imports PynchyApp for runtime annotations.
+        from pynchy.host.orchestrator.lifecycle import (  # noqa: PLC0415 - lifecycle imports PynchyApp for runtime annotations.
             run_app,
         )
 

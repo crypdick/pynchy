@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess  # noqa: S404, RUF100 - test double subclasses Popen; no subprocess launch.
+import subprocess  # noqa: S404 - test double subclasses Popen; no subprocess launch.
 from typing import TYPE_CHECKING, Any
 
 import pytest

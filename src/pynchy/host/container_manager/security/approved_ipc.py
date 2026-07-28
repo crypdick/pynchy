@@ -51,7 +51,7 @@ async def execute_approved_ipc(
             request_id=request_id,
             task_type=request_data.get("type"),
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - approved IPC dispatch is an IPC boundary.
+    except Exception as exc:  # noqa: BLE001 - approved IPC dispatch is an IPC boundary.
         logger.error("Approved IPC request failed", request_id=request_id, err=str(exc))
         await asyncio.to_thread(
             write_ipc_response,

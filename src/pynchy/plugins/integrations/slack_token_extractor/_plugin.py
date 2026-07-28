@@ -23,7 +23,7 @@ import contextlib
 import os
 import re
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Any
 
 import pluggy
@@ -87,7 +87,7 @@ def _find_dotenv() -> Path:
 
 
 def _update_dotenv_var(dotenv_path: Path, key: str, value: str) -> None:
-    import dotenv  # noqa: PLC0415, RUF100 - optional dotenv dependency is only needed when writing extracted tokens.
+    import dotenv  # noqa: PLC0415 - optional dotenv dependency is only needed when writing extracted tokens.
 
     dotenv_path.touch(exist_ok=True)
     dotenv.set_key(str(dotenv_path), key, value)
@@ -124,7 +124,7 @@ async def _extract_tokens(
     2. Otherwise, if we landed on ``/client/``, extract xoxc from localStorage.
     3. xoxd always comes from the ``d`` cookie.
     """
-    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional Playwright dependency is only needed for token extraction.
+    from playwright.async_api import (  # noqa: PLC0415 - optional Playwright dependency is only needed for token extraction.
         async_playwright,
     )
 
@@ -198,7 +198,7 @@ async def _handle_refresh_slack_tokens(data: dict[str, Any]) -> dict[str, Any]:
 
     try:
         tokens = await _extract_tokens(profile, workspace_url)
-    except Exception as exc:  # noqa: BLE001, RUF100 - token extraction failures are surfaced to the caller.
+    except Exception as exc:  # noqa: BLE001 - token extraction failures are surfaced to the caller.
         logger.error("Slack token extraction failed", error=str(exc))
         return {"error": str(exc)}
 
@@ -230,7 +230,7 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
             vnc_procs, novnc_url = start_virtual_display()
         return await _run_slack_session_setup(request, novnc_url)
 
-    except Exception as exc:  # noqa: BLE001, RUF100 - session setup failures are surfaced to the caller.
+    except Exception as exc:  # noqa: BLE001 - session setup failures are surfaced to the caller.
         logger.error("Slack session setup failed", error=str(exc))
         return {"error": str(exc)}
 
@@ -246,7 +246,7 @@ async def _run_slack_session_setup(
     request: _SlackSetupRequest,
     novnc_url: str | None,
 ) -> dict[str, Any]:
-    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional Playwright dependency is only needed for interactive setup.
+    from playwright.async_api import (  # noqa: PLC0415 - optional Playwright dependency is only needed for interactive setup.
         async_playwright,
     )
 
@@ -269,7 +269,7 @@ async def _run_slack_session_setup(
                 re.compile(r"/client/"),
                 timeout=request.timeout_seconds * 1000,
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - login timeout handling is caller-facing.
+        except Exception as exc:  # noqa: BLE001 - login timeout handling is caller-facing.
             logger.warning(
                 "Slack login not completed before timeout",
                 timeout_seconds=request.timeout_seconds,

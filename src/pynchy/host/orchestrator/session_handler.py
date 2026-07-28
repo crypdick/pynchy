@@ -5,7 +5,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves teardown strategy annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves teardown strategy annotations at runtime.
     Awaitable,
     Callable,
 )

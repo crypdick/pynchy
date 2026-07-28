@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler annotations at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves handler annotations at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -16,10 +16,10 @@ def _write_result(source_group: str, request_id: str, result: dict[str, object])
     write_ipc_response(ipc_response_path(source_group, request_id), {"result": result})
 
 
-async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC handler contract.
+async def _handle_skill_access(  # noqa: RUF029 - registered async IPC handler contract.
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     request_id = data.get("request_id")

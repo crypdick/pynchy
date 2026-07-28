@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - synthetic runtime timeout below.
+import subprocess  # noqa: S404 - synthetic runtime timeout below.
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 

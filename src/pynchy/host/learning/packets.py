@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workflow callback annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves workflow callback annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves workflow callback annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves workflow callback annotations at runtime.
 )
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,7 +13,7 @@ from typing import Any
 from uuid import uuid4
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ContainerOutput,  # noqa: TC001 - beartype resolves these runtime annotations.
 )
 from pynchy.host.learning.paths import (
     LearningConfigError,
@@ -23,10 +23,10 @@ from pynchy.learning_packets import LearningPacket
 from pynchy.learning_packets import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    NewMessage,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    NewMessage,  # noqa: TC001 - beartype resolves these runtime annotations.
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
 )
 
 _MAX_PACKET_MESSAGES = 8
@@ -84,7 +84,7 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
         _append_error_snippet(summary, error_content)
 
 
-def build_learning_packet(  # noqa: PLR0913, RUF100 - packet construction receives values resolved at composition.
+def build_learning_packet(  # noqa: PLR0913 - packet construction receives values resolved at composition.
     *,
     chat_jid: str,
     group: WorkspaceProfile,
@@ -137,7 +137,7 @@ def build_learning_packet(  # noqa: PLR0913, RUF100 - packet construction receiv
     return packet
 
 
-async def start_learning_review_workflow(  # noqa: PLR0913, RUF100 - workflow launch receives the packet's resolved limits.
+async def start_learning_review_workflow(  # noqa: PLR0913 - workflow launch receives the packet's resolved limits.
     *,
     chat_jid: str,
     group: WorkspaceProfile,
@@ -161,7 +161,7 @@ async def start_learning_review_workflow(  # noqa: PLR0913, RUF100 - workflow la
         if packet is None:
             return None
         await start_review_workflow(packet)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
+    except Exception as exc:  # noqa: BLE001 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
             "Failed to start learning review workflow",
             group=group.name,

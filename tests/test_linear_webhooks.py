@@ -1705,7 +1705,7 @@ async def test_route_preparation_can_ignore_an_off_board_issue_before_thread_cre
 ) -> None:
     reject_delivery = True
 
-    async def reject(  # noqa: RUF029, RUF100 - webhook preparers are asynchronous callbacks.
+    async def reject(  # noqa: RUF029 - webhook preparers are asynchronous callbacks.
         event: WebhookEvent,
     ) -> WebhookEvent:
         if not reject_delivery:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves Path annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves Path annotations at runtime.
 from typing import Any
 
 import aiosqlite

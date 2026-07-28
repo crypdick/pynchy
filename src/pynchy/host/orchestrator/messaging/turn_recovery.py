@@ -28,7 +28,7 @@ from pynchy.state.api import (
     get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+from pynchy.turn_outcomes import (  # beartype resolves this result annotation.
     TurnOutcome,
 )
 from pynchy.workspace.api import (

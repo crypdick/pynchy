@@ -6,13 +6,13 @@ Uses watchdog for event-driven processing and startup recovery.
 import asyncio
 import contextlib
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC watcher paths at runtime.
+from pathlib import Path  # beartype resolves IPC watcher paths at runtime.
 
 from watchdog.observers import Observer
 
 from pynchy.host.container_manager.ipc.approval_recovery import sweep_host_approval_decisions
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
+    IpcDeps,  # beartype resolves IPC watcher deps at runtime.
 )
 from pynchy.host.container_manager.ipc.events import IpcEventHandler
 from pynchy.host.container_manager.ipc.file_claims import (
@@ -96,7 +96,7 @@ async def process_ipc_message_file(
         return
     try:
         await handle_message_file(file_path, source_group, is_admin=is_admin, deps=deps)
-    except Exception:  # noqa: BLE001, RUF100 - IPC message handling is an isolation boundary; move failures to error dir.
+    except Exception:  # noqa: BLE001 - IPC message handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC message",
             file=file_path.name,
@@ -126,7 +126,7 @@ async def process_ipc_request_file(
             ipc_base_dir=ipc_base_dir,
             deps=deps,
         )
-    except Exception:  # noqa: BLE001, RUF100 - IPC request handling is an isolation boundary; move failures to error dir.
+    except Exception:  # noqa: BLE001 - IPC request handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC request",
             file=file_path.name,
@@ -285,7 +285,7 @@ def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
 
 async def _sweep_expired_state(deps: IpcDeps) -> None:
     """Auto-deny/expire stale approvals and pending questions left from a crash."""
-    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - approval state pulls IPC dispatch helpers; load only when sweeping.
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - approval state pulls IPC dispatch helpers; load only when sweeping.
         sweep_expired_approvals,
     )
 
@@ -415,7 +415,7 @@ async def _process_queue(
         file_path = await queue.get()
         try:
             await _dispatch_queued_ipc_file(file_path, ipc_base_dir, deps)
-        except Exception:  # noqa: BLE001, RUF100 - queued IPC file errors stay scoped to one file.
+        except Exception:  # noqa: BLE001 - queued IPC file errors stay scoped to one file.
             logger.exception(
                 "Error processing queued IPC file",
                 file=str(file_path),

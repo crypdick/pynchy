@@ -5,14 +5,14 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import subprocess  # noqa: S404, RUF100 - deploy helper invokes the repo-local build script without a shell.
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves deploy annotations at runtime.
+import subprocess  # noqa: S404 - deploy helper invokes the repo-local build script without a shell.
+from collections.abc import (  # noqa: TC003 - beartype resolves deploy annotations at runtime.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves deploy path annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves deploy path annotations at runtime.
 )
 from typing import Any, cast
 
@@ -121,7 +121,7 @@ def build_container_image(project_root: Path, *, timeout: int = 600) -> BuildRes
         return BuildResult(success=True, skipped=True)
 
     logger.info("Rebuilding container image...")
-    result = subprocess.run(  # noqa: S603, RUF100 - executable is the repo-local build.sh path and no shell is used.
+    result = subprocess.run(  # noqa: S603 - executable is the repo-local build.sh path and no shell is used.
         [str(build_script)],
         cwd=str(project_root / "src" / "pynchy" / "agent"),
         capture_output=True,
@@ -137,7 +137,7 @@ def build_container_image(project_root: Path, *, timeout: int = 600) -> BuildRes
     return BuildResult(success=True)
 
 
-async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry the full restart contract explicitly.
+async def finalize_deploy(  # noqa: PLR0913 - deploy boundary must carry the full restart contract explicitly.
     *,
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
     chat_jid: str,

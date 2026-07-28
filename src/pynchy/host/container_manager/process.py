@@ -13,12 +13,12 @@ import contextlib
 import os
 import signal
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from dataclasses import dataclass
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001, RUF100 - beartype validates query-done output at runtime.
+    ContainerOutput,  # noqa: TC001 - beartype validates query-done output at runtime.
 )
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
@@ -98,7 +98,7 @@ async def runtime_container_running(container_name: str) -> bool:
 
     try:
         return await asyncio.to_thread(container_is_running, container_name)
-    except Exception as exc:  # noqa: BLE001, RUF100 - best-effort probe degrades to not running.
+    except Exception as exc:  # noqa: BLE001 - best-effort probe degrades to not running.
         logger.debug(
             "Failed to inspect runtime container state",
             container=container_name,
@@ -111,7 +111,7 @@ async def graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -
     """Stop container gracefully with a short timeout, killing it if it doesn't exit."""
     try:
         await _stop_container_process(proc, container_name)
-    except Exception as exc:  # noqa: BLE001, RUF100 - cleanup boundary; any stop failure falls back to force kill.
+    except Exception as exc:  # noqa: BLE001 - cleanup boundary; any stop failure falls back to force kill.
         logger.exception(
             "Graceful stop failed, force killing",
             container=container_name,

@@ -91,7 +91,7 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
         await release_in_flight_turn_claim(turn_id)
         _record_activity_result(turn_id, "cancelled")
         raise
-    except BaseException as exc:  # noqa: BLE001, RUF100 - claim ownership must end with the activity.
+    except BaseException as exc:  # claim ownership must end with the activity.
         await release_in_flight_turn_claim(turn_id)
         _record_activity_result(turn_id, "error", str(exc))
         raise

@@ -7,7 +7,7 @@ from typing import Any, cast
 from temporalio import activity
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    SchedulerDependencies,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    SchedulerDependencies,  # noqa: TC001 - beartype resolves Temporal learning annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.learning_packets import (
-    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    LearningPacket,  # beartype resolves Temporal learning annotations at runtime.
     packet_from_payload,
 )
 
@@ -33,7 +33,7 @@ async def run_learning_review(packet_payload: dict[str, Any]) -> str:
         result = await cast("SchedulerDependencies", _require_scheduler_deps()).run_learning_review(
             packet
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(packet.job_id, "error", str(exc))
         raise
     _record_activity_result(packet.job_id, result)

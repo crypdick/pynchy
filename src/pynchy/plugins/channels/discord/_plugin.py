@@ -4,31 +4,31 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Awaitable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves this plugin factory annotation at runtime.
+    Path,  # noqa: TC003 - beartype resolves this plugin factory annotation at runtime.
 )
 
 import pluggy
 
-from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.discord import (  # noqa: TC001 - beartype resolves this runtime annotation.
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves hook annotations at runtime.  # noqa: TC001 - beartype resolves this runtime annotation.
     AudioTranscriptionResult,
     ChannelPluginContext,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
     NewMessage,
 )
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves plugin annotations at runtime.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves plugin annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
 
 from ._channel import DiscordChannel
@@ -72,7 +72,7 @@ def _channel_context(
     )
 
 
-def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiring explicit.
+def _build_channel(  # noqa: PLR0913 - plugin factory keeps channel wiring explicit.
     *,
     name: str,
     cfg: DiscordConnectionSettings,

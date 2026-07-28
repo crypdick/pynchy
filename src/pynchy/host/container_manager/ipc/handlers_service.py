@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json as json_mod
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves service runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves service runtime annotations.
 )
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype resolves dataclass.
+from pynchy.action_intents import ActionIntent  # noqa: TC001 - beartype resolves dataclass.
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -31,7 +31,7 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     ApprovalMode,
     HostActionCatalog,
     HostActionDescriptor,
@@ -86,7 +86,7 @@ def configure_service_runtime(
     active_matrix_route: Callable[[str], object | None],
 ) -> None:
     """Bind configuration and route policy sources at host composition."""
-    global _get_settings, load_resolved_config, get_active_matrix_route  # noqa: PLW0603, RUF100 - one host process owns these policy sources.
+    global _get_settings, load_resolved_config, get_active_matrix_route  # noqa: PLW0603 - one host process owns these policy sources.
     _get_settings = get_settings
     load_resolved_config = resolve_workspace_config
     get_active_matrix_route = active_matrix_route
@@ -246,7 +246,7 @@ async def _request_human_approval(
     context: _ApprovalRequestContext,
 ) -> None:
     # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
-    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - security.approval imports IPC dispatch during approval replay.
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - security.approval imports IPC dispatch during approval replay.
         approval_event,
         create_pending_approval,
     )
@@ -355,7 +355,7 @@ async def _maybe_require_cop_approval(
 async def _handle_service_request(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Handle a service request with policy enforcement and plugin dispatch."""
@@ -480,7 +480,9 @@ async def _handle_service_request(
 
     try:
         response = await deps.execute_action_intent(action, data, request_id=request.request_id)
-    except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.
+    except (
+        Exception
+    ) as exc:  # host action boundary must audit terminal failure before watcher recovery.
         await record_security_event(
             chat_jid=chat_jid,
             workspace=source_group,

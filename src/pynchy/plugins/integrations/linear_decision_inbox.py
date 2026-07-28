@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves these annotations at runtime.
     Awaitable,
     Callable,
     Iterable,
@@ -13,11 +13,11 @@ from typing import Any
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves inbox annotations at runtime.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves inbox annotations at runtime.
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
-from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
+from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001 - beartype resolves this annotation at runtime.
     LinearPlanReviewer,
 )
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
@@ -35,7 +35,7 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     decision_state_id,
 )
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves controller annotations.
+    ScheduledTask,  # noqa: TC001 - beartype resolves controller annotations.
 )
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.
@@ -126,7 +126,7 @@ def _project_workspaces(
     return result
 
 
-async def reconcile_linear_decision_inbox(  # noqa: PLR0913, RUF100 - explicit controller dependencies.
+async def reconcile_linear_decision_inbox(  # noqa: PLR0913 - explicit controller dependencies.
     client: LinearDecisionClient,
     workspaces: Iterable[WorkspaceLike],
     boards: Mapping[str, LinearWorkspaceBoard],
@@ -172,7 +172,7 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913, RUF100 - explicit c
                         status,
                         admission,
                     )
-            except Exception:  # noqa: BLE001, RUF100 - one malformed issue must not strand others.
+            except Exception:  # noqa: BLE001 - one malformed issue must not strand others.
                 logger.exception(
                     "Linear work item admission failed",
                     issue=issue.identifier,
@@ -211,7 +211,7 @@ async def reconcile_all_linear_work_items(
                         broadcast_host_message=broadcast_host_message,
                     )
                 )
-        except Exception:  # noqa: BLE001, RUF100 - one optional account must not stop other accounts.
+        except Exception:  # noqa: BLE001 - one optional account must not stop other accounts.
             logger.exception(
                 "Linear work item reconciliation failed",
                 account=account_name,

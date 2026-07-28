@@ -84,5 +84,5 @@ class EventBus:
 async def _safe_call(listener: Listener, event: Event) -> None:
     try:
         await listener(event)
-    except Exception:  # noqa: BLE001, RUF100 - listener failures are isolated fire-and-forget boundary errors.
+    except Exception:  # noqa: BLE001 - listener failures are isolated fire-and-forget boundary errors.
         logger.exception("EventBus listener error")

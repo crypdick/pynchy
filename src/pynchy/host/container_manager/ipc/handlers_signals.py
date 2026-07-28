@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves signal handler signatures at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves signal handler signatures at runtime.
 )
 from pynchy.logger import logger
 
@@ -11,7 +11,7 @@ from pynchy.logger import logger
 async def handle_signal(
     signal_type: str,
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - signal dispatcher is invoked positionally from the watcher.
+    is_admin: bool,  # noqa: FBT001 - signal dispatcher is invoked positionally from the watcher.
     deps: IpcDeps,
 ) -> None:
     """Handle a payload-free IPC request whose behavior is host-derived."""

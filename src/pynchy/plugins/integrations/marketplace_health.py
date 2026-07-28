@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves marketplace runtime callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves marketplace runtime callbacks at runtime.
 )
 from dataclasses import dataclass
-from pathlib import (  # noqa: TC003, RUF100 - Pydantic resolves field annotations at runtime.
+from pathlib import (  # noqa: TC003 - Pydantic resolves field annotations at runtime.
     Path,
 )
 from typing import Any, Literal

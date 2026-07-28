@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 import secrets
 import time
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC write signatures at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves IPC write signatures at runtime.
 from typing import Any
 
 from pynchy.utils import write_json_atomic
@@ -23,7 +23,7 @@ _ipc_base_dir: Path | None = None
 
 def configure_ipc_base_dir(path: Path) -> None:
     """Set the host-owned IPC root during application composition."""
-    global _ipc_base_dir  # noqa: PLW0603, RUF100 - one host process owns one IPC root.
+    global _ipc_base_dir  # noqa: PLW0603 - one host process owns one IPC root.
     _ipc_base_dir = path
 
 

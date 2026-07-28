@@ -31,7 +31,7 @@ import contextlib
 import os
 import shutil
 import socket
-import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
+import subprocess  # noqa: S404 - fixed argv process helpers; never uses shell=True.
 import sys
 import time
 from pathlib import Path
@@ -211,7 +211,7 @@ def has_display() -> bool:
     if xdpyinfo is None:
         return False
     try:
-        r = subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved xdpyinfo path.
+        r = subprocess.run(  # noqa: S603 - fixed argv to resolved xdpyinfo path.
             [xdpyinfo],
             capture_output=True,
             timeout=5,
@@ -229,7 +229,7 @@ def display_is_live(display: str) -> bool:
     if xdpyinfo is None:
         return False
     try:
-        r = subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved xdpyinfo path.
+        r = subprocess.run(  # noqa: S603 - fixed argv to resolved xdpyinfo path.
             [xdpyinfo],
             capture_output=True,
             timeout=3,
@@ -248,7 +248,7 @@ def _is_process_running(name: str) -> bool:
     if pgrep is None:
         return False
     return (
-        subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved pgrep path.
+        subprocess.run(  # noqa: S603 - fixed argv to resolved pgrep path.
             [pgrep, "-x", name],
             capture_output=True,
             check=False,
@@ -278,7 +278,7 @@ def _launch_virtual_display_processes(
 ) -> list[subprocess.Popen[bytes]]:
     procs: list[subprocess.Popen[bytes]] = []
     with contextlib.ExitStack() as stack:
-        xvfb = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
+        xvfb = subprocess.Popen(  # noqa: S603 - fixed argv to resolved Xvfb path.
             [tool_paths["Xvfb"], _XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -289,7 +289,7 @@ def _launch_virtual_display_processes(
         if xvfb.poll() is not None:
             raise RuntimeError(_XVFB_EXITED_MESSAGE.format(returncode=xvfb.returncode))
 
-        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
+        x11vnc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved x11vnc path.
             [
                 tool_paths["x11vnc"],
                 "-display",
@@ -311,7 +311,7 @@ def _launch_virtual_display_processes(
         ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
+        websockify_proc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved path.
             ws_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -335,7 +335,7 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
 
     if not _is_process_running("x11vnc"):
         x11vnc_path = _resolve_executable("x11vnc")
-        p = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
+        p = subprocess.Popen(  # noqa: S603 - fixed argv to resolved x11vnc path.
             [
                 x11vnc_path,
                 "-display",
@@ -357,7 +357,7 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
         ws_cmd = [websockify_path, str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        p = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved websockify path.
+        p = subprocess.Popen(  # noqa: S603 - fixed argv to resolved websockify path.
             ws_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

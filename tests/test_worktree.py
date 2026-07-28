@@ -5,7 +5,7 @@ Uses real git repos via tmp_path to validate actual git behavior.
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603, S607, RUF100 - test helper runs fixed git argv against temp repos
-        ["git", *args],  # noqa: S607, RUF100 - test helper deliberately resolves git from PATH
+    return subprocess.run(  # noqa: S603 - test helper runs fixed git argv against temp repos
+        ["git", *args],  # noqa: S607 - test helper deliberately resolves git from PATH
         cwd=str(cwd),
         capture_output=True,
         text=True,

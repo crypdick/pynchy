@@ -19,7 +19,7 @@ class CopGatewayUnavailableError(RuntimeError):
 
 def configure_cop_gateway(*, model: str | None, wire_api: str) -> None:
     """Apply the resolved Cop transport selection at application composition."""
-    global _cop_model, _cop_wire_api  # noqa: PLW0603, RUF100 - one host process owns one Cop transport selection.
+    global _cop_model, _cop_wire_api  # noqa: PLW0603 - one host process owns one Cop transport selection.
     _cop_model = model or _DEFAULT_COP_MODEL
     _cop_wire_api = wire_api
 

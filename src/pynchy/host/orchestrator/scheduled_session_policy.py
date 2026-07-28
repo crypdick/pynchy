@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves policy annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves policy annotations at runtime.
     Awaitable,
     Callable,
 )
 from dataclasses import replace
 
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves policy annotations at runtime.
+from pynchy.scheduling.api import (  # beartype resolves policy annotations at runtime.
     ScheduledTask,
     SessionPolicy,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves policy annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves policy annotations at runtime.
 )
 
 

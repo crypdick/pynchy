@@ -2,25 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves callback annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves callback annotations at runtime.
     Awaitable,
     Callable,
 )
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
 from typing import Any, Protocol, runtime_checkable
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves annotations at runtime.
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
     AgentExecutionRuntime,
     ContainerInput,
 )
 from pynchy.host.orchestrator._agent_runner_preflight import (
-    PreContainerResult,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    PreContainerResult,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
 from pynchy.host.orchestrator.host_execution import (
     HostAgentTurnRequest,
-    HostProcessQueue,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    HostProcessQueue,  # beartype resolves annotations at runtime.
     HostRuntimeOperations,
     host_agent_env_vars,
     migrate_host_codex_thread,
@@ -45,7 +45,7 @@ from pynchy.workspace.api import (
 class BuildContainerInput(Protocol):
     """Build runner input after host session preparation is complete."""
 
-    def __call__(  # noqa: PLR0913, RUF100 - mirrors the explicit agent-execution boundary.
+    def __call__(  # noqa: PLR0913 - mirrors the explicit agent-execution boundary.
         self,
         messages: list[dict[str, Any]],
         ctx: PreContainerResult,
@@ -76,7 +76,7 @@ class HostAgentDispatchDeps(Protocol):
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
 
-async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agent-runner inputs.
+async def run_host_execution(  # noqa: PLR0913 - mirrors the shared agent-runner inputs.
     deps: HostAgentDispatchDeps,
     group: WorkspaceProfile,
     chat_jid: str,

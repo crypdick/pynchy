@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from collections.abc import (  # noqa: TC003 - beartype resolves this runtime annotation.
     Callable,
 )
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # beartype resolves this runtime annotation.
 
 from pynchy.host.git_ops.repo import github_slug_from_origin
 from pynchy.host.git_ops.utils import (

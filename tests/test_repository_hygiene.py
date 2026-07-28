@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-import subprocess  # noqa: S404, RUF100 - test invokes fixed git argv with no shell.
+import subprocess  # noqa: S404 - test invokes fixed git argv with no shell.
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +12,7 @@ _FORBIDDEN_MARKERS = ("ri" + "cardo", "/" + "src" + "/" + "PERSONAL")
 
 
 def _non_ignored_repo_paths() -> list[Path]:
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed no-shell git argv.
+    result = subprocess.run(  # noqa: S603 - fixed no-shell git argv.
         [_GIT, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         cwd=_REPO_ROOT,
         check=True,

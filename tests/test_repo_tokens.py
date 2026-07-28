@@ -11,7 +11,7 @@ Covers:
 from __future__ import annotations
 
 import datetime
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

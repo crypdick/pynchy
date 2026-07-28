@@ -49,14 +49,16 @@ class DiscordLifecycle:
         ch.events.register()
 
         @client.event
-        async def on_ready() -> None:  # noqa: RUF029, RUF100 - discord.py event callbacks are async.
+        async def on_ready() -> None:  # discord.py event callbacks are async.
             ch.bot_user_id = str(client.user.id) if client.user else ""
             ch.connected = True
             logger.info("Connected to Discord", connection=ch.name, bot_user_id=ch.bot_user_id)
             await ch.voice.on_ready()
 
         @client.event
-        async def on_voice_state_update(member: object, before: object, after: object) -> None:  # noqa: RUF029, RUF100 - discord.py event callbacks are async.
+        async def on_voice_state_update(
+            member: object, before: object, after: object
+        ) -> None:  # discord.py event callbacks are async.
             await ch.handle_voice_state_update(member, before, after)
 
         self._task = asyncio.ensure_future(self._run(client))

@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
 )
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Any, cast
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
-from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates browser helper contracts at runtime.
+from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001 - beartype validates browser helper contracts at runtime.
     XLocator,
     XPage,
 )
@@ -62,7 +62,7 @@ async def is_visible(locator: XLocator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
         return bool(await locator.is_visible())
-    except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - detached elements are treated as not visible.
+    except Exception:  # noqa: BLE001  # allow: exception-handling - detached elements are treated as not visible.
         return False
 
 
@@ -90,7 +90,7 @@ async def navigate_to_tweet(page: XPage, tweet_url: str) -> str | None:
             wait_until="domcontentloaded",
         )
         await page.wait_for_timeout(TIMEOUTS["page_load"])
-    except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - navigation errors are surfaced to the caller.
+    except Exception as exc:  # noqa: BLE001  # allow: exception-handling - navigation errors are surfaced to the caller.
         return f"Navigation failed: {exc}"
 
     if not await is_visible(page.locator(SEL["tweet_article"]).first):
@@ -121,7 +121,7 @@ async def with_browser(
     Manages Xvfb display, lock-file cleanup, Playwright lifecycle.
     Used by action tools (``setup_x_session`` has its own VNC flow).
     """
-    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+    from playwright.async_api import (  # noqa: PLC0415 - optional browser automation dependency.
         async_playwright,
     )
 

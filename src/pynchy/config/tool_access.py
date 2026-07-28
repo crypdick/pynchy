@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import os
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves tool-access annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves tool-access annotations at runtime.
     Mapping,
 )
 from dataclasses import dataclass, replace
 
-from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves tool-access annotations at runtime.
+from pynchy.config.merge import (  # noqa: TC001 - beartype resolves tool-access annotations at runtime.
     ResolvedWorkspaceConfig,
 )
 from pynchy.config.models import LinearTool, ToolConfig, WorkspaceTool

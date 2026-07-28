@@ -19,8 +19,8 @@ import asyncio
 import importlib
 import warnings
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-    Mapping,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Mapping,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from typing import TypeGuard
 
@@ -164,7 +164,7 @@ def _register_builtin_plugins(
             logger.info("Registered built-in plugin", name=config_key)
         except ImportError:
             logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
-        except Exception:  # noqa: BLE001, RUF100 - built-in plugin import/load isolation.
+        except Exception:  # noqa: BLE001 - built-in plugin import/load isolation.
             logger.exception(
                 "Failed to load built-in plugin",
                 plugin=config_key,
@@ -247,7 +247,7 @@ def collect_hook_results[T](
     hook_caller = getattr(pm.hook, hook_attr)  # AttributeError = bug in calling code
     try:
         provided = hook_caller(**hook_kwargs)
-    except Exception:  # noqa: BLE001, RUF100 - plugin hook isolation; one bad plugin shouldn't crash the caller.
+    except Exception:  # noqa: BLE001 - plugin hook isolation; one bad plugin shouldn't crash the caller.
         # Individual plugin hook implementations can raise arbitrary errors.
         # One bad plugin shouldn't crash the caller — log and return empty.
         logger.exception("Failed to resolve %s plugins", label)

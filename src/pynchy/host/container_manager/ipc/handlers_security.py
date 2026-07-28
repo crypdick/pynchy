@@ -154,7 +154,7 @@ async def evaluate_bash_command(
 async def _handle_bash_security_check(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """IPC handler for security:bash_check requests.
@@ -195,7 +195,7 @@ async def _handle_bash_security_check(
 
     if decision["decision"] == "needs_human":
         # Lazy import to avoid circular: security.approval -> ipc._write -> ipc.__init__ -> here
-        from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - avoid security.approval/import cycle.
+        from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - avoid security.approval/import cycle.
             approval_event,
             create_pending_approval,
         )
@@ -261,7 +261,7 @@ async def _handle_bash_security_check(
 async def _handle_security_check(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Dispatch a typed security request without tool-name assumptions."""

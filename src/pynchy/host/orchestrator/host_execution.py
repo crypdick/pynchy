@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100
+from pynchy.agent_protocol.api import (
     ContainerInput,
     ContainerOutput,
 )
@@ -23,8 +23,8 @@ from pynchy.host.orchestrator.codex_rollouts import (
 )
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
-from pynchy.identifiers import RuntimeId  # noqa: TC001, RUF100
-from pynchy.workspace.api import RuntimeTarget  # noqa: TC001, RUF100
+from pynchy.identifiers import RuntimeId  # noqa: TC001
+from pynchy.workspace.api import RuntimeTarget  # noqa: TC001
 
 if TYPE_CHECKING:
     import asyncio
@@ -54,7 +54,7 @@ class HostProcessQueue(Protocol):
 
     def acquire_host_process(self, target: RuntimeTarget) -> HostProcessLease: ...
 
-    def register_host_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
+    def register_host_process(  # mirrors GroupQueue's process-registration contract.
         self,
         lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,

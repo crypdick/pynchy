@@ -55,7 +55,7 @@ async def test_patch_editor_missing_update_returns_failed(tmp_path: Path) -> Non
 async def test_patch_editor_runs_shared_security_roster_before_write(tmp_path: Path) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
-    async def deny_persistence(  # noqa: RUF029, RUF100 - hook protocol is asynchronous.
+    async def deny_persistence(  # noqa: RUF029 - hook protocol is asynchronous.
         tool_name: str, tool_input: dict[str, object]
     ) -> HookDecision:
         calls.append((tool_name, tool_input))
