@@ -22,6 +22,8 @@ Exit codes:
 import argparse
 import ast
 import sys
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -84,13 +86,33 @@ def count_logical_lines(filepath: Path) -> int:
     return logical_count
 
 
-def check_file_length(filepath: Path, max_lines: int) -> tuple[int, str] | None:
+def check_file_length(
+    filepath: Path,
+    max_lines: int,
+    baseline: Mapping[str, int] | None = None,
+) -> tuple[int, str] | None:
     """Check whether *filepath* exceeds *max_lines* logical lines.
 
     Returns ``(lloc, message)`` on violation or ``None`` if the file is fine.
     """
     lloc = count_logical_lines(filepath)
+    baseline_lines = (baseline or {}).get(filepath.as_posix())
+    if baseline_lines is not None and lloc <= max_lines:
+        return (
+            lloc,
+            f"File is within the {max_lines}-logical-line limit; remove its baseline entry",
+        )
     if lloc > max_lines:
+        if baseline_lines is not None and lloc <= baseline_lines:
+            return None
+        if baseline_lines is not None:
+            return (
+                lloc,
+                (
+                    f"File grew from its {baseline_lines}-logical-line baseline to {lloc} "
+                    f"(limit {max_lines}) — split it instead"
+                ),
+            )
         return (
             lloc,
             (
@@ -100,6 +122,26 @@ def check_file_length(filepath: Path, max_lines: int) -> tuple[int, str] | None:
             ),
         )
     return None
+
+
+def load_baseline(path: Path, max_lines: int) -> dict[str, int]:
+    """Load grandfathered file budgets that must shrink, never grow."""
+    try:
+        entries = tomllib.loads(path.read_text(encoding="utf-8")).get("files", {})
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ValueError(f"Could not load file-length baseline {path}: {error}") from error
+
+    if not isinstance(entries, dict) or any(
+        not isinstance(filename, str)
+        or not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or limit <= max_lines
+        for filename, limit in entries.items()
+    ):
+        raise ValueError(
+            f"File-length baseline {path} must map paths to integer limits above {max_lines}"
+        )
+    return entries
 
 
 def main(filenames: list[str] | None = None) -> int:
@@ -114,7 +156,17 @@ def main(filenames: list[str] | None = None) -> int:
         default=450,
         help="Maximum allowed logical lines per file (default: 450)",
     )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        help="TOML file of grandfathered path-to-limit entries that may only shrink",
+    )
     args = parser.parse_args(filenames)
+
+    try:
+        baseline = load_baseline(args.baseline, args.max_lines) if args.baseline else {}
+    except ValueError as error:
+        parser.error(str(error))
 
     exit_code = 0
     total_violations = 0
@@ -134,7 +186,7 @@ def main(filenames: list[str] | None = None) -> int:
         except OSError:
             continue
 
-        result = check_file_length(filepath, args.max_lines)
+        result = check_file_length(filepath, args.max_lines, baseline)
 
         if result is not None:
             _lloc, message = result
