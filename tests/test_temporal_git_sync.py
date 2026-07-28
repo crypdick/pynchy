@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from conftest import make_settings
@@ -14,6 +14,7 @@ import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.api import NotificationsConfig
 from pynchy.deployments import DeployRevision
 from pynchy.host.git_ops.api import RepoContext, sync_poll
+from pynchy.host.orchestrator.api import ConfigRefreshResult, ConfigRefreshStatus
 from pynchy.host.orchestrator.temporal import git_sync
 from pynchy.host.orchestrator.temporal.runtime_state import get_temporal_scheduler_status
 from pynchy.state import (
@@ -119,6 +120,14 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     )
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-sha")
     monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: "new-config")
+    monkeypatch.setattr(
+        git_sync,
+        "refresh_host_config",
+        lambda _applied: ConfigRefreshResult(
+            ConfigRefreshStatus.RESTART_REQUIRED,
+            "new-config",
+        ),
+    )
     monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
     monkeypatch.setattr(
         temporal_scheduler,
@@ -179,6 +188,132 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
 
     assert await git_sync.run_host_git_sync() == "idle"
     assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "idle")]
+
+
+async def test_host_git_sync_publishes_skill_policy_without_deploy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    applied = DeployRevision("deployed-sha", "restart-hash")
+    await initialize_deployment_state(applied)
+    await set_router_state(
+        git_sync.HOST_STATE_KEY,
+        '{"last_origin_sha":"origin","deployed_sha":"deployed-sha",'
+        '"config_hash":"restart-hash","local_head":"deployed-sha","offered_sha":""}',
+    )
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    refresh = Mock(
+        return_value=ConfigRefreshResult(
+            ConfigRefreshStatus.REFRESHED,
+            applied.config_hash,
+        )
+    )
+    monkeypatch.setattr(git_sync, "refresh_host_config", refresh)
+    monkeypatch.setattr(
+        git_sync,
+        "_require_scheduler_deps",
+        lambda: _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock()),
+    )
+
+    assert await git_sync.run_host_git_sync() == "config_refreshed"
+    refresh.assert_called_once_with(applied.config_hash)
+
+
+async def test_host_git_sync_uses_restart_hash_from_validated_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    applied = DeployRevision("deployed-sha", "old-restart-hash")
+    await initialize_deployment_state(applied)
+    await set_router_state(
+        git_sync.HOST_STATE_KEY,
+        '{"last_origin_sha":"origin","deployed_sha":"deployed-sha",'
+        '"config_hash":"old-restart-hash","local_head":"deployed-sha","offered_sha":""}',
+    )
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        git_sync,
+        "refresh_host_config",
+        Mock(
+            return_value=ConfigRefreshResult(
+                ConfigRefreshStatus.RESTART_REQUIRED,
+                "new-restart-hash",
+            )
+        ),
+    )
+    start_deploy = AsyncMock()
+    monkeypatch.setattr(temporal_scheduler, "start_deploy_workflow", start_deploy)
+    monkeypatch.setattr(
+        git_sync,
+        "_require_scheduler_deps",
+        lambda: _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock()),
+    )
+
+    assert await git_sync.run_host_git_sync() == "deploy_started"
+    start_deploy.assert_awaited_once()
+    request = start_deploy.await_args.args[0]
+    assert request.previous_sha == applied.commit_sha
+    assert request.rebuild is False
+    assert request.config_hash == "new-restart-hash"
+
+
+@pytest.mark.parametrize("suppression", ["active", "pending", "approval"])
+async def test_code_deployment_state_suppresses_config_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    suppression: str,
+) -> None:
+    await init_test_database()
+    applied = DeployRevision("deployed-sha", "restart-hash")
+    await initialize_deployment_state(applied)
+    local_head = "local-code" if suppression == "approval" else applied.commit_sha
+    await set_router_state(
+        git_sync.HOST_STATE_KEY,
+        '{"last_origin_sha":"origin","deployed_sha":"deployed-sha",'
+        f'"config_hash":"restart-hash","local_head":"{local_head}","offered_sha":""}}',
+    )
+    if suppression == "pending":
+        await claim_deployment(DeployRevision("pending-code", "restart-hash"))
+
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(
+        git_sync,
+        "_check_local_head_drift",
+        AsyncMock(return_value=suppression == "active"),
+    )
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "needs_deploy", lambda _old, _new: True)
+    refresh = Mock()
+    monkeypatch.setattr(git_sync, "refresh_host_config", refresh)
+    monkeypatch.setattr(
+        git_sync,
+        "_require_scheduler_deps",
+        lambda: _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock()),
+    )
+
+    result = await git_sync.run_host_git_sync()
+
+    assert (
+        result
+        == {
+            "active": "deploy_started",
+            "pending": "deploy_pending",
+            "approval": "update_pending",
+        }[suppression]
+    )
+    refresh.assert_not_called()
 
 
 async def test_external_git_sync_unavailable_fails_temporal_and_status(

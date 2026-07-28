@@ -10,6 +10,7 @@ import pluggy
 import pytest
 from conftest import (
     make_host_runtime_operations,
+    make_settings,
 )
 
 from pynchy.agent_protocol.api import (
@@ -18,6 +19,9 @@ from pynchy.agent_protocol.api import (
 from pynchy.config.api import (
     LearningConfig,
     ObsidianLearningConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+    publish_settings,
 )
 from pynchy.host.container_manager.api import AgentHomeMounts
 from pynchy.host.git_ops.api import RepoContext
@@ -27,6 +31,7 @@ from pynchy.host.learning.skill_activation import (
     refresh_personalized_agent_skills,
 )
 from pynchy.host.orchestrator import host_execution
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )
@@ -296,6 +301,46 @@ class TestMountBuilding:
                 / "skills/remember-routing/SKILL.md"
             )
             assert skill_dst.exists()
+
+    def test_warm_agent_homes_apply_new_published_skill_policy(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        for name in ("alpha", "beta"):
+            skill = tmp_path / "data/personalization/skills" / name
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: {name.title()} skill.\ntier: learned\n---\n",
+                encoding="utf-8",
+            )
+        settings = make_settings(
+            project_root=tmp_path,
+            learning=LearningConfig(enabled=False),
+            profiles={"base": ProfileConfig(skills=["alpha"])},
+            workspaces={"test-group": WorkspaceConfig(profiles=["base"])},
+        )
+        publish_settings(settings)
+        app = PynchyApp()
+        app.sessions["test-group"] = "warm-session"
+
+        homes = prepare_agent_homes("test-group")
+        history = homes.claude_home / "history.json"
+        history.write_text("preserve me", encoding="utf-8")
+
+        updated = settings.model_copy(deep=True)
+        updated.profiles["base"] = ProfileConfig(
+            skills=["beta"],
+            denied_skills=["alpha"],
+        )
+        publish_settings(updated)
+        refreshed = prepare_agent_homes("test-group")
+
+        assert refreshed == homes
+        assert history.read_text(encoding="utf-8") == "preserve me"
+        assert app.sessions["test-group"] == "warm-session"
+        for agent_home in (homes.claude_home, homes.codex_home):
+            assert not (agent_home / "skills/alpha").exists()
+            assert (agent_home / "skills/beta/SKILL.md").is_file()
 
     def test_host_execution_syncs_personalized_skill_into_its_isolated_codex_home(
         self,

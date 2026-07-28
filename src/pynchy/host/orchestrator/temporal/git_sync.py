@@ -17,6 +17,7 @@ from temporalio.exceptions import ApplicationError
 
 from pynchy.deployments import DeployRevision
 from pynchy.host.orchestrator.api import SessionManager, resolve_admin_notification_jid
+from pynchy.host.orchestrator.config_refresh import ConfigRefreshStatus
 from pynchy.host.orchestrator.temporal.deploy import (
     DeployFailureDeps,
     DeployRequest,
@@ -74,7 +75,9 @@ class TemporalGitSyncRuntime:
     host_notify_worktree_updates: Callable[..., Any]
     host_update_main_result: Callable[..., Any]
     last_notified_sha: dict[str, str]
+    needs_deploy: Callable[[str, str], bool]
     probe_origin_main_sha: Callable[..., Any]
+    refresh_host_config: Callable[[str], Any]
 
 
 _runtime = TemporalGitSyncRuntime(
@@ -90,7 +93,9 @@ _runtime = TemporalGitSyncRuntime(
     host_notify_worktree_updates=_unconfigured_runtime,
     host_update_main_result=_unconfigured_runtime,
     last_notified_sha={},
+    needs_deploy=_unconfigured_runtime,
     probe_origin_main_sha=_unconfigured_runtime,
+    refresh_host_config=_unconfigured_runtime,
 )
 
 
@@ -100,7 +105,7 @@ def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None
     global get_deploy_config_hash, get_local_head_sha, get_repo_context, git_env_with_token  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global host_update_main_result, check_origin_drift  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
-    global probe_origin_main_sha, last_notified_sha  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global probe_origin_main_sha, last_notified_sha, needs_deploy, refresh_host_config  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     _runtime = runtime
     get_settings = runtime.get_settings
     _check_local_head_drift = runtime.check_local_head_drift
@@ -115,6 +120,8 @@ def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None
     check_origin_drift = runtime.check_origin_drift
     probe_origin_main_sha = runtime.probe_origin_main_sha
     last_notified_sha = runtime.last_notified_sha
+    needs_deploy = runtime.needs_deploy
+    refresh_host_config = runtime.refresh_host_config
 
 
 get_settings: Callable[[], Any] = _unconfigured_runtime
@@ -130,6 +137,8 @@ host_update_main_result: Callable[..., Any] = _unconfigured_runtime
 check_origin_drift: Callable[..., Any] = _unconfigured_runtime
 probe_origin_main_sha: Callable[..., Any] = _unconfigured_runtime
 last_notified_sha: dict[str, str] = {}
+needs_deploy: Callable[[str, str], bool] = _unconfigured_runtime
+refresh_host_config: Callable[[str], Any] = _unconfigured_runtime
 
 
 def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:
@@ -166,7 +175,13 @@ class _TemporalGitSyncDeps:
     def sync_personalization(self, project_root: Path) -> str:
         return self._deps.sync_personalization(project_root)
 
-    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
+    async def trigger_deploy(
+        self,
+        previous_sha: str,
+        *,
+        rebuild: bool = True,
+        config_hash: str | None = None,
+    ) -> None:
         from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - avoids scheduler <-> git_sync import cycle.
             start_deploy_workflow,
         )
@@ -177,7 +192,7 @@ class _TemporalGitSyncDeps:
                 workspaces, get_settings().notifications.admin_workspace
             ),
             commit_sha=get_local_head_sha(get_settings().project_root),
-            config_hash=get_deploy_config_hash(),
+            config_hash=config_hash or get_deploy_config_hash(),
             previous_sha=previous_sha,
             rebuild=rebuild,
             reason=self._reason,
@@ -259,13 +274,14 @@ async def _save_host_state(state: HostSyncState) -> None:
     await set_router_state(HOST_STATE_KEY, json.dumps(asdict(state)))
 
 
-async def _config_drift_started_deploy(state: HostSyncState, deps: _TemporalGitSyncDeps) -> bool:
-    current_config_hash = await asyncio.to_thread(get_deploy_config_hash)
-    if current_config_hash == state.config_hash:
-        return False
-    logger.info("Config files changed, starting Temporal deploy")
-    await deps.trigger_deploy(state.deployed_sha, rebuild=False)
-    return True
+def _local_code_awaits_approval(state: HostSyncState, *, auto_deploy: bool) -> bool:
+    return bool(
+        not auto_deploy
+        and state.local_head
+        and state.deployed_sha
+        and state.local_head != state.deployed_sha
+        and needs_deploy(state.deployed_sha, state.local_head)
+    )
 
 
 @activity.defn(name="run_host_git_sync")
@@ -291,24 +307,38 @@ async def run_host_git_sync() -> str:
         )
         if personalization_result == "pushed":
             result = "personalization_pushed"
-        if (
-            await _config_drift_started_deploy(state, deps)
-            or await _check_local_head_drift(
-                settings.project_root,
-                state,
-                repo_ctx,
-                deps,
-                auto_deploy=settings.scheduler.auto_deploy,
-            )
-            or await check_origin_drift(
-                settings.project_root,
-                state,
-                repo_ctx,
-                deps,
-                auto_deploy=settings.scheduler.auto_deploy,
-            )
+        if await _check_local_head_drift(
+            settings.project_root,
+            state,
+            repo_ctx,
+            deps,
+            auto_deploy=settings.scheduler.auto_deploy,
+        ) or await check_origin_drift(
+            settings.project_root,
+            state,
+            repo_ctx,
+            deps,
+            auto_deploy=settings.scheduler.auto_deploy,
         ):
             result = "deploy_started"
+        elif _local_code_awaits_approval(
+            state,
+            auto_deploy=settings.scheduler.auto_deploy,
+        ):
+            result = "update_pending"
+        elif (await get_deployment_state()).pending is not None:
+            result = "deploy_pending"
+        else:
+            refresh = await asyncio.to_thread(refresh_host_config, state.config_hash)
+            if refresh.status is ConfigRefreshStatus.RESTART_REQUIRED:
+                await deps.trigger_deploy(
+                    state.deployed_sha,
+                    rebuild=False,
+                    config_hash=refresh.restart_hash,
+                )
+                result = "deploy_started"
+            elif refresh.status is not ConfigRefreshStatus.UNCHANGED:
+                result = refresh.status.value
     finally:
         if result != "deploy_started" and state.deployed_sha and state.config_hash:
             await advance_deployment_baseline(DeployRevision(state.deployed_sha, state.config_hash))

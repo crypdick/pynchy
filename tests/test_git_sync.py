@@ -87,6 +87,7 @@ def git_env(tmp_path: Path):
             sync_poll.GitSyncRuntime(
                 project_root=s.project_root,
                 repo_slugs=tuple(s.repos.overrides),
+                get_restart_hash=lambda: "test-config",
             )
         )
         yield {
@@ -763,68 +764,5 @@ class TestCheckOriginDrift:
 
 
 class TestHashConfigFiles:
-    def test_hash_config_files_detects_change(self, git_env: dict):
-        """Modifying personalized settings should change the hash."""
-        project = git_env["project"]
-        config_path = project / "data" / "personalization" / "pynchy.toml"
-        config_path.parent.mkdir(parents=True)
-
-        config_path.write_text("[agent]\nname = 'test'\n")
-        hash1 = sync_poll.get_deploy_config_hash()
-
-        config_path.write_text("[agent]\nname = 'changed'\n")
-        hash2 = sync_poll.get_deploy_config_hash()
-
-        assert hash1 != hash2
-
-    def test_hash_config_files_missing_file(self, git_env: dict):
-        """Missing litellm config should produce a stable hash."""
-        project = git_env["project"]
-        config_path = project / "data" / "personalization" / "pynchy.toml"
-        config_path.parent.mkdir(parents=True)
-        config_path.write_text("[agent]\nname = 'test'\n")
-
-        hash1 = sync_poll.get_deploy_config_hash()
-        hash2 = sync_poll.get_deploy_config_hash()
-
-        assert hash1 == hash2
-
-    def test_hash_includes_automation_bundle_files(self, git_env: dict):
-        """Prompt changes inside an automation bundle should trigger a restart."""
-        project = git_env["project"]
-        automations = project / "data" / "personalization" / "automations"
-        automations.mkdir(parents=True)
-        prompt = automations / "weekly.md"
-        prompt.write_text("before", encoding="utf-8")
-        before = sync_poll.get_deploy_config_hash()
-
-        prompt.write_text("after", encoding="utf-8")
-        after = sync_poll.get_deploy_config_hash()
-
-        assert before != after
-
-    def test_hash_includes_public_defaults(self, git_env: dict):
-        project = git_env["project"]
-        defaults = project / "data" / "defaults"
-        defaults.mkdir(parents=True)
-        settings = defaults / "pynchy.toml"
-        settings.write_text("[agent]\nname = 'before'\n", encoding="utf-8")
-        before = sync_poll.get_deploy_config_hash()
-
-        settings.write_text("[agent]\nname = 'after'\n", encoding="utf-8")
-        after = sync_poll.get_deploy_config_hash()
-
-        assert before != after
-
-    def test_hash_excludes_personalization_skills(self, git_env: dict):
-        project = git_env["project"]
-        skill = project / "data/personalization/skills/remember-routing"
-        skill.mkdir(parents=True)
-        skill_file = skill / "SKILL.md"
-        skill_file.write_text("before", encoding="utf-8")
-        before = sync_poll.get_deploy_config_hash()
-
-        skill_file.write_text("after", encoding="utf-8")
-        after = sync_poll.get_deploy_config_hash()
-
-        assert before == after
+    def test_deploy_hash_uses_the_composed_configuration_classifier(self, git_env: dict):
+        assert sync_poll.get_deploy_config_hash() == "test-config"
