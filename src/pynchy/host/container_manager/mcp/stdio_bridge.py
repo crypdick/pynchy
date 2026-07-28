@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import uvicorn
 from mcp import ClientSession, StdioServerParameters
@@ -20,9 +20,14 @@ from starlette.responses import Response
 from starlette.routing import Mount, Route
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from mcp.types import CallToolResult, Tool
+
+    type _ListToolsHandler = Callable[[], Awaitable[list[Tool]]]
+    type _CallToolHandler = Callable[[str, dict[str, Any]], Awaitable[CallToolResult]]
+    type _ListToolsDecorator = Callable[[_ListToolsHandler], _ListToolsHandler]
+    type _CallToolDecorator = Callable[[_CallToolHandler], _CallToolHandler]
 
 _LOOPBACK_HOST = "127.0.0.1"
 
@@ -46,18 +51,21 @@ def _application(command: list[str]) -> Starlette:
     server = Server("pynchy-stdio-bridge")
     backend_session: ClientSession | None = None
 
+    # mcp 1.26 leaves its callback decorators untyped. Their runtime contract
+    # preserves the registered callback, so isolate that missing SDK typing here.
+    list_tools_decorator = cast("Callable[[], _ListToolsDecorator]", server.list_tools)
+    call_tool_decorator = cast("Callable[[], _CallToolDecorator]", server.call_tool)
+
     def connected_session() -> ClientSession:
         if backend_session is None:
             raise RuntimeError("Stdio MCP backend is not connected")
         return backend_session
 
-    # mcp's Server decorators have no typed wrapper, but these functions
-    # register the typed callbacks consumed only by the SDK.
-    @server.list_tools()  # type: ignore[untyped-decorator]
+    @list_tools_decorator()
     async def list_tools() -> list[Tool]:
         return (await connected_session().list_tools()).tools
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
+    @call_tool_decorator()
     async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
         return await connected_session().call_tool(name, arguments)
 

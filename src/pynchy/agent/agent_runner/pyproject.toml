@@ -168,8 +168,6 @@ warn_unused_configs = true
 show_error_codes = true
 pretty = true
 disable_error_code = [
-    "no-untyped-def",
-    "no-untyped-call",
     "attr-defined",
     "union-attr",
     "override",
