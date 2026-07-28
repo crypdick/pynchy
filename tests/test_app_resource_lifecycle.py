@@ -95,3 +95,15 @@ def test_application_shutdown_transition_is_idempotent() -> None:
     assert app.begin_shutdown() is True
     assert app.is_shutting_down() is True
     assert app.begin_shutdown() is False
+
+
+def test_application_dispatch_cursor_preserves_the_furthest_in_flight_message() -> None:
+    app = PynchyApp()
+    app.last_agent_timestamp["chat"] = "2026-07-28T10:00:00Z"
+
+    app.mark_dispatched("chat", "2026-07-28T10:00:01Z")
+    app.mark_dispatched("chat", "2026-07-28T10:00:00Z")
+
+    assert app.routing_cursor("chat") == "2026-07-28T10:00:01Z"
+    assert app.pop_dispatched("chat", "fallback") == "2026-07-28T10:00:01Z"
+    assert app.routing_cursor("chat") == "2026-07-28T10:00:00Z"
