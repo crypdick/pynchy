@@ -329,7 +329,7 @@ async def run_host_git_sync() -> str:
         elif (await get_deployment_state()).pending is not None:
             result = "deploy_pending"
         else:
-            refresh = await asyncio.to_thread(refresh_host_config, state.config_hash)
+            refresh = await refresh_host_config(state.config_hash)
             if refresh.status is ConfigRefreshStatus.RESTART_REQUIRED:
                 await deps.trigger_deploy(
                     state.deployed_sha,

@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from pynchy.utils import filtered_process_environment
+from pynchy.process_environment import filtered_process_environment
 
 DEFAULT_GATEWAY_COMMAND = "pynchy-matrix-gateway"
 _MAX_LIST_LIMIT = 250

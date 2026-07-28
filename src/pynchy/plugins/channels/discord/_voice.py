@@ -35,7 +35,7 @@ from ._lookup import discord_user_names, same_name
 from ._voice_client import PynchyVoiceClient
 
 if TYPE_CHECKING:
-    from pynchy.plugins.speech import SpeechSynthesizer
+    from pynchy.plugins.speech.api import SpeechSynthesizer
 
     from ._channel import DiscordChannel
 else:

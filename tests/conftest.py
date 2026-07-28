@@ -14,7 +14,7 @@ from pydantic import BaseModel, SecretStr
 import pynchy.config.api as config_api
 import pynchy.host.orchestrator.api as orchestrator_api
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.actions import ACTION_SPECS, assess_hermetic_coverage
+from pynchy.actions.api import ACTION_SPECS, assess_hermetic_coverage
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
 from pynchy.config.api import (
     JobConfig,
@@ -34,6 +34,7 @@ from pynchy.config.api import (
 from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
 from pynchy.host.container_manager.credentials import configure_workspace_environment
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
+from pynchy.host.container_manager.ipc.bootstrap import register_builtin_handlers
 from pynchy.host.container_manager.ipc.handlers_approval import configure_approval_runtime
 from pynchy.host.container_manager.ipc.handlers_lifecycle import (
     LifecycleRuntime,
@@ -139,6 +140,8 @@ from tests.conftest_helpers import (
     make_settings,
 )
 from tests.conftest_linear import configure_linear_accounts_for
+
+register_builtin_handlers()
 
 
 def configure_workspace_placement_for(settings: Settings) -> None:
@@ -528,9 +531,11 @@ def reset_settings(monkeypatch):
                 last_notified_sha=last_notified_sha,
                 needs_deploy=needs_deploy,
                 probe_origin_main_sha=probe_origin_main_sha,
-                refresh_host_config=lambda config_hash: orchestrator_api.ConfigRefreshResult(
-                    orchestrator_api.ConfigRefreshStatus.UNCHANGED,
-                    config_hash,
+                refresh_host_config=AsyncMock(
+                    side_effect=lambda config_hash: orchestrator_api.ConfigRefreshResult(
+                        orchestrator_api.ConfigRefreshStatus.UNCHANGED,
+                        config_hash,
+                    )
                 ),
             )
         )

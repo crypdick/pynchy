@@ -16,13 +16,13 @@ from pathlib import (
 )
 from typing import Any, cast
 
+from pynchy.atomic_json import write_json_atomic
 from pynchy.deployments import (
     DeployChangeKind,
     DeployRevision,
 )
 from pynchy.logger import logger
 from pynchy.state import api as pynchy_state
-from pynchy.utils import write_json_atomic
 
 _CONTAINER_BUILD_TIMEOUT_SECONDS = 180
 

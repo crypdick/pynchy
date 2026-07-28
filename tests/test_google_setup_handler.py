@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from pynchy.actions import ACTION_SPECS
+from pynchy.actions.api import ACTION_SPECS
 from pynchy.plugins.api import validate_host_action_descriptors
 from pynchy.plugins.integrations.google_setup import (
     GoogleSetupPlugin,

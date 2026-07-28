@@ -24,7 +24,7 @@ from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mounts import (
     build_container_args,
 )
-from pynchy.utils import filtered_process_environment
+from pynchy.process_environment import filtered_process_environment
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )

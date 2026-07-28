@@ -23,7 +23,7 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.plugins.channels.discord import DiscordChannel, PynchyVoiceClient
-from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
+from pynchy.plugins.speech.api import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.state.api import get_chat_jids_by_name
 from tests.discord_channel_support import (

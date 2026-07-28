@@ -25,8 +25,8 @@ from pynchy.host.container_manager.mounts import build_container_args, build_vol
 from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
 from pynchy.logger import logger
 from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_configs
+from pynchy.process_environment import filtered_process_environment
 from pynchy.runtime_names import runtime_container_name
-from pynchy.utils import filtered_process_environment
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves container orchestration signatures at runtime.
 )
@@ -88,7 +88,7 @@ def write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     Uses atomic write (write to .tmp then rename) so the container's file
     watcher never sees a partially-written file.
     """
-    from pynchy.utils import (  # noqa: PLC0415 - keep container orchestration import surface narrow at module load.
+    from pynchy.atomic_json import (  # noqa: PLC0415 - keep container orchestration import surface narrow at module load.
         write_json_atomic,
     )
 

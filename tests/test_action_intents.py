@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy.action_intents import ActionIntentStatus
 from pynchy.conversation.models import (
     ConversationId,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
-from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.host.orchestrator.api import (

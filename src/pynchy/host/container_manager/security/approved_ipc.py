@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
-from pynchy.host.container_manager.ipc import registry
+import pynchy.host.container_manager.ipc.registry as registry
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security.identity import (
     guarded_action_id,

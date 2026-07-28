@@ -9,7 +9,7 @@ import pytest
 from conftest import make_settings
 
 import pynchy.plugins.integrations.operational_canaries as operational_canaries
-from pynchy.canaries import (
+from pynchy.canaries.api import (
     CanaryRunContext,
     registered_canary_scenarios,
 )
@@ -34,8 +34,8 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMessage,
     ProtonMessageEnvelope,
 )
+from pynchy.process_environment import filtered_process_environment
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
-from pynchy.utils import filtered_process_environment
 
 _TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 

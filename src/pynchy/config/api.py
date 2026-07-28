@@ -52,6 +52,7 @@ from pynchy.config.personalization import (
 from pynchy.config.profiles import CapabilityTomlConfig
 from pynchy.config.refs import parse_chat_ref
 from pynchy.config.runtime_refresh import (
+    automation_projection,
     configuration_source_digest,
     load_runtime_candidate,
     restart_fingerprint,
@@ -141,6 +142,7 @@ __all__ = [
     "WorkspaceTool",
     "access",
     "apply_tool_access",
+    "automation_projection",
     "configuration_source_digest",
     "dynamic_thread_folder",
     "filter_allowed_messages",

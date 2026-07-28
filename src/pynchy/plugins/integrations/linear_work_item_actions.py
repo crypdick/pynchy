@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.plugins.api import (
     ActionIntentContract,
     ApprovalContract,

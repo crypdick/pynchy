@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pynchy.actions import ACTION_SPECS, ActionSpec, assess_hermetic_coverage
+from pynchy.actions.api import ACTION_SPECS, ActionSpec, assess_hermetic_coverage
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence

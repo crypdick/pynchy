@@ -358,7 +358,16 @@ timeout_seconds = 600           # default: 600
 quiet_on_success = true         # suppress clean-run output logging
 ```
 
-Config host jobs use `workspace = "host"` and currently support cron expressions. Pynchy reconciles enabled config host jobs into Temporal Schedules, and Temporal triggers host-process activities for each run. They don't show up in `list_tasks` (static config, not database entries).
+Config host jobs use `workspace = "host"` and currently support cron
+expressions. Pynchy reconciles enabled config host jobs into Temporal Schedules,
+and Temporal triggers host-process activities for each run. They don't show up
+in `list_tasks` (static config, not database entries).
+
+Pynchy validates and applies automation-file changes without restarting. An
+add, update, disable, removal, workspace reassignment, or referenced prompt
+change updates the configured task rows and Temporal schedules together. An
+invalid edit or failed reconciliation leaves the previous runtime snapshot
+active and retries during the next configuration poll.
 
 ## MCP Tools
 

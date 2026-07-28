@@ -17,6 +17,7 @@ from pynchy.agent_protocol.api import (
     CheckpointControlState,
     InFlightTurn,
 )
+from pynchy.atomic_json import write_json_atomic
 from pynchy.deployments import DeployRevision
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
@@ -36,7 +37,6 @@ from pynchy.state.api import (
     prepare_in_flight_turn_recovery,
     set_chat_cleared_at,
 )
-from pynchy.utils import write_json_atomic
 from pynchy.workspace.api import (
     WorkspaceProfile,
     WorkspaceSecurity,

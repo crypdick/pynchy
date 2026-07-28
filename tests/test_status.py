@@ -15,7 +15,7 @@ import pytest
 
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.host.orchestrator.status import collect_status, record_start_time
-from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
+from pynchy.plugins.speech.api import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.scheduling.api import (
     HostJob,
     ScheduledTask,

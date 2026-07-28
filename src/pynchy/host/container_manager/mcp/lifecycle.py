@@ -37,8 +37,8 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001 - beartype resolves MCP lifecycle signatures at runtime.
 )
+from pynchy.process_environment import filtered_process_environment
 from pynchy.runtime_names import runtime_network_name
-from pynchy.utils import filtered_process_environment
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle

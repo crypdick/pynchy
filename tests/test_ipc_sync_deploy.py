@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
-from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.workspace.api import WorkspaceProfile
 

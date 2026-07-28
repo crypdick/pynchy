@@ -6,9 +6,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path  # noqa: TC003 - beartype resolves runtime annotations.
 from typing import Protocol, runtime_checkable
 
+from pynchy.host.orchestrator.host_shell import ShellResult, run_shell_command
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.scheduling.api import ScheduledTask  # noqa: TC001
-from pynchy.utils import ShellResult, run_shell_command
 
 _MAX_PRE_RUN_STREAM_CHARS = 12_000
 

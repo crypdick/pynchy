@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 
 from pynchy.plugins.api import PynchySpec
-from pynchy.plugins.speech import get_speech_synthesizer
+from pynchy.plugins.speech.api import get_speech_synthesizer
 from pynchy.plugins.speech.pocket_tts import PocketTtsPlugin, PocketTtsProvider
 
 

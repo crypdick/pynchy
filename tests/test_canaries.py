@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.canaries import (
+from pynchy.canaries.api import (
     CanaryExercise,
     CanarySkippedError,
     declared_canary_actions,

@@ -34,11 +34,13 @@ def load_runtime_candidate() -> Settings:
 
 
 def restart_fingerprint(settings: Settings) -> str:
-    """Hash every setting except profile skill grants and denials."""
+    """Hash settings that still require a process restart."""
     payload = settings.model_dump(mode="python")
     for profile in payload["profiles"].values():
         profile.pop("skills", None)
         profile.pop("denied_skills", None)
+    for name in _automation_names(settings.project_root):
+        payload["jobs"].pop(name, None)
     payload["__restart_sources__"] = _restart_source_projection(settings.project_root)
     encoded = json.dumps(
         _fingerprint_value(payload),
@@ -56,6 +58,20 @@ def skill_policy_projection(
         (name, tuple(profile.skills), tuple(profile.denied_skills))
         for name, profile in sorted(settings.profiles.items())
     )
+
+
+def automation_projection(settings: Settings) -> tuple[tuple[str, object], ...]:
+    """Return the live-refreshable file-backed automation policy."""
+    projection = []
+    for name in sorted(_automation_names(settings.project_root)):
+        job = settings.jobs.get(name)
+        if job is None:
+            continue
+        value = job.model_dump(mode="python")
+        if job.prompt_file is not None:
+            value["prompt_content"] = Path(job.prompt_file).read_text(encoding="utf-8")
+        projection.append((name, _fingerprint_value(value)))
+    return tuple(projection)
 
 
 def configuration_source_digest(project_root: Path) -> str:
@@ -98,21 +114,18 @@ def _restart_source_projection(project_root: Path) -> dict[str, object]:
         project_root / "data/personalization/litellm.yaml",
     ):
         sources[path.relative_to(project_root).as_posix()] = _restart_file_digest(path)
+    return sources
+
+
+def _automation_names(project_root: Path) -> set[str]:
+    names: set[str] = set()
     for directory in (
         project_root / "data/defaults/automations",
         project_root / "data/personalization/automations",
     ):
-        relative = directory.relative_to(project_root).as_posix()
-        sources[relative] = (
-            {
-                path.relative_to(directory).as_posix(): _restart_file_digest(path)
-                for path in sorted(directory.rglob("*"))
-                if path.is_file()
-            }
-            if directory.is_dir()
-            else "__missing__"
-        )
-    return sources
+        if directory.is_dir():
+            names.update(path.stem for path in directory.glob("*.toml"))
+    return names
 
 
 def _restart_file_digest(path: Path) -> str:

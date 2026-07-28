@@ -15,15 +15,15 @@ import pytest
 from conftest import NullIpcDeps, init_test_database
 from watchdog.events import FileCreatedEvent, FileMovedEvent
 
-from pynchy.host.container_manager.ipc import (
+from pynchy.host.container_manager.ipc.events import IpcEventHandler
+from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
+from pynchy.host.container_manager.ipc.protocol import make_ipc_request
+from pynchy.host.container_manager.ipc.watcher import (
     process_ipc_message_file,
     process_ipc_request_file,
     recover_ipc_runtime,
     recover_ipc_startup,
 )
-from pynchy.host.container_manager.ipc.events import IpcEventHandler
-from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
-from pynchy.host.container_manager.ipc.protocol import make_ipc_request
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:

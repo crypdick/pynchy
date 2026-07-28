@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.actions import ACTION_SPECS
+from pynchy.actions.api import ACTION_SPECS
 from pynchy.config.api import McpTool, McpToolConfig, PluginConfig, tool_process_environment
 from pynchy.host.orchestrator.plugin_configuration import configure_marketplace_health_plugin
 from pynchy.plugins.api import HostActionAccess, validate_host_action_descriptors
@@ -23,7 +23,7 @@ from pynchy.plugins.integrations.marketplace_health import (
 )
 from pynchy.plugins.integrations.proton_bridge import ProtonMailbox, ProtonMailboxList
 from pynchy.plugins.integrations.proton_bridge_config import ProtonMailError
-from pynchy.utils import filtered_process_environment
+from pynchy.process_environment import filtered_process_environment
 
 if TYPE_CHECKING:
     from pathlib import Path

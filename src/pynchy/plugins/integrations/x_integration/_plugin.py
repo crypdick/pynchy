@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pluggy
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from pynchy.actions import ACTION_SPECS
+from pynchy.actions.api import ACTION_SPECS
 from pynchy.canary_contracts import (
     CanaryExercise,
     CanaryOutcome,

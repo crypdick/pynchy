@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 import pluggy
 
-from pynchy.actions import ActionId
+from pynchy.actions.api import ActionId
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     ApprovalContract,

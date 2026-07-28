@@ -28,7 +28,7 @@ from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_wor
 from pynchy.host.orchestrator.speech_status import collect_speech_status
 from pynchy.host.orchestrator.temporal.api import get_temporal_orchestration_states
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves status annotations at runtime.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.runtime_names import runtime_container_name

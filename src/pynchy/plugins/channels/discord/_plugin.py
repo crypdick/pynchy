@@ -24,7 +24,7 @@ from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves hook annotat
     InboundAudioProcessingResult,
     NewMessage,
 )
-from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves plugin annotations at runtime.
+from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves plugin annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (
