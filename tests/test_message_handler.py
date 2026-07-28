@@ -486,16 +486,13 @@ class TestInterceptSpecialCommand:
     async def test_manual_redeploy_reacts_to_the_source_message(self):
         msg = _make_message("redeploy", chat_jid="g@g.us")
         deps = MagicMock(spec=session_handler.SessionDeps)
+        deps.current_deploy_revision.return_value = ("a" * 40, "config-hash")
 
         with (
             patch(
                 "pynchy.host.orchestrator.session_handler._send_command_confirmation",
                 new_callable=AsyncMock,
             ) as confirmation,
-            patch(
-                "pynchy.host.orchestrator.session_handler.get_head_sha",
-                return_value="a" * 40,
-            ),
             patch(
                 "pynchy.host.orchestrator.session_handler.start_deploy_workflow",
                 new_callable=AsyncMock,

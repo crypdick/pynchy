@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.conversation.api import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
-from pynchy.host.git_ops.api import get_deploy_config_hash, get_head_sha
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
@@ -77,6 +76,8 @@ class SessionDeps(Protocol):
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     def emit(self, event: Event) -> None: ...
+
+    def current_deploy_revision(self) -> tuple[str, str]: ...
 
 
 @runtime_checkable
@@ -242,7 +243,7 @@ async def trigger_manual_redeploy(
     source_message: NewMessage | None = None,
 ) -> None:
     """Handle a manual redeploy command through Temporal."""
-    sha = get_head_sha()
+    sha, config_hash = deps.current_deploy_revision()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
     await _send_command_confirmation(deps, chat_jid, source_message, "🔄")
 
@@ -250,7 +251,7 @@ async def trigger_manual_redeploy(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=sha,
-            config_hash=get_deploy_config_hash(),
+            config_hash=config_hash,
             previous_sha=sha,
             rebuild=False,
             reason="manual_redeploy",

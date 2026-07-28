@@ -251,39 +251,6 @@ imports = [
 reason = "pynchy.host.orchestrator.config_jobs still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries.api",
-]
-reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "integration_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.api",
-]
-reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.job_sources"
 target_role = "config"
 rule = "direction"
@@ -293,17 +260,6 @@ imports = [
   "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.job_sources still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator.session_handler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.startup_handler"
@@ -326,28 +282,6 @@ imports = [
   "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.startup_handler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries.api",
-]
-reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.git_sync"

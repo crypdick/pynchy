@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.agent_home import is_skill_selected, parse_skill_tier
+from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -35,8 +36,16 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops.api import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
+    count_unpushed_commits,
+    detect_main_branch,
+    files_changed_between,
     get_deploy_config_hash,
+    get_head_commit_message,
     get_head_sha,
+    get_repo_context,
+    is_repo_dirty,
+    push_local_commits,
+    run_git,
 )
 from pynchy.host.learning.api import find_personalized_skill_dir
 from pynchy.host.orchestrator import session_handler, workspace_config
@@ -62,12 +71,14 @@ from pynchy.host.orchestrator.capability_status import (
     WorkspaceCapabilityConfiguration,
 )
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    HttpDeployOperations,
     HttpServerDeps,
 )
 from pynchy.host.orchestrator.messaging import pending_questions
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    GitStatusOperations,
     StatusDeps,
 )
 from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -91,6 +102,7 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves depe
     Channel,
     NewMessage,
 )
+from pynchy.plugins.integrations.api import work_item_execution_to_dict
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
@@ -349,6 +361,16 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
     class HttpDeps:
         capability_status_operations = _capability_status_operations(settings)
+        deploy_operations = HttpDeployOperations(
+            get_head_sha=get_head_sha,
+            push_local_commits=push_local_commits,
+            run_git=run_git,
+            files_changed_between=files_changed_between,
+            get_deploy_config_hash=get_deploy_config_hash,
+            get_head_commit_message=get_head_commit_message,
+            is_repo_dirty=is_repo_dirty,
+            start_deploy_workflow=start_deploy_workflow,
+        )
         broadcast_host_message = host_broadcaster.broadcast_host_message
         complete_conversation_delivery = staticmethod(complete_conversation_delivery)
         conversation_control_state_matches = staticmethod(conversation_control_state_matches)
@@ -377,6 +399,10 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             return resolve_admin_notification_jid(
                 app.workspaces, get_settings().notifications.admin_workspace
             )
+
+        get_canary_report = staticmethod(get_canary_report)
+        canary_run_to_dict = staticmethod(canary_run_to_dict)
+        work_item_execution_to_dict = staticmethod(work_item_execution_to_dict)
 
         def get_plugin_manager(self) -> object:
             if app.plugin_manager is None:
@@ -647,6 +673,15 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
         temporal_address = settings.scheduler.temporal_address
         temporal_namespace = settings.scheduler.temporal_namespace
         temporal_task_queue = settings.scheduler.temporal_task_queue
+        git_status = GitStatusOperations(
+            get_repo_context=get_repo_context,
+            get_head_sha=get_head_sha,
+            is_repo_dirty=is_repo_dirty,
+            count_unpushed_commits=count_unpushed_commits,
+            get_head_commit_message=get_head_commit_message,
+            detect_main_branch=detect_main_branch,
+            run_git=run_git,
+        )
 
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()
@@ -696,6 +731,8 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 
         def get_speech_synthesizer(self) -> SpeechSynthesizer | None:
             return app.get_speech_synthesizer()
+
+        get_canary_report = staticmethod(get_canary_report)
 
     return _StatusDeps()
 

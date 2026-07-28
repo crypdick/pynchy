@@ -119,10 +119,7 @@ def _patch_test_settings(tmp_path: Path):
         data_dir=tmp_path / "data",
     )
     with contextlib.ExitStack() as stack:
-        for mod in (
-            "pynchy.host.container_manager.credentials",
-            "pynchy.host.orchestrator.messaging.pipeline",
-        ):
+        for mod in ("pynchy.host.container_manager.credentials",):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch docker_rm_force which spawns a real subprocess to remove
         # containers — would hang in the test environment.  Must patch at both

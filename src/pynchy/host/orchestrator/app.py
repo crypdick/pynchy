@@ -639,6 +639,10 @@ class PynchyApp(ThreadRouting):
         """Read the restart-relevant configuration hash for update offers."""
         return get_deploy_config_hash()
 
+    def current_deploy_revision(self) -> tuple[str, str]:
+        """Read the current revision and its restart-relevant configuration hash."""
+        return get_head_sha(), get_deploy_config_hash()
+
     def host_update_main(self, project_root: Path) -> bool:
         """Fetch the approved revision through the Git adapter."""
         return host_update_main(project_root)
