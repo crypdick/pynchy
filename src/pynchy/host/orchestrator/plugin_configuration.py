@@ -501,7 +501,7 @@ def configure_linear_plugin(plugin_manager: pluggy.PluginManager, settings: Sett
 
 def configure_observer_plugins(plugin_manager: pluggy.PluginManager) -> None:
     """Inject durable event persistence into the built-in SQLite observer."""
-    observer = plugin_manager.get_plugin("sqlite-observer")
+    observer = plugin_manager.get_plugin("builtin-sqlite-observer")
     if isinstance(observer, SqliteObserverPlugin):
         observer.configure(store_event=store_event)
 
