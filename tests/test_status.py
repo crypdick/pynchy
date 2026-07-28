@@ -7,19 +7,14 @@ status dict rather than importing the private per-section collectors.
 
 from __future__ import annotations
 
-import contextlib
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from aiohttp.test_utils import AioHTTPTestCase
 
-from pynchy.canaries import declared_canary_scenarios
 from pynchy.host.git_ops.api import RepoContext
-from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
-from pynchy.host.orchestrator.http_server import HttpDeployOperations, create_http_app
-from pynchy.host.orchestrator.status import GitStatusOperations, collect_status, record_start_time
+from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.scheduling.api import (
     HostJob,
@@ -27,18 +22,14 @@ from pynchy.scheduling.api import (
     SessionPolicy,
     TaskRunLog,
 )
-from pynchy.state import (
-    begin_webhook_effect,
-    init_test_database,
-    mark_webhook_effect_executing,
-    mark_webhook_effect_outcome_unknown,
+from tests.status_support import (
+    MockStatusDeps,
+    _inert_status,
 )
-from pynchy.webhook_effects import WebhookEffectScope
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from aiohttp import web
 
 _S = "pynchy.host.orchestrator.status"
 
@@ -49,217 +40,6 @@ _EMPTY_STATS = {
     "last_sent_at": None,
     "pending_deliveries": 0,
 }
-
-
-def _runtime() -> ControlPlaneRuntime:
-    return ControlPlaneRuntime(
-        bind_host="127.0.0.1",
-        port=8484,
-        unix_socket=None,
-        public_bind=False,
-        remote_auth_required=False,
-        allow_remote_deploy=False,
-        auth_token=None,
-        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
-        audit_security_event=AsyncMock(),
-    )
-
-
-def _inert_orchestration_states(tasks, jobs, _address, _namespace):
-    """Return Temporal-shaped state without opening a Temporal connection."""
-    return {
-        **{
-            ("task", task.id): {
-                "source": "temporal",
-                "state": "scheduled",
-                "next_run": None,
-                "schedule_id": None,
-                "workflow_id": None,
-                "error": None,
-            }
-            for task in tasks
-        },
-        **{
-            ("host_job", job.id): {
-                "source": "temporal",
-                "state": "scheduled",
-                "next_run": None,
-                "schedule_id": None,
-                "workflow_id": None,
-                "error": None,
-            }
-            for job in jobs
-        },
-    }
-
-
-@contextlib.contextmanager
-def _inert_status():
-    """Neutralise every I/O-bound status collector via its public deps.
-
-    Patches the external functions ``collect_status`` fans out to (git, DB,
-    docker, HTTP) so a test can drive the single public entry point while only
-    the section it cares about does real work. Tests layer their own ``patch``
-    calls on top; the innermost patch wins.
-    """
-    with contextlib.ExitStack() as stack:
-
-        def p(name: str, **kwargs: Any) -> None:
-            stack.enter_context(patch(f"{_S}.{name}", **kwargs))
-
-        p("get_router_state", new_callable=AsyncMock, return_value=None)
-        p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
-        p(
-            "collect_capability_status",
-            new_callable=AsyncMock,
-            return_value={"summary": {}, "workspaces": []},
-        )
-        p("get_all_tasks", new_callable=AsyncMock, return_value=[])
-        p("get_task_run_logs", new_callable=AsyncMock, return_value=[])
-        p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
-        p(
-            "_get_temporal_orchestration_states",
-            new_callable=AsyncMock,
-            side_effect=_inert_orchestration_states,
-        )
-        p(
-            "get_temporal_scheduler_status",
-            create=True,
-            return_value={
-                "worker_running": False,
-                "last_workflow_id": None,
-                "last_task_id": None,
-                "last_result": None,
-                "last_started_at": None,
-                "last_completed_at": None,
-                "last_error": None,
-            },
-        )
-        p(
-            "_check_temporal_cluster_health",
-            create=True,
-            new_callable=AsyncMock,
-            return_value={"healthy": None, "error": None},
-        )
-        stack.enter_context(patch("aiohttp.ClientSession", side_effect=Exception("skip")))
-        yield
-
-
-# ---------------------------------------------------------------------------
-# Mock StatusDeps
-# ---------------------------------------------------------------------------
-
-
-class MockStatusDeps:
-    """Mock implementation of StatusDeps for testing."""
-
-    def __init__(
-        self,
-        *,
-        shutting_down: bool = False,
-        channels: dict[str, bool] | None = None,
-        queue: dict[str, Any] | None = None,
-        gateway: dict[str, Any] | None = None,
-        active_sessions: int = 0,
-        workspace_count: int = 0,
-        speech_synthesizer: Any | None = None,
-        repo_slugs: tuple[str, ...] = (),
-        temporal_address: str = "localhost:7233",
-        temporal_namespace: str = "default",
-        temporal_task_queue: str = "pynchy-scheduler",
-    ):
-        self._shutting_down = shutting_down
-        self._channels = channels or {"whatsapp": True}
-        self._queue = queue or {
-            "active_containers": 1,
-            "max_concurrent": 10,
-            "groups_waiting": 0,
-            "per_group": {},
-        }
-        self._gateway = gateway or {"mode": "litellm", "port": 4000, "key": "sk-test"}
-        self.capability_status_operations = Mock()
-        self.get_container_state = AsyncMock(return_value="not_found")
-        self._active_sessions = active_sessions
-        self._workspace_count = workspace_count
-        self._speech_synthesizer = speech_synthesizer
-        self.repo_slugs = repo_slugs
-        self.temporal_address = temporal_address
-        self.temporal_namespace = temporal_namespace
-        self.temporal_task_queue = temporal_task_queue
-        self.git_status = GitStatusOperations(
-            get_repo_context=Mock(return_value=None),
-            get_head_sha=Mock(return_value="0000000"),
-            is_repo_dirty=Mock(return_value=False),
-            count_unpushed_commits=Mock(return_value=0),
-            get_head_commit_message=Mock(return_value=""),
-            detect_main_branch=Mock(return_value="main"),
-            run_git=Mock(),
-        )
-        self.get_canary_report = AsyncMock(return_value={"summary": {"unresolved_regressions": 0}})
-
-    def is_shutting_down(self) -> bool:
-        return self._shutting_down
-
-    def get_channel_status(self) -> dict[str, bool]:
-        return self._channels
-
-    def get_connection_status(self) -> dict[str, bool]:
-        return {}
-
-    def get_queue_snapshot(self) -> dict[str, Any]:
-        return self._queue
-
-    def get_gateway_info(self) -> dict[str, Any]:
-        return self._gateway
-
-    def get_active_sessions_count(self) -> int:
-        return self._active_sessions
-
-    def get_workspace_count(self) -> int:
-        return self._workspace_count
-
-    def get_speech_synthesizer(self) -> Any | None:
-        return self._speech_synthesizer
-
-
-class MockHttpDeps:
-    """Inert HTTP dependencies for exercising route registration."""
-
-    data_dir = None
-    project_root = None
-    capability_status_operations = Mock()
-    deploy_operations = HttpDeployOperations(
-        get_head_sha=Mock(return_value="head-sha"),
-        push_local_commits=Mock(return_value=True),
-        run_git=Mock(),
-        files_changed_between=Mock(return_value=False),
-        get_deploy_config_hash=Mock(return_value="config-hash"),
-        get_head_commit_message=Mock(return_value="commit"),
-        is_repo_dirty=Mock(return_value=False),
-        start_deploy_workflow=AsyncMock(),
-    )
-    get_canary_report = AsyncMock(
-        return_value={"summary": {"declared_scenarios": len(declared_canary_scenarios())}}
-    )
-    canary_run_to_dict = staticmethod(lambda _run: {})
-    work_item_execution_to_dict = staticmethod(lambda _execution: {})
-
-    async def broadcast_host_message(self, _jid: str, _text: str) -> None:
-        return None
-
-    def get_workspace(self, _folder: str) -> None:
-        return None
-
-    def dispatch_scheduled_task(self, _task: ScheduledTask) -> None:
-        return None
-
-    def admin_chat_jid(self) -> str:
-        return "admin@g.us"
-
-
-# ---------------------------------------------------------------------------
-# service section
-# ---------------------------------------------------------------------------
 
 
 class TestCollectService:
@@ -314,11 +94,6 @@ class TestCollectSpeech:
         }
 
 
-# ---------------------------------------------------------------------------
-# deploy section
-# ---------------------------------------------------------------------------
-
-
 class TestCollectDeploy:
     @pytest.mark.asyncio
     async def test_assembles_deploy_info(self):
@@ -344,11 +119,6 @@ class TestCollectDeploy:
         assert deploy["unpushed_commits"] == 0
         assert deploy["last_deploy_at"] == "2026-02-20T09:00:00"
         assert deploy["last_deploy_sha"] == "abc123"
-
-
-# ---------------------------------------------------------------------------
-# repos section
-# ---------------------------------------------------------------------------
 
 
 class TestCollectRepos:
@@ -399,11 +169,6 @@ class TestCollectRepos:
         assert wt["ahead"] == 3
         assert wt["behind"] == 3
         assert wt["conflict"] is False
-
-
-# ---------------------------------------------------------------------------
-# worktree status (conflict detection)
-# ---------------------------------------------------------------------------
 
 
 class TestWorktreeStatus:
@@ -490,11 +255,6 @@ class TestWorktreeStatus:
         assert result["repos"]["owner/repo"]["worktrees"]["wt1"]["conflict"] is False
 
 
-# ---------------------------------------------------------------------------
-# messages section
-# ---------------------------------------------------------------------------
-
-
 class TestCollectMessages:
     """The status collector surfaces get_messaging_stats() under 'messages'.
 
@@ -530,11 +290,6 @@ class TestCollectMessages:
         assert result["messages"]["last_received_at"] is None
         assert result["messages"]["last_sent_at"] is None
         assert result["messages"]["pending_deliveries"] == 0
-
-
-# ---------------------------------------------------------------------------
-# tasks section
-# ---------------------------------------------------------------------------
 
 
 class TestCollectTasks:
@@ -711,11 +466,6 @@ class TestCollectTasks:
         }
 
 
-# ---------------------------------------------------------------------------
-# host jobs section
-# ---------------------------------------------------------------------------
-
-
 class TestCollectHostJobs:
     @pytest.mark.asyncio
     async def test_returns_job_list(self):
@@ -745,11 +495,6 @@ class TestCollectHostJobs:
         assert jobs[0]["id"] == "j1"
         assert jobs[0]["name"] == "backup-db"
         assert jobs[0]["enabled"] is True
-
-
-# ---------------------------------------------------------------------------
-# temporal section
-# ---------------------------------------------------------------------------
 
 
 class TestCollectTemporal:
@@ -826,340 +571,3 @@ class TestCollectTemporal:
         assert result["temporal"]["cluster_error"] == "connection refused"
         assert result["temporal"]["worker_running"] is True
         assert result["temporal"]["last_workflow_id"] == "wf-1"
-
-
-# ---------------------------------------------------------------------------
-# gateway section
-# ---------------------------------------------------------------------------
-
-
-class TestCollectGateway:
-    @pytest.mark.asyncio
-    async def test_non_litellm_mode(self):
-        deps = MockStatusDeps(gateway={"mode": "builtin", "redaction": "enforced"})
-        with _inert_status():
-            result = await collect_status(deps, time.monotonic())
-        assert result["gateway"] == {"mode": "builtin", "redaction": "enforced"}
-
-    @pytest.mark.asyncio
-    async def test_litellm_container_status(self):
-        deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json.return_value = {
-            "status": "healthy",
-            "db": "connected",
-            "litellm_version": "1.2.3",
-        }
-        mock_session = AsyncMock()
-        mock_session.get.return_value = mock_resp
-        mock_session.__aenter__.return_value = mock_session
-        mock_session.__aexit__.return_value = None
-
-        deps.get_container_state.side_effect = ["running", "running"]
-        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await collect_status(deps, time.monotonic())
-
-        gateway = result["gateway"]
-        assert gateway["litellm_container"] == "running"
-        assert gateway["postgres_container"] == "running"
-        assert gateway["ready"] is True
-        assert gateway["database"] == "connected"
-        assert gateway["litellm_version"] == "1.2.3"
-        mock_session.get.assert_called_once_with(
-            "http://localhost:4000/health/readiness",
-            headers={"Authorization": "Bearer sk-test"},
-            timeout=mock_session.get.call_args.kwargs["timeout"],
-        )
-
-    @pytest.mark.asyncio
-    async def test_litellm_container_status_uses_runtime_namespace(self, monkeypatch):
-        monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-feature-test")
-        deps = MockStatusDeps(gateway={"mode": "litellm"})
-
-        deps.get_container_state.return_value = "running"
-        with _inert_status():
-            await collect_status(deps, time.monotonic())
-
-        inspected = [call.args[0] for call in deps.get_container_state.await_args_list]
-        assert inspected == [
-            "pynchy-feature-test-litellm",
-            "pynchy-feature-test-litellm-db",
-        ]
-
-    @pytest.mark.asyncio
-    async def test_litellm_readiness_accepts_current_healthy_shape(self):
-        deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.json.return_value = {"status": "healthy", "db": "connected"}
-        mock_session = AsyncMock()
-        mock_session.get.return_value = mock_resp
-        mock_session.__aenter__.return_value = mock_session
-        mock_session.__aexit__.return_value = None
-
-        deps.get_container_state.side_effect = ["running", "running"]
-        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await collect_status(deps, time.monotonic())
-
-        assert result["gateway"]["ready"] is True
-        assert result["gateway"]["database"] == "connected"
-
-    @pytest.mark.asyncio
-    async def test_gateway_health_failure_returns_none(self):
-        """When gateway HTTP check fails, model counts are None."""
-        deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-        deps.get_container_state.return_value = "running"
-        with _inert_status():  # aiohttp.ClientSession stays inert (raises) → health check fails.
-            result = await collect_status(deps, time.monotonic())
-
-        gateway = result["gateway"]
-        assert gateway["litellm_container"] == "running"
-        assert gateway["ready"] is None
-
-    @pytest.mark.asyncio
-    async def test_missing_port_skips_health_check(self):
-        """When port or key is missing, health check is skipped."""
-        deps = MockStatusDeps(gateway={"mode": "litellm"})
-        deps.get_container_state.side_effect = ["running", "stopped"]
-        with _inert_status():
-            result = await collect_status(deps, time.monotonic())
-
-        gateway = result["gateway"]
-        assert gateway["litellm_container"] == "running"
-        assert gateway["postgres_container"] == "stopped"
-        assert "healthy_models" not in gateway
-
-
-# ---------------------------------------------------------------------------
-# container state (observed through the gateway section)
-# ---------------------------------------------------------------------------
-
-
-class TestContainerState:
-    """Docker container state resolution, observed via gateway container fields."""
-
-    @staticmethod
-    def _litellm_deps() -> MockStatusDeps:
-        return MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-
-    @pytest.mark.asyncio
-    async def test_running_container(self):
-        deps = self._litellm_deps()
-        deps.get_container_state.return_value = "running"
-        with _inert_status():
-            result = await collect_status(deps, time.monotonic())
-        assert result["gateway"]["litellm_container"] == "running"
-
-    @pytest.mark.asyncio
-    async def test_stopped_container(self):
-        deps = self._litellm_deps()
-        deps.get_container_state.return_value = "exited"
-        with _inert_status():
-            result = await collect_status(deps, time.monotonic())
-        assert result["gateway"]["litellm_container"] == "exited"
-
-    @pytest.mark.asyncio
-    async def test_not_found(self):
-        deps = self._litellm_deps()
-        with _inert_status():
-            result = await collect_status(deps, time.monotonic())
-        assert result["gateway"]["litellm_container"] == "not_found"
-
-
-class TestCollectStatus:
-    @pytest.mark.asyncio
-    async def test_returns_all_sections(self):
-        """Top-level collect_status assembles all subsystem sections."""
-        deps = MockStatusDeps(
-            channels={"whatsapp": True, "slack": False},
-            workspace_count=5,
-            active_sessions=2,
-        )
-        record_start_time()
-        deps.git_status.get_head_sha.return_value = "abc123"
-        deps.git_status.get_head_commit_message.return_value = "test"
-
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.get_messaging_stats",
-                new_callable=AsyncMock,
-                return_value={
-                    "total_inbound": 100,
-                    "total_outbound": 50,
-                    "last_received_at": None,
-                    "last_sent_at": None,
-                    "pending_deliveries": 0,
-                },
-            ),
-        ):
-            result = await collect_status(deps, time.monotonic() - 120)
-
-        expected_keys = {
-            "service",
-            "deploy",
-            "channels",
-            "connections",
-            "gateway",
-            "queue",
-            "repos",
-            "messages",
-            "tasks",
-            "host_jobs",
-            "temporal",
-            "canaries",
-            "capabilities",
-            "speech",
-            "groups",
-        }
-        assert set(result.keys()) == expected_keys
-
-        # In-memory sections are passed through from deps
-        assert result["channels"] == {"whatsapp": True, "slack": False}
-        assert result["groups"]["total"] == 5
-        assert result["groups"]["active_sessions"] == 2
-        assert result["service"]["status"] == "ok"
-        assert result["service"]["uptime_seconds"] >= 120
-        assert result["messages"]["total_inbound"] == 100
-        assert result["canaries"] == {"summary": {"unresolved_regressions": 0}}
-        assert result["capabilities"] == {"summary": {}, "workspaces": []}
-
-
-# ---------------------------------------------------------------------------
-# /status HTTP endpoint
-# ---------------------------------------------------------------------------
-
-
-class TestStatusEndpoint(AioHTTPTestCase):
-    """Tests for GET /status endpoint."""
-
-    async def get_application(self) -> web.Application:
-        self.mock_deps = MockStatusDeps(
-            channels={"whatsapp": True},
-            workspace_count=3,
-            active_sessions=1,
-        )
-        self.http_deps = MockHttpDeps()
-        return create_http_app(self.http_deps, runtime=_runtime(), status_deps=self.mock_deps)
-
-    async def test_status_returns_200(self):
-        """GET /status returns 200 with structured JSON."""
-        record_start_time()
-
-        with _inert_status():
-            resp = await self.client.get("/status")
-            assert resp.status == 200
-            data = await resp.json()
-            assert "service" in data
-            assert "deploy" in data
-            assert "channels" in data
-            assert "gateway" in data
-            assert "queue" in data
-            assert "groups" in data
-            assert data["channels"] == {"whatsapp": True}
-
-    async def test_work_items_endpoint_returns_empty_bounded_projection(self):
-        await init_test_database()
-
-        response = await self.client.get("/work-items?workspace=project&limit=1")
-        invalid = await self.client.get("/work-items?limit=zero")
-
-        assert response.status == 200
-        assert await response.json() == {"workspace": "project", "work_items": []}
-        assert invalid.status == 400
-
-    async def test_actions_endpoint_returns_empty_bounded_projection(self):
-        await init_test_database()
-
-        response = await self.client.get("/actions?workspace=project&limit=1")
-        invalid = await self.client.get("/actions?limit=zero")
-
-        assert response.status == 200
-        assert await response.json() == {"workspace": "project", "actions": []}
-        assert invalid.status == 400
-
-    async def test_webhook_effect_reconciliation_requires_explicit_absence_proof(self):
-        await init_test_database()
-        effect_id = await begin_webhook_effect(
-            WebhookEffectScope(
-                provider="linear",
-                account="project",
-                event_type="Comment",
-                event_action="create",
-                subject_id="issue-1",
-                intent_fingerprint="intent-fingerprint",
-            )
-        )
-        await mark_webhook_effect_executing(effect_id)
-        await mark_webhook_effect_outcome_unknown(effect_id)
-
-        listed = await self.client.get("/webhook-effects")
-        rejected = await self.client.post(
-            f"/webhook-effects/{effect_id}/reconcile-absent",
-            json={"verified_absent": False},
-        )
-        reconciled = await self.client.post(
-            f"/webhook-effects/{effect_id}/reconcile-absent",
-            json={"verified_absent": True},
-        )
-        after = await self.client.get("/webhook-effects")
-
-        assert listed.status == 200
-        listed_body = await listed.json()
-        assert listed_body["effects"][0]["intent_fingerprint"] == "intent-fingerprint"
-        assert rejected.status == 400
-        assert reconciled.status == 200
-        assert await reconciled.json() == {
-            "status": "reconciled_absent",
-            "released_deliveries": 0,
-        }
-        assert await after.json() == {"status": "outcome_unknown", "effects": []}
-
-    async def test_canary_report_and_history_endpoints(self):
-        await init_test_database()
-
-        report_response = await self.client.get("/canaries/report")
-        report = await report_response.json()
-        history_response = await self.client.get("/canaries/runs?limit=1")
-        history = await history_response.json()
-        invalid_response = await self.client.get("/canaries/runs?limit=zero")
-
-        assert report_response.status == 200
-        assert report["summary"]["declared_scenarios"] == len(declared_canary_scenarios())
-        assert history_response.status == 200
-        assert history == {"runs": []}
-        assert invalid_response.status == 400
-
-    async def test_capabilities_endpoint_returns_all_or_one_workspace(self):
-        all_payload = {"summary": {"ready": 1}, "workspaces": []}
-        workspace_payload = {
-            "workspace": "matrix",
-            "summary": {"ready": 1},
-            "capabilities": [],
-        }
-        snapshot = Mock()
-        snapshot.to_dict.return_value = workspace_payload
-        self.http_deps.get_canary_report = AsyncMock(return_value={"scenarios": []})
-
-        with (
-            patch(
-                "pynchy.host.orchestrator.http_server.collect_capability_status",
-                new_callable=AsyncMock,
-                return_value=all_payload,
-            ),
-            patch(
-                "pynchy.host.orchestrator.http_server.resolve_workspace_capabilities",
-                new_callable=AsyncMock,
-                return_value=snapshot,
-            ),
-        ):
-            all_response = await self.client.get("/capabilities")
-            workspace_response = await self.client.get("/capabilities?workspace=matrix")
-
-        assert all_response.status == 200
-        assert await all_response.json() == all_payload
-        assert workspace_response.status == 200
-        assert await workspace_response.json() == workspace_payload

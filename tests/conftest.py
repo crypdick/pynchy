@@ -12,23 +12,12 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 import pynchy.config.api as config_api
+import pynchy.host.orchestrator.api as orchestrator_api
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
+from pynchy.actions import ACTION_SPECS, assess_hermetic_coverage
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
 from pynchy.config.api import (
-    AgentConfig,
-    CanaryConfig,
-    CommandCenterConfig,
-    CommandWordsConfig,
-    ContainerConfig,
-    IntervalsConfig,
     JobConfig,
-    LoggingConfig,
-    QueueConfig,
-    SchedulerConfig,
-    SecretsConfig,
-    SecurityConfig,
-    ServerConfig,
     Settings,
     WorkspaceConfig,
     access,
@@ -60,8 +49,6 @@ from pynchy.host.container_manager.process import configure_container_process_ru
 from pynchy.host.container_manager.security.approval import configure_approval_state_root
 from pynchy.host.container_manager.security.audit import configure_security_audit_storage
 from pynchy.host.container_manager.security.cop import (
-    CopContextAvailability,
-    CopInspectionContext,
     CopVerdict,
 )
 from pynchy.host.container_manager.security.gate import configure_security_resolution
@@ -103,20 +90,10 @@ from pynchy.host.learning.skill_activation import (
     configure_skill_activation_runtime,
 )
 from pynchy.host.learning.skills import configure_personalized_skills_root
-from pynchy.host.orchestrator.agent_runner import ContainerAgentOperations
-from pynchy.host.orchestrator.api import (
-    ContainerRuntimeOperations,
-    execute_action_intent,
-    policy_approval_timestamp,
-    prepare_action_intent,
-    static_workspace_folder,
-)
-from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
 from pynchy.host.orchestrator.job_sources import (
     PluginJobsRuntime,
     configure_plugin_jobs_runtime,
 )
-from pynchy.host.orchestrator.messaging.deps import CommandMatcher
 from pynchy.host.orchestrator.messaging.pending_questions import (
     configure_pending_questions_ipc_base_dir,
 )
@@ -136,135 +113,31 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import configure_workspace_threads_runtime
 from pynchy.plugins.api import (
-    ApprovalContract,
-    ApprovalMode,
-    AuditContract,
-    CapabilityDescriptor,
-    CapabilityId,
-    CapabilityKind,
-    HostActionAccess,
-    HostActionCatalog,
-    HostActionDescriptor,
-    HostToolName,
-    IdempotencyContract,
-    IdempotencyMode,
-    InboundFetchResult,
     NewMessage,
 )
 from pynchy.plugins.integrations.api import get_active_matrix_route
-from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccountRuntime,
-    configure_linear_account_runtime,
-    linear_account,
-    linear_account_for_workspace,
-)
-from pynchy.plugins.integrations.linear_boot import (
-    LinearBootRuntime,
-    configure_linear_boot_runtime,
-    configured_linear_workspace_names,
-)
-from pynchy.plugins.integrations.linear_conversation_identity import (
-    LinearConversationRuntime,
-    configure_linear_conversation_runtime,
-)
-from pynchy.plugins.integrations.linear_legacy_work_items import (
-    LinearLegacyWorkItemRuntime,
-    configure_linear_legacy_work_item_runtime,
-)
-from pynchy.plugins.integrations.linear_planning_tasks import (
-    LinearPlanningTaskRuntime,
-    configure_linear_planning_task_runtime,
-)
-from pynchy.plugins.integrations.linear_self_echoes import (
-    LinearSelfEchoRuntime,
-    configure_linear_self_echo_runtime,
-)
-from pynchy.plugins.integrations.linear_webhook_config import LinearPluginOptions
-from pynchy.plugins.integrations.linear_webhook_effects import (
-    LinearWebhookEffectsRuntime,
-    configure_linear_webhook_effects_runtime,
-)
-from pynchy.plugins.integrations.linear_webhooks import (
-    LinearWebhookRuntime,
-    configure_linear_webhook_runtime,
-)
-from pynchy.plugins.integrations.linear_work_item_completion import (
-    LinearWorkItemCompletionRuntime,
-    configure_linear_work_item_completion_runtime,
-)
-from pynchy.plugins.integrations.linear_work_item_provider import (
-    LinearWorkItemRuntime,
-    configure_linear_work_item_runtime,
-)
-from pynchy.plugins.integrations.linear_work_item_tasks import (
-    LinearWorkItemTaskRuntime,
-    configure_linear_work_item_task_runtime,
-)
-from pynchy.plugins.integrations.linear_work_items import (
-    LinearWorkItemsRuntime,
-    configure_linear_work_items_runtime,
-)
 from pynchy.state import (
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
-    WorkItemTransitionResolution,
-    apply_conversation_control_state,
-    approve_action_intent,
-    begin_webhook_effect,
-    begin_work_item_transition,
-    begin_work_item_transition_if_lifecycle_current,
-    bind_work_item_execution_to_task,
-    bind_work_item_execution_to_turn,
-    cancel_work_item_execution,
-    cancel_work_item_execution_if_lifecycle_current,
     close_test_database,
-    confirm_webhook_effect,
-    conversation_control_state_matches,
-    create_host_job,
-    create_task,
-    create_task_if_absent,
-    create_work_item_claim,
-    delete_host_job,
-    delete_task,
-    deny_action_intent,
-    expire_action_intent,
-    fail_action_intent,
-    fail_webhook_effect,
-    get_action_intent_by_request,
-    get_active_work_item_execution,
-    get_all_tasks,
-    get_conversation_control_binding,
-    get_conversation_control_by_thread,
-    get_conversation_for_subject_key,
-    get_host_job_by_id,
-    get_in_flight_turn_for_group,
     get_latest_canary_runs,
-    get_latest_unresolved_work_item_transition,
     get_recent_canary_runs,
-    get_task_by_id,
-    get_task_run_logs,
-    get_unfinished_work_item_execution,
     get_unresolved_canary_regressions,
-    get_work_item_execution,
-    get_work_item_execution_for_issue,
-    get_work_item_transition_by_request,
     init_test_database,
-    list_work_item_executions,
-    mark_action_intent_awaiting_approval,
-    mark_webhook_effect_executing,
-    mark_webhook_effect_outcome_unknown,
     prune_messages_by_sender,
     record_canary_run,
-    resolve_conversation,
-    resolve_work_item_transition,
-    resolve_work_item_transition_if_lifecycle_current,
-    resume_once_task_after_unclaimed_scheduled_turn,
-    resume_task,
     store_message_direct,
-    update_host_job,
-    update_task,
 )
 from pynchy.workspace.api import WorkspaceProfile
+from tests.conftest_helpers import (
+    NullChannel,
+    NullIpcDeps,
+    make_command_matcher,
+    make_container_agent_operations,
+    make_container_runtime_operations,
+    make_host_action_catalog,
+    make_host_runtime_operations,
+    make_settings,
+)
+from tests.conftest_linear import configure_linear_accounts_for
 
 
 def configure_workspace_placement_for(settings: Settings) -> None:
@@ -340,201 +213,6 @@ def configure_learning_paths_for(settings: Settings) -> None:
     )
 
 
-def configure_linear_accounts_for(settings: Settings) -> None:
-    """Wire Linear account lookups to one test's resolved settings."""
-
-    def workspace_tool_names(workspace: str) -> tuple[str, ...] | None:
-        resolved = settings.resolved_workspace_config(workspace)
-        return tuple(resolved.tools) if resolved is not None else None
-
-    configure_linear_boot_runtime(
-        LinearBootRuntime(
-            workspace_names=tuple(settings.workspace_names()),
-            account_for_name=lambda name: linear_account(name, settings.tools),
-            account_for_workspace=lambda workspace: linear_account_for_workspace(
-                workspace,
-                tools=settings.tools,
-                workspace_tool_names=workspace_tool_names,
-            ),
-            workspace_parent=settings.workspace_parent,
-            canonical_workspace_folder=static_workspace_folder,
-            additional_workspaces=lambda _registered: (),
-        )
-    )
-
-    plugin = settings.plugins.get("linear")
-    configure_linear_webhook_runtime(
-        LinearWebhookRuntime(
-            options=LinearPluginOptions.model_validate(
-                plugin.options if plugin is not None else {}
-            ),
-            account_for_name=lambda name: linear_account(name, settings.tools),
-            workspace_tools=workspace_tool_names,
-            workspace_names_for_account=configured_linear_workspace_names,
-        )
-    )
-
-    configure_linear_account_runtime(
-        LinearAccountRuntime(
-            tools=settings.tools,
-            workspace_tool_names=workspace_tool_names,
-        )
-    )
-    configure_linear_conversation_runtime(
-        LinearConversationRuntime(
-            get_unfinished_execution=get_unfinished_work_item_execution,
-            get_for_subject_key=lambda key, workspace, suffix: get_conversation_for_subject_key(
-                key,
-                workspace=workspace,
-                namespace_suffix=suffix,
-            ),
-            resolve=resolve_conversation,
-        )
-    )
-    configure_linear_webhook_effects_runtime(
-        LinearWebhookEffectsRuntime(
-            resolve_conversation=resolve_conversation,
-            control_state_matches=conversation_control_state_matches,
-            apply_control_state=apply_conversation_control_state,
-            get_execution_for_issue=get_work_item_execution_for_issue,
-            cancel_execution=cancel_work_item_execution,
-            cancel_execution_if_lifecycle_current=cancel_work_item_execution_if_lifecycle_current,
-            get_active_execution=get_active_work_item_execution,
-        )
-    )
-    configure_linear_work_item_task_runtime(
-        LinearWorkItemTaskRuntime(
-            get_control_binding=get_conversation_control_binding,
-            get_task=get_task_by_id,
-            create_task=create_task_if_absent,
-            update_task=update_task,
-            get_task_logs=get_task_run_logs,
-            bind_execution_to_task=bind_work_item_execution_to_task,
-            get_active_execution=get_active_work_item_execution,
-            resume_once_task=resume_once_task_after_unclaimed_scheduled_turn,
-            get_execution_for_issue=get_work_item_execution_for_issue,
-        )
-    )
-    configure_linear_work_items_runtime(
-        LinearWorkItemsRuntime(
-            list_executions=list_work_item_executions,
-            get_active_execution=get_active_work_item_execution,
-            get_execution_for_issue=get_work_item_execution_for_issue,
-            get_in_flight_turn=get_in_flight_turn_for_group,
-            bind_execution_to_turn=bind_work_item_execution_to_turn,
-            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
-        )
-    )
-    configure_linear_work_item_runtime(
-        LinearWorkItemRuntime(
-            get_transition_by_request=get_work_item_transition_by_request,
-            get_execution=get_work_item_execution,
-            get_active_execution=get_active_work_item_execution,
-            create_claim=create_work_item_claim,
-            claim_request=WorkItemClaimRequest,
-            begin_transition=begin_work_item_transition,
-            transition_resolution=WorkItemTransitionResolution,
-            resolve_transition=resolve_work_item_transition,
-            resolve_transition_if_lifecycle_current=resolve_work_item_transition_if_lifecycle_current,
-        )
-    )
-    configure_linear_work_item_completion_runtime(
-        LinearWorkItemCompletionRuntime(
-            get_execution_for_issue=get_work_item_execution_for_issue,
-            get_transition_by_request=get_work_item_transition_by_request,
-            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
-            transition_request=WorkItemTransitionRequest,
-            begin_transition=begin_work_item_transition,
-            begin_transition_if_lifecycle_current=begin_work_item_transition_if_lifecycle_current,
-        )
-    )
-    configure_linear_legacy_work_item_runtime(
-        LinearLegacyWorkItemRuntime(
-            get_all_tasks=get_all_tasks,
-            get_transition_by_request=get_work_item_transition_by_request,
-            create_claim=create_work_item_claim,
-            claim_request=WorkItemClaimRequest,
-            get_active_execution=get_active_work_item_execution,
-            get_execution=get_work_item_execution,
-            resolve_transition=resolve_work_item_transition,
-        )
-    )
-    configure_linear_planning_task_runtime(LinearPlanningTaskRuntime(get_all_tasks=get_all_tasks))
-    configure_linear_self_echo_runtime(
-        LinearSelfEchoRuntime(
-            begin=begin_webhook_effect,
-            mark_executing=mark_webhook_effect_executing,
-            confirm=confirm_webhook_effect,
-            fail=fail_webhook_effect,
-            mark_outcome_unknown=mark_webhook_effect_outcome_unknown,
-        )
-    )
-
-
-def make_container_runtime_operations() -> ContainerRuntimeOperations:
-    """Return inert container operations for queue tests without a runtime."""
-
-    def ignore_message(_folder: str, _text: str) -> None: ...
-
-    def ignore_close(_folder: str) -> None: ...
-
-    def ignore_gate(_folder: str, _invocation_ts: float) -> None: ...
-
-    async def ignore_session(_folder: str) -> None: ...
-
-    async def ignore_sessions() -> None: ...
-
-    async def ignore_process(_process: object, _name: str) -> None: ...
-
-    return ContainerRuntimeOperations(
-        write_message=ignore_message,
-        write_close_sentinel=ignore_close,
-        clean_input_dir=ignore_close,
-        destroy_gate=ignore_gate,
-        destroy_session=ignore_session,
-        destroy_all_sessions=ignore_sessions,
-        graceful_stop=ignore_process,
-    )
-
-
-def make_container_agent_operations() -> ContainerAgentOperations:
-    """Return inert container-agent operations for orchestration tests."""
-
-    def no_session(_group_folder: object) -> None:
-        return None
-
-    return ContainerAgentOperations(
-        get_session=no_session,
-        fresh_container_name=AsyncMock(
-            side_effect=AssertionError("test must provide a container name")
-        ),
-        spawn=AsyncMock(side_effect=AssertionError("test must provide a container spawn")),
-        create_session=AsyncMock(
-            side_effect=AssertionError("test must provide a container session")
-        ),
-        destroy_session=AsyncMock(),
-        ensure_workspace_mcp=AsyncMock(return_value=()),
-        wait_for_query=AsyncMock(return_value=True),
-    )
-
-
-def make_host_runtime_operations() -> HostRuntimeOperations:
-    """Return inert direct-host runtime operations for orchestration tests."""
-
-    def empty_environment(**_kwargs: object) -> dict[str, str]:
-        return {}
-
-    return HostRuntimeOperations(
-        build_agent_environment=empty_environment,
-        prepare_mcp=AsyncMock(),
-        sessions_root=Path("sessions"),
-        project_root=Path(),
-        gateway_port=4000,
-        prepare_host_codex_home=lambda folder, _plugins: Path("sessions") / folder / ".codex",
-        host_learning_vault=lambda _folder: None,
-    )
-
-
 @pytest.fixture(autouse=True)
 def _clean_host_mutation_cop():
     """Give non-security tests a hermetic, successful Cop boundary."""
@@ -551,9 +229,14 @@ def _clean_host_mutation_cop():
 __all__ = [
     "NullChannel",
     "NullIpcDeps",
+    "configure_linear_accounts_for",
     "init_test_database",
     "make_command_matcher",
+    "make_container_agent_operations",
+    "make_container_runtime_operations",
     "make_host_action_catalog",
+    "make_host_runtime_operations",
+    "make_settings",
 ]
 
 _CGROUP_MEMORY_LIMIT_PATHS = (
@@ -644,239 +327,6 @@ _CACHED_PROPERTY_NAMES = frozenset(
         "timezone",
     }
 )
-
-
-def make_settings(**overrides):
-    """Create a Settings object with sensible defaults for testing.
-
-    Accepts both model fields (agent, container, etc.) and cached property
-    overrides (project_root, data_dir, groups_dir, etc.).
-
-    Usage::
-
-        s = make_settings(data_dir=tmp_path)
-        s = make_settings(container=ContainerConfig(max_concurrent=3))
-        s = make_settings(project_root=tmp_path, groups_dir=tmp_path / "groups")
-    """
-    # Separate cached properties from model fields
-    cached = {k: overrides.pop(k) for k in list(overrides) if k in _CACHED_PROPERTY_NAMES}
-
-    defaults = {
-        "agent": AgentConfig(),
-        "container": ContainerConfig(),
-        "server": ServerConfig(),
-        "logging": LoggingConfig(),
-        "secrets": SecretsConfig(),
-        "profiles": {},
-        "workspaces": {},
-        "commands": CommandWordsConfig(),
-        "scheduler": SchedulerConfig(),
-        "canary": CanaryConfig(),
-        "intervals": IntervalsConfig(),
-        "queue": QueueConfig(),
-        "security": SecurityConfig(),
-        "command_center": CommandCenterConfig(),
-        "plugins": {},
-        "jobs": {},
-    }
-    defaults.update(overrides)
-    s = Settings.model_construct(**defaults)
-
-    for key, value in cached.items():
-        s.__dict__[key] = value
-
-    return s
-
-
-def make_command_matcher(settings: Settings) -> CommandMatcher:
-    """Build the runtime command value that production composes from settings."""
-    return CommandMatcher.from_values(settings.trigger_pattern, settings.commands.model_dump())
-
-
-def make_host_action_catalog(
-    *tool_names: str,
-    handler,
-    read_tools: tuple[str, ...] = (),
-    approval_mode: ApprovalMode = ApprovalMode.EXACT_REQUEST,
-) -> HostActionCatalog:
-    """Build a typed catalog for dispatch-focused tests.
-
-    Catalog validation is covered separately. These tests intentionally use
-    synthetic tool names so they can isolate dispatch and approval behavior.
-    """
-    actions = []
-    for tool_name in tool_names:
-        access = HostActionAccess.READ if tool_name in read_tools else HostActionAccess.WRITE
-        actions.append(
-            HostActionDescriptor(
-                capability=CapabilityDescriptor(
-                    id=CapabilityId(f"test.{tool_name.replace('_', '.')}"),
-                    kind=CapabilityKind.HOST_ACTION,
-                    owner="tests",
-                    summary=f"Exercise the {tool_name} test action.",
-                    action_ids=(ActionId(f"test.{tool_name.replace('_', '.')}"),),
-                ),
-                tool_name=HostToolName(tool_name),
-                handler=handler,
-                access=access,
-                approval=ApprovalContract(mode=approval_mode),
-                idempotency=IdempotencyContract(
-                    IdempotencyMode.NOT_REQUIRED
-                    if access is HostActionAccess.READ
-                    else IdempotencyMode.IPC_REQUEST_ID
-                ),
-                audit=AuditContract(),
-            )
-        )
-    return HostActionCatalog(actions=tuple(actions))
-
-
-class NullIpcDeps:
-    """No-op stand-in for every method on ``IpcDeps``.
-
-    ``beartype_this_package()`` validates fake/mock arguments against the real
-    ``IpcDeps`` Protocol at call time — structurally, by attribute name, not
-    by behavior. Subclass this and override only the methods your test
-    actually exercises; the rest are satisfied for free instead of each fake
-    class hand-rolling all fifteen methods.
-    """
-
-    async def broadcast_to_channels(self, jid, event) -> None: ...
-
-    async def broadcast_host_message(self, jid, text) -> None: ...
-
-    async def broadcast_system_notice(self, jid, text) -> None: ...
-
-    def workspaces(self) -> dict:
-        return {}
-
-    def register_workspace(self, profile) -> None: ...
-
-    async def sync_group_metadata(self, *, force) -> None: ...
-
-    async def get_available_groups(self) -> list:
-        return []
-
-    def write_groups_snapshot(
-        self,
-        group_folder,
-        available_groups,
-        registered_jids,
-        *,
-        is_admin,
-    ) -> None: ...
-
-    def has_active_session(self, group_folder) -> bool:
-        return False
-
-    async def clear_session(self, group_folder) -> None: ...
-
-    def get_active_sessions(self) -> dict:
-        return {}
-
-    async def clear_chat_history(self, chat_jid) -> None: ...
-
-    def enqueue_message_check(self, group_jid) -> None: ...
-
-    def channels(self) -> list:
-        return []
-
-    def pending_question_store(self):
-        return _NullPendingQuestionStore()
-
-    def scheduled_work_store(self):
-        return _TestScheduledWorkStore()
-
-    async def request_deploy(
-        self,
-        *,
-        chat_jid=None,
-        commit_sha="",
-        rebuild=False,
-        resume_prompt="",
-    ) -> None: ...
-
-    async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
-
-    async def create_periodic_agent(self, request) -> None: ...
-
-    async def get_scheduled_work_status(self, *, source_group, is_admin) -> tuple[list, list]:
-        return [], []
-
-    prepare_action_intent = staticmethod(prepare_action_intent)
-    execute_action_intent = staticmethod(execute_action_intent)
-    policy_approval_timestamp = staticmethod(policy_approval_timestamp)
-    approve_action_intent = staticmethod(approve_action_intent)
-    deny_action_intent = staticmethod(deny_action_intent)
-    fail_action_intent = staticmethod(fail_action_intent)
-    expire_action_intent = staticmethod(expire_action_intent)
-    mark_action_intent_awaiting_approval = staticmethod(mark_action_intent_awaiting_approval)
-    get_conversation_control_by_thread = staticmethod(get_conversation_control_by_thread)
-    get_action_intent_by_request = staticmethod(get_action_intent_by_request)
-    get_conversation_control_binding = staticmethod(get_conversation_control_binding)
-
-    async def sweep_expired_questions(self, _write_expiration_response) -> list[dict]:
-        return []
-
-    def skill_access_status(self, _group_folder, _skill_name) -> str:
-        return "unavailable"
-
-    async def load_cop_inspection_context(self, _chat_jid):
-        return CopInspectionContext(availability=CopContextAvailability.AVAILABLE)
-
-
-class _NullPendingQuestionStore:
-    def create(self, **kwargs) -> None:
-        del kwargs
-
-    def update_message_id(self, request_id, source_group, message_id) -> None:
-        del request_id, source_group, message_id
-
-    def resolve(self, request_id, source_group) -> None:
-        del request_id, source_group
-
-
-class _TestScheduledWorkStore:
-    create_task = staticmethod(create_task)
-    create_host_job = staticmethod(create_host_job)
-    get_task_by_id = staticmethod(get_task_by_id)
-    get_host_job_by_id = staticmethod(get_host_job_by_id)
-    update_task = staticmethod(update_task)
-    update_host_job = staticmethod(update_host_job)
-    resume_task = staticmethod(resume_task)
-    delete_task = staticmethod(delete_task)
-    delete_host_job = staticmethod(delete_host_job)
-
-
-class NullChannel:
-    """No-op stand-in for every method on ``Channel``.
-
-    Same rationale as ``NullIpcDeps``: satisfies the ``Channel`` Protocol's
-    isinstance check structurally so fakes only need to override the
-    handful of members a given test actually exercises.
-    """
-
-    name = "null-channel"
-    formatter = None
-
-    async def connect(self) -> None: ...
-
-    async def send_event(self, jid, event) -> None: ...
-
-    def is_connected(self) -> bool:
-        return True
-
-    def owns_jid(self, jid) -> bool:
-        return False
-
-    async def disconnect(self) -> None: ...
-
-    async def reconnect(self) -> None: ...
-
-    def prepare_shutdown(self) -> None: ...
-
-    async def fetch_inbound_since(self, channel_jid, since) -> InboundFetchResult:
-        return InboundFetchResult(messages=[])
 
 
 # ---------------------------------------------------------------------------
@@ -1083,7 +533,7 @@ def reset_settings(monkeypatch):
             tool_process_environment=tool_process_environment,
         )
         configure_mcp_manager_runtime(
-            static_workspace_folder=workspace_config.static_workspace_folder,
+            static_workspace_folder=orchestrator_api.static_workspace_folder,
             load_resolved_workspace_config=resolve_workspace_config,
         )
         configure_security_resolution(

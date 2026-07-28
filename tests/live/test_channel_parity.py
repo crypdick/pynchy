@@ -32,11 +32,12 @@ from pynchy.host.orchestrator.messaging.router import (
     handle_streamed_output,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
-from pynchy.plugins.api import (
-    OutboundEvent,
-    OutboundEventType,
-)
 from pynchy.workspace.api import WorkspaceProfile
+from tests.live.channel_parity_support import (
+    _make_deps,
+    _normalize_messages,
+    _text_event,
+)
 
 from .conftest import (
     RecordingChannel,
@@ -52,45 +53,6 @@ CHAT_JID = "group@g.us"
 
 # ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
-
-def _strip_prefix(text: str) -> str:
-    """Strip the emoji prefix if present, for comparing content parity.
-
-    This normalizes '🦞 Hello world' → 'Hello world' so we can compare
-    the actual content across channels that differ in prefix behavior.
-    """
-    prefix = "🦞 "
-    if text.startswith(prefix):
-        return text[len(prefix) :]
-    return text
-
-
-def _normalize_messages(channel: RecordingChannel) -> list[str]:
-    """Get normalized message texts from a channel for parity comparison.
-
-    Strips the emoji prefix (since that's a known channel-specific
-    difference), so the underlying content can be compared directly.
-    """
-    return [_strip_prefix(text) for _, text in channel.sent_messages]
-
-
-def _text_event(text: str) -> OutboundEvent:
-    """Wrap a string in a TEXT OutboundEvent for broadcast tests."""
-    return OutboundEvent(type=OutboundEventType.TEXT, content=text)
-
-
-def _make_deps(channels: list[RecordingChannel]) -> Any:
-    """Create a mock ChannelDeps with the given channels."""
-    deps = MagicMock()
-    deps.channels = channels
-    deps.event_bus = MagicMock()
-    return deps
-
-
-# ---------------------------------------------------------------------------
-# 1. broadcast_to_channels — raw text parity
 # ---------------------------------------------------------------------------
 
 
@@ -179,11 +141,6 @@ class TestBroadcastRawTextParity:
             assert ch.get_texts(CHAT_JID) == [text], f"{ch.name} long text mismatch"
 
 
-# ---------------------------------------------------------------------------
-# 2. Host message parity
-# ---------------------------------------------------------------------------
-
-
 class TestHostMessageParity:
     """Verify host message broadcast reaches all channels with consistent formatting."""
 
@@ -242,11 +199,6 @@ class TestHostMessageParity:
                 )
 
 
-# ---------------------------------------------------------------------------
-# 4. Reaction and typing parity
-# ---------------------------------------------------------------------------
-
-
 class TestReactionAndTypingParity:
     """Verify reactions and typing indicators behave consistently."""
 
@@ -280,11 +232,6 @@ class TestReactionAndTypingParity:
         for ch in channels:
             assert len(ch.reactions) == 1, f"{ch.name} reaction not received"
             assert ch.reactions[0] == (CHAT_JID, "msg-1", "user@s", "👍")
-
-
-# ---------------------------------------------------------------------------
-# 5. Agent output (result) parity via handle_streamed_output
-# ---------------------------------------------------------------------------
 
 
 class TestAgentOutputParity:
@@ -566,11 +513,6 @@ class TestAgentOutputParity:
             )
 
 
-# ---------------------------------------------------------------------------
-# 6. Agent input broadcast parity
-# ---------------------------------------------------------------------------
-
-
 class TestAgentInputBroadcastParity:
     """Verify that synthetic agent inputs (scheduled tasks, handoffs) broadcast consistently."""
 
@@ -666,11 +608,6 @@ class TestAgentInputBroadcastParity:
             assert all_texts[i] == all_texts[0]
 
 
-# ---------------------------------------------------------------------------
-# 7. Full trace sequence parity (end-to-end)
-# ---------------------------------------------------------------------------
-
-
 class TestFullTraceSequenceParity:
     """Simulate a complete agent interaction and verify parity across the full sequence."""
 
@@ -757,214 +694,4 @@ class TestFullTraceSequenceParity:
                 f"Full sequence parity violation:\n"
                 f"  {ch.name}: {normalized[ch.name]}\n"
                 f"  {channels[0].name}: {ref}"
-            )
-
-
-# ---------------------------------------------------------------------------
-# 8. Edge cases — messages that historically caused channel divergence
-# ---------------------------------------------------------------------------
-
-
-class TestEdgeCaseParity:
-    """Test edge cases that could cause parity issues between channels."""
-
-    @staticmethod
-    def _channels():
-        return [
-            make_whatsapp_channel(),
-            make_slack_channel(),
-            make_discord_channel(),
-        ]
-
-    @classmethod
-    def _broadcasting_deps(cls):
-        channels = cls._channels()
-        deps = _make_deps(channels)
-
-        async def mock_broadcast(jid, event, **kwargs):
-            for ch in channels:
-                if ch.is_connected():
-                    await ch.send_event(jid, event)
-
-        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
-        deps.emit = lambda *a, **kw: None
-        return channels, deps
-
-    @staticmethod
-    def _group() -> WorkspaceProfile:
-        return WorkspaceProfile(
-            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
-
-    @staticmethod
-    def _metadata_messages(channel) -> list[str]:
-        return [text for text in channel.get_texts() if "📊" in text]
-
-    @classmethod
-    def _assert_metadata_message(cls, channel) -> None:
-        meta_msgs = cls._metadata_messages(channel)
-        assert len(meta_msgs) == 1, f"{channel.name} got {len(meta_msgs)} metadata messages"
-        assert "0.42 USD" in meta_msgs[0]
-        assert "3.2s" in meta_msgs[0]
-        assert "5 turns" in meta_msgs[0]
-
-    async def test_internal_tags_in_result_stripped_for_all(self):
-        """<internal> content in agent results should be stripped for ALL channels."""
-        channels = [
-            make_whatsapp_channel(),
-            make_slack_channel(),
-            make_discord_channel(),
-        ]
-
-        deps = _make_deps(channels)
-
-        async def mock_broadcast(jid, event, **kwargs):
-            for ch in channels:
-                if ch.is_connected():
-                    await ch.send_event(jid, event)
-
-        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
-        deps.emit = lambda *a, **kw: None
-
-        group = WorkspaceProfile(
-            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
-
-        result = ContainerOutput(
-            status="success",
-            result="<internal>reasoning here</internal>The visible answer is 42.",
-            type="result",
-            new_session_id="s1",
-        )
-
-        await handle_streamed_output(deps, CHAT_JID, group, result)
-
-        for ch in channels:
-            texts = ch.get_texts()
-            for text in texts:
-                assert "<internal>" not in text, f"{ch.name} leaked internal tags: {text}"
-                assert "reasoning here" not in text, f"{ch.name} leaked internal content: {text}"
-
-    async def test_empty_result_parity(self):
-        """Empty results should be handled the same across all channels."""
-        channels = [
-            make_whatsapp_channel(),
-            make_slack_channel(),
-            make_discord_channel(),
-        ]
-        deps = _make_deps(channels)
-
-        async def mock_broadcast(jid, event, **kwargs):
-            for ch in channels:
-                if ch.is_connected():
-                    await ch.send_event(jid, event)
-
-        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
-        deps.emit = lambda *a, **kw: None
-
-        group = WorkspaceProfile(
-            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
-
-        result = ContainerOutput(
-            status="success",
-            result="",
-            type="result",
-            new_session_id="s1",
-        )
-
-        sent = await handle_streamed_output(deps, CHAT_JID, group, result)
-
-        assert sent is False  # Empty result = nothing to send
-
-        # No channel should have received anything
-        for ch in channels:
-            assert len(ch.sent_messages) == 0, (
-                f"{ch.name} received message for empty result: {ch.get_texts()}"
-            )
-
-    async def test_result_metadata_parity(self):
-        """Cost/usage metadata should be broadcast identically."""
-        channels, deps = self._broadcasting_deps()
-
-        result = ContainerOutput(
-            status="success",
-            result="Done.",
-            type="result",
-            new_session_id="s1",
-            result_metadata={
-                "total_cost_usd": 0.42,
-                "duration_ms": 3200,
-                "num_turns": 5,
-            },
-        )
-
-        await handle_streamed_output(deps, CHAT_JID, self._group(), result)
-
-        # Check that metadata message is consistent
-        for ch in channels:
-            self._assert_metadata_message(ch)
-
-        # Metadata text should be identical (no prefix differences for metadata)
-        all_meta = [self._metadata_messages(ch) for ch in channels]
-        for i, _ch in enumerate(channels):
-            assert all_meta[i] == all_meta[0], (
-                f"Metadata parity: {ch.name}={all_meta[i]} vs {channels[0].name}={all_meta[0]}"
-            )
-
-    async def test_verbose_tool_result_parity(self):
-        """ExitPlanMode tool results should show content on all channels."""
-        channels = [
-            make_whatsapp_channel(),
-            make_slack_channel(),
-            make_discord_channel(),
-        ]
-        deps = _make_deps(channels)
-
-        async def mock_broadcast(jid, event, **kwargs):
-            for ch in channels:
-                if ch.is_connected():
-                    await ch.send_event(jid, event)
-
-        deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
-        deps.emit = lambda *a, **kw: None
-
-        group = WorkspaceProfile(
-            jid="test@g.us", name="Test", folder="test", trigger="@pynchy", added_at=""
-        )
-
-        # First send a tool_use for ExitPlanMode to set up _last_tool_name
-        tool_use = ContainerOutput(
-            status="success",
-            type="tool_use",
-            tool_name="ExitPlanMode",
-            tool_input={},
-        )
-        await handle_streamed_output(deps, CHAT_JID, group, tool_use)
-
-        for ch in channels:
-            ch.clear()
-
-        # Now send the tool_result
-        tool_result = ContainerOutput(
-            status="success",
-            type="tool_result",
-            tool_result_id="tr-plan",
-            tool_result_content="## Implementation Plan\n1. Step one\n2. Step two",
-        )
-
-        await handle_streamed_output(deps, CHAT_JID, group, tool_result)
-
-        # All channels should show the plan content, not just "📋 tool result"
-        for ch in channels:
-            texts = ch.get_texts()
-            assert any("Implementation Plan" in t for t in texts), (
-                f"{ch.name} should show ExitPlanMode content, got: {texts}"
-            )
-
-        # Content should be identical across channels
-        all_texts = [ch.get_texts() for ch in channels]
-        for i, _ch in enumerate(channels):
-            assert all_texts[i] == all_texts[0], (
-                f"Verbose tool result parity: {ch.name}={all_texts[i]}"
             )
