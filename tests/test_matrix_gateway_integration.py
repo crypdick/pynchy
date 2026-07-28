@@ -36,6 +36,8 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     clear_active_matrix_routes,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import (
+    MatrixRouteInput,
+    MatrixWorkspacePolicy,
     ResolvedMatrixRoute,
     resolve_matrix_routes,
 )
@@ -118,8 +120,40 @@ def _handlers():
     return {str(action.tool_name): action.handler for action in registration.actions}
 
 
+def _resolve_matrix_routes(settings) -> tuple[ResolvedMatrixRoute, ...]:
+    routes = tuple(
+        MatrixRouteInput(
+            name=name,
+            source=route.source,
+            workspace=str(route.workspace),
+            activation=route.activation,
+            outbound=route.outbound,
+            tools=tuple(route.tools) if route.tools is not None else None,
+            capabilities=dict(route.capabilities),
+        )
+        for name, route in settings.routes.items()
+    )
+    connections = {
+        name: connection
+        for name, connection in settings.connections.items()
+        if isinstance(connection, MatrixConnectionConfig)
+    }
+
+    def workspace_policy(workspace: str) -> MatrixWorkspacePolicy | None:
+        resolved = settings.resolved_workspace_config(workspace)
+        if resolved is None:
+            return None
+        return MatrixWorkspacePolicy(
+            is_admin=resolved.is_admin,
+            tools=tuple(resolved.tools),
+            capabilities=dict(resolved.capabilities),
+        )
+
+    return resolve_matrix_routes(routes, connections, workspace_policy)
+
+
 def _configure_matrix_gateway_runtime(settings) -> None:
-    routes = resolve_matrix_routes(settings)
+    routes = _resolve_matrix_routes(settings)
     matrix_gateway.configure_matrix_gateway_runtime(
         matrix_gateway.MatrixGatewayRuntime(
             data_dir=settings.data_dir,
@@ -259,7 +293,7 @@ def test_route_policy_can_only_reduce_parent_workspace_privilege(
     settings = validate_settings_mapping(raw)
 
     with pytest.raises(ValueError, match=error):
-        resolve_matrix_routes(settings)
+        _resolve_matrix_routes(settings)
 
 
 @pytest.mark.parametrize(
@@ -278,7 +312,7 @@ def test_route_outbound_merge_keeps_the_most_restrictive_policy(
     raw["routes"]["family"]["outbound"] = route_outbound
     settings = validate_settings_mapping(raw)
 
-    [resolved] = resolve_matrix_routes(settings)
+    [resolved] = _resolve_matrix_routes(settings)
 
     assert resolved.outbound == "read_only"
 

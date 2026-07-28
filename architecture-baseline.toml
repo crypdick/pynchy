@@ -425,14 +425,3 @@ imports = [
   "pynchy.state.api",
 ]
 reason = "pynchy.plugins.integrations.matrix_connection still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_route_resolution"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.plugins.integrations.matrix_route_resolution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."

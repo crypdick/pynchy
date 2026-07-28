@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix route annotations.
+    Callable,
+    Iterable,
+    Mapping,
+)
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves route settings.
-    Settings,
-)
-from pynchy.integration_contracts import (
+from pynchy.integration_contracts import (  # noqa: TC001, RUF100 - beartype resolves Matrix route annotations.
     MatrixActivation,
     MatrixConnection,
     MatrixEndpoint,
     MatrixOutbound,
-    is_matrix_connection,
 )
-from pynchy.workspace.api import (
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves Matrix route annotations.
+    CapabilityRule,
     capability_pattern_matches,
     most_restrictive_capability_rule,
 )
@@ -25,6 +27,28 @@ from pynchy.workspace.api import (
 class MatrixEndpointRef:
     connection: str
     endpoint: str
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixRouteInput:
+    """Configured route values required to resolve one Matrix binding."""
+
+    name: str
+    source: str
+    workspace: str
+    activation: MatrixActivation | None
+    outbound: MatrixOutbound | None
+    tools: tuple[str, ...] | None
+    capabilities: dict[str, Literal["deny", "needs_human"]]
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixWorkspacePolicy:
+    """Resolved workspace policy consulted while resolving a Matrix route."""
+
+    is_admin: bool
+    tools: tuple[str, ...]
+    capabilities: dict[str, CapabilityRule]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,19 +77,23 @@ def parse_matrix_endpoint_ref(value: str) -> MatrixEndpointRef | None:
     return MatrixEndpointRef(connection=connection, endpoint=endpoint)
 
 
-def resolve_matrix_routes(settings: Settings) -> tuple[ResolvedMatrixRoute, ...]:
+def resolve_matrix_routes(
+    routes: Iterable[MatrixRouteInput],
+    connections: Mapping[str, MatrixConnection],
+    workspace_policy: Callable[[str], MatrixWorkspacePolicy | None],
+) -> tuple[ResolvedMatrixRoute, ...]:
     """Resolve exact policy and prove every route can only reduce privileges."""
     resolved_routes: list[ResolvedMatrixRoute] = []
-    for route_name, route in settings.routes.items():
+    for route in routes:
+        route_name = route.name
         source = parse_matrix_endpoint_ref(route.source)
         if source is None:
             continue
-        raw_connection = settings.connections[source.connection]
-        if not is_matrix_connection(raw_connection):
-            raise TypeError(f"Matrix route {route_name!r} resolved a non-Matrix connection")
-        connection = raw_connection
+        connection = connections.get(source.connection)
+        if connection is None:
+            raise ValueError(f"Matrix route {route_name!r} references an unknown connection")
         endpoint = connection.chat[source.endpoint]
-        workspace = settings.resolved_workspace_config(route.workspace)
+        workspace = workspace_policy(route.workspace)
         if workspace is None:
             raise ValueError(f"Matrix route {route_name!r} references an unknown workspace")
         activation = route.activation or connection.route_defaults.activation

@@ -130,7 +130,11 @@ from pynchy.plugins.integrations.matrix_gateway import (
     MatrixGatewayRuntime,
     configure_matrix_gateway_runtime,
 )
-from pynchy.plugins.integrations.matrix_route_resolution import resolve_matrix_routes
+from pynchy.plugins.integrations.matrix_route_resolution import (
+    MatrixRouteInput,
+    MatrixWorkspacePolicy,
+    resolve_matrix_routes,
+)
 from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
@@ -497,10 +501,38 @@ def configure_marketplace_health_plugin(
 
 def configure_matrix_gateway_plugin(settings: Settings) -> None:
     """Inject Matrix routes and state paths selected by host configuration."""
+    routes = tuple(
+        MatrixRouteInput(
+            name=name,
+            source=route.source,
+            workspace=str(route.workspace),
+            activation=route.activation,
+            outbound=route.outbound,
+            tools=tuple(route.tools) if route.tools is not None else None,
+            capabilities=dict(route.capabilities),
+        )
+        for name, route in settings.routes.items()
+    )
+    connections = {
+        name: connection
+        for name, connection in settings.connections.items()
+        if is_matrix_connection(connection)
+    }
+
+    def workspace_policy(workspace: str) -> MatrixWorkspacePolicy | None:
+        resolved = settings.resolved_workspace_config(workspace)
+        if resolved is None:
+            return None
+        return MatrixWorkspacePolicy(
+            is_admin=resolved.is_admin,
+            tools=tuple(resolved.tools),
+            capabilities=dict(resolved.capabilities),
+        )
+
     configure_matrix_gateway_runtime(
         MatrixGatewayRuntime(
             data_dir=settings.data_dir,
-            routes=resolve_matrix_routes(settings),
+            routes=resolve_matrix_routes(routes, connections, workspace_policy),
             connections=tuple(
                 MatrixConnectionRuntimeOptions(
                     name=name,
