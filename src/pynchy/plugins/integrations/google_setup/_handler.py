@@ -129,8 +129,8 @@ def _try_fast_path(
     steps_done: list[str] = []
     project_number = get_project_number(kp)
     if project_number:
-        for api_id in api_ids:
-            enable_api_via_rest(project_number, access_token, api_id)
+        if not all(enable_api_via_rest(project_number, access_token, api_id) for api_id in api_ids):
+            return None
         steps_done.append("APIs verified/enabled via REST")
 
     return {
