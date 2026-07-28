@@ -24,7 +24,7 @@ data/ipc/{group}/
 
 ## Message Flow (Container → Host)
 
-1. Agent calls an MCP tool (e.g., `send_message`, `schedule_task`)
+1. Agent calls an MCP tool (e.g., `send_message`, `register_group`)
 2. The MCP server (running inside the container) writes a JSON file atomically to the appropriate subdirectory
 3. The host's IPC watcher (`ipc/_watcher.py`) detects the new file via watchdog (inotify on Linux, FSEvents on macOS)
 4. Host reads the file, authorizes the operation, executes it, and deletes the file
@@ -91,7 +91,7 @@ All other operations — scheduling, group management, deployment, git sync — 
 ```json
 {
   "schema_version": 1,
-  "kind": "schedule_task",
+  "kind": "register_group",
   "request_id": "uuid-...",
   "source_group": "my-group",
   "created_at": "2026-07-07T12:00:00+00:00",
@@ -110,7 +110,6 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 
 | Kind | Purpose | God only? |
 |------|---------|-----------|
-| `schedule_task` | Create a recurring/one-time task | No (own group) |
 | `schedule_host_job` | Schedule a shell command on the host | Yes |
 | `pause_task` | Pause a task | No (own tasks) |
 | `resume_task` | Resume a task | No (own tasks) |

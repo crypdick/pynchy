@@ -187,26 +187,20 @@ class _RetirementBindingDeps(_BindingDeps):
         await self.cancel_scheduled_task("task-1")
 
 
-async def test_unnamed_task_gets_persistent_child_thread_binding(tmp_path) -> None:
+async def test_unnamed_task_cannot_create_a_child_thread() -> None:
     owner = _profile()
     deps = _BindingDeps({owner.jid: owner})
     task = _task()
     await create_task(task)
 
-    configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
-    bound = await ensure_scheduled_task_binding(task, deps)
-    rebound = await ensure_scheduled_task_binding(bound, deps)
+    with pytest.raises(ScheduledTaskOwnershipError, match="lacks a managed thread name"):
+        await ensure_scheduled_task_binding(task, deps)
 
-    assert bound.bound_chat_jid == deps.ensured_jid
-    assert bound.bound_chat_jid != owner.jid
-    assert bound.bound_group_folder is not None
-    assert bound.bound_group_folder != owner.folder
-    assert rebound.bound_chat_jid == bound.bound_chat_jid
-    assert {parent for parent, _title in deps.ensured} == {owner.jid}
+    assert deps.ensured == []
     persisted = await get_task_by_id(task.id)
     assert persisted is not None
-    assert persisted.bound_chat_jid == bound.bound_chat_jid
-    assert persisted.bound_group_folder == bound.bound_group_folder
+    assert persisted.bound_chat_jid is None
+    assert persisted.bound_group_folder is None
 
 
 async def test_existing_named_task_binding_skips_thread_recreation() -> None:
@@ -298,7 +292,11 @@ async def test_routed_binding_rejects_terminal_intent_after_workspace_registrati
         ),
         GroupFolder(owner.folder),
     )
-    task = replace(_task(), conversation_id=str(conversation.id))
+    task = replace(
+        _task(),
+        conversation_id=str(conversation.id),
+        derived_thread_name="[SYN-1] Routed binding race",
+    )
     await create_task(task)
     deps = _RetirementBindingDeps(
         {owner.jid: owner},

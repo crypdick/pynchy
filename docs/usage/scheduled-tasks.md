@@ -2,7 +2,7 @@
 
 Schedule recurring or one-time tasks: briefings, maintenance scripts, periodic code reviews, or anything else that runs on a timer.
 
-Three execution shapes share the native scheduler:
+Three execution shapes share the scheduler:
 
 - **Agent tasks** run the owning workspace's selected agent core, on the host
   or in a container according to its profile.
@@ -35,11 +35,9 @@ creates a numbered spillover thread for that job. This requires a channel with
 child-thread support. Pynchy records an error instead of moving the run to
 another target when the root channel cannot create threads.
 
-Tasks created through `schedule_task` receive a persistent dedicated child
-thread below the selected workspace. They never execute in the parent
-conversation. Linear planning and execution tasks are different: they bind to
-the issue's routed conversation, so every phase uses the issue thread's existing
-runtime. Pynchy refuses to run a task whose destination cannot be bound.
+Linear planning and execution tasks bind to the issue's routed conversation, so
+every phase uses the issue thread's existing runtime. Pynchy refuses to run a
+task whose destination cannot be bound.
 
 Every scheduled task uses one of two session policies:
 
@@ -51,10 +49,6 @@ Configured agent jobs set `reset_before_run = true` by default. The reset is
 visible even on the first occurrence. Temporal retries reuse the session created
 for that occurrence and don't post another reset. Set the field to `false` when
 successive occurrences should build on the same context.
-
-The `schedule_task` tool retains its compatibility vocabulary:
-`context_mode = "group"` selects `continue`, while `"isolated"` selects
-`reset_before_run`.
 
 A scheduled turn and ordinary messages share the thread's queue. A normal
 message interrupts scheduled work after the current tool result, runs next in
@@ -319,9 +313,7 @@ launchctl kickstart "gui/$(id -u)/com.pynchy.backup"
 
 ## Host Tasks
 
-Host tasks run shell commands on the host — no LLM, no container. Use them for maintenance scripts, backups, git operations, or anything that doesn't need an agent. Only the admin group can create and manage host tasks.
-
-Two ways to define them:
+Host tasks run shell commands on the host — no LLM, no container. Use declared automation files for maintenance scripts, backups, git operations, or anything that doesn't need an agent.
 
 ### Automation file
 
@@ -344,28 +336,23 @@ quiet_on_success = true         # suppress clean-run output logging
 
 Config host jobs use `workspace = "host"` and currently support cron expressions. Pynchy reconciles enabled config host jobs into Temporal Schedules, and Temporal triggers host-process activities for each run. They don't show up in `list_tasks` (static config, not database entries).
 
-### MCP tool (`schedule_task` with `task_type: "host"`)
-
-Agents in the admin group can create host jobs dynamically via `schedule_task` with `task_type` set to `"host"`. The database stores them, and they support all schedule types (cron, interval, once). They show up in `list_tasks` and can be paused/resumed/cancelled like agent tasks.
-
 ## MCP Tools
 
-One set of tools manages all task types. `schedule_task` takes a `task_type` parameter (`"agent"` or `"host"`) to pick what kind of task to create. Management tools (`list_tasks`, `pause_task`, etc.) work on both — host job IDs carry a `host-` prefix so routing happens automatically.
+`list_tasks` reports the durable configured and routed work visible to the caller. Create recurring work by committing an automation file instead of asking an agent to create a database row. For a lasting change, update the automation file or the owning Linear work item; those sources reconcile their task state.
 
 | Tool | Purpose |
 |------|---------|
-| `schedule_task` | Schedule an agent task or host job (`task_type` field) |
-| `list_tasks` | Show all tasks — agent and host — with `[agent]`/`[host]` labels |
-| `pause_task` | Pause a task (any type) |
-| `resume_task` | Resume a paused task (any type) |
-| `cancel_task` | Delete a task (any type) |
+| `list_tasks` | Show visible configured and routed work |
+| `pause_task` | Pause a visible task projection |
+| `resume_task` | Resume a visible task projection |
+| `cancel_task` | Cancel a visible task projection |
 | `send_message` | Send a message to the group (agent tasks only) |
 | `list_todos` | List pending todo items (or all items with `include_done: true`) |
 | `complete_todo` | Mark a todo item as done by ID |
 
 ## Schedule Types
 
-Both agent tasks and database host jobs support these schedule types:
+Config-backed agent and deterministic workspace jobs support these schedule types:
 
 | Type | Value Format | Example |
 |------|--------------|---------|

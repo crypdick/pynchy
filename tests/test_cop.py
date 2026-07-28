@@ -293,7 +293,7 @@ async def test_cop_handles_markdown_fenced_json():
     session_patch = _mock_aiohttp_session('```json\n{"flagged": false, "reason": "clean"}\n```')
 
     with gw_patch, session_patch:
-        verdict = await inspect_outbound("schedule_task", "prompt: check disk space")
+        verdict = await inspect_outbound("schedule_host_job", "command: check disk space")
 
     assert not verdict.flagged
 
