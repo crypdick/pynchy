@@ -65,3 +65,20 @@ def test_control_plane_bootstrap_cli_rotates_an_existing_token(
     assert not errors
     assert output == f"Rotated permission-restricted control-plane token: {token_path}\n"
     assert token_path.read_text() != original_token
+
+
+def test_control_plane_bootstrap_cli_refuses_to_overwrite_without_rotate(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    assert _run_bootstrap(monkeypatch, capsys, tmp_path)[0] == 0
+    token_path = tmp_path / "data" / "control-plane.token"
+
+    exit_code, output, errors = _run_bootstrap(monkeypatch, capsys, tmp_path)
+
+    assert exit_code == 1
+    assert not output
+    assert errors == (
+        f"Control-plane bootstrap failed: Control-plane token already exists: {token_path}\n"
+    )
