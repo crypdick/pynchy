@@ -12,17 +12,25 @@ import struct
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
-from pynchy.config.models import DiscordConnectionConfig
+from pynchy.config.api import DiscordConnectionConfig
+from pynchy.plugins.api import (
+    Channel,
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin, PynchyVoiceClient
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database, store_chat_metadata
-from pynchy.types import Channel, OutboundEvent, OutboundEventType, WorkspaceProfile
+from pynchy.state.api import get_chat_jids_by_name
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
@@ -39,6 +47,7 @@ def _channel(
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
         audio_cache_dir=Path("data/media/discord"),
+        find_chat_jids_by_name=get_chat_jids_by_name,
         speech_synthesizer=speech_synthesizer,
     )
 
@@ -783,6 +792,7 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata(
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
         audio_cache_dir=Path("data/media/discord"),
+        find_chat_jids_by_name=get_chat_jids_by_name,
     )
 
     assert await ch.resolve_chat_jid("direct.alice") == "discord:direct:42"

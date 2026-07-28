@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 from conftest import init_test_database
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -13,6 +17,11 @@ from pynchy.conversation.models import (
     ConversationSubjectNamespace,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.state import (
     begin_in_flight_turn,
     get_conversation,
@@ -26,7 +35,6 @@ from pynchy.state import (
     set_session,
 )
 from pynchy.state.runtime_session_recovery import clear_runtime_session_references
-from pynchy.types import ChatJid, GroupFolder, InFlightTurn, InFlightWorkKind, SessionId
 
 
 @pytest.fixture(autouse=True)

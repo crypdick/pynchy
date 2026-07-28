@@ -15,7 +15,11 @@ from pynchy.host.orchestrator.messaging.sender import (
     broadcast,
     finalize_stream_or_broadcast,
 )
-from pynchy.types import Channel, OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    Channel,
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 def _make_channel(name: str, jid_prefix: str = "slack:"):

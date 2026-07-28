@@ -19,6 +19,11 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -37,7 +42,6 @@ from pynchy.state import (
     store_message_direct,
 )
 from pynchy.state.connection import StateRuntimeConfig
-from pynchy.types import ChatJid, GroupFolder, SessionId
 
 if TYPE_CHECKING:
     from pathlib import Path

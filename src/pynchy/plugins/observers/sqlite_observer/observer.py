@@ -6,7 +6,8 @@ Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves observer callback annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves observer callback annotations at runtime.
 )
 from dataclasses import dataclass
 
@@ -17,10 +18,11 @@ from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these 
     EventBus,
     MessageEvent,
 )
-from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
-from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.logger import logger
-from pynchy.state import api as state
+from pynchy.redaction import (
+    irreversibly_redact,
+)
+from pynchy.secrets_scanner import scan_payload_for_secrets
 
 _TRACE_CHAR_LIMIT = 6_000
 _TRACE_COLLECTION_LIMIT = 20
@@ -100,8 +102,13 @@ class SqliteEventObserver:
 
     name = "sqlite"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        store_event: Callable[[str, str | None, dict[str, object]], Awaitable[None]],
+    ) -> None:
         self._unsubs: list[Callable[[], None]] = []
+        self._store_event = store_event
 
     def subscribe(self, event_bus: EventBus) -> None:
         """Subscribe to all event types and persist each to SQLite."""
@@ -158,7 +165,7 @@ class SqliteEventObserver:
         payload: dict[str, object],
     ) -> None:
         try:
-            await state.store_event(event_type, chat_jid, payload)
+            await self._store_event(event_type, chat_jid, payload)
         except Exception as exc:  # noqa: BLE001, RUF100 - event persistence is best-effort observer behavior.
             logger.warning(
                 "SQLite observer failed to store event",

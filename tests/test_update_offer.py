@@ -9,21 +9,23 @@ from unittest.mock import AsyncMock
 from beartype import beartype
 from conftest import NullChannel
 
-from pynchy.config.scheduler_models import SchedulerConfig
-from pynchy.host.orchestrator import update_offer
-from pynchy.state import init_test_database, initialize_deployment_state
-from pynchy.types import (
-    AgentExecutionRuntime,
+from pynchy.config.api import SchedulerConfig
+from pynchy.deployments import (
     DeployClaim,
     DeployClaimStatus,
     DeployRevision,
-    WorkspaceProfile,
 )
+from pynchy.host.orchestrator import update_offer
+from pynchy.state import init_test_database, initialize_deployment_state
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     import pytest
+
+    from pynchy.agent_protocol.api import AgentExecutionRuntime
 
 _OLD_SHA = "a" * 40
 _NEW_SHA = "b" * 40
@@ -52,6 +54,11 @@ class _UpdateDeps:
     broadcast_host_message: AsyncMock
     admin_workspace: str | None
     agent_execution_runtime: AgentExecutionRuntime
+    get_local_head_sha: Callable[[Path], str] = lambda _root: _OLD_SHA
+    get_deploy_config_hash: Callable[[], str] = lambda: "old-config"
+    host_update_main: Callable[[Path], bool] = lambda _root: True
+    needs_deploy: Callable[[str, str], bool] = lambda _old, _new: True
+    needs_container_rebuild: Callable[[str, str], bool] = lambda _old, _new: True
 
 
 @dataclass
@@ -147,11 +154,11 @@ async def test_accepted_offer_fetches_then_starts_deploy(
         agent_execution_runtime=cast("AgentExecutionRuntime", _Runtime(tmp_path)),
     )
     start_deploy = AsyncMock(return_value=DeployClaim(DeployClaimStatus.CLAIMED))
-    monkeypatch.setattr(update_offer, "host_update_main", lambda _root: True)
-    monkeypatch.setattr(update_offer, "get_local_head_sha", lambda _root: _NEW_SHA)
-    monkeypatch.setattr(update_offer, "get_deploy_config_hash", lambda: "new-config")
-    monkeypatch.setattr(update_offer, "needs_deploy", lambda _old, _new: True)
-    monkeypatch.setattr(update_offer, "needs_container_rebuild", lambda _old, _new: True)
+    deps.host_update_main = lambda _root: True
+    deps.get_local_head_sha = lambda _root: _NEW_SHA
+    deps.get_deploy_config_hash = lambda: "new-config"
+    deps.needs_deploy = lambda _old, _new: True
+    deps.needs_container_rebuild = lambda _old, _new: True
     monkeypatch.setattr(update_offer, "start_deploy_workflow", start_deploy)
 
     handled = await update_offer.handle_update_offer_answer(
@@ -185,7 +192,7 @@ async def test_offer_requires_approval_from_the_configured_admin_workspace(
         agent_execution_runtime=cast("AgentExecutionRuntime", _Runtime(tmp_path)),
     )
     update_main = AsyncMock()
-    monkeypatch.setattr(update_offer, "host_update_main", update_main)
+    deps.host_update_main = update_main
 
     handled = await update_offer.handle_update_offer_answer(
         update_offer.request_id_for_update(_NEW_SHA),

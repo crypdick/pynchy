@@ -34,8 +34,8 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     admit_decision_issue,
     decision_state_id,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves controller annotations.
-    ScheduledTask,
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves controller annotations.
 )
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.

@@ -5,13 +5,16 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from pynchy.config.settings import validate_settings_mapping
-from pynchy.config.tool_access import (
+from pynchy.config.api import (
     apply_tool_access,
     resolve_tool_access,
     tool_process_environment,
+    validate_settings_mapping,
 )
-from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.container_manager.credentials import (
+    build_agent_env_vars,
+    configure_workspace_environment,
+)
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
     clear_runtime_workspace_restrictions,
@@ -110,10 +113,6 @@ def test_agent_process_receives_only_selected_workspace_environment(
     monkeypatch.setenv("PROTON_PASSWORD", _PROTON_SECRET)
     monkeypatch.setenv("UNRELATED_HOST_SECRET", _UNRELATED_SECRET)
     monkeypatch.setattr(
-        "pynchy.host.container_manager.credentials.get_settings",
-        lambda: settings,
-    )
-    monkeypatch.setattr(
         "pynchy.host.orchestrator.workspace_config.get_settings",
         lambda: settings,
     )
@@ -124,6 +123,13 @@ def test_agent_process_receives_only_selected_workspace_environment(
     monkeypatch.setattr(
         "pynchy.host.container_manager.credentials._read_git_identity",
         lambda: (None, None),
+    )
+    configure_workspace_environment(
+        lambda *, is_admin, group_folder: dict(
+            access.workspace_env
+            if (access := load_resolved_tool_access(group_folder)) is not None
+            else {}
+        )
     )
 
     environment = build_agent_env_vars(is_admin=False, group_folder="dev")

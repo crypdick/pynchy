@@ -5,14 +5,14 @@ from __future__ import annotations
 import stat
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
-from pynchy.config import ServerConfig
+from pynchy.config.api import ServerConfig
 from pynchy.host.orchestrator.http_control import (
     ClientAddress,
     ControlPlaneConfigurationError,
@@ -30,6 +30,10 @@ TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105, RUF100 - syn
 PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for explicit public-bind policy.
 
 
+async def _discard_audit(*_args: object, **_kwargs: object) -> None:  # noqa: RUF029, RUF100 - middleware requires an awaitable audit callback.
+    pass
+
+
 def _runtime(server: ServerConfig, *, project_root: Path) -> ControlPlaneRuntime:
     return resolve_control_plane_runtime(
         bind_host=server.host,
@@ -42,6 +46,7 @@ def _runtime(server: ServerConfig, *, project_root: Path) -> ControlPlaneRuntime
         rate_limit_requests=server.rate_limit_requests,
         rate_limit_window_seconds=server.rate_limit_window_seconds,
         project_root=project_root,
+        audit_security_event=_discard_audit,
     )
 
 
@@ -169,6 +174,7 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
             allow_remote_deploy=False,
             auth_token=ControlPlaneToken(TEST_TOKEN),
             rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+            audit_security_event=self.audit,
         )
         app = web.Application(
             middlewares=[
@@ -187,16 +193,7 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
 
     async def asyncSetUp(self) -> None:
         self.audit = AsyncMock()
-        self.audit_patch = patch(
-            "pynchy.host.orchestrator.http_control.record_security_event",
-            self.audit,
-        )
-        self.audit_patch.start()
         await super().asyncSetUp()
-
-    async def asyncTearDown(self) -> None:
-        await super().asyncTearDown()
-        self.audit_patch.stop()
 
     @staticmethod
     async def _ok(_request: web.Request) -> web.Response:
@@ -266,22 +263,11 @@ class TestLoopbackDeployPolicy(AioHTTPTestCase):
             allow_remote_deploy=False,
             auth_token=None,
             rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+            audit_security_event=_discard_audit,
         )
         app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
         app.router.add_post("/deploy", self._ok)
         return app
-
-    async def asyncSetUp(self) -> None:
-        self.audit_patch = patch(
-            "pynchy.host.orchestrator.http_control.record_security_event",
-            AsyncMock(),
-        )
-        self.audit_patch.start()
-        await super().asyncSetUp()
-
-    async def asyncTearDown(self) -> None:
-        await super().asyncTearDown()
-        self.audit_patch.stop()
 
     @staticmethod
     async def _ok(_request: web.Request) -> web.Response:
@@ -306,22 +292,11 @@ class TestRemoteRateLimit(AioHTTPTestCase):
             allow_remote_deploy=True,
             auth_token=ControlPlaneToken(TEST_TOKEN),
             rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+            audit_security_event=_discard_audit,
         )
         app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
         app.router.add_get("/status", self._ok)
         return app
-
-    async def asyncSetUp(self) -> None:
-        self.audit_patch = patch(
-            "pynchy.host.orchestrator.http_control.record_security_event",
-            AsyncMock(),
-        )
-        self.audit_patch.start()
-        await super().asyncSetUp()
-
-    async def asyncTearDown(self) -> None:
-        await super().asyncTearDown()
-        self.audit_patch.stop()
 
     @staticmethod
     async def _ok(_request: web.Request) -> web.Response:
@@ -344,6 +319,7 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
     tmp_path: Path,
 ) -> None:
     socket_path = tmp_path / "control.sock"
+    audit = AsyncMock()
     runtime = ControlPlaneRuntime(
         bind_host="127.0.0.1",
         port=0,
@@ -353,30 +329,29 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
         allow_remote_deploy=True,
         auth_token=ControlPlaneToken(TEST_TOKEN),
         rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        audit_security_event=audit,
     )
-    audit = AsyncMock()
 
     async def ok(_request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
         return web.json_response({"status": "ok"})
 
-    with patch("pynchy.host.orchestrator.http_control.record_security_event", audit):
-        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
-        app.router.add_get("/status", ok)
-        register_unix_socket_cleanup(app, runtime)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        await start_control_plane_sites(runner, runtime)
-        try:
-            connector = aiohttp.UnixConnector(path=str(socket_path))
-            async with (
-                aiohttp.ClientSession(connector=connector) as session,
-                session.get("http://localhost/status") as response,
-            ):
-                assert response.status == 200
-            assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
-            audit.assert_not_awaited()
-        finally:
-            await runner.cleanup()
+    app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+    app.router.add_get("/status", ok)
+    register_unix_socket_cleanup(app, runtime)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await start_control_plane_sites(runner, runtime)
+    try:
+        connector = aiohttp.UnixConnector(path=str(socket_path))
+        async with (
+            aiohttp.ClientSession(connector=connector) as session,
+            session.get("http://localhost/status") as response,
+        ):
+            assert response.status == 200
+        assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
+        audit.assert_not_awaited()
+    finally:
+        await runner.cleanup()
 
     assert not socket_path.exists()
 

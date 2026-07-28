@@ -16,10 +16,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, ValidationError
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
+)
+from pynchy.plugins.api import (
+    WebhookActor,
+    WebhookAuthenticationError,
+    WebhookConversation,
+    WebhookEvent,
+    WebhookLifecycle,
+    WebhookPayloadError,
 )
 from pynchy.plugins.integrations.linear_board_payloads import norm_name
 from pynchy.plugins.integrations.linear_statuses import (
@@ -37,14 +45,6 @@ from pynchy.plugins.integrations.linear_webhook_evidence import (
 from pynchy.plugins.integrations.linear_webhook_prompts import (
     LINEAR_ISSUE_INSTRUCTIONS,
     comment_instructions,
-)
-from pynchy.plugins.webhooks import (
-    WebhookActor,
-    WebhookAuthenticationError,
-    WebhookConversation,
-    WebhookEvent,
-    WebhookLifecycle,
-    WebhookPayloadError,
 )
 from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves parser evidence.
     WebhookEffectEvidence,

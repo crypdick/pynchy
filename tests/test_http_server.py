@@ -6,12 +6,16 @@ import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
-from pynchy.host.git_ops.utils import (
+from pynchy.deployments import (
+    DeployClaim,
+    DeployClaimStatus,
+)
+from pynchy.host.git_ops.api import (
     get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
@@ -20,15 +24,18 @@ from pynchy.host.git_ops.utils import (
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import (
     ControlPlaneReadiness,
+    HttpDeployOperations,
     activate_http_server,
     create_http_app,
     prepare_http_server,
     publish_http_server,
 )
-from pynchy.types import DeployClaim, DeployClaimStatus, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
     from aiohttp import web
+
+    from pynchy.scheduling.api import ScheduledTask
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 def _cp(
@@ -48,6 +55,20 @@ def _runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=None,
         rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=AsyncMock(),
+    )
+
+
+def _deploy_operations() -> HttpDeployOperations:
+    return HttpDeployOperations(
+        get_head_sha=Mock(return_value="head-sha"),
+        push_local_commits=Mock(return_value=True),
+        run_git=Mock(return_value=_cp(stdout="No local changes")),
+        files_changed_between=Mock(return_value=False),
+        get_deploy_config_hash=Mock(return_value="config-hash"),
+        get_head_commit_message=Mock(return_value="commit"),
+        is_repo_dirty=Mock(return_value=False),
+        start_deploy_workflow=AsyncMock(return_value=DeployClaim(DeployClaimStatus.CLAIMED)),
     )
 
 
@@ -260,43 +281,38 @@ async def test_failed_deploy_records_operator_boot_warning(
             return _cp(stdout="No local changes")
         return _cp()
 
-    with (
-        patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="same-sha"),
-        patch("pynchy.host.orchestrator.http_server.push_local_commits", return_value=True),
-        patch("pynchy.host.orchestrator.http_server.run_git", side_effect=failed_rebase),
-        patch("pynchy.host.orchestrator.http_server.get_deploy_config_hash", return_value="config"),
-        patch(
-            "pynchy.host.orchestrator.http_server.start_deploy_workflow",
-            new=AsyncMock(return_value=DeployClaim(DeployClaimStatus.CLAIMED)),
-        ),
-        patch(
-            "pynchy.host.orchestrator.http_server.get_head_commit_message",
-            return_value="commit",
-        ),
-        patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
-    ):
-        runtime = ControlPlaneRuntime(
-            bind_host="127.0.0.1",
-            port=8484,
-            unix_socket=None,
-            public_bind=False,
-            remote_auth_required=False,
-            allow_remote_deploy=True,
-            auth_token=None,
-            rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
-        )
-        deps = MockHttpDeps()
-        deps.data_dir = tmp_path
-        deps.project_root = tmp_path
-        app = create_http_app(deps, runtime=runtime)
-        client = TestClient(TestServer(app))
-        await client.start_server()
-        try:
-            response = await client.post("/deploy")
-            assert response.status == 200
-            assert (await response.json())["status"] == "restarting"
-        finally:
-            await client.close()
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=8484,
+        unix_socket=None,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=True,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=AsyncMock(),
+    )
+    deps = MockHttpDeps()
+    deps.deploy_operations.get_head_sha.return_value = "same-sha"
+    deps.deploy_operations.push_local_commits.return_value = True
+    deps.deploy_operations.run_git.side_effect = failed_rebase
+    deps.deploy_operations.get_deploy_config_hash.return_value = "config"
+    deps.deploy_operations.start_deploy_workflow.return_value = DeployClaim(
+        DeployClaimStatus.CLAIMED
+    )
+    deps.deploy_operations.get_head_commit_message.return_value = "commit"
+    deps.deploy_operations.is_repo_dirty.return_value = False
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    app = create_http_app(deps, runtime=runtime)
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        response = await client.post("/deploy")
+        assert response.status == 200
+        assert (await response.json())["status"] == "restarting"
+    finally:
+        await client.close()
 
     warnings = json.loads(warnings_file.read_text())
     assert len(warnings) == len(expected_warnings)
@@ -314,10 +330,15 @@ class MockHttpDeps:
 
     def __init__(self):
         self.broadcasts: list[tuple[str, str]] = []
+        self.capability_status_operations = Mock()
         self.runtime_messages: list[tuple[str, str]] = []
         self._admin_jid = "admin-1@g.us"
         self.data_dir = Path.cwd() / "data"
         self.project_root = Path.cwd()
+        self.deploy_operations = _deploy_operations()
+        self.get_canary_report = AsyncMock(return_value={"scenarios": []})
+        self.canary_run_to_dict = Mock(return_value={})
+        self.work_item_execution_to_dict = Mock(return_value={})
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
@@ -354,16 +375,12 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
     async def test_health_does_not_inspect_repository_or_channel_state(self):
         """Public readiness cannot expose repository or channel details."""
-        with (
-            patch("pynchy.host.orchestrator.http_server.get_head_sha") as head_sha,
-            patch("pynchy.host.orchestrator.http_server.get_head_commit_message") as head_commit,
-            patch("pynchy.host.orchestrator.http_server.is_repo_dirty") as repo_dirty,
-        ):
-            resp = await self.client.get("/health")
+        resp = await self.client.get("/health")
         assert resp.status == 200
-        head_sha.assert_not_called()
-        head_commit.assert_not_called()
-        repo_dirty.assert_not_called()
+        operations = self.deps.deploy_operations
+        operations.get_head_sha.assert_not_called()
+        operations.get_head_commit_message.assert_not_called()
+        operations.is_repo_dirty.assert_not_called()
 
 
 @pytest.mark.asyncio

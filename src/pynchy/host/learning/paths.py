@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import posixpath
 import re
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves learning runtime annotations at runtime.
+)
 from dataclasses import dataclass
 from pathlib import Path
-
-from pynchy.config.settings import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
 _DYNAMIC_THREAD_DELIMITER = "__thread_"
@@ -30,54 +31,74 @@ class LearningPaths:
     mounted_memory_root: str
 
 
+@dataclass(frozen=True)
+class LearningPathsRuntime:
+    """Resolved learning-path inputs selected by application composition."""
+
+    enabled: bool
+    vault_root: str | None
+    vault_mount_path: str
+    default_profile_root: str
+    memory_dir_name: str
+    data_dir: Path
+    profile_for_workspace: Callable[[str], str | None]
+
+
 class LearningConfigError(ValueError):
     pass
 
 
+_runtime = LearningPathsRuntime(
+    enabled=False,
+    vault_root=None,
+    vault_mount_path="/workspace/vault",
+    default_profile_root="systems/pynchy/profiles/{profile}",
+    memory_dir_name="memory",
+    data_dir=Path.cwd(),
+    profile_for_workspace=lambda _folder: None,
+)
+
+
+def configure_learning_paths_runtime(runtime: LearningPathsRuntime) -> None:
+    """Set the learning path values selected by the application composition root."""
+    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one learning-path configuration.
+    _runtime = runtime
+
+
 def profile_name_for_group(group_folder: str) -> str:
-    return _profile_name_for_group(get_settings(), group_folder)
-
-
-def _profile_name_for_group(settings: Settings, group_folder: str) -> str:
-    workspace = settings.workspaces.get(group_folder)
-    if workspace is None:
+    profile = _runtime.profile_for_workspace(group_folder)
+    if profile is None:
         parent_folder, delimiter, _thread = group_folder.partition(_DYNAMIC_THREAD_DELIMITER)
         if delimiter and parent_folder:
-            workspace = settings.workspaces.get(parent_folder)
-    if workspace is None or not workspace.profiles:
-        return "default"
-    return workspace.profiles[0]
+            profile = _runtime.profile_for_workspace(parent_folder)
+    return profile or "default"
 
 
 def resolve_learning_paths(
     group_folder: str, *, profile_override: str | None = None
 ) -> LearningPaths | None:
-    settings = get_settings()
-    config = settings.learning
-    if not config.enabled:
+    runtime = _runtime
+    if not runtime.enabled:
         return None
 
-    obsidian = config.obsidian
-    if not obsidian.vault_root:
+    if not runtime.vault_root:
         raise LearningConfigError(_VAULT_ROOT_REQUIRED_ERROR)
 
-    vault_root = Path(obsidian.vault_root).expanduser().resolve()
+    vault_root = Path(runtime.vault_root).expanduser().resolve()
     profile = (
-        profile_override
-        if profile_override is not None
-        else _profile_name_for_group(settings, group_folder)
+        profile_override if profile_override is not None else profile_name_for_group(group_folder)
     )
     profile_slug = _profile_slug(profile)
 
-    profile_rel = _render_profile_root(obsidian.default_profile_root, profile_slug)
+    profile_rel = _render_profile_root(runtime.default_profile_root, profile_slug)
     profile_root = _resolve_under_vault(vault_root, profile_rel)
-    memory_root = _resolve_under_vault(vault_root, profile_rel / obsidian.memory_dir_name)
+    memory_root = _resolve_under_vault(vault_root, profile_rel / runtime.memory_dir_name)
 
     profile_vault_rel = profile_root.relative_to(vault_root)
     memory_vault_rel = memory_root.relative_to(vault_root)
-    learning_data_root = settings.data_dir / "learning"
+    learning_data_root = runtime.data_dir / "learning"
 
-    mount_path = obsidian.mount_path
+    mount_path = runtime.vault_mount_path
     return LearningPaths(
         profile=profile,
         profile_slug=profile_slug,

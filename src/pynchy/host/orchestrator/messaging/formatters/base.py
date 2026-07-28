@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.types import (
-    OutboundEvent,  # noqa: TC001, RUF100 - beartype resolves formatter annotations at runtime.
+from pynchy.plugins.api import (
+    OutboundEvent,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 

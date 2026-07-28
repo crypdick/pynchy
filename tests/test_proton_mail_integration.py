@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.config.api import validate_settings_mapping
 from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
 from pynchy.plugins import get_plugin_manager

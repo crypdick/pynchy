@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     Conversation,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.
     ConversationId,
     ConversationSubjectKey,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.
 )
+from pynchy.identifiers import GroupFolder  # noqa: TC001, RUF100 - beartype resolves annotations
 from pynchy.state.connection import _get_db
 from pynchy.state.conversation_routing import get_conversation
-from pynchy.types import GroupFolder  # noqa: TC001, RUF100 - beartype resolves annotations
 
 
 async def get_conversation_for_subject_key(

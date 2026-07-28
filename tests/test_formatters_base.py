@@ -2,7 +2,10 @@
 
 from pynchy.host.orchestrator.messaging.formatters.base import Formatter, RenderedMessage
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 def test_outbound_event_creation():

@@ -6,8 +6,11 @@ and that batch rendering respects Slack's 50-block-per-message limit.
 
 from __future__ import annotations
 
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.plugins.channels.slack import SlackBlocksFormatter
-from pynchy.types import OutboundEvent, OutboundEventType
 
 
 def test_render_result_uses_markdown_block():

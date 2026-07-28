@@ -8,25 +8,22 @@ from collections.abc import (
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
-)
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
-)
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
-)
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     SessionPolicy,
-    WorkspaceProfile,
 )
+from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
+)
+
+type JobConfig = Any
+type ResolvedWorkspaceConfig = Any
+type Settings = Any
 
 _JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt or prompt_file"
 _JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
@@ -41,12 +38,12 @@ def _job_task_id(job_name: str) -> str:
 def _job_prompt(job_name: str, settings: Settings) -> str:
     job = settings.jobs[job_name]
     if job.prompt is not None:
-        return job.prompt
+        return cast("str", job.prompt)
     prompt_file = job.prompt_file
     if prompt_file is None:
         raise ValueError(_JOB_PROMPT_REQUIRED_ERROR.format(job_name=job_name))
     path = settings.project_root / prompt_file
-    return path.read_text()
+    return cast("str", path.read_text())
 
 
 def _job_schedule(

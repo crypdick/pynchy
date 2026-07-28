@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.channels import SlackConnectionSettings
-from pynchy.plugins.channel_runtime import ChannelPluginContext
+from pynchy.plugins.api import ChannelPluginContext
 from pynchy.plugins.channels.slack import (
     SlackChannel,
     SlackChannelPlugin,

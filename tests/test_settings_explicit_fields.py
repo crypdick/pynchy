@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import AgentConfig, SecurityConfig
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.config.api import AgentConfig, JobConfig, SecurityConfig, validate_settings_mapping
 
 
 class TestExplicitFieldValidation:

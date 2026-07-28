@@ -10,23 +10,47 @@ import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
 from contextvars import ContextVar
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pluggy
 import pytest
-from conftest import make_settings
+from conftest import (
+    configure_learning_paths_for,
+    configure_skill_activation_for,
+    make_container_agent_operations,
+    make_host_runtime_operations,
+    make_settings,
+)
 from pydantic import SecretStr, ValidationError
 
-from pynchy.config import AgentConfig, ContainerConfig, GatewayConfig
-from pynchy.config.models import (
+from pynchy.agent_home import (
+    is_skill_selected,
+    parse_skill_tier,
+    refresh_personalized_skills,
+    sync_skills,
+    write_settings_json,
+)
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    ContainerOutput,
+    VolumeMount,
+    input_to_dict,
+    parse_container_output,
+)
+from pynchy.config.api import (
+    AgentConfig,
+    ContainerConfig,
+    GatewayConfig,
     LearningConfig,
     ObsidianLearningConfig,
     ProfileConfig,
     WorkspaceConfig,
+    dynamic_thread_folder,
 )
-from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import (
     ControlSurface,
     Conversation,
@@ -38,37 +62,25 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.container_manager import process as process_mod
 from pynchy.host.container_manager import session as session_mod
+from pynchy.host.container_manager.api import AgentHomeMounts, RepoMount
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.mounts import (
     build_container_args,
 )
 from pynchy.host.container_manager.mounts import (
     build_volume_mounts as _build_volume_mounts,
 )
-from pynchy.host.container_manager.orchestrator import (
-    resolve_agent_core,
-    write_initial_input,
-)
-from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
+from pynchy.host.container_manager.orchestrator import write_initial_input
 from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionDiedError
-from pynchy.host.container_manager.session_prep import (
-    is_skill_selected,
-    parse_skill_tier,
-    refresh_personalized_skills,
-    sync_skills,
-    write_settings_json,
-)
-from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
-from pynchy.host.git_ops.repo import RepoContext, get_repo_token
+from pynchy.host.git_ops.api import RepoContext, WorktreeResult, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
-    PreparedAgentHomes,
     prepare_agent_homes,
     refresh_personalized_agent_skills,
 )
+from pynchy.host.learning.skills import configure_personalized_skills_root
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerResult,
@@ -79,22 +91,22 @@ from pynchy.host.orchestrator.agent_runner import (
     run_agent,
     session_tracking_output_handler,
 )
+from pynchy.host.orchestrator.api import resolve_agent_core
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.plugins.contracts import AgentCoreSpec
-from pynchy.state import SessionSecurityTaint
-from pynchy.types import (
-    AgentExecutionRuntime,
+from pynchy.identifiers import (
     ChatJid,
-    ContainerInput,
-    ContainerOutput,
     GroupFolder,
     SessionId,
-    VolumeMount,
+)
+from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
+from pynchy.plugins.api import AgentCoreSpec
+from pynchy.state import SessionSecurityTaint
+from pynchy.utils import ProgressTimeoutError, filtered_process_environment
+from pynchy.workspace.api import (
+    RuntimeTarget,
     WorkspaceProfile,
 )
-from pynchy.utils import ProgressTimeoutError, filtered_process_environment
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,6 +178,10 @@ class _AgentRunnerDeps:
         self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
         self.agent_execution_runtime = _agent_runtime(make_settings())
+        self.container_agent_operations = make_container_agent_operations()
+        self.host_runtime_operations = make_host_runtime_operations()
+        self.refresh_personalized_agent_skills = MagicMock()
+        self.admin_repo_notices = MagicMock(return_value=[])
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -184,12 +200,7 @@ class _AgentRunnerDeps:
 
 
 _SETTINGS_MODULES = [
-    _CR_CREDS,
-    "pynchy.host.learning.paths",
-    "pynchy.host.learning.skills",
-    "pynchy.host.learning.skill_activation",
     "pynchy.host.orchestrator.workspace_config",
-    "pynchy.host.orchestrator.host_execution",
 ]
 
 _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=None)
@@ -199,6 +210,20 @@ def build_volume_mounts(group, **kwargs):
     settings = _test_settings.get()
     if settings is None:
         raise RuntimeError("build_volume_mounts requires _patch_settings")
+    repo_ctx = kwargs.get("repo_ctx")
+    worktree_path = kwargs.get("worktree_path")
+    if isinstance(repo_ctx, RepoContext) and isinstance(worktree_path, Path):
+        kwargs["repo_ctx"] = RepoMount(
+            slug=repo_ctx.slug,
+            root=repo_ctx.root,
+            worktree_path=worktree_path,
+        )
+    repo_mounts = kwargs.get("repo_mounts")
+    if repo_mounts is not None:
+        kwargs["repo_mounts"] = [
+            RepoMount(slug=repo.slug, root=repo.root, worktree_path=worktree)
+            for repo, worktree in repo_mounts
+        ]
     return _build_volume_mounts(
         group,
         groups_dir=settings.groups_dir,
@@ -303,6 +328,9 @@ def _patch_settings(
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
+    configure_personalized_skills_root(s.project_root)
+    configure_learning_paths_for(s)
+    configure_skill_activation_for(s)
     token = _test_settings.set(s)
     try:
         with contextlib.ExitStack() as stack:
@@ -432,8 +460,8 @@ class TestContainerProcessHelpers:
 
         with (
             patch(
-                "pynchy.host.container_manager.process.get_runtime",
-                return_value=MagicMock(cli="container"),
+                "pynchy.host.container_manager.process._runtime.container_cli",
+                "container",
             ),
             patch(
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
@@ -462,8 +490,8 @@ class TestContainerProcessHelpers:
 
         with (
             patch(
-                "pynchy.host.container_manager.process.get_runtime",
-                return_value=MagicMock(cli="container"),
+                "pynchy.host.container_manager.process._runtime.container_cli",
+                "container",
             ),
             patch(
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
@@ -503,8 +531,8 @@ class TestContainerProcessHelpers:
 
         with (
             patch(
-                "pynchy.host.container_manager.process.get_runtime",
-                return_value=MagicMock(cli="container"),
+                "pynchy.host.container_manager.process._runtime.container_cli",
+                "container",
             ),
             patch(
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
@@ -519,8 +547,6 @@ class TestContainerProcessHelpers:
 
     async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
         """Only the runtime process for the exact Apple container UUID is reaped."""
-        runtime = MagicMock(cli="container")
-        runtime.name = "apple"
         container_root = "/Users/me/Library/Application Support/com.apple.container/containers"
         old_container = f"{container_root}/pynchy-code-improver-old"
         ps_output = (
@@ -543,8 +569,7 @@ class TestContainerProcessHelpers:
                 alive.discard(pid)
 
         with (
-            patch("pynchy.host.container_manager.process.sys.platform", "darwin"),
-            patch("pynchy.host.container_manager.process.get_runtime", return_value=runtime),
+            patch("pynchy.host.container_manager.process._runtime.is_apple_runtime", True),
             patch(
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=CompletedProcess(ps_output)),
@@ -562,8 +587,8 @@ class TestContainerProcessHelpers:
 
         with (
             patch(
-                "pynchy.host.container_manager.process.get_runtime",
-                return_value=MagicMock(cli="container"),
+                "pynchy.host.container_manager.process._runtime.container_cli",
+                "container",
             ),
             patch(
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
@@ -781,7 +806,9 @@ class TestCleanIpcInputDir:
         (input_dir / "stale-msg.json").write_text('{"type": "message"}')
         (input_dir / "_close").write_text("")
 
-        with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+        ):
             clean_ipc_input_dir("test-group", preserve_initial=True)
 
         assert (input_dir / "initial.json").exists()
@@ -796,7 +823,9 @@ class TestCleanIpcInputDir:
         (input_dir / "stale-msg.json").write_text('{"type": "message"}')
         (input_dir / "_close").write_text("")
 
-        with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings):
+        with patch(
+            "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+        ):
             clean_ipc_input_dir("test-group", preserve_initial=False)
 
         assert not (input_dir / "initial.json").exists()
@@ -839,7 +868,6 @@ class TestContainerArgs:
         with (
             _patch_settings(tmp_path, secret_overrides={"gh_token": "legacy-token"}),
             patch(f"{_GATEWAY}.get_gateway", return_value=gateway),
-            patch(f"{_CR_CREDS}._read_gh_token") as read_gh_token,
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
             environment = build_agent_env_vars(is_admin=True, group_folder="admin")
@@ -848,7 +876,6 @@ class TestContainerArgs:
         assert environment["OPENAI_API_KEY"] == gateway.key
         assert "GH_TOKEN" not in environment
         assert "GITHUB_TOKEN" not in environment
-        read_gh_token.assert_not_called()
 
     def test_selected_environment_uses_names_in_argv_and_values_in_child_env(
         self,
@@ -896,7 +923,10 @@ class TestContainerArgs:
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
 
-        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
             )
@@ -909,7 +939,10 @@ class TestContainerArgs:
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
 
-        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 [], "test-container", memory_mb=2048, image="pynchy-agent:latest"
             )
@@ -922,9 +955,10 @@ class TestContainerArgs:
         runtime.name = "docker"
         settings = make_settings(container=ContainerConfig(memory_mb=1536))
 
-        with (
-            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
-        ):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 [],
                 "test-container",
@@ -990,7 +1024,7 @@ class TestMountBuilding:
         assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
         assert skill_mount.readonly is False
 
-    def test_learning_enabled_mounts_vault_readwrite(self, monkeypatch, tmp_path: Path):
+    def test_learning_enabled_mounts_vault_readwrite(self, tmp_path: Path):
         vault = tmp_path / "vault"
         vault.mkdir()
         learning = LearningConfig(
@@ -1003,12 +1037,16 @@ class TestMountBuilding:
 
         with _patch_settings(tmp_path, learning=learning):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            monkeypatch.setattr(
-                "pynchy.host.container_manager.mounts.prepare_vault_mount_root",
-                lambda paths: paths.vault_root,
-            )
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+            with patch(
+                "pynchy.host.container_manager.mounts._configured_mount_operations"
+            ) as configured:
+                configured.return_value.prepare_agent_homes.return_value = AgentHomeMounts(
+                    claude_home=tmp_path / "claude",
+                    codex_home=tmp_path / "codex",
+                    vault_mount_root=vault.resolve(),
+                    vault_mount_path="/mnt/obsidian",
+                )
+                mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         vault_mount = next(
             (m for m in mounts if m.container_path == "/mnt/obsidian"),
@@ -1174,13 +1212,20 @@ class TestMountBuilding:
             workspaces=workspaces,
         ) as settings:
             settings.profiles.update(profiles)
-            with patch.object(host_execution, "build_agent_env_vars", return_value={}):
-                codex_home = host_execution.prepare_host_codex_home("test-group", None)
-                env = host_execution.host_agent_env_vars(
-                    is_admin=False,
-                    group_folder="test-group",
-                    codex_home=codex_home,
-                )
+            operations = make_host_runtime_operations()
+            operations.sessions_root = settings.data_dir / "sessions"
+            operations.project_root = settings.project_root
+            operations.gateway_port = settings.gateway.port
+            operations.prepare_host_codex_home = lambda folder, plugins: (
+                prepare_agent_homes(folder, plugins).codex_home
+            )
+            codex_home = host_execution.prepare_host_codex_home("test-group", None, operations)
+            env = host_execution.host_agent_env_vars(
+                is_admin=False,
+                group_folder="test-group",
+                operations=operations,
+                codex_home=codex_home,
+            )
 
         assert codex_home == tmp_path / "data/sessions/test-group/.codex"
         assert env["CODEX_HOME"] == str(codex_home)
@@ -1850,6 +1895,13 @@ class TestContainerInputAgentCoreConfig:
         session = MagicMock()
         runtime = MagicMock(cli="docker")
         runtime.name = "docker"
+        deps.container_agent_operations = replace(
+            deps.container_agent_operations,
+            fresh_container_name=AsyncMock(return_value="pynchy-test-group"),
+            spawn=AsyncMock(return_value=(proc, "pynchy-test-group", [], ())),
+            create_session=AsyncMock(return_value=session),
+            destroy_session=AsyncMock(),
+        )
 
         def selected_repo_context(slug: str) -> RepoContext:
             if slug == unavailable_slug:
@@ -1874,9 +1926,7 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value=SessionSecurityTaint(),
             ),
-            patch(
-                "pynchy.host.container_manager.orchestrator.system_checks.ensure_agent_image_available"
-            ),
+            patch("pynchy.host.container_manager.orchestrator._ensure_agent_image"),
             patch(
                 "pynchy.host.container_manager.security.gate.resolve_security",
                 return_value=MagicMock(),
@@ -1892,18 +1942,22 @@ class TestContainerInputAgentCoreConfig:
             ) as resolve_workspace_repos,
             patch(
                 "pynchy.host.git_ops.worktree.ensure_worktree",
-                return_value=MagicMock(path=worktree_path, notices=[]),
+                return_value=WorktreeResult(path=worktree_path),
             ) as ensure_worktree,
             patch(
                 "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
                 return_value=None,
             ),
             patch(
-                "pynchy.host.container_manager.orchestrator.get_runtime",
-                return_value=runtime,
+                "pynchy.host.container_manager.orchestrator._container_cli",
+                runtime.cli,
             ),
             patch(
-                "pynchy.plugins.runtimes.detection.get_runtime",
+                "pynchy.host.container_manager.orchestrator._ensure_agent_image",
+                MagicMock(),
+            ),
+            patch(
+                "pynchy.plugins.runtimes.api.get_runtime",
                 return_value=runtime,
             ),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
@@ -1912,16 +1966,8 @@ class TestContainerInputAgentCoreConfig:
                 new=AsyncMock(side_effect=[remove_proc, proc]),
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner.create_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch(
                 "pynchy.host.orchestrator.agent_runner._await_query",
                 new=AsyncMock(return_value="success"),
-            ),
-            patch(
-                "pynchy.host.orchestrator.agent_runner.destroy_session",
-                new_callable=AsyncMock,
             ),
             patch(
                 "pynchy.host.orchestrator.agent_runner.clear_session",
@@ -1938,9 +1984,12 @@ class TestContainerInputAgentCoreConfig:
             )
 
         assert result == "success"
+        spawn = deps.container_agent_operations.spawn
+        spawn.assert_awaited_once()
+        assert spawn.await_args.args[1].repo_access == selected_slug
+        get_repo_context.assert_not_called()
         resolve_workspace_repos.assert_not_called()
-        get_repo_context.assert_called_once_with(selected_slug)
-        ensure_worktree.assert_called_once_with(TEST_GROUP.folder, repo_ctx)
+        ensure_worktree.assert_not_called()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1966,14 +2015,15 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value=ctx,
             ),
-            patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=None),
+            patch.object(deps.container_agent_operations, "get_session", return_value=None),
             patch(
                 "pynchy.host.orchestrator.agent_runner._cold_start",
                 new_callable=AsyncMock,
                 return_value="success",
             ) as cold_start,
-            patch(
-                "pynchy.host.orchestrator.agent_runner.destroy_session",
+            patch.object(
+                deps.container_agent_operations,
+                "destroy_session",
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
@@ -2013,6 +2063,14 @@ class TestContainerInputAgentCoreConfig:
             },
             workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
         )
+        deps.host_runtime_operations.build_agent_environment = MagicMock(
+            return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"}
+        )
+        deps.host_runtime_operations.sessions_root = tmp_path / "sessions"
+        deps.host_runtime_operations.project_root = tmp_path
+        deps.host_runtime_operations.prepare_host_codex_home = lambda _folder, _plugins: (
+            tmp_path / ".codex"
+        )
 
         with (
             patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
@@ -2030,18 +2088,6 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
-            patch(
-                "pynchy.host.orchestrator.host_execution.build_agent_env_vars",
-                return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"},
-            ),
-            patch(
-                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
-                return_value=PreparedAgentHomes(
-                    claude_home=tmp_path / ".claude",
-                    codex_home=tmp_path / ".codex",
-                    learning_paths=None,
-                ),
-            ),
             patch(
                 "pynchy.host.orchestrator.agent_runner._cold_start",
                 new_callable=AsyncMock,
@@ -2115,8 +2161,9 @@ class TestContainerInputAgentCoreConfig:
                 "pynchy.host.orchestrator.host_agent_dispatch.host_agent_env_vars",
                 return_value={"CODEX_HOME": str(tmp_path / ".codex")},
             ),
-            patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.prepare_host_direct_mcp_servers",
+            patch.object(
+                deps.host_runtime_operations,
+                "prepare_mcp",
                 new_callable=AsyncMock,
             ),
             patch(
@@ -2128,8 +2175,9 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_agent_turn,
-            patch(
-                "pynchy.host.orchestrator.agent_runner.destroy_session",
+            patch.object(
+                deps.container_agent_operations,
+                "destroy_session",
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
@@ -2192,8 +2240,9 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 side_effect=asyncio.CancelledError,
             ),
-            patch(
-                "pynchy.host.orchestrator.agent_runner.destroy_session",
+            patch.object(
+                deps.container_agent_operations,
+                "destroy_session",
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
@@ -2236,17 +2285,28 @@ class TestContainerInputAgentCoreConfig:
             },
             workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
         )
-        mcp_mgr = MagicMock()
-        mcp_mgr.ensure_workspace_running = AsyncMock(
-            return_value=McpWorkspaceStartup(ready_instance_ids=("linear",), failures=())
-        )
-        mcp_mgr.get_direct_server_configs.return_value = [
+        direct_servers = [
             {
                 "name": "linear",
                 "url": "http://192.168.64.1:9876/mcp/host-group/0/linear",
                 "transport": "streamable_http",
             }
         ]
+
+        async def prepare_mcp(input_data, _group_folder, _chat_jid, _broadcast_host_message):
+            await asyncio.sleep(0)
+            input_data.invocation_ts = 123.0
+            input_data.mcp_direct_servers = direct_servers
+
+        deps.host_runtime_operations.build_agent_environment = MagicMock(
+            return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"}
+        )
+        deps.host_runtime_operations.prepare_mcp = AsyncMock(side_effect=prepare_mcp)
+        deps.host_runtime_operations.sessions_root = tmp_path / "sessions"
+        deps.host_runtime_operations.project_root = tmp_path
+        deps.host_runtime_operations.prepare_host_codex_home = lambda _folder, _plugins: (
+            tmp_path / ".codex"
+        )
 
         with (
             patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
@@ -2264,47 +2324,17 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
-            patch(
-                "pynchy.host.orchestrator.host_execution.build_agent_env_vars",
-                return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"},
-            ),
-            patch(
-                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
-                return_value=PreparedAgentHomes(
-                    claude_home=tmp_path / ".claude",
-                    codex_home=tmp_path / ".codex",
-                    learning_paths=None,
-                ),
-            ),
-            patch(
-                "pynchy.host.orchestrator.host_execution.mcp_manager.get_mcp_manager",
-                return_value=mcp_mgr,
-            ),
-            patch(
-                "pynchy.host.orchestrator.host_execution.time.monotonic",
-                return_value=123.0,
-            ),
-            patch("pynchy.host.orchestrator.host_execution.resolve_security"),
-            patch("pynchy.host.orchestrator.host_execution.create_gate") as create_gate,
         ):
             result = await run_agent(deps, group, "chat", [{"content": "hi"}])
 
         assert result == "success"
-        create_gate.assert_called_once()
-        assert create_gate.call_args.args[:2] == ("host-group", 123.0)
-        mcp_mgr.ensure_workspace_running.assert_awaited_once_with("host-group")
-        mcp_mgr.get_direct_server_configs.assert_called_once_with(
+        deps.host_runtime_operations.prepare_mcp.assert_awaited_once_with(
+            run_host_input.await_args.args[0],
             "host-group",
-            invocation_ts=123.0,
-            instance_ids=("linear",),
+            "chat",
+            deps.broadcast_host_message,
         )
-        assert run_host_input.await_args.args[0].mcp_direct_servers == [
-            {
-                "name": "linear",
-                "url": "http://192.168.64.1:9876/mcp/host-group/0/linear",
-                "transport": "streamable_http",
-            }
-        ]
+        assert run_host_input.await_args.args[0].mcp_direct_servers == direct_servers
 
     @pytest.mark.asyncio
     async def test_host_execution_clears_codex_session_missing_from_host_runtime(
@@ -2360,8 +2390,9 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
-            patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.destroy_session",
+            patch.object(
+                deps.container_agent_operations,
+                "destroy_session",
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
@@ -2384,6 +2415,7 @@ class TestContainerInputAgentCoreConfig:
         migrate_thread.assert_called_once_with(
             "codex:gpt-5.5:missing-thread",
             codex_home=tmp_path / ".codex",
+            sessions_root=deps.host_runtime_operations.sessions_root,
         )
 
     @pytest.mark.asyncio
@@ -2408,14 +2440,13 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value=ctx,
             ),
-            patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=session),
-            patch(
-                "pynchy.host.orchestrator.agent_runner.mcp_manager.get_mcp_manager",
-                return_value=None,
+            patch.object(deps.container_agent_operations, "get_session", return_value=session),
+            patch.object(
+                deps.container_agent_operations,
+                "ensure_workspace_mcp",
+                new=AsyncMock(return_value=()),
             ),
-            patch(
-                "pynchy.host.orchestrator.agent_runner.refresh_personalized_agent_skills"
-            ) as refresh_skills,
+            patch.object(deps, "refresh_personalized_agent_skills") as refresh_skills,
             patch.object(
                 session,
                 "set_output_handler",
@@ -2671,28 +2702,11 @@ class TestAgentRunnerPreContainerHelpers:
         )
 
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
-        repo_ctx = MagicMock()
-        repo_ctx.worktrees_dir = Path.cwd() / "worktrees"
-
-        with (
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.get_repo_context",
-                return_value=repo_ctx,
-            ),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.is_repo_dirty",
-                return_value=True,
-            ),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.count_unpushed_commits",
-                return_value=2,
-            ),
-        ):
-            notices = build_admin_system_notices(
-                "test-group",
-                is_admin=True,
-                repo_access="owner/repo",
-            )
+        notices = build_admin_system_notices(
+            is_admin=True,
+            repo_dirty=True,
+            unpushed_commits=2,
+        )
 
         assert any("uncommitted local changes" in notice for notice in notices)
         assert any("haven't been pushed" in notice for notice in notices)

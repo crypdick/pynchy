@@ -19,7 +19,12 @@ from pynchy.host.container_manager.security.cop import (
     CopTaintVerdict,
 )
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.plugins.api import OutboundEventType
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 def _make_gate(
@@ -103,7 +108,9 @@ class TestBashSecurityNoTaint:
                 "pynchy.host.container_manager.ipc.handlers_security.get_gate_for_group",
                 return_value=None,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await registry.dispatch(
                 {
@@ -201,7 +208,9 @@ class TestBashSecurityCorruptionTainted:
                 new_callable=AsyncMock,
                 return_value=_cop_verdict(CopCommandDecision.DENY, "Suspicious exfiltration"),
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await registry.dispatch(
                 {
@@ -324,8 +333,8 @@ class TestBashSecurityLethalTrifecta:
                 ),
             ),
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                settings.data_dir / "approvals",
             ),
         ):
             await registry.dispatch(
@@ -388,7 +397,7 @@ async def test_artifact_check_sets_workspace_secret_taint_before_safe_shell_read
             "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
             new_callable=AsyncMock,
         ) as inspect_taint,
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -445,7 +454,7 @@ async def test_cop_rejects_incidental_credential_keyword_before_secret_taint(tmp
                 reason="The word is a search pattern, not a credential read",
             ),
         ) as inspect_taint,
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -504,7 +513,7 @@ async def test_cop_confirms_real_credential_read_before_secret_taint(tmp_path):
                 reason="cat reads the credential file contents",
             ),
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -556,7 +565,7 @@ async def test_structured_credential_read_is_confirmed_without_cop_veto(tmp_path
             "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
             new_callable=AsyncMock,
         ) as inspect_taint,
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -607,7 +616,7 @@ async def test_missing_cop_taint_evidence_confirms_conservatively(tmp_path):
             "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
             new_callable=AsyncMock,
         ) as inspect_taint,
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -646,7 +655,7 @@ async def test_artifact_check_rejects_when_no_active_gate_can_retain_taint(tmp_p
             "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
             return_value=None,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(
             {
@@ -686,8 +695,8 @@ async def test_artifact_check_broadcasts_approval_for_direct_package_source(tmp_
             return_value=_make_gate(),
         ),
         patch(
-            "pynchy.host.container_manager.security.approval.get_settings",
-            return_value=settings,
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ),
     ):
         await registry.dispatch(

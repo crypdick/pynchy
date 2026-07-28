@@ -13,11 +13,11 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.git_ops import install_repo_hooks
-from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.worktree import (
+from pynchy.host.git_ops.api import (
+    RepoContext,
     WorktreeError,
     ensure_worktree,
+    install_repo_hooks,
     reconcile_worktrees_at_startup,
 )
 
@@ -214,8 +214,8 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.config.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils._default_cwd", s.project_root))
+        stack.enter_context(patch("pynchy.config.api.get_settings", return_value=s))
         # The filesystem origin exercises fetch/rebase mechanics; GitHub checkout
         # identity coverage lives with repository provisioning tests.
         stack.enter_context(patch("pynchy.host.git_ops.repo.ensure_repo_cloned", return_value=True))

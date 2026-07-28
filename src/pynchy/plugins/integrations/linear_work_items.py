@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured work-item callbacks at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.host.orchestrator.workspace_config import static_workspace_folder
+from pynchy.conversation.api import parent_workspace_name
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_SETTABLE_STATUSES,
@@ -21,16 +25,11 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     update_issue_state,
     workspace_issue,
 )
-from pynchy.state.api import (
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
     WorkItemTransitionRequest,
-    bind_work_item_execution_to_turn,
-    get_active_work_item_execution,
-    get_in_flight_turn_for_group,
-    get_latest_unresolved_work_item_transition,
-    get_work_item_execution_for_issue,
-    list_work_item_executions,
 )
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
 
 _WORKSPACE_REQUIRED = "source_group is required"
 _ISSUE_REQUIRED = "issue_id is required"
@@ -57,6 +56,37 @@ class _MoveOutcome:
     blocker: str | None
     handoff_to: str | None
     evidence_refs: tuple[str, ...] | None
+
+
+@dataclass(frozen=True)
+class LinearWorkItemsRuntime:
+    """Durable work-item queries and bindings selected during plugin composition."""
+
+    list_executions: Callable[..., Awaitable[list[WorkItemExecution]]]
+    get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
+    get_in_flight_turn: Callable[[str], Awaitable[Any]]
+    bind_execution_to_turn: Callable[..., Awaitable[WorkItemExecution]]
+    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearWorkItemsRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_work_items_runtime(runtime: LinearWorkItemsRuntime) -> None:
+    """Set durable operations used by host-facing Linear work-item actions."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearWorkItemsRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear work-items runtime has not been configured")
+    return _runtime.runtime
 
 
 _LINKED_MOVES = {
@@ -90,7 +120,7 @@ _LINKED_MOVES = {
 
 async def handle_list_work_items(data: dict[str, Any]) -> dict[str, object]:
     workspace = _workspace(data)
-    work_items = await list_work_item_executions(workspace=workspace)
+    work_items = await _configured_runtime().list_executions(workspace=workspace)
     return {
         "result": {
             "work_items": [work_item_execution_to_dict(item) for item in work_items],
@@ -101,17 +131,18 @@ async def handle_list_work_items(data: dict[str, Any]) -> dict[str, object]:
 async def handle_move_todo(data: dict[str, Any]) -> dict[str, object]:
     """Move an issue while enforcing only authority and execution ownership."""
     source_group = _source_group(data)
-    workspace = static_workspace_folder(source_group)
+    workspace = _workspace_folder(source_group)
     issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
     status = _required_str(data, "status", "status is required")
     direct_user = await _has_direct_user_turn(source_group)
     if error := _move_request_error(status, direct_user=direct_user):
         return {"error": error}
 
-    active = await get_active_work_item_execution(issue_id)
+    runtime = _configured_runtime()
+    active = await runtime.get_active_execution(issue_id)
     if active is not None and active.workspace != workspace:
         return {"error": _ACTIVE_EXECUTION_REQUIRED}
-    latest = active or await get_work_item_execution_for_issue(issue_id, workspace=workspace)
+    latest = active or await runtime.get_execution_for_issue(issue_id, workspace=workspace)
     move = _LINKED_MOVES.get(status)
     if latest is not None and move is not None and _move_applies_to_execution(latest, status):
         try:
@@ -140,7 +171,7 @@ async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
     workspace = _workspace(data)
     issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
     plan = _required_str(data, "plan", _PLAN_REQUIRED)
-    active = await get_active_work_item_execution(issue_id)
+    active = await _configured_runtime().get_active_execution(issue_id)
     if active is not None:
         return {
             "error": "A claimed Linear work item cannot re-enter planning",
@@ -182,12 +213,13 @@ async def _move_linked(
     outcome: _MoveOutcome,
 ) -> dict[str, object]:
     request_id = _required_str(data, "request_id", "request_id is required")
-    turn = await get_in_flight_turn_for_group(source_group)
+    runtime = _configured_runtime()
+    turn = await runtime.get_in_flight_turn(source_group)
     if turn is None:
         return {"error": "A current agent turn is required to report a linked outcome"}
     try:
         if execution.status.is_active:
-            execution = await bind_work_item_execution_to_turn(
+            execution = await runtime.bind_execution_to_turn(
                 execution.id,
                 turn_id=turn.turn_id,
                 task_id=turn.task_id,
@@ -257,17 +289,18 @@ async def _apply_provider_move(
 
 
 async def _has_direct_user_turn(source_group: str) -> bool:
-    turn = await get_in_flight_turn_for_group(source_group)
+    turn = await _configured_runtime().get_in_flight_turn(source_group)
     return turn is not None and turn.input_source == "user"
 
 
 async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
     workspace = _workspace(data)
     issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
-    execution = await get_work_item_execution_for_issue(issue_id, workspace=workspace)
+    runtime = _configured_runtime()
+    execution = await runtime.get_execution_for_issue(issue_id, workspace=workspace)
     if execution is None:
         return {"error": _ACTIVE_EXECUTION_REQUIRED}
-    transition = await get_latest_unresolved_work_item_transition(execution.id)
+    transition = await runtime.get_latest_unresolved_transition(execution.id)
     if transition is None:
         return {"error": _UNKNOWN_TRANSITION_REQUIRED}
     try:
@@ -279,7 +312,11 @@ async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
 
 
 def _workspace(data: dict[str, Any]) -> str:
-    return static_workspace_folder(_source_group(data))
+    return _workspace_folder(_source_group(data))
+
+
+def _workspace_folder(folder: str) -> str:
+    return parent_workspace_name(folder) or folder
 
 
 def _source_group(data: dict[str, Any]) -> str:

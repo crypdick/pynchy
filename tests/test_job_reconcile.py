@@ -6,11 +6,15 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import configure_workspace_placement_for, init_test_database, make_settings
 
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state import (
     create_task,
     get_active_task_for_group,
@@ -18,7 +22,7 @@ from pynchy.state import (
     get_task_run_logs,
     log_task_run,
 )
-from pynchy.types import ScheduledTask, SessionPolicy, TaskRunLog, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class TestJobReconcile:
@@ -225,9 +229,7 @@ class TestJobReconcile:
         monkeypatch.setattr(
             "pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings
         )
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.workspace_placement.get_settings", lambda: settings
-        )
+        configure_workspace_placement_for(settings)
         registered = {
             "discord:channel:relationships": WorkspaceProfile(
                 jid="discord:channel:relationships",

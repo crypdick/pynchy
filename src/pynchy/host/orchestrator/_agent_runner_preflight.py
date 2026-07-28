@@ -8,18 +8,22 @@ from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot ann
 from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.conversation.events import new_turn_id
-from pynchy.host.container_manager import (
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    ContainerOutput,
     OnOutput,
-    resolve_agent_core,
-    write_groups_snapshot,
-    write_tasks_snapshot,
 )
-from pynchy.host.container_manager.orchestrator import resolve_container_timeout
-from pynchy.host.git_ops.repo import get_repo_context
-from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
+from pynchy.conversation.api import new_turn_id
+from pynchy.host.orchestrator.api import resolve_agent_core, resolve_container_timeout
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.prompt_loading import read_prompts
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
+from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
@@ -31,14 +35,8 @@ from pynchy.state.api import (
     set_session,
     update_in_flight_session,
 )
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ChatJid,
-    ContainerInput,
-    ContainerOutput,
-    GroupFolder,
-    SessionId,
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -143,6 +141,10 @@ class _PreflightDeps(Protocol):
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None: ...
 
+    def admin_repo_notices(
+        self, group_folder: str, *, is_admin: bool, repo_access: str | None
+    ) -> list[str]: ...
+
 
 def session_id_from_output(output: ContainerOutput) -> str | None:
     """Extract a resumable agent session id from any container output event."""
@@ -202,7 +204,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
     access = workspace_config.load_resolved_tool_access(request.group.folder)
     system_notices = merged_system_notices(
         [
-            *build_admin_system_notices(
+            *request.deps.admin_repo_notices(
                 request.group.folder, is_admin=is_admin, repo_access=repo_access
             ),
             *(access.notices if access is not None else ()),
@@ -314,23 +316,22 @@ def session_tracking_output_handler(
 
 
 def build_admin_system_notices(
-    group_folder: str,
     *,
     is_admin: bool,
-    repo_access: str | None,
+    repo_dirty: bool,
+    unpushed_commits: int,
 ) -> list[str]:
+    """Render admin repository notices from resolved source-control state."""
     if not is_admin:
         return []
 
-    repo_ctx = get_repo_context(repo_access) if repo_access else None
-    check_cwd = repo_ctx.worktrees_dir / group_folder if repo_ctx else None
     system_notices: list[str] = []
-    if is_repo_dirty(cwd=check_cwd):
+    if repo_dirty:
         system_notices.append(
             "There are uncommitted local changes. Run `git status` and `git diff` "
             "to review them. If they are good, commit and push. If not, discard them."
         )
-    if count_unpushed_commits(cwd=check_cwd) > 0:
+    if unpushed_commits > 0:
         system_notices.append(
             "There are local commits that haven't been pushed. "
             "Run `git push` or `git rebase origin/main && git push` to sync them."

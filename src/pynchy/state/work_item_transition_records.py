@@ -9,7 +9,7 @@ import aiosqlite  # noqa: TC002 - beartype resolves this at runtime.
 from pynchy.state.work_item_models import (
     WorkItemTransitionRequest,  # noqa: TC001 - beartype resolves this at runtime.
 )
-from pynchy.types import WorkItemTransitionStatus
+from pynchy.work_items.api import WorkItemTransitionStatus
 
 
 async def insert_work_item_transition(

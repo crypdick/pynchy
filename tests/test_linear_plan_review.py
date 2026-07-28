@@ -4,23 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from conftest import make_container_runtime_operations
+
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.linear_plan_review import review_linear_plan
 from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
     LinearPlanReviewRequest,
 )
-from pynchy.types import (
-    ContainerOutput,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass
 class _Deps:
     queue: GroupQueue = field(
         default_factory=lambda: GroupQueue(
-            QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0)
+            QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0),
+            make_container_runtime_operations(),
         )
     )
     workspaces: dict[str, WorkspaceProfile] = field(

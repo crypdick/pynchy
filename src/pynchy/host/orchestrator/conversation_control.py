@@ -10,16 +10,25 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
-from pynchy.conversation.dispatch import conversation_runtime_lock
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ControlSurface,
     ConversationControlBinding,
     ConversationId,
     ConversationSubject,
+    conversation_runtime_lock,
+    parent_workspace_name,
+    routed_conversation_folder,
 )
-from pynchy.conversation.workspaces import parent_workspace_name, routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.state.api import (
     ConversationControlWorkspaceChangedError,
     get_conversation,
@@ -29,7 +38,7 @@ from pynchy.state.api import (
     get_workspace_profile,
     set_conversation_control_binding,
 )
-from pynchy.types import Channel, ChatJid, GroupFolder, SessionId, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 _DISCORD_THREAD_TITLE_MAX_LENGTH = 100
 

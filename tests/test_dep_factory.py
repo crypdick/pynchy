@@ -6,7 +6,7 @@ from pynchy.host.orchestrator.dep_factory import make_http_deps, make_scheduler_
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
 from pynchy.host.orchestrator.scheduled_turn import ScheduledTurnDeps
 from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 def test_http_deps_resolve_workspace_annotations_at_runtime() -> None:

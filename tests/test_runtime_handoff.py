@@ -7,14 +7,25 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import (
+    make_container_agent_operations,
+    make_container_runtime_operations,
+    make_host_runtime_operations,
+    make_settings,
+)
 
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+)
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator import host_runner
 from pynchy.host.orchestrator.agent_runner import PreContainerResult, run_agent
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.types import AgentExecutionRuntime, ContainerInput, WorkspaceProfile
+from pynchy.workspace.api import (
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 _TEST_GROUP = WorkspaceProfile(
     jid="test@g.us",
@@ -34,6 +45,10 @@ class _RunnerDeps:
         self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
         self.agent_execution_runtime = _agent_runtime(make_settings())
+        self.container_agent_operations = make_container_agent_operations()
+        self.host_runtime_operations = make_host_runtime_operations()
+        self.refresh_personalized_agent_skills = MagicMock()
+        self.admin_repo_notices = MagicMock(return_value=[])
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -131,7 +146,10 @@ class _RejectedHostProcess:
 @pytest.mark.asyncio
 async def test_terminal_boundary_rejects_late_container_process_registration() -> None:
     """A process spawned after terminal retirement cannot become active."""
-    queue = GroupQueue(QueuePolicy(max_concurrent=1, max_retries=1, retry_base_seconds=0.01))
+    queue = GroupQueue(
+        QueuePolicy(max_concurrent=1, max_retries=1, retry_base_seconds=0.01),
+        make_container_runtime_operations(),
+    )
     target = RuntimeTarget.from_binding("discord:terminal", "discord:terminal")
     lease = queue.acquire_host_process(target)
 
@@ -162,26 +180,29 @@ async def test_cold_handoff_destroys_session_when_terminal_boundary_rejects_proc
             new=AsyncMock(return_value=context),
         ),
         patch("pynchy.host.orchestrator.agent_runner._host_execution_cwd", return_value=None),
-        patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=None),
+        patch.object(deps.container_agent_operations, "get_session", return_value=None),
         patch(
             "pynchy.host.orchestrator.agent_runner.build_container_input",
             return_value=input_data,
         ),
-        patch("pynchy.host.orchestrator.agent_runner.stable_container_name", return_value="cold"),
-        patch(
-            "pynchy.host.orchestrator.agent_runner.container_process.docker_rm_force",
-            new=AsyncMock(),
+        patch.object(
+            deps.container_agent_operations,
+            "fresh_container_name",
+            new=AsyncMock(return_value="cold"),
         ),
-        patch(
-            "pynchy.host.orchestrator.agent_runner._spawn_container",
+        patch.object(
+            deps.container_agent_operations,
+            "spawn",
             new=AsyncMock(return_value=(proc, "cold", [], ())),
         ),
-        patch(
-            "pynchy.host.orchestrator.agent_runner.create_session",
+        patch.object(
+            deps.container_agent_operations,
+            "create_session",
             new=AsyncMock(return_value=session),
         ),
-        patch(
-            "pynchy.host.orchestrator.agent_runner.destroy_session",
+        patch.object(
+            deps.container_agent_operations,
+            "destroy_session",
             new_callable=AsyncMock,
         ) as destroy_session,
         patch(
@@ -215,12 +236,13 @@ async def test_warm_handoff_suppresses_ipc_when_terminal_boundary_rejects_proces
             new=AsyncMock(return_value=context),
         ),
         patch("pynchy.host.orchestrator.agent_runner._host_execution_cwd", return_value=None),
-        patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=session),
-        patch(
-            "pynchy.host.orchestrator.agent_runner.mcp_manager.get_mcp_manager",
-            return_value=None,
+        patch.object(deps.container_agent_operations, "get_session", return_value=session),
+        patch.object(
+            deps.container_agent_operations,
+            "ensure_workspace_mcp",
+            new=AsyncMock(return_value=()),
         ),
-        patch("pynchy.host.orchestrator.agent_runner.refresh_personalized_agent_skills"),
+        patch.object(deps, "refresh_personalized_agent_skills"),
         patch(
             "pynchy.host.orchestrator.agent_runner._await_query",
             new=AsyncMock(return_value="success"),

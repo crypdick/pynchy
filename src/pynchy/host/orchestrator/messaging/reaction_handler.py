@@ -9,8 +9,12 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy import utils
+from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
-from pynchy.types import OutboundEvent, OutboundEventType, RuntimeId
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 @runtime_checkable

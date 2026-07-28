@@ -2,34 +2,23 @@
 
 from __future__ import annotations
 
-import json
-import logging
-import re
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.agent_protocol.api import ContainerOutput
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
+from pynchy.plugins.api import NewMessage
 from pynchy.state import init_test_database
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.workspace.api import WorkspaceProfile
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-_P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_LEARNING_START = "pynchy.host.learning.capture.start_completed_turn_learning_review"
 _P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"
-_P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
-_P_TEMPORAL_LEARNING_START = (
-    "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow"
-)
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +37,7 @@ def _make_deps(
     deps._dispatched_through = {}
     deps.channels = []
     deps.last_timestamp = ""
+    deps.message_data_dir = Path()
     deps.routing_cursor = MagicMock(
         side_effect=lambda jid: max(
             deps.last_agent_timestamp.get(jid, ""),
@@ -68,6 +58,10 @@ def _make_deps(
     deps.set_typing_on_channels = AsyncMock()
     deps.catch_up_channels = AsyncMock()
     deps.emit = MagicMock()
+    deps.repo_is_dirty = MagicMock(return_value=False)
+    deps.new_learning_run_summary = learning_capture.LearningRunSummary
+    deps.observe_learning_output = learning_capture.observe_learning_output
+    deps.start_completed_turn_learning_review = AsyncMock()
     deps.run_agent = AsyncMock(return_value="success")
     deps.handle_streamed_output = AsyncMock(return_value=False)
 
@@ -112,17 +106,6 @@ def _make_message(
     )
 
 
-def _settings_mock(tmp_path: Path, **overrides):
-    defaults = {
-        "data_dir": tmp_path,
-        "learning": LearningConfig(enabled=False),
-        "trigger_pattern": re.compile(r".*"),
-        "idle_timeout": 300,
-    }
-    defaults.update(overrides)
-    return make_settings(**defaults)
-
-
 def _patch_intercept(*, return_value: bool = False):
     return patch(_P_INTERCEPT, new_callable=AsyncMock, return_value=return_value)
 
@@ -148,18 +131,15 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
     deps.run_agent = AsyncMock(side_effect=_run_agent)
 
     with (
-        patch(_P_SETTINGS) as settings,
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
     ):
-        settings.return_value = _settings_mock(tmp_path, learning=LearningConfig(enabled=True))
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is TurnOutcome.COMPLETED
-    mock_start.assert_awaited_once()
-    args = mock_start.await_args.args
+    deps.start_completed_turn_learning_review.assert_awaited_once()
+    args = deps.start_completed_turn_learning_review.await_args.args
     assert args[:4] == (
         "g@g.us",
         group,
@@ -168,22 +148,14 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
     )
     assert args[4].final_answer == "Remembered."
     assert args[4].tool_counts == {"Bash": 1}
-    assert mock_start.await_args.kwargs == {
-        "enabled": True,
-        "review_after_turn": True,
-        "packet_max_chars": 12000,
-    }
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
 
 
 @pytest.mark.asyncio
-async def test_enabled_learning_logs_capture_attempt(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_completed_turn_learning_is_delegated() -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     msg = _make_message("remember this", message_id="msg-42", timestamp="new-ts")
-    caplog.set_level(logging.INFO)
 
     async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
         if on_output:
@@ -193,165 +165,36 @@ async def test_enabled_learning_logs_capture_attempt(
     deps.run_agent = AsyncMock(side_effect=_run_agent)
 
     with (
-        patch(_P_SETTINGS) as settings,
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_PATH_SETTINGS) as learning_path_settings,
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock),
     ):
-        enabled_settings = _settings_mock(
-            tmp_path,
-            learning=LearningConfig(
-                enabled=True,
-                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
-            ),
-        )
-        settings.return_value = enabled_settings
-        learning_path_settings.return_value = enabled_settings
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is TurnOutcome.COMPLETED
-    assert "Completed-turn learning capture finished" in caplog.text
-    assert "learning-" in caplog.text
+    deps.start_completed_turn_learning_review.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_learning_review_packet_includes_follow_up_dispatched_during_active_run(
-    tmp_path: Path,
-) -> None:
-    group = _make_group()
-    previous_cursor = "2026-07-07T09:59:59.000Z"
-    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": previous_cursor})
-    initial = _make_message(
-        "first question",
-        message_id="msg-initial",
-        timestamp="2026-07-07T10:00:01.000Z",
-    )
-    initial_tail = _make_message(
-        "clarifying detail",
-        message_id="msg-initial-tail",
-        timestamp="2026-07-07T10:00:02.000Z",
-    )
-    follow_up = _make_message(
-        "more context",
-        message_id="msg-follow-up",
-        timestamp="2026-07-07T10:00:03.000Z",
-    )
-    settings = _settings_mock(
-        tmp_path,
-        learning=LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
-        ),
-    )
-
-    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
-        deps._dispatched_through["g@g.us"] = follow_up.timestamp
-        if on_output:
-            await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
-        return "success"
-
-    deps.run_agent = AsyncMock(side_effect=_run_agent)
-
-    with (
-        patch(_P_SETTINGS, return_value=settings),
-        patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
-        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
-        _patch_intercept(),
-        _patch_fmt_sdk(),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-    ):
-        mock_messages_since.side_effect = [[initial, initial_tail], [follow_up]]
-
-        result = await process_group_messages(deps, "g@g.us")
-
-    assert result is TurnOutcome.COMPLETED
-    assert deps.last_agent_timestamp["g@g.us"] == follow_up.timestamp
-    assert mock_messages_since.await_args_list == [
-        call("g@g.us", previous_cursor),
-        call("g@g.us", initial_tail.timestamp),
-    ]
-    temporal_start.assert_awaited_once()
-    packet = temporal_start.await_args.args[0]
-    assert packet.provenance["final_cursor"] == follow_up.timestamp
-    assert json.loads(packet.provenance["source_message_ids"]) == [
-        "msg-initial",
-        "msg-initial-tail",
-        "msg-follow-up",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Path) -> None:
-    group = _make_group()
-    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
-    initial = _make_message(
-        "first question",
-        message_id="msg-initial",
-        timestamp="2026-07-07T10:00:01Z",
-    )
-    follow_up_timestamp = "2026-07-07T10:00:02Z"
-    settings = _settings_mock(
-        tmp_path,
-        learning=LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
-        ),
-    )
-
-    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
-        deps._dispatched_through["g@g.us"] = follow_up_timestamp
-        if on_output:
-            await on_output(ContainerOutput(status="success", type="result", result="Remembered."))
-        return "success"
-
-    deps.run_agent = AsyncMock(side_effect=_run_agent)
-
-    with (
-        patch(_P_SETTINGS, return_value=settings),
-        patch(_P_LEARNING_PATH_SETTINGS, return_value=settings),
-        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
-        _patch_intercept(),
-        _patch_fmt_sdk(),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-    ):
-        mock_messages_since.side_effect = [[initial], RuntimeError("database unavailable")]
-
-        result = await process_group_messages(deps, "g@g.us")
-
-    assert result is TurnOutcome.COMPLETED
-    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
-    assert mock_messages_since.await_args_list == [
-        call("g@g.us", "old-ts"),
-        call("g@g.us", initial.timestamp),
-    ]
-    temporal_start.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_retryable_failure_does_not_start_learning_review(tmp_path: Path) -> None:
+async def test_retryable_failure_does_not_start_learning_review() -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     deps.run_agent = AsyncMock(return_value="error")
     msg = _make_message("hello", timestamp="new-ts")
 
     with (
-        patch(_P_SETTINGS) as settings,
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
     ):
-        settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is TurnOutcome.RETRY
-    mock_start.assert_not_awaited()
+    deps.start_completed_turn_learning_review.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_partial_output_failure_does_not_start_learning_review(tmp_path: Path) -> None:
+async def test_partial_output_failure_does_not_start_learning_review() -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     msg = _make_message("hello", timestamp="new-ts")
@@ -365,68 +208,19 @@ async def test_partial_output_failure_does_not_start_learning_review(tmp_path: P
     deps.handle_streamed_output = AsyncMock(return_value=True)
 
     with (
-        patch(_P_SETTINGS) as settings,
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
     ):
-        settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
-    mock_start.assert_not_awaited()
+    deps.start_completed_turn_learning_review.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_review_after_turn_false_skips_follow_up_expansion_and_learning_start(
-    tmp_path: Path,
-) -> None:
-    group = _make_group()
-    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
-    initial = _make_message(
-        "first question",
-        message_id="msg-initial",
-        timestamp="2026-07-07T10:00:01Z",
-    )
-    follow_up_timestamp = "2026-07-07T10:00:02Z"
-
-    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
-        deps._dispatched_through["g@g.us"] = follow_up_timestamp
-        if on_output:
-            await on_output(ContainerOutput(status="success", type="result", result="Ignored."))
-        return "success"
-
-    deps.run_agent = AsyncMock(side_effect=_run_agent)
-
-    with (
-        patch(
-            _P_SETTINGS,
-            return_value=_settings_mock(
-                tmp_path,
-                learning=LearningConfig(enabled=True, review_after_turn=False),
-            ),
-        ),
-        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
-        _patch_intercept(),
-        _patch_fmt_sdk(),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-    ):
-        mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
-
-        result = await process_group_messages(deps, "g@g.us")
-
-    assert result is TurnOutcome.COMPLETED
-    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
-    assert mock_messages_since.await_count == 1
-    temporal_start.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_learning_observation_failure_does_not_block_streamed_output(
-    tmp_path: Path,
-) -> None:
+async def test_learning_observation_failure_does_not_block_streamed_output() -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     msg = _make_message("hello", timestamp="new-ts")
@@ -441,12 +235,10 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
     deps.handle_streamed_output = AsyncMock(return_value=True)
 
     with (
-        patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
         patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_LEARNING_OBSERVE, side_effect=RuntimeError("observer broke")),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
     ):
         result = await process_group_messages(deps, "g@g.us")
 
@@ -456,45 +248,4 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
     assert args.args == ("g@g.us", group, output)
     assert args.kwargs["turn_id"].startswith("turn_")
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
-    temporal_start.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_learning_disabled_skips_follow_up_expansion_and_learning_start(
-    tmp_path: Path,
-) -> None:
-    group = _make_group()
-    deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
-    initial = _make_message(
-        "first question",
-        message_id="msg-initial",
-        timestamp="2026-07-07T10:00:01Z",
-    )
-    follow_up_timestamp = "2026-07-07T10:00:02Z"
-
-    async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
-        deps._dispatched_through["g@g.us"] = follow_up_timestamp
-        if on_output:
-            await on_output(ContainerOutput(status="success", type="result", result="Ignored."))
-        return "success"
-
-    deps.run_agent = AsyncMock(side_effect=_run_agent)
-
-    with (
-        patch(
-            _P_SETTINGS,
-            return_value=_settings_mock(tmp_path, learning=LearningConfig(enabled=False)),
-        ),
-        patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
-        _patch_intercept(),
-        _patch_fmt_sdk(),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-    ):
-        mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
-
-        result = await process_group_messages(deps, "g@g.us")
-
-    assert result is TurnOutcome.COMPLETED
-    assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
-    assert mock_messages_since.await_count == 1
-    temporal_start.assert_not_awaited()
+    deps.start_completed_turn_learning_review.assert_awaited_once()

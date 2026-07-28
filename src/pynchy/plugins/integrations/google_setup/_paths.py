@@ -6,13 +6,11 @@ scope registry mapping MCP server template names to OAuth scopes + API IDs.
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-
-import pynchy.config as config
-from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    Settings,
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves Google setup runtime callbacks at runtime.
 )
-from pynchy.plugins.integrations.browser import project_root
+from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -45,6 +43,38 @@ SERVICE_MANAGEMENT_SCOPE = "https://www.googleapis.com/auth/service.management"
 SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
 
 
+@dataclass(frozen=True)
+class GoogleSetupRuntime:
+    """Resolved host paths and workspace policy for Google setup."""
+
+    data_dir: Path
+    chrome_profiles: frozenset[str]
+    workspace_names: tuple[str, ...]
+    workspace_tools: Callable[[str], tuple[str, ...] | None]
+    workspace_is_admin: Callable[[str], bool]
+    mcp_tool_names: frozenset[str]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: GoogleSetupRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_google_setup_runtime(runtime: GoogleSetupRuntime) -> None:
+    """Set Google setup configuration before host actions run."""
+    _runtime.runtime = runtime
+
+
+def google_setup_runtime() -> GoogleSetupRuntime:
+    """Return the resolved Google setup runtime."""
+    if _runtime.runtime is None:
+        raise RuntimeError("Google setup runtime has not been configured")
+    return _runtime.runtime
+
+
 # ---------------------------------------------------------------------------
 # Paths — chrome-profile-aware
 # ---------------------------------------------------------------------------
@@ -52,7 +82,7 @@ SERVICE_USAGE_URL = "https://serviceusage.googleapis.com/v1"
 
 def chrome_profile_dir(profile_name: str) -> Path:
     """Host directory for a chrome profile's auth artifacts."""
-    d = project_root() / "data" / "chrome-profiles" / profile_name
+    d = google_setup_runtime().data_dir / "chrome-profiles" / profile_name
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -69,7 +99,7 @@ def credentials_path(profile_name: str) -> Path:
 
 def download_dir() -> Path:
     """Temporary download directory for credential files."""
-    d = project_root() / "data" / "tmp" / "google-setup"
+    d = google_setup_runtime().data_dir / "tmp" / "google-setup"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -85,14 +115,14 @@ def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
     Checks which resolved MCP tool names reference this profile across all
     workspaces. Returns (space-separated scopes, sorted API IDs).
     """
-    settings = config.get_settings()
+    runtime = google_setup_runtime()
     scopes: set[str] = set()
     apis: set[str] = set()
 
     for svc, (svc_scopes, api_id) in SERVER_SCOPES.items():
         instance_name = f"{svc}.{profile_name}"
-        for workspace_name in settings.workspaces:
-            if _workspace_selects_mcp_tool(settings, workspace_name, instance_name):
+        for workspace_name in runtime.workspace_names:
+            if _workspace_selects_mcp_tool(runtime, workspace_name, instance_name):
                 scopes.update(svc_scopes)
                 apis.add(api_id)
                 break
@@ -105,25 +135,27 @@ def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
 
 def workspace_chrome_profiles(source_group: str) -> set[str]:
     """Return the chrome profiles selected by a workspace's MCP tools."""
-    s = config.get_settings()
-    resolved = s.resolved_workspace_config(source_group)
-    if not resolved:
+    runtime = google_setup_runtime()
+    selected_tools = runtime.workspace_tools(source_group)
+    if selected_tools is None:
         return set()
 
     profiles: set[str] = set()
-    for entry in resolved.tools:
-        tool = s.tools.get(entry)
-        if tool is None or tool.type != "mcp" or "." not in entry:
+    for entry in selected_tools:
+        if entry not in runtime.mcp_tool_names or "." not in entry:
             continue
         _, inst_name = entry.split(".", 1)
-        if inst_name in s.chrome_profiles:
+        if inst_name in runtime.chrome_profiles:
             profiles.add(inst_name)
     return profiles
 
 
-def _workspace_selects_mcp_tool(settings: Settings, workspace_name: str, tool_name: str) -> bool:
-    resolved = settings.resolved_workspace_config(workspace_name)
-    if resolved is None or tool_name not in resolved.tools:
-        return False
-    tool = settings.tools.get(tool_name)
-    return tool is not None and tool.type == "mcp"
+def _workspace_selects_mcp_tool(
+    runtime: GoogleSetupRuntime, workspace_name: str, tool_name: str
+) -> bool:
+    selected_tools = runtime.workspace_tools(workspace_name)
+    return (
+        selected_tools is not None
+        and tool_name in selected_tools
+        and tool_name in runtime.mcp_tool_names
+    )

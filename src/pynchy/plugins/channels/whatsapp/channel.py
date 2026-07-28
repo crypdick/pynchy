@@ -7,6 +7,7 @@ import contextlib
 import sys
 from collections import deque
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
     Callable,
     Coroutine,
 )
@@ -29,23 +30,19 @@ from neonize.events import (
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 from neonize.utils.jid import Jid2String, build_jid
 
-from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.host.orchestrator.messaging.pending_questions import (
+from pynchy.host.orchestrator.api import (
     PENDING_QUESTION_TIMEOUT_SECONDS,
+    TextFormatter,
     find_pending_for_jid,
 )
 from pynchy.logger import logger
-from pynchy.state.api import (
-    get_chat_jids_by_name,
-    get_last_group_sync,
-    set_last_group_sync,
-    update_chat_name,
-)
-from pynchy.types import (
+from pynchy.plugins.api import (
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
-    WorkspaceProfile,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 from .ask_user import resolve_ask_user_answer
@@ -86,6 +83,10 @@ class WhatsAppChannel:
         on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
         *,
         client_factory: Callable[[str], Any] | None = None,
+        find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None = None,
+        get_last_group_sync: Callable[[], Awaitable[str | None]] | None = None,
+        set_last_group_sync: Callable[[], Awaitable[None]] | None = None,
+        update_chat_name: Callable[[str, str], Awaitable[None]] | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = TextFormatter()
@@ -96,6 +97,10 @@ class WhatsAppChannel:
         self._on_chat_metadata = on_chat_metadata
         self._workspaces = workspaces
         self._on_ask_user_answer = on_ask_user_answer
+        self._find_chat_jids_by_name = find_chat_jids_by_name
+        self._get_last_group_sync = get_last_group_sync
+        self._set_last_group_sync = set_last_group_sync
+        self._update_chat_name = update_chat_name
         self._connected = False
         self._lid_to_phone: dict[str, str] = {}
         self._outgoing_queue: deque[_OutgoingMessage] = deque()
@@ -253,7 +258,10 @@ class WhatsAppChannel:
         if "@" in chat_name:
             return chat_name
         await self._sync_group_metadata(force=True)
-        matches = await get_chat_jids_by_name(chat_name)
+        find_chat_jids_by_name = self._find_chat_jids_by_name
+        if find_chat_jids_by_name is None:
+            return None
+        matches = await find_chat_jids_by_name(chat_name)
         if not matches:
             return None
         if len(matches) > 1:
@@ -270,7 +278,8 @@ class WhatsAppChannel:
 
     async def _sync_group_metadata(self, *, force: bool = False) -> None:
         if not force:
-            last_sync = await get_last_group_sync()
+            get_last_group_sync = self._get_last_group_sync
+            last_sync = await get_last_group_sync() if get_last_group_sync is not None else None
             if last_sync:
                 last_sync_time = datetime.fromisoformat(last_sync)
                 elapsed = (datetime.now(UTC) - last_sync_time).total_seconds()
@@ -279,10 +288,15 @@ class WhatsAppChannel:
         try:
             groups = await self._client.get_joined_groups()
             count = await self._apply_group_metadata(groups)
-            await set_last_group_sync()
+            await self._record_group_sync()
             logger.info("Group metadata synced", count=count)
         except Exception as err:  # noqa: BLE001, RUF100 - group sync is best-effort background maintenance.
             logger.error("Failed to sync group metadata", error=str(err))
+
+    async def _record_group_sync(self) -> None:
+        set_last_group_sync = self._set_last_group_sync
+        if set_last_group_sync is not None:
+            await set_last_group_sync()
 
     async def _apply_group_metadata(self, groups: list[Any]) -> int:
         count = 0
@@ -290,7 +304,9 @@ class WhatsAppChannel:
             name = group.GroupName.Name
             if name:
                 group_jid = Jid2String(group.JID)
-                await update_chat_name(group_jid, name)
+                update_chat_name = self._update_chat_name
+                if update_chat_name is not None:
+                    await update_chat_name(group_jid, name)
                 count += 1
         return count
 

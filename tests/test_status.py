@@ -8,7 +8,6 @@ status dict rather than importing the private per-section collectors.
 from __future__ import annotations
 
 import contextlib
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 import time
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -17,18 +16,23 @@ import pytest
 from aiohttp.test_utils import AioHTTPTestCase
 
 from pynchy.canaries import declared_canary_scenarios
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.api import RepoContext
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
-from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.host.orchestrator.status import collect_status, record_start_time
+from pynchy.host.orchestrator.http_server import HttpDeployOperations, create_http_app
+from pynchy.host.orchestrator.status import GitStatusOperations, collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state import (
     begin_webhook_effect,
     init_test_database,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
 )
-from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 from pynchy.webhook_effects import WebhookEffectScope
 
 if TYPE_CHECKING:
@@ -57,6 +61,7 @@ def _runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=None,
         rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 
@@ -102,17 +107,8 @@ def _inert_status():
         def p(name: str, **kwargs: Any) -> None:
             stack.enter_context(patch(f"{_S}.{name}", **kwargs))
 
-        p("get_head_sha", return_value="0000000")
-        p("is_repo_dirty", return_value=False)
-        p("count_unpushed_commits", return_value=0)
-        p("get_head_commit_message", return_value="")
         p("get_router_state", new_callable=AsyncMock, return_value=None)
         p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
-        p(
-            "get_canary_report",
-            new_callable=AsyncMock,
-            return_value={"summary": {"unresolved_regressions": 0}},
-        )
         p(
             "collect_capability_status",
             new_callable=AsyncMock,
@@ -126,7 +122,6 @@ def _inert_status():
             new_callable=AsyncMock,
             side_effect=_inert_orchestration_states,
         )
-        p("run_docker", new_callable=AsyncMock, return_value=Mock(returncode=1, stdout=""))
         p(
             "get_temporal_scheduler_status",
             create=True,
@@ -182,6 +177,8 @@ class MockStatusDeps:
             "per_group": {},
         }
         self._gateway = gateway or {"mode": "litellm", "port": 4000, "key": "sk-test"}
+        self.capability_status_operations = Mock()
+        self.get_container_state = AsyncMock(return_value="not_found")
         self._active_sessions = active_sessions
         self._workspace_count = workspace_count
         self._speech_synthesizer = speech_synthesizer
@@ -189,6 +186,16 @@ class MockStatusDeps:
         self.temporal_address = temporal_address
         self.temporal_namespace = temporal_namespace
         self.temporal_task_queue = temporal_task_queue
+        self.git_status = GitStatusOperations(
+            get_repo_context=Mock(return_value=None),
+            get_head_sha=Mock(return_value="0000000"),
+            is_repo_dirty=Mock(return_value=False),
+            count_unpushed_commits=Mock(return_value=0),
+            get_head_commit_message=Mock(return_value=""),
+            detect_main_branch=Mock(return_value="main"),
+            run_git=Mock(),
+        )
+        self.get_canary_report = AsyncMock(return_value={"summary": {"unresolved_regressions": 0}})
 
     def is_shutting_down(self) -> bool:
         return self._shutting_down
@@ -220,6 +227,22 @@ class MockHttpDeps:
 
     data_dir = None
     project_root = None
+    capability_status_operations = Mock()
+    deploy_operations = HttpDeployOperations(
+        get_head_sha=Mock(return_value="head-sha"),
+        push_local_commits=Mock(return_value=True),
+        run_git=Mock(),
+        files_changed_between=Mock(return_value=False),
+        get_deploy_config_hash=Mock(return_value="config-hash"),
+        get_head_commit_message=Mock(return_value="commit"),
+        is_repo_dirty=Mock(return_value=False),
+        start_deploy_workflow=AsyncMock(),
+    )
+    get_canary_report = AsyncMock(
+        return_value={"summary": {"declared_scenarios": len(declared_canary_scenarios())}}
+    )
+    canary_run_to_dict = staticmethod(lambda _run: {})
+    work_item_execution_to_dict = staticmethod(lambda _execution: {})
 
     async def broadcast_host_message(self, _jid: str, _text: str) -> None:
         return None
@@ -300,12 +323,12 @@ class TestCollectDeploy:
     @pytest.mark.asyncio
     async def test_assembles_deploy_info(self):
         deps = MockStatusDeps()
+        deps.git_status.get_head_sha.return_value = "abc123"
+        deps.git_status.is_repo_dirty.return_value = False
+        deps.git_status.count_unpushed_commits.return_value = 0
+        deps.git_status.get_head_commit_message.return_value = "test commit"
         with (
             _inert_status(),
-            patch(f"{_S}.get_head_sha", return_value="abc123"),
-            patch(f"{_S}.is_repo_dirty", return_value=False),
-            patch(f"{_S}.count_unpushed_commits", return_value=0),
-            patch(f"{_S}.get_head_commit_message", return_value="test commit"),
             patch(
                 f"{_S}.get_router_state",
                 new_callable=AsyncMock,
@@ -335,14 +358,12 @@ class TestCollectRepos:
 
         ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "worktrees")
         deps = MockStatusDeps(repo_slugs=("owner/repo",))
+        deps.git_status.get_repo_context.return_value = ctx
+        deps.git_status.get_head_sha.return_value = "def456"
+        deps.git_status.is_repo_dirty.return_value = True
+        deps.git_status.count_unpushed_commits.return_value = 2
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.get_repo_context", return_value=ctx),
-            patch(f"{_S}.get_head_sha", return_value="def456"),
-            patch(f"{_S}.is_repo_dirty", return_value=True),
-            patch(f"{_S}.count_unpushed_commits", return_value=2),
-        ):
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         repo = result["repos"]["owner/repo"]
@@ -362,16 +383,14 @@ class TestCollectRepos:
         mock_git = Mock(returncode=0, stdout="3\n")
         mock_git_dir = Mock(returncode=0, stdout=str(tmp_path / ".git/worktrees/code-improver"))
         deps = MockStatusDeps(repo_slugs=("owner/repo",))
+        deps.git_status.get_repo_context.return_value = ctx
+        deps.git_status.get_head_sha.return_value = "aaa111"
+        deps.git_status.is_repo_dirty.return_value = False
+        deps.git_status.count_unpushed_commits.return_value = 0
+        deps.git_status.detect_main_branch.return_value = "main"
+        deps.git_status.run_git.side_effect = [mock_git, mock_git, mock_git_dir]
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.get_repo_context", return_value=ctx),
-            patch(f"{_S}.get_head_sha", return_value="aaa111"),
-            patch(f"{_S}.is_repo_dirty", return_value=False),
-            patch(f"{_S}.count_unpushed_commits", return_value=0),
-            patch(f"{_S}.detect_main_branch", return_value="main"),
-            patch(f"{_S}.run_git", side_effect=[mock_git, mock_git, mock_git_dir]),
-        ):
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         worktrees = result["repos"]["owner/repo"]["worktrees"]
@@ -409,16 +428,14 @@ class TestWorktreeStatus:
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
         deps = MockStatusDeps(repo_slugs=("owner/repo",))
+        deps.git_status.get_repo_context.return_value = ctx
+        deps.git_status.get_head_sha.return_value = "bbb222"
+        deps.git_status.is_repo_dirty.return_value = True
+        deps.git_status.count_unpushed_commits.return_value = 0
+        deps.git_status.detect_main_branch.return_value = "main"
+        deps.git_status.run_git.side_effect = [mock_ahead, mock_behind, mock_git_dir]
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.get_repo_context", return_value=ctx),
-            patch(f"{_S}.get_head_sha", return_value="bbb222"),
-            patch(f"{_S}.is_repo_dirty", return_value=True),
-            patch(f"{_S}.count_unpushed_commits", return_value=0),
-            patch(f"{_S}.detect_main_branch", return_value="main"),
-            patch(f"{_S}.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
-        ):
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         wt = result["repos"]["owner/repo"]["worktrees"]["wt1"]
@@ -439,16 +456,14 @@ class TestWorktreeStatus:
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=0, stdout=str(git_dir))
         deps = MockStatusDeps(repo_slugs=("owner/repo",))
+        deps.git_status.get_repo_context.return_value = ctx
+        deps.git_status.get_head_sha.return_value = "ccc333"
+        deps.git_status.is_repo_dirty.return_value = False
+        deps.git_status.count_unpushed_commits.return_value = 0
+        deps.git_status.detect_main_branch.return_value = "main"
+        deps.git_status.run_git.side_effect = [mock_ahead, mock_behind, mock_git_dir]
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.get_repo_context", return_value=ctx),
-            patch(f"{_S}.get_head_sha", return_value="ccc333"),
-            patch(f"{_S}.is_repo_dirty", return_value=False),
-            patch(f"{_S}.count_unpushed_commits", return_value=0),
-            patch(f"{_S}.detect_main_branch", return_value="main"),
-            patch(f"{_S}.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
-        ):
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         assert result["repos"]["owner/repo"]["worktrees"]["wt1"]["conflict"] is False
@@ -462,16 +477,14 @@ class TestWorktreeStatus:
         mock_behind = Mock(returncode=0, stdout="0\n")
         mock_git_dir = Mock(returncode=1, stdout="")
         deps = MockStatusDeps(repo_slugs=("owner/repo",))
+        deps.git_status.get_repo_context.return_value = ctx
+        deps.git_status.get_head_sha.return_value = "ddd444"
+        deps.git_status.is_repo_dirty.return_value = False
+        deps.git_status.count_unpushed_commits.return_value = 0
+        deps.git_status.detect_main_branch.return_value = "main"
+        deps.git_status.run_git.side_effect = [mock_ahead, mock_behind, mock_git_dir]
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.get_repo_context", return_value=ctx),
-            patch(f"{_S}.get_head_sha", return_value="ddd444"),
-            patch(f"{_S}.is_repo_dirty", return_value=False),
-            patch(f"{_S}.count_unpushed_commits", return_value=0),
-            patch(f"{_S}.detect_main_branch", return_value="main"),
-            patch(f"{_S}.run_git", side_effect=[mock_ahead, mock_behind, mock_git_dir]),
-        ):
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         assert result["repos"]["owner/repo"]["worktrees"]["wt1"]["conflict"] is False
@@ -844,18 +857,8 @@ class TestCollectGateway:
         mock_session.__aenter__.return_value = mock_session
         mock_session.__aexit__.return_value = None
 
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="running\n"),
-                ],
-            ),
-            patch("aiohttp.ClientSession", return_value=mock_session),
-        ):
+        deps.get_container_state.side_effect = ["running", "running"]
+        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -875,14 +878,11 @@ class TestCollectGateway:
         monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-feature-test")
         deps = MockStatusDeps(gateway={"mode": "litellm"})
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.run_docker", new_callable=AsyncMock) as run_docker,
-        ):
-            run_docker.return_value = Mock(returncode=0, stdout="running\n")
+        deps.get_container_state.return_value = "running"
+        with _inert_status():
             await collect_status(deps, time.monotonic())
 
-        inspected = [call.args[3] for call in run_docker.await_args_list]
+        inspected = [call.args[0] for call in deps.get_container_state.await_args_list]
         assert inspected == [
             "pynchy-feature-test-litellm",
             "pynchy-feature-test-litellm-db",
@@ -900,18 +900,8 @@ class TestCollectGateway:
         mock_session.__aenter__.return_value = mock_session
         mock_session.__aexit__.return_value = None
 
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="running\n"),
-                ],
-            ),
-            patch("aiohttp.ClientSession", return_value=mock_session),
-        ):
+        deps.get_container_state.side_effect = ["running", "running"]
+        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
             result = await collect_status(deps, time.monotonic())
 
         assert result["gateway"]["ready"] is True
@@ -921,15 +911,8 @@ class TestCollectGateway:
     async def test_gateway_health_failure_returns_none(self):
         """When gateway HTTP check fails, model counts are None."""
         deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="running\n"),
-            ),
-            # aiohttp.ClientSession stays inert (raises) → health check fails.
-        ):
+        deps.get_container_state.return_value = "running"
+        with _inert_status():  # aiohttp.ClientSession stays inert (raises) → health check fails.
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -940,17 +923,8 @@ class TestCollectGateway:
     async def test_missing_port_skips_health_check(self):
         """When port or key is missing, health check is skipped."""
         deps = MockStatusDeps(gateway={"mode": "litellm"})
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="stopped\n"),
-                ],
-            ),
-        ):
+        deps.get_container_state.side_effect = ["running", "stopped"]
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -973,63 +947,25 @@ class TestContainerState:
 
     @pytest.mark.asyncio
     async def test_running_container(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="running\n"),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        deps.get_container_state.return_value = "running"
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "running"
 
     @pytest.mark.asyncio
     async def test_stopped_container(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="exited\n"),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        deps.get_container_state.return_value = "exited"
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "exited"
 
     @pytest.mark.asyncio
     async def test_not_found(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=1, stdout=""),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
-        assert result["gateway"]["litellm_container"] == "not_found"
-
-    @pytest.mark.asyncio
-    async def test_docker_not_installed(self):
-        with (
-            _inert_status(),
-            patch(f"{_S}.run_docker", new_callable=AsyncMock, side_effect=FileNotFoundError),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
-        assert result["gateway"]["litellm_container"] == "not_found"
-
-    @pytest.mark.asyncio
-    async def test_docker_timeout(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=subprocess.TimeoutExpired("docker", 5),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "not_found"
 
 
@@ -1043,11 +979,11 @@ class TestCollectStatus:
             active_sessions=2,
         )
         record_start_time()
+        deps.git_status.get_head_sha.return_value = "abc123"
+        deps.git_status.get_head_commit_message.return_value = "test"
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_head_sha", return_value="abc123"),
-            patch(f"{_S}.get_head_commit_message", return_value="test"),
             patch(
                 f"{_S}.get_messaging_stats",
                 new_callable=AsyncMock,
@@ -1106,7 +1042,8 @@ class TestStatusEndpoint(AioHTTPTestCase):
             workspace_count=3,
             active_sessions=1,
         )
-        return create_http_app(MockHttpDeps(), runtime=_runtime(), status_deps=self.mock_deps)
+        self.http_deps = MockHttpDeps()
+        return create_http_app(self.http_deps, runtime=_runtime(), status_deps=self.mock_deps)
 
     async def test_status_returns_200(self):
         """GET /status returns 200 with structured JSON."""
@@ -1205,13 +1142,9 @@ class TestStatusEndpoint(AioHTTPTestCase):
         }
         snapshot = Mock()
         snapshot.to_dict.return_value = workspace_payload
+        self.http_deps.get_canary_report = AsyncMock(return_value={"scenarios": []})
 
         with (
-            patch(
-                "pynchy.host.orchestrator.http_server.get_canary_report",
-                new_callable=AsyncMock,
-                return_value={"scenarios": []},
-            ),
             patch(
                 "pynchy.host.orchestrator.http_server.collect_capability_status",
                 new_callable=AsyncMock,

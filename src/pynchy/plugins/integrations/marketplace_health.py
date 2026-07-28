@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves marketplace runtime callbacks at runtime.
+)
+from dataclasses import dataclass
 from pathlib import (  # noqa: TC003, RUF100 - Pydantic resolves field annotations at runtime.
     Path,
 )
 from typing import Any, Literal
 
 import pluggy
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -28,12 +32,9 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config import get_settings, tool_process_environment
-from pynchy.config.models import McpTool
 from pynchy.plugins.integrations._service import service_tool
 from pynchy.plugins.integrations.proton_bridge import create_proton_mail_client
 from pynchy.plugins.integrations.proton_bridge_config import ProtonMailError
-from pynchy.utils import filtered_process_environment
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -94,12 +95,38 @@ class MarketplaceHealthSnapshot(BaseModel):
     reader_health: ReaderHealth
 
 
+@dataclass(frozen=True)
+class MarketplaceHealthRuntime:
+    """Resolved marketplace projection configuration selected at composition."""
+
+    options: MarketplaceHealthOptions | None
+    reader_environment: Callable[[str], dict[str, str] | None]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: MarketplaceHealthRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_marketplace_health_runtime(runtime: MarketplaceHealthRuntime) -> None:
+    """Set marketplace projection configuration before host actions run."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> MarketplaceHealthRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Marketplace health runtime has not been configured")
+    return _runtime.runtime
+
+
 def _options() -> MarketplaceHealthOptions:
-    plugin = get_settings().plugins.get(_PLUGIN_NAME)
-    try:
-        return MarketplaceHealthOptions.model_validate(plugin.options if plugin else {})
-    except ValidationError as exc:
-        raise ValueError("Marketplace health projection is not configured") from exc
+    options = _configured_runtime().options
+    if options is None:
+        raise ValueError("Marketplace health projection is not configured")
+    return options
 
 
 def _load_counts(path: Path) -> MarketplaceCounts:
@@ -125,19 +152,15 @@ def _load_counts(path: Path) -> MarketplaceCounts:
     return MarketplaceCounts.model_validate(counts)
 
 
-def _reader_environment(tool: McpTool) -> dict[str, str]:
-    return filtered_process_environment({**tool.mcp.env, **tool_process_environment(tool)})
-
-
 def _reader_health(reader_tool: str) -> ReaderHealth:
     """Probe authentication and IMAP without fetching any message or mailbox content."""
-    tool = get_settings().tools.get(reader_tool)
-    if not isinstance(tool, McpTool):
+    environment = _configured_runtime().reader_environment(reader_tool)
+    if environment is None:
         return ReaderHealth(status="unavailable", reason="reader_not_configured")
     try:
         # list_mailboxes authenticates and performs IMAP LIST only. Discarding its
         # result keeps provider identifiers outside the agent-visible projection.
-        create_proton_mail_client(environment=_reader_environment(tool)).list_mailboxes()
+        create_proton_mail_client(environment=environment).list_mailboxes()
     except ProtonMailError as exc:
         message = str(exc).casefold()
         reason: ReaderHealthReason
@@ -208,6 +231,10 @@ MARKETPLACE_HEALTH_HOST_ACTIONS = HostActionRegistration(
 
 class MarketplaceHealthPlugin:
     """Expose a read-only aggregate health projection through host IPC."""
+
+    def configure(self, runtime: MarketplaceHealthRuntime) -> None:
+        """Set resolved runtime values before registering host actions."""
+        configure_marketplace_health_runtime(runtime)
 
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:

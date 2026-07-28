@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 # allow: file-length - Pydantic's discriminated settings schemas share validators and aliases here.
-# Adapter code uses semantic contracts from ``pynchy.types``, not these Pydantic models.
+# Adapter code uses semantic contracts from their domain APIs, not these Pydantic models.
 import posixpath
 import re
 from pathlib import Path
@@ -23,7 +23,7 @@ from pynchy.discord import (
     DiscordConnectionSettings,
     DiscordGuildSettings,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - Pydantic resolves Matrix annotations at runtime.
+from pynchy.integration_contracts import (  # noqa: TC001, RUF100 - Pydantic resolves Matrix annotations at runtime.
     MatrixActivation,
     MatrixOutbound,
 )

@@ -7,7 +7,10 @@ from typing import Any
 import pytest
 
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.types import InboundFetchResult, OutboundEvent
+from pynchy.plugins.api import (
+    InboundFetchResult,
+    OutboundEvent,
+)
 
 
 class _ThreadCapableChannel:

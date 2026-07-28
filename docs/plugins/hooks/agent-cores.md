@@ -75,7 +75,7 @@ Use this hook when a plugin owns durable execution, leases, or provider state
 that a context reset must cancel or transition first.
 
 ```python
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @hookimpl

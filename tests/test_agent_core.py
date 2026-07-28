@@ -6,9 +6,9 @@ from pathlib import Path
 import pluggy
 import pytest
 
+from pynchy.agent_protocol.api import ContainerInput
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.contracts import AgentCoreSpec
-from pynchy.types import ContainerInput
+from pynchy.plugins.api import AgentCoreSpec
 
 # Add container agent_runner to path for testing
 container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves skill-runtime annotations at runtime.
+    Mapping,  # noqa: TC003, RUF100 - beartype resolves skill-runtime annotations at runtime.
+)
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING
@@ -9,15 +13,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pluggy
 
-from pynchy.config import get_settings
-from pynchy.host.container_manager.session_prep import (
+from pynchy.agent_home import (
     CompanionSkillAccess,
     refresh_personalized_skills,
     sync_skills,
     write_settings_json,
 )
-from pynchy.host.learning.paths import LearningConfigError, LearningPaths, resolve_learning_paths
-from pynchy.host.orchestrator.workspace_config import load_resolved_config
+from pynchy.host.learning.paths import LearningConfigError, LearningPaths
 
 _LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR = (
     "learning.obsidian.vault_root must be an existing directory"
@@ -41,6 +43,35 @@ class _WorkspaceSkillPolicy:
     companion_skill_access: CompanionSkillAccess
 
 
+type WorkspaceSkillSelection = tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]
+
+
+@dataclass(frozen=True)
+class SkillActivationRuntime:
+    """Resolved skill policy and filesystem roots selected at composition."""
+
+    project_root: Path
+    sessions_root: Path
+    tool_skills: Mapping[str, tuple[str, ...]]
+    resolve_workspace_skill_selection: Callable[[str], WorkspaceSkillSelection | None]
+    resolve_learning_paths: Callable[[str, str | None], LearningPaths | None]
+
+
+_runtime: SkillActivationRuntime | None = None
+
+
+def configure_skill_activation_runtime(runtime: SkillActivationRuntime) -> None:
+    """Inject resolved workspace policy and paths at host composition."""
+    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one skill runtime.
+    _runtime = runtime
+
+
+def _configured_runtime() -> SkillActivationRuntime:
+    if _runtime is None:
+        raise RuntimeError("skill activation runtime has not been configured")
+    return _runtime
+
+
 def prepare_agent_homes(
     group_folder: str,
     plugin_manager: pluggy.PluginManager | None = None,
@@ -51,26 +82,25 @@ def prepare_agent_homes(
     personalized skills before each turn makes reviewer updates available on
     the next turn without restarting the session.
     """
-    settings = get_settings()
+    runtime = _configured_runtime()
     skill_policy = _workspace_skill_policy(group_folder)
-    learning_paths = resolve_learning_paths(
-        group_folder,
-        profile_override=_learning_profile_override_for_group(group_folder),
+    learning_paths = runtime.resolve_learning_paths(
+        group_folder, _learning_profile_override_for_group(group_folder)
     )
     if learning_paths is not None:
         _validate_learning_vault(learning_paths.vault_root)
         learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
 
-    personalization_skills = settings.project_root / "data" / "personalization" / "skills"
+    personalization_skills = runtime.project_root / "data" / "personalization" / "skills"
     personalization_skills.mkdir(parents=True, exist_ok=True)
 
-    session_root = settings.data_dir / "sessions" / group_folder
+    session_root = runtime.sessions_root / group_folder
     claude_home = session_root / ".claude"
     claude_home.mkdir(parents=True, exist_ok=True)
-    write_settings_json(claude_home, project_root=settings.project_root)
+    write_settings_json(claude_home, project_root=runtime.project_root)
     sync_skills(
         claude_home,
-        project_root=settings.project_root,
+        project_root=runtime.project_root,
         plugin_manager=plugin_manager,
         workspace_skills=skill_policy.workspace_skills,
         denied_skill_names=skill_policy.denied_skill_names,
@@ -81,7 +111,7 @@ def prepare_agent_homes(
     codex_home.mkdir(parents=True, exist_ok=True)
     sync_skills(
         codex_home,
-        project_root=settings.project_root,
+        project_root=runtime.project_root,
         plugin_manager=plugin_manager,
         workspace_skills=skill_policy.workspace_skills,
         denied_skill_names=skill_policy.denied_skill_names,
@@ -97,12 +127,12 @@ def prepare_agent_homes(
 def refresh_personalized_agent_skills(group_folder: str) -> None:
     """Expose personalization skill updates on the next agent turn."""
     skill_policy = _workspace_skill_policy(group_folder)
-    settings = get_settings()
-    session_root = settings.data_dir / "sessions" / group_folder
+    runtime = _configured_runtime()
+    session_root = runtime.sessions_root / group_folder
     for agent_home in (session_root / ".claude", session_root / ".codex"):
         refresh_personalized_skills(
             agent_home,
-            project_root=settings.project_root,
+            project_root=runtime.project_root,
             workspace_skills=skill_policy.workspace_skills,
             denied_skill_names=skill_policy.denied_skill_names,
             companion_skill_access=skill_policy.companion_skill_access,
@@ -116,12 +146,12 @@ def _validate_learning_vault(vault_root: Path) -> None:
 
 
 def _workspace_skill_policy(group_folder: str) -> _WorkspaceSkillPolicy:
-    settings = get_settings()
+    runtime = _configured_runtime()
     all_companion_skill_names = frozenset(
-        skill_name for tool in settings.tools.values() for skill_name in tool.skills
+        skill_name for skills in runtime.tool_skills.values() for skill_name in skills
     )
-    resolved = load_resolved_config(group_folder)
-    if resolved is None:
+    selection = runtime.resolve_workspace_skill_selection(group_folder)
+    if selection is None:
         return _WorkspaceSkillPolicy(
             workspace_skills=None,
             denied_skill_names=None,
@@ -130,14 +160,15 @@ def _workspace_skill_policy(group_folder: str) -> _WorkspaceSkillPolicy:
                 all_names=all_companion_skill_names,
             ),
         )
+    workspace_skills, denied_skill_names, selected_tool_names = selection
     selected_companion_skill_names = frozenset(
         skill_name
-        for tool_name in resolved.tools
-        for skill_name in getattr(settings.tools.get(tool_name), "skills", ())
+        for tool_name in selected_tool_names
+        for skill_name in runtime.tool_skills.get(tool_name, ())
     )
     return _WorkspaceSkillPolicy(
-        workspace_skills=resolved.skills,
-        denied_skill_names=resolved.denied_skills,
+        workspace_skills=list(workspace_skills),
+        denied_skill_names=list(denied_skill_names),
         companion_skill_access=CompanionSkillAccess(
             selected_names=selected_companion_skill_names,
             all_names=all_companion_skill_names,

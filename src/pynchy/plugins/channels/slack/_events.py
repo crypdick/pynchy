@@ -21,7 +21,7 @@ from re import Pattern
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.plugins.api import NewMessage
 
 from ._ids import jid as slack_jid
 from ._ui import AGENT_STOP_ACTION_RE, ASK_USER_ACTION_RE, COP_APPROVAL_ACTION_RE

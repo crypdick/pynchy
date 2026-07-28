@@ -10,20 +10,24 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationId,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationLifecycleFence,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationSubject,  # noqa: TC001, RUF100 - beartype resolves webhook targets.
     ExternalDeliveryIdentity,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
 )
+from pynchy.identifiers import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.logger import logger
-from pynchy.types import GroupFolder, WorkspaceProfile
 from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves webhook evidence.
     WebhookEffectEvidence,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
+
 
 _ROUTE_COMPONENT = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
 _ENV_REFERENCE = re.compile(r"[A-Z][A-Z0-9_]*")

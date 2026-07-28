@@ -13,7 +13,7 @@ else:
     Row = Any
 
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import (
+from pynchy.workspace.api import (
     ContainerConfig,
     ServiceTrustConfig,
     WorkspaceProfile,

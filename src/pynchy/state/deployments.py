@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 
 import aiosqlite  # noqa: TC002, RUF100 - beartype resolves row annotations at runtime.
 
-from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import (
+from pynchy.deployments import (
     DeployChangeKind,
     DeployClaim,
     DeployClaimStatus,
     DeploymentState,
     DeployRevision,
 )
+from pynchy.state.connection import _get_db, atomic_write
 
 _SINGLETON = 1
 

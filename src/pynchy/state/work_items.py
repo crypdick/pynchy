@@ -18,7 +18,10 @@ from pynchy.state.work_item_models import (
 )
 from pynchy.state.work_item_rows import row_to_execution
 from pynchy.state.work_item_transition_records import insert_work_item_transition
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+)
 
 
 def _timestamp() -> str:

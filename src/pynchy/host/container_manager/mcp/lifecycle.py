@@ -33,11 +33,11 @@ from pynchy.host.container_manager.docker import (
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
-from pynchy.host.container_manager.runtime_names import runtime_network_name
 from pynchy.logger import logger
-from pynchy.plugins.mcp_server import (
+from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
+from pynchy.runtime_names import runtime_network_name
 from pynchy.utils import filtered_process_environment
 
 # ---------------------------------------------------------------------------

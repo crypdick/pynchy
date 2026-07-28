@@ -14,6 +14,10 @@ See docs/plans/2026-02-24-host-mutating-cop-design.md
 from __future__ import annotations
 
 import json as _json
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Cop context loader annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -27,12 +31,11 @@ from pynchy.host.container_manager.security.cop_prompts import (
     OUTBOUND_SYSTEM_PROMPT,
     TAINT_SYSTEM_PROMPT,
 )
-from pynchy.host.container_manager.security.llm_redaction import RedactionSession
 from pynchy.logger import logger
-from pynchy.state.api import (
+from pynchy.redaction import RedactionSession
+from pynchy.security_context import (  # noqa: TC001, RUF100 - beartype resolves Cop context loader annotations at runtime.
     RecentSecurityContext,
-    SecurityExecutionAuthority,  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
-    load_recent_security_context,
+    SecurityExecutionAuthority,
 )
 
 
@@ -56,7 +59,10 @@ class CopInspectionContext:
     unavailable_reason: str | None = None
 
 
-async def load_cop_inspection_context(chat_jid: str) -> CopInspectionContext:
+async def load_cop_inspection_context(
+    chat_jid: str,
+    load_recent_security_context: Callable[..., Awaitable[RecentSecurityContext]],
+) -> CopInspectionContext:
     """Load bounded SQLite context or return an explicit degraded value."""
     try:
         context = await load_recent_security_context(chat_jid)

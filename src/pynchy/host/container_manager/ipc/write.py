@@ -16,13 +16,26 @@ import time
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC write signatures at runtime.
 from typing import Any
 
-from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
+
+_ipc_base_dir: Path | None = None
+
+
+def configure_ipc_base_dir(path: Path) -> None:
+    """Set the host-owned IPC root during application composition."""
+    global _ipc_base_dir  # noqa: PLW0603, RUF100 - one host process owns one IPC root.
+    _ipc_base_dir = path
+
+
+def _configured_ipc_base_dir() -> Path:
+    if _ipc_base_dir is None:
+        raise RuntimeError("IPC base directory has not been configured")
+    return _ipc_base_dir
 
 
 def _ipc_input_dir(group_folder: str) -> Path:
     """Return the IPC input directory for a group, creating it if needed."""
-    d = get_settings().data_dir / "ipc" / group_folder / "input"
+    d = _configured_ipc_base_dir() / group_folder / "input"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -64,7 +77,7 @@ def ipc_response_path(source_group: str, request_id: str) -> Path:
     Single source of truth — used by service handlers, approval handlers,
     and the approval sweep.
     """
-    return get_settings().data_dir / "ipc" / source_group / "responses" / f"{request_id}.json"
+    return _configured_ipc_base_dir() / source_group / "responses" / f"{request_id}.json"
 
 
 def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
@@ -91,7 +104,7 @@ def clean_ipc_input_dir(group_folder: str | None, *, preserve_initial: bool = Fa
     """
     if not group_folder:
         return
-    input_dir = get_settings().data_dir / "ipc" / group_folder / "input"
+    input_dir = _configured_ipc_base_dir() / group_folder / "input"
     if not input_dir.is_dir():
         return
     for f in input_dir.iterdir():

@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import pytest
 
 from pynchy.actions import ACTION_SPECS
-from pynchy.capabilities import validate_host_action_descriptors
+from pynchy.plugins.api import validate_host_action_descriptors
 from pynchy.plugins.integrations.google_setup import (
     GoogleSetupPlugin,
     run_oauth_flow,
@@ -322,27 +322,15 @@ async def _raise_login_failed(_page) -> None:
 
 
 def _google_setup_tool(monkeypatch: pytest.MonkeyPatch, profile: str):
-    class FakeSettings:
-        chrome_profiles = [profile]
-
-    def fake_get_settings() -> FakeSettings:
-        return FakeSettings()
-
-    monkeypatch.setattr("pynchy.config.get_settings", fake_get_settings)
-    action = GoogleSetupPlugin().pynchy_service_handler().action_for(f"setup_google_{profile}")
+    action = (
+        GoogleSetupPlugin((profile,)).pynchy_service_handler().action_for(f"setup_google_{profile}")
+    )
     assert action is not None
     return action.handler
 
 
-def test_google_setup_registration_has_one_valid_capability_per_profile(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeSettings:
-        chrome_profiles = ["personal", "work profile"]
-
-    monkeypatch.setattr("pynchy.config.get_settings", FakeSettings)
-
-    registration = GoogleSetupPlugin().pynchy_service_handler()
+def test_google_setup_registration_has_one_valid_capability_per_profile() -> None:
+    registration = GoogleSetupPlugin(("personal", "work profile")).pynchy_service_handler()
     capability_ids = [str(action.capability.id) for action in registration.actions]
 
     assert {str(action.tool_name) for action in registration.actions} == {

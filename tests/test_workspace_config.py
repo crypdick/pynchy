@@ -13,8 +13,7 @@ from conftest import make_settings
 from pydantic import ValidationError
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config import WorkspaceConfig
-from pynchy.config.models import BuiltinTool, ProfileConfig
+from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
@@ -29,11 +28,13 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_restriction,
     update_profile_skill_policy,
 )
-from pynchy.plugins.contracts import WorkspaceSpec
-from pynchy.types import (
-    CapabilityRule,
+from pynchy.plugins.api import (
     InboundFetchResult,
     OutboundEvent,
+    WorkspaceSpec,
+)
+from pynchy.workspace.api import (
+    CapabilityRule,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
@@ -121,7 +122,7 @@ class TestLoadWorkspaceConfig:
                 pynchy_workspace_spec=lambda: [
                     WorkspaceSpec(
                         folder="code-improver",
-                        config=WorkspaceConfig(profiles=["worker"]),
+                        config=WorkspaceConfig(profiles=["worker"]).model_dump(),
                     )
                 ]
             )

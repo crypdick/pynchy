@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pynchy.logger import logger
-from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
+from pynchy.workspace.api import (
+    AdditionalMount,
+    AllowedRoot,
+    MountAllowlist,
+)
 
 
 @dataclass

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
+from pynchy.agent_protocol.api import VolumeMount
 from pynchy.logger import logger
 from pynchy.plugins.contracts import AgentHookSpec
-from pynchy.types import VolumeMount
 
 _CONTAINER_HOOK_ROOT = Path("/workspace/plugin-hooks")
 

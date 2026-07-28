@@ -13,35 +13,13 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
-from pynchy.capability_policy import (
-    capability_pattern_matches,
-    most_restrictive_capability_rule,
-)
-from pynchy.config import (
-    ResolvedToolAccess,
-    Settings,
-    apply_tool_access,
-    get_settings,
-    reset_settings,
-    resolve_tool_access,
-)
-from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-)
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-)
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-    WorkspaceConfig,
-)
-from pynchy.config.toml_io import mutate_config_toml
-from pynchy.conversation.workspaces import conversation_id_from_folder, parent_workspace_name
-from pynchy.conversation.workspaces import dynamic_thread_folder as _dynamic_thread_folder
+from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
+from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
@@ -50,16 +28,78 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
-from pynchy.plugins.contracts import WorkspaceSpec
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    WorkspaceSpec,
+)
 from pynchy.state.api import (
     get_all_tasks,
     update_task,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
     CapabilityRule,
-    Channel,
     WorkspaceProfile,
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
 )
+
+type JobConfig = Any
+type ResolvedToolAccess = Any
+type ResolvedWorkspaceConfig = Any
+type Settings = Any
+type WorkspaceConfig = Any
+
+
+def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
+    raise RuntimeError("Workspace configuration has not been composed")
+
+
+@dataclass(frozen=True)
+class WorkspaceConfigRuntime:
+    get_settings: Callable[[], Any]
+    parse_workspace_config: Callable[[object], Any]
+    apply_tool_access: Callable[..., tuple[Any, Any]]
+    resolve_tool_access: Callable[..., Any]
+    mutate_config_toml: Callable[..., object]
+    reset_settings: Callable[[], None]
+
+
+_runtime = WorkspaceConfigRuntime(
+    get_settings=_unconfigured_runtime,
+    parse_workspace_config=_unconfigured_runtime,
+    apply_tool_access=_unconfigured_runtime,
+    resolve_tool_access=_unconfigured_runtime,
+    mutate_config_toml=_unconfigured_runtime,
+    reset_settings=_unconfigured_runtime,
+)
+
+
+def configure_workspace_config_runtime(runtime: WorkspaceConfigRuntime) -> None:
+    """Bind configuration loading and persistence at host composition."""
+    global _runtime  # noqa: PLW0603, RUF100 - one host process owns workspace configuration.
+    _runtime = runtime
+
+
+def get_settings() -> Settings:
+    return cast("Settings", _runtime.get_settings())
+
+
+def apply_tool_access(
+    *args: object, **kwargs: object
+) -> tuple[ResolvedWorkspaceConfig, ResolvedToolAccess]:
+    return _runtime.apply_tool_access(*args, **kwargs)
+
+
+def resolve_tool_access(*args: object, **kwargs: object) -> ResolvedToolAccess:
+    return cast("ResolvedToolAccess", _runtime.resolve_tool_access(*args, **kwargs))
+
+
+def mutate_config_toml(*args: object, **kwargs: object) -> None:
+    _runtime.mutate_config_toml(*args, **kwargs)
+
+
+def reset_settings() -> None:
+    _runtime.reset_settings()
 
 
 @dataclass
@@ -154,8 +194,13 @@ def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpe
     s = settings or get_settings()
     merged = dict(_state.plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
-        merged[folder] = WorkspaceSpec(folder=folder, config=cfg)
+        merged[folder] = WorkspaceSpec(folder=folder, config=cfg.model_dump())
     return merged
+
+
+def _workspace_spec_config(spec: WorkspaceSpec) -> WorkspaceConfig:
+    """Validate a plugin's configuration transport at its application boundary."""
+    return cast("WorkspaceConfig", _runtime.parse_workspace_config(spec.config))
 
 
 def load_workspace_config(
@@ -189,7 +234,7 @@ def load_workspace_config(
                 return semantic
     if spec is None:
         return None
-    config = spec.config
+    config = _workspace_spec_config(spec)
 
     logger.debug(
         "Loaded workspace config",
@@ -418,7 +463,7 @@ async def reconcile_workspaces(
 
     reconciled = 0
     for folder, spec in specs.items():
-        config = spec.config
+        config = _workspace_spec_config(spec)
         resolved = load_resolved_config(folder)
         if resolved is None:
             continue
@@ -447,7 +492,7 @@ async def reconcile_workspaces(
 
     thread_actions = await reconcile_workspace_threads(
         workspaces,
-        {folder: spec.config for folder, spec in specs.items()},
+        {folder: _workspace_spec_config(spec) for folder, spec in specs.items()},
         channels,
         register_fn,
     )

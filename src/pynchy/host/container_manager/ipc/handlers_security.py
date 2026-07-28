@@ -22,7 +22,6 @@ from pynchy.host.container_manager.security.cop import (
     CopContextAvailability,
     CopInspectionContext,
     inspect_bash,
-    load_cop_inspection_context,
 )
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
@@ -191,7 +190,7 @@ async def _handle_bash_security_check(
         return
 
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
-    inspection_context = await load_cop_inspection_context(chat_jid)
+    inspection_context = await deps.load_cop_inspection_context(chat_jid)
     decision = await evaluate_bash_command(gate, command, inspection_context)
 
     if decision["decision"] == "needs_human":

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.prek_hooks.architecture_imports import (
+    Dependency,
     Violation,
     collect_dependencies,
     dependency_violations,
@@ -19,7 +20,9 @@ from scripts.prek_hooks.architecture_imports import (
 from scripts.prek_hooks.architecture_policy import (
     Diagnostic,
     Package,
+    Policy,
     Role,
+    SourceModule,
     classify_modules,
     discover_modules,
     load_policy,
@@ -43,26 +46,49 @@ class BaselineEntry:
         return (self.importer, self.target_role, self.rule, self.kind)
 
 
+@dataclass(frozen=True)
+class RootModuleInboundImportBaselineEntry:
+    path: str
+    count: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class ArchitectureBaseline:
+    violations: tuple[BaselineEntry, ...]
+    root_module_inbound_imports: tuple[RootModuleInboundImportBaselineEntry, ...]
+
+
 def _load_toml(path: Path) -> dict[str, Any]:
     with path.open("rb") as handle:
         return tomllib.load(handle)
 
 
-def load_baseline(path: Path) -> tuple[BaselineEntry, ...]:
+def load_baseline(path: Path) -> ArchitectureBaseline:
     raw = _load_toml(path)
     if raw.get("version") != 2:
         raise ValueError("architecture baseline version must be 2")
-    return tuple(
-        BaselineEntry(
-            importer=item["importer"],
-            target_role=item["target_role"],
-            rule=item["rule"],
-            kind=item["kind"],
-            count=item["count"],
-            imports=tuple(item["imports"]),
-            reason=item.get("reason", "").strip(),
-        )
-        for item in raw.get("violations", ())
+    return ArchitectureBaseline(
+        violations=tuple(
+            BaselineEntry(
+                importer=item["importer"],
+                target_role=item["target_role"],
+                rule=item["rule"],
+                kind=item["kind"],
+                count=item["count"],
+                imports=tuple(item["imports"]),
+                reason=item.get("reason", "").strip(),
+            )
+            for item in raw.get("violations", ())
+        ),
+        root_module_inbound_imports=tuple(
+            RootModuleInboundImportBaselineEntry(
+                path=item["path"],
+                count=item["count"],
+                reason=item.get("reason", "").strip(),
+            )
+            for item in raw.get("root_module_inbound_imports", ())
+        ),
     )
 
 
@@ -205,6 +231,131 @@ def compare_baseline(
     return diagnostics
 
 
+def root_module_inbound_importer_counts(
+    root: Path,
+    modules: dict[str, SourceModule],
+    dependencies: list[Dependency],
+    policy: Policy,
+    policy_path: Path,
+) -> tuple[dict[str, int], list[Diagnostic]]:
+    source_root_paths = {source_root.path for source_root in policy.source_roots}
+    root_modules = {
+        module.path.relative_to(root).as_posix(): module
+        for module in modules.values()
+        if not module.is_package and module.path.parent in source_root_paths
+    }
+    diagnostics = [
+        Diagnostic(
+            policy_path.as_posix(),
+            0,
+            "architecture-policy",
+            f"file override {source_path!r} must name an importable root-level module",
+        )
+        for source_path, _override in policy.file_overrides
+        if source_path not in root_modules
+    ]
+    importers: dict[str, set[str]] = defaultdict(set)
+    paths_by_module = {module.name: path for path, module in root_modules.items()}
+    for dependency in dependencies:
+        source_path = paths_by_module.get(dependency.target_package)
+        if source_path is not None:
+            importers[source_path].add(dependency.importer)
+    return {path: len(importers[path]) for path in root_modules}, diagnostics
+
+
+def _validate_root_module_inbound_import_baseline(
+    baseline: tuple[RootModuleInboundImportBaselineEntry, ...],
+    baseline_path: Path,
+) -> tuple[dict[str, RootModuleInboundImportBaselineEntry], list[Diagnostic]]:
+    entries: dict[str, RootModuleInboundImportBaselineEntry] = {}
+    diagnostics: list[Diagnostic] = []
+    for entry in baseline:
+        if entry.path in entries:
+            diagnostics.append(
+                Diagnostic(
+                    baseline_path.as_posix(),
+                    0,
+                    "architecture-baseline",
+                    f"duplicate root-module inbound-import entry {entry.path!r}",
+                )
+            )
+        if entry.count < 1 or not entry.reason:
+            diagnostics.append(
+                Diagnostic(
+                    baseline_path.as_posix(),
+                    0,
+                    "architecture-baseline",
+                    (
+                        f"root-module inbound-import entry {entry.path!r} needs a positive "
+                        "count and a nonempty reason"
+                    ),
+                )
+            )
+        entries[entry.path] = entry
+    return entries, diagnostics
+
+
+def compare_root_module_inbound_import_baseline(
+    current: dict[str, int],
+    policy: Policy,
+    baseline: tuple[RootModuleInboundImportBaselineEntry, ...],
+    baseline_path: Path,
+) -> list[Diagnostic]:
+    entries, diagnostics = _validate_root_module_inbound_import_baseline(
+        baseline,
+        baseline_path,
+    )
+    unbounded_paths = {
+        source_path
+        for source_path, override in policy.file_overrides
+        if override.allow_unbounded_inbound_imports
+    }
+    current_violations = {
+        source_path: count
+        for source_path, count in current.items()
+        if count > policy.root_module_max_inbound_importers and source_path not in unbounded_paths
+    }
+    for source_path, count in current_violations.items():
+        expected = entries.get(source_path)
+        if expected is None or count > expected.count:
+            diagnostics.append(
+                Diagnostic(
+                    source_path,
+                    0,
+                    "architecture-root-module-inbound-importers",
+                    (
+                        f"root module has {count} direct inbound importers; limit is "
+                        f"{policy.root_module_max_inbound_importers}"
+                    ),
+                )
+            )
+        elif count < expected.count:
+            diagnostics.append(
+                Diagnostic(
+                    baseline_path.as_posix(),
+                    0,
+                    "architecture-baseline-stale",
+                    (
+                        f"root-module inbound-import entry {source_path!r} records "
+                        f"{expected.count} importers but source now has {count}; shrink the entry"
+                    ),
+                )
+            )
+    for source_path in entries.keys() - current_violations.keys():
+        diagnostics.append(
+            Diagnostic(
+                baseline_path.as_posix(),
+                0,
+                "architecture-baseline-stale",
+                (
+                    f"root-module inbound-import entry {source_path!r} no longer exceeds "
+                    f"the {policy.root_module_max_inbound_importers}-importer limit; remove it"
+                ),
+            )
+        )
+    return diagnostics
+
+
 def check_architecture(
     root: Path,
     policy_path: Path,
@@ -224,14 +375,31 @@ def check_architecture(
     diagnostics.extend(import_diagnostics)
     diagnostics.extend(policy_cycle_diagnostics(policy, policy_path))
     current = dependency_violations(dependencies, classified, packages, policy)
+    baseline = load_baseline(baseline_path)
     diagnostics.extend(
         compare_baseline(
             current,
-            load_baseline(baseline_path),
+            baseline.violations,
             classified,
             packages,
             policy.roles,
             policy.default_violation_guidance,
+            baseline_path,
+        )
+    )
+    root_module_inbound_imports, root_module_diagnostics = root_module_inbound_importer_counts(
+        root,
+        modules,
+        dependencies,
+        policy,
+        policy_path,
+    )
+    diagnostics.extend(root_module_diagnostics)
+    diagnostics.extend(
+        compare_root_module_inbound_import_baseline(
+            root_module_inbound_imports,
+            policy,
+            baseline.root_module_inbound_imports,
             baseline_path,
         )
     )

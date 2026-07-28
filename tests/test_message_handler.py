@@ -12,14 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from conftest import make_command_matcher, make_settings
 
-from pynchy.config import AgentConfig, IntervalsConfig
-from pynchy.config.models import LearningConfig
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDeliveryStatus,
@@ -32,8 +36,8 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator import session_handler
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
 )
@@ -44,7 +48,11 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     intercept_special_command,
     process_group_messages,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.identifiers import (
+    GroupFolder,
+    RuntimeId,
+)
+from pynchy.plugins.api import NewMessage
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -59,30 +67,22 @@ from pynchy.state import (
     store_message,
 )
 from pynchy.state import get_messages_since as get_stored_messages_since
-from pynchy.types import (
-    CheckpointControlState,
-    ContainerOutput,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
-    RuntimeId,
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.utils import ShellResult
+from pynchy.workspace.api import (
+    RuntimeTarget,
     WorkspaceProfile,
 )
-from pynchy.utils import ShellResult
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
-_P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_DIRTY = "pynchy.host.orchestrator.messaging.run_context.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
-_PR_SETTINGS = f"{_PR}.get_settings"
 _PR_NEW_MSGS = f"{_PR}.get_new_messages"
 _PR_MSGS_SINCE = f"{_PR}.get_messages_since"
 _PR_INTERCEPT = f"{_PR}.intercept_special_command"
@@ -105,6 +105,12 @@ def _make_deps(
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
     dispatched_through = {}
     deps.last_timestamp = last_timestamp
+    deps.agent_name = "Pynchy"
+    deps.message_poll_interval = 0.0
+    deps.message_data_dir = Path()
+    deps.filter_allowed_messages = MagicMock(side_effect=lambda messages, *_args: messages)
+    deps.linear_workspace_enabled = MagicMock(return_value=False)
+    deps.create_linear_workspace_todo = AsyncMock()
     deps.channels = []  # empty by default; tests that need channel routing set this explicitly
     deps.routing_cursor = MagicMock(
         side_effect=lambda jid: max(
@@ -131,6 +137,9 @@ def _make_deps(
     deps.send_reaction_to_channels = AsyncMock()
     deps.send_reaction_to_outbound = AsyncMock()
     deps.processing_ack_emoji = MagicMock(return_value="🦞")
+    deps.repo_is_dirty = MagicMock(return_value=False)
+    deps.new_learning_run_summary = learning_capture.LearningRunSummary
+    deps.observe_learning_output = learning_capture.observe_learning_output
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
     deps.start_interactive_turn = AsyncMock()
@@ -150,6 +159,7 @@ def _make_deps(
     deps.queue.enqueue_message_check = MagicMock()
     deps.queue.clear_pending_tasks = MagicMock()
     deps.queue.stop_active_process = AsyncMock()
+    deps.queue.destroy_runtime_session = AsyncMock()
     deps.queue.stop_active_process_for_control = AsyncMock()
     deps.queue.has_active_run = MagicMock(return_value=False)
     deps.queue.interrupt_after_tool_result = AsyncMock(return_value=False)
@@ -365,11 +375,7 @@ class TestInterceptSpecialCommand:
         )
         await store_message(msg)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
-        ) as destroy:
-            assert await intercept_special_command(deps, jid, group, msg) is True
+        assert await intercept_special_command(deps, jid, group, msg) is True
 
         checkpoint = await get_in_flight_turn("turn-pause")
         assert checkpoint is not None
@@ -379,7 +385,7 @@ class TestInterceptSpecialCommand:
         assert next(message for message in history if message.id == msg.id).message_type == "host"
         assert deps.last_agent_timestamp[jid] == msg.timestamp
         deps.queue.stop_active_process_for_control.assert_awaited_once_with(RuntimeId(group.folder))
-        destroy.assert_awaited_once_with(group.folder)
+        deps.queue.destroy_runtime_session.assert_awaited_once_with(RuntimeId(group.folder))
         deps.broadcast_host_message.assert_awaited_once_with(jid, "⏸️")
 
     @pytest.mark.asyncio
@@ -417,12 +423,8 @@ class TestInterceptSpecialCommand:
         for command in commands:
             await store_message(command)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
-        ):
-            for command in commands:
-                assert await intercept_special_command(deps, jid, group, command) is True
+        for command in commands:
+            assert await intercept_special_command(deps, jid, group, command) is True
 
         checkpoint = await get_in_flight_turn("turn-paused")
         assert checkpoint is not None
@@ -484,16 +486,13 @@ class TestInterceptSpecialCommand:
     async def test_manual_redeploy_reacts_to_the_source_message(self):
         msg = _make_message("redeploy", chat_jid="g@g.us")
         deps = MagicMock(spec=session_handler.SessionDeps)
+        deps.current_deploy_revision.return_value = ("a" * 40, "config-hash")
 
         with (
             patch(
                 "pynchy.host.orchestrator.session_handler._send_command_confirmation",
                 new_callable=AsyncMock,
             ) as confirmation,
-            patch(
-                "pynchy.host.orchestrator.session_handler.get_head_sha",
-                return_value="a" * 40,
-            ),
             patch(
                 "pynchy.host.orchestrator.session_handler.start_deploy_workflow",
                 new_callable=AsyncMock,
@@ -678,22 +677,6 @@ class TestExecuteDirectCommand:
 # ---------------------------------------------------------------------------
 
 
-def _settings_mock(tmp_path, **overrides):
-    """Create a real Settings instance with common test defaults.
-
-    trigger_pattern matches everything (equivalent to the old MagicMock
-    stand-in's always-truthy .search()) so trigger-gating tests are unaffected.
-    """
-    defaults = {
-        "data_dir": tmp_path,
-        "learning": LearningConfig(enabled=False),
-        "trigger_pattern": re.compile(r".*"),
-        "idle_timeout": 300,
-    }
-    defaults.update(overrides)
-    return make_settings(**defaults)
-
-
 class TestProcessGroupMessages:
     @pytest.fixture(autouse=True)
     async def _isolated_turn_ledger(self):
@@ -718,10 +701,9 @@ class TestProcessGroupMessages:
         reset_file.write_text(json.dumps({"message": "Hello after reset"}))
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -747,10 +729,9 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -768,10 +749,9 @@ class TestProcessGroupMessages:
         reset_file.write_text("NOT VALID JSON")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -785,10 +765,9 @@ class TestProcessGroupMessages:
         deps = _make_deps(groups={"g@g.us": group})
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -847,7 +826,7 @@ class TestProcessGroupMessages:
         await store_message(approval)
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
                 "handle_approval_command",
@@ -906,8 +885,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
                 "handle_approval_command",
@@ -961,8 +939,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
                 "handle_approval_command",
@@ -1038,8 +1015,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
                 "handle_approval_command",
@@ -1102,8 +1078,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.complete_turn_with_cursor",
                 new=blocked_complete,
@@ -1155,8 +1130,7 @@ class TestProcessGroupMessages:
             await release_handler.wait()
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
                 "handle_approval_command",
@@ -1202,11 +1176,10 @@ class TestProcessGroupMessages:
         deps.run_agent.side_effect = run_agent
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_fmt_sdk(),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
         assert result is TurnOutcome.COMPLETED
@@ -1235,7 +1208,7 @@ class TestProcessGroupMessages:
 
         deps.run_agent = AsyncMock(return_value="interrupted")
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_fmt_sdk(),
             patch(
@@ -1243,7 +1216,6 @@ class TestProcessGroupMessages:
                 new=complete_cursor,
             ),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
         assert result is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
@@ -1258,10 +1230,9 @@ class TestProcessGroupMessages:
         msg = _make_message("hello")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
         ):
-            ms.return_value = _settings_mock(tmp_path, trigger_pattern=re.compile(r"(?!)"))
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -1281,7 +1252,6 @@ class TestProcessGroupMessages:
         monkeypatch.setattr("pynchy.config.access.get_settings", make_settings)
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([msg], "poll-ts")),
             patch(_PR_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
             patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
@@ -1304,7 +1274,7 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -1313,10 +1283,9 @@ class TestProcessGroupMessages:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("DB failure"),
             ),
+            pytest.raises(RuntimeError, match="DB failure"),
         ):
-            ms.return_value = _settings_mock(tmp_path)
-            with pytest.raises(RuntimeError, match="DB failure"):
-                await process_group_messages(deps, "g@g.us")
+            await process_group_messages(deps, "g@g.us")
 
         # Cursor rolls back so the DB (which still has "old-ts") stays consistent
         # with in-memory state. Messages will be re-processed on the next trigger.
@@ -1339,7 +1308,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[external]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -1361,7 +1330,7 @@ class TestProcessGroupMessages:
         deps.run_agent = AsyncMock(side_effect=RuntimeError("agent crashed"))
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(_P_MSGS_SINCE, new_callable=AsyncMock, side_effect=[[external], []]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -1401,7 +1370,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(_P_MSGS_SINCE, new_callable=AsyncMock, side_effect=[[external], []]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -1425,7 +1394,7 @@ class TestProcessGroupMessages:
             assert checkpoint.conversation_claim_id == delivery.claim_id
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
             assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
@@ -1455,7 +1424,7 @@ class TestProcessGroupMessages:
         recovered_messages: list[dict] = []
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             patch(
                 _P_MSGS_SINCE,
                 new_callable=AsyncMock,
@@ -1464,7 +1433,6 @@ class TestProcessGroupMessages:
             _patch_intercept(),
             _patch_fmt_sdk(),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             with pytest.raises(asyncio.CancelledError):
                 await process_group_messages(deps, jid)
 
@@ -1530,7 +1498,7 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
             assert await process_group_messages(deps, current_jid) is TurnOutcome.COMPLETED
@@ -1574,13 +1542,7 @@ class TestProcessGroupMessages:
         deps.run_agent.side_effect = interrupted_run
         deps.queue.stop_active_process_for_control.side_effect = stop_for_control
 
-        with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(
-                "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-                new_callable=AsyncMock,
-            ),
-        ):
+        with patch.object(deps, "message_data_dir", tmp_path):
             processing = asyncio.create_task(process_group_messages(deps, jid))
             await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
             pause = _make_message(
@@ -1645,7 +1607,7 @@ class TestProcessGroupMessages:
         )
         await store_message(guidance)
 
-        with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
+        with patch.object(deps, "message_data_dir", tmp_path):
             assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         deps.run_agent.assert_awaited_once()
@@ -1699,7 +1661,7 @@ class TestProcessGroupMessages:
         )
         await store_message(guidance)
 
-        with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
+        with patch.object(deps, "message_data_dir", tmp_path):
             assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         deps.run_agent.assert_not_awaited()
@@ -1729,12 +1691,11 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.RETRY
@@ -1774,7 +1735,7 @@ class TestProcessGroupMessages:
         deps.handle_streamed_output = AsyncMock(return_value=False)
 
         with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -1812,12 +1773,11 @@ class TestProcessGroupMessages:
         deps.handle_streamed_output = AsyncMock(return_value=True)
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -1837,14 +1797,13 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=True),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
+            deps.repo_is_dirty.return_value = True
             await process_group_messages(deps, "g@g.us")
 
         call_args = deps.run_agent.call_args
@@ -1865,13 +1824,12 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
         deps.send_reaction_to_channels.assert_awaited_once_with(
@@ -1890,13 +1848,12 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
         deps.send_reaction_to_channels.assert_awaited_once_with(
@@ -1912,13 +1869,12 @@ class TestProcessGroupMessages:
         msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
         deps.send_reaction_to_channels.assert_not_awaited()
@@ -1937,10 +1893,9 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([notice]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -1969,13 +1924,12 @@ class TestProcessGroupMessages:
         )
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([notice, user_msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -1990,11 +1944,10 @@ class TestProcessGroupMessages:
         msg2 = _make_message("reset context", timestamp="ts-2")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg2]),
             _patch_intercept(return_value=True),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -2024,10 +1977,16 @@ class TestProcessGroupMessages:
         deps.send_reaction_to_outbound = AsyncMock()
 
         fake_ids = {"slack": "1234567890.000001"}
-        mock_session = MagicMock()
+        registered_idle_callback: object | None = None
+
+        def register_idle_callback(_group_folder, callback) -> None:
+            nonlocal registered_idle_callback
+            registered_idle_callback = callback
+
+        deps.register_idle_callback = MagicMock(side_effect=register_idle_callback)
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
@@ -2035,22 +1994,18 @@ class TestProcessGroupMessages:
                 "pynchy.host.orchestrator.messaging.pipeline.pop_last_result_ids",
                 return_value=fake_ids,
             ),
-            patch(
-                "pynchy.host.container_manager.session.get_session",
-                return_value=mock_session,
-            ),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
         assert result is TurnOutcome.COMPLETED
         # The reaction should NOT be sent immediately
         deps.send_reaction_to_outbound.assert_not_awaited()
-        # Instead, set_idle_callback should be called on the session
-        mock_session.set_idle_callback.assert_called_once()
+        # Instead, the runtime operation should register an idle callback.
+        deps.register_idle_callback.assert_called_once()
 
         # Calling the stored callback should send the zzz reaction
-        callback = mock_session.set_idle_callback.call_args[0][0]
+        assert registered_idle_callback is not None
+        callback = registered_idle_callback
         await callback()
         deps.send_reaction_to_outbound.assert_awaited_once_with(jid, fake_ids, "zzz")
 
@@ -2087,13 +2042,12 @@ class TestCheckDirtyRepo:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
         assert not _dirty_notice_present(deps)
@@ -2110,14 +2064,12 @@ class TestCheckDirtyRepo:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=False),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
         assert not _dirty_notice_present(deps)
@@ -2135,14 +2087,13 @@ class TestCheckDirtyRepo:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=True),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
+            deps.repo_is_dirty.return_value = True
             await process_group_messages(deps, "g@g.us")
 
         assert _dirty_notice_present(deps)
@@ -2160,14 +2111,13 @@ class TestCheckDirtyRepo:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, side_effect=OSError("permission denied")),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
+            deps.repo_is_dirty.side_effect = OSError("permission denied")
             # Should not raise
             await process_group_messages(deps, "g@g.us")
 
@@ -2203,13 +2153,12 @@ def _observe_at_run(deps):
 async def _run_with_observer(tmp_path, deps):
     msg = _make_message("hello", timestamp="new-ts")
     with (
-        patch(_P_SETTINGS) as ms,
+        patch.object(deps, "message_data_dir", tmp_path),
         _patch_msgs_since([msg]),
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_GET_RA, return_value=None),
     ):
-        ms.return_value = _settings_mock(tmp_path)
         await process_group_messages(deps, "g@g.us")
 
 
@@ -2287,13 +2236,12 @@ class TestHandleResetHandoff:
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
             patch(_P_GET_RA, return_value=None),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -2308,10 +2256,9 @@ class TestHandleResetHandoff:
         reset_file.write_text(json.dumps({"message": "Continue after reset"}))
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -2327,10 +2274,9 @@ class TestHandleResetHandoff:
         reset_file.write_text(json.dumps({"message": ""}))
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -2346,10 +2292,9 @@ class TestHandleResetHandoff:
         reset_file.write_text("NOT VALID JSON")
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.COMPLETED
@@ -2366,10 +2311,9 @@ class TestHandleResetHandoff:
         reset_file.write_text(json.dumps({"message": "Hello"}))
 
         with (
-            patch(_P_SETTINGS) as ms,
+            patch.object(deps, "message_data_dir", tmp_path),
             _patch_msgs_since([]),
         ):
-            ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is TurnOutcome.RETRY
@@ -2378,15 +2322,6 @@ class TestHandleResetHandoff:
 # ---------------------------------------------------------------------------
 # start_message_loop — "btw" non-interrupting messages during active tasks
 # ---------------------------------------------------------------------------
-
-
-def _loop_settings_mock():
-    """Settings instance suitable for start_message_loop tests."""
-    return make_settings(
-        agent=AgentConfig(name="Pynchy"),
-        intervals=IntervalsConfig(message_poll=0.0),  # no sleep between iterations
-        trigger_pattern=re.compile(r".*"),
-    )
 
 
 def _run_loop_once(deps):
@@ -2410,7 +2345,6 @@ async def test_message_loop_does_not_run_channel_reconciliation_locally():
     deps.catch_up_channels = AsyncMock()
 
     with (
-        patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
         patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([], "")),
     ):
         await _run_loop_once(deps)
@@ -2455,19 +2389,10 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
     await store_message(guidance)
 
     with (
-        patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
         patch(
             _PR_NEW_MSGS,
             new_callable=AsyncMock,
             return_value=([pause, guidance], guidance.timestamp),
-        ),
-        patch(
-            "pynchy.config.access.filter_allowed_messages",
-            side_effect=lambda messages, *_args: messages,
-        ),
-        patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
         ),
     ):
         await _run_loop_once(deps)
@@ -2513,7 +2438,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some extra context", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2560,7 +2484,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("BTW also check the logs", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2597,7 +2520,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("  btw one more thing", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2629,7 +2551,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("do something else now", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2664,7 +2585,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btwsomething", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2710,7 +2630,6 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2754,7 +2673,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some info", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2801,7 +2719,6 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2842,7 +2759,6 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2893,7 +2809,6 @@ class TestBtwNonInterruptingMessages:
         )
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2929,7 +2844,6 @@ class TestBtwNonInterruptingMessages:
         msg = _make_message("btw here's some info", timestamp="new-ts")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,
@@ -2965,7 +2879,6 @@ class TestBtwNonInterruptingMessages:
         msg2 = _make_message("world", message_id="msg-2", timestamp="ts-2")
 
         with (
-            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
             patch(
                 _PR_NEW_MSGS,
                 new_callable=AsyncMock,

@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
-from pynchy.types import RuntimeId, WorkspaceProfile
+from pynchy.identifiers import RuntimeId
+from pynchy.workspace.api import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Helpers

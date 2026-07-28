@@ -8,15 +8,19 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery anno
     Connection,
 )
 
-from pynchy.conversation.models import ConversationId
-from pynchy.conversation.workspaces import (
+from pynchy.conversation.api import (
+    ConversationId,
     conversation_id_from_folder,
     dynamic_thread_folder,
     parent_workspace_name,
     routed_conversation_folder,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.logger import logger
-from pynchy.types import ChatJid, GroupFolder, SessionId
 
 
 class RuntimeOwnershipRepairConflictError(RuntimeError):

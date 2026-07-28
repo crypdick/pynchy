@@ -3,8 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.config.api import ProfileConfig, WorkspaceConfig, validate_settings_mapping
 
 
 def _settings_data(

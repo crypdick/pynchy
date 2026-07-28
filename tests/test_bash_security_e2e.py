@@ -6,7 +6,10 @@ import pytest
 
 from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)

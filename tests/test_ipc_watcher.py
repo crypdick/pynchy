@@ -21,9 +21,9 @@ from pynchy.host.container_manager.ipc.watcher import (
     recover_ipc_runtime,
     start_ipc_watcher,
 )
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.api import RepoContext
 from pynchy.state import init_test_database
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -132,7 +132,6 @@ class TestStartupSweepErrorFiles:
             await asyncio.sleep(0)
 
         with (
-            patch("pynchy.host.container_manager.ipc.watcher.get_settings", return_value=settings),
             patch(
                 "pynchy.host.container_manager.ipc.watcher.Observer",
                 return_value=_NoopObserver(),
@@ -150,7 +149,7 @@ class TestStartupSweepErrorFiles:
                 stop_after_startup_sweep,
             ),
         ):
-            await start_ipc_watcher(deps)
+            await start_ipc_watcher(deps, ipc_base_dir=settings.data_dir / "ipc")
 
     async def test_preserves_file_content_on_startup_parse_error(self, deps, tmp_path: Path):
         """Error files should retain their original content for debugging."""
@@ -199,8 +198,8 @@ class TestHostApprovalRecovery:
 
         with (
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                settings.data_dir / "approvals",
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",

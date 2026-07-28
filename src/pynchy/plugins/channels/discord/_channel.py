@@ -6,6 +6,7 @@ from __future__ import annotations
 # Splitting them would obscure the connection-level lifecycle.
 import asyncio
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
     Callable,
     Iterable,
 )
@@ -18,23 +19,27 @@ from typing import Any, cast
 import discord
 
 from pynchy.discord import DiscordChatTarget, DiscordConnectionSettings, resolve_discord_chat_target
-from pynchy.host.orchestrator.messaging.formatters.base import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.host.orchestrator.api import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     RenderedMessage,
+    TextFormatter,
 )
-from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    SpeechSynthesizer,
-)
-from pynchy.state.api import get_chat_jids_by_name
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    AudioTranscriptionResult,
+    InboundAudioProcessingRequest,
+    InboundAudioProcessingResult,
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
+)
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    SpeechSynthesizer,
 )
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+)
 
 from ._access import DiscordAccess, interaction_context
 from ._ask_user import DiscordAskUserView, send_ask_user_prompt
@@ -94,6 +99,12 @@ class DiscordChannel:
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         workspaces: Callable[[], dict[str, WorkspaceProfile]] | None = None,
         speech_synthesizer: SpeechSynthesizer | None = None,
+        transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None = None,
+        process_inbound_audio: (
+            Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]]
+            | None
+        ) = None,
+        find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = TextFormatter()
@@ -106,6 +117,7 @@ class DiscordChannel:
         self.on_ask_user_answer = on_ask_user_answer
         self.on_approval_decision = on_approval_decision
         self.workspaces = workspaces
+        self._find_chat_jids_by_name = find_chat_jids_by_name
         self.bot_user_id: str = ""
         self.client: object | None = None
         self._connected = False
@@ -115,8 +127,8 @@ class DiscordChannel:
         self._ask_user_views: dict[str, discord.ui.View] = {}
 
         self.access = DiscordAccess(config)
-        self.voice = DiscordVoiceManager(self, speech_synthesizer)
-        self.events = DiscordEvents(self, audio_cache_dir)
+        self.voice = DiscordVoiceManager(self, speech_synthesizer, transcribe_audio)
+        self.events = DiscordEvents(self, audio_cache_dir, process_inbound_audio)
         self.lifecycle = DiscordLifecycle(self)
 
     @property
@@ -241,9 +253,12 @@ class DiscordChannel:
         )
 
     async def _find_stored_direct_jid(self, user_key: str) -> str | None:
+        find_chat_jids_by_name = self._find_chat_jids_by_name
+        if find_chat_jids_by_name is None:
+            return None
         matches = [
             jid
-            for jid in await get_chat_jids_by_name(user_key)
+            for jid in await find_chat_jids_by_name(user_key)
             if jid.startswith("discord:direct:")
         ]
         if len(matches) == 1:

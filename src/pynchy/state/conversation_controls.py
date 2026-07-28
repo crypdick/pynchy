@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiosqlite import Connection  # noqa: TC002 - beartype resolves state annotations at runtime.
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ControlSurface,
     ConversationClaimId,
     ConversationControlBinding,
@@ -18,9 +18,12 @@ from pynchy.conversation.models import (
     ExternalRoute,
     TerminalConversationRetirement,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.conversation_terminal_runtime import terminal_runtime_resources
-from pynchy.types import ChatJid, GroupFolder
 
 if TYPE_CHECKING:
     from aiosqlite import Row

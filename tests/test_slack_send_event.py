@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.plugins.channels.slack import SlackBlocksFormatter, SlackChannel
-from pynchy.types import OutboundEvent, OutboundEventType
 
 SLACK_BOT_VALUE = "xoxb-test"
 SLACK_APP_VALUE = "xapp-test"

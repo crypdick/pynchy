@@ -8,10 +8,9 @@ import pluggy
 import pytest
 
 from pynchy.host.orchestrator import session_handler
-from pynchy.plugins.hookspecs import PynchySpec
+from pynchy.plugins.api import PynchySpec, prepare_context_reset
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
-from pynchy.plugins.session_lifecycle import prepare_context_reset
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -73,13 +72,22 @@ async def test_linear_plugin_settles_its_execution_before_reset() -> None:
         folder="test",
         trigger="@pynchy",
     )
+    cancel_workflow = AsyncMock(return_value=True)
     with patch(
         "pynchy.plugins.integrations.linear.cancel_linear_execution_for_reset",
         new_callable=AsyncMock,
     ) as cancel:
-        await LinearMcpPlugin().pynchy_before_context_reset(group)
+        state = MagicMock()
+        await LinearMcpPlugin(
+            cancel_scheduled_workflow=cancel_workflow,
+            session_reset_state=state,
+        ).pynchy_before_context_reset(group)
 
-    cancel.assert_awaited_once_with(group)
+    cancel.assert_awaited_once_with(
+        group,
+        cancel_scheduled_workflow=cancel_workflow,
+        state=state,
+    )
 
 
 async def test_invalid_lifecycle_hook_fails_closed() -> None:
@@ -126,12 +134,9 @@ async def test_scheduled_reset_settles_plugins_before_destructive_cleanup() -> N
     )
     deps = MagicMock(spec=session_handler.ResetSessionDeps)
     deps.prepare_context_reset = AsyncMock(side_effect=RuntimeError("not settled"))
+    deps.destroy_runtime_session = AsyncMock()
 
     with (
-        patch(
-            "pynchy.host.orchestrator.session_handler.destroy_session",
-            new_callable=AsyncMock,
-        ) as destroy_session,
         patch(
             "pynchy.host.orchestrator.session_handler.clear_session",
             new_callable=AsyncMock,
@@ -146,7 +151,7 @@ async def test_scheduled_reset_settles_plugins_before_destructive_cleanup() -> N
         )
 
     deps.prepare_context_reset.assert_awaited_once_with(group)
-    destroy_session.assert_not_awaited()
+    deps.destroy_runtime_session.assert_not_awaited()
     clear_session.assert_not_awaited()
 
 
@@ -162,6 +167,9 @@ async def test_manual_reset_stops_worker_before_plugin_settlement() -> None:
     deps.queue.stop_active_process_for_control = AsyncMock(
         side_effect=lambda _runtime_id: events.append("stopped")
     )
+    deps.destroy_runtime_session = AsyncMock(
+        side_effect=lambda _runtime_id: events.append("destroyed")
+    )
     deps.prepare_context_reset = AsyncMock(side_effect=lambda _group: events.append("settled"))
     deps.sessions = {}
     deps.session_cleared = set()
@@ -171,11 +179,6 @@ async def test_manual_reset_stops_worker_before_plugin_settlement() -> None:
     deps.emit = MagicMock()
 
     with (
-        patch(
-            "pynchy.host.orchestrator.session_handler.destroy_session",
-            new_callable=AsyncMock,
-            side_effect=lambda _folder: events.append("destroyed"),
-        ),
         patch(
             "pynchy.host.orchestrator.session_handler.clear_session",
             new_callable=AsyncMock,

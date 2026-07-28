@@ -11,10 +11,10 @@ from typing import Protocol, cast, runtime_checkable
 import pluggy
 
 from pynchy.logger import logger
-from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+    Channel,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     ChannelPluginContext,
 )
-from pynchy.types import Channel  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 _DUPLICATE_AUTH_DB_PATH = (
@@ -67,6 +67,10 @@ class WhatsAppPlugin:
                     on_chat_metadata=context.on_chat_metadata_callback,
                     workspaces=context.workspaces,
                     on_ask_user_answer=context.on_ask_user_answer_callback,
+                    find_chat_jids_by_name=context.find_chat_jids_by_name,
+                    get_last_group_sync=context.get_last_group_sync,
+                    set_last_group_sync=context.set_last_group_sync,
+                    update_chat_name=context.update_chat_name,
                 )
             )
         return channels

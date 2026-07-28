@@ -10,8 +10,8 @@ from pynchy.host.orchestrator.threads import (
     find_thread,
     supports_thread_creation,
 )
-from pynchy.types import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 

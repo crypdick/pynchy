@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -12,7 +12,7 @@ from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-from conftest import make_settings
+from conftest import configure_linear_accounts_for, make_settings
 from linear_webhook_test_support import (
     DELIVERY_ID as _DELIVERY_ID,
 )
@@ -50,8 +50,7 @@ from linear_webhook_test_support import (
     webhook_route as _route,
 )
 
-from pynchy.config import PluginConfig
-from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import LinearTool, PluginConfig, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.dispatch import conversation_runtime_lock
 from pynchy.conversation.models import (
     ControlSurface,
@@ -75,6 +74,18 @@ from pynchy.host.orchestrator.webhook_event_payloads import (
     webhook_event_from_payload,
     webhook_event_payload,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    SessionId,
+)
+from pynchy.plugins.api import (
+    WebhookAuthenticationError,
+    WebhookConfigurationError,
+    WebhookConversation,
+    WebhookEvent,
+    WebhookLifecycleDelivery,
+    WebhookProcessingError,
+)
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
@@ -88,14 +99,6 @@ from pynchy.plugins.integrations.linear_webhooks import (
     prepare_linear_webhook_event,
 )
 from pynchy.plugins.integrations.linear_work_item_provider import LinearWorkspaceIssueError
-from pynchy.plugins.webhooks import (
-    WebhookAuthenticationError,
-    WebhookConfigurationError,
-    WebhookConversation,
-    WebhookEvent,
-    WebhookLifecycleDelivery,
-    WebhookProcessingError,
-)
 from pynchy.state import (
     WorkItemClaimRequest,
     apply_conversation_control_state,
@@ -114,13 +117,11 @@ from pynchy.state import (
     set_conversation_control_binding,
     set_conversation_session,
 )
-from pynchy.types import (
-    GroupFolder,
-    SessionId,
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -1446,16 +1447,8 @@ def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
         workspaces={"project": WorkspaceConfig(profiles=["linear"])},
         tools={"linear": LinearTool(type="linear", public_source=False)},
     )
-    with (
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=settings,
-        ),
-    ):
+    configure_linear_accounts_for(settings)
+    with nullcontext():
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
         validate = route.validate_workspace
         assert validate is not None
@@ -1493,16 +1486,8 @@ def test_plugin_route_preserves_public_linear_source_taint() -> None:
         workspaces={"project": WorkspaceConfig(profiles=["linear"])},
         tools={"linear": LinearTool(type="linear", public_source=True)},
     )
-    with (
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=settings,
-        ),
-    ):
+    configure_linear_accounts_for(settings)
+    with nullcontext():
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
 
     assert route.public_source is True
@@ -1534,16 +1519,8 @@ def test_project_routed_route_declares_semantic_candidates_before_provider_boot(
         },
         tools={"linear": LinearTool(type="linear", public_source=False)},
     )
-    with (
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=settings,
-        ),
-    ):
+    configure_linear_accounts_for(settings)
+    with nullcontext():
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
 
     assert route.workspace is None
@@ -1584,11 +1561,8 @@ def test_each_route_uses_its_named_account_trust() -> None:
             "linear_synapse": LinearTool(type="linear", public_source=False),
         },
     )
-    with patch(
-        "pynchy.plugins.integrations.linear_webhooks.get_settings",
-        return_value=settings,
-    ):
-        routes = LinearMcpPlugin().pynchy_webhook_routes()
+    configure_linear_accounts_for(settings)
+    routes = LinearMcpPlugin().pynchy_webhook_routes()
 
     assert [(route.name, route.public_source) for route in routes] == [
         ("public", True),
@@ -1618,16 +1592,8 @@ def test_route_rejects_a_workspace_bound_to_another_linear_account() -> None:
             "linear_synapse": LinearTool(type="linear", public_source=False),
         },
     )
-    with (
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=settings,
-        ),
-    ):
+    configure_linear_accounts_for(settings)
+    with nullcontext():
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
         validate = route.validate_workspace
         assert validate is not None
@@ -1807,15 +1773,8 @@ async def test_route_preparation_verifies_board_membership_before_dispatch() -> 
         workspaces={"project": WorkspaceConfig(profiles=["linear"])},
         tools={"linear": LinearTool(type="linear", public_source=False)},
     )
+    configure_linear_accounts_for(settings)
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=settings,
-        ),
         patch(
             "pynchy.plugins.integrations.linear_webhooks.linear_client",
             return_value=_linear_client_context(),
@@ -1865,10 +1824,6 @@ async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() 
         patch(
             "pynchy.plugins.integrations.linear_webhooks.workspace_for_linear_project",
             return_value="fam",
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_webhooks.get_settings",
-            return_value=settings,
         ),
         patch(
             "pynchy.plugins.integrations.linear_webhooks.workspace_issue",

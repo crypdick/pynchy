@@ -18,6 +18,7 @@ from pynchy.host.container_manager.security.approval import (
     list_pending_approvals,
     sweep_expired_approvals,
 )
+from pynchy.state import expire_action_intent
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,7 +48,8 @@ def settings(tmp_path: Path):
 class TestCreatePendingApproval:
     def test_creates_pending_file(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             create_pending_approval(
                 request_id="aabb001122334455",
@@ -81,7 +83,8 @@ class TestCreatePendingApproval:
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             create_pending_approval(
                 request_id="abc123",
@@ -96,7 +99,8 @@ class TestCreatePendingApproval:
 
     def test_returns_short_id(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             short_id = create_pending_approval(
                 request_id="aabb001122334455",
@@ -117,7 +121,8 @@ class TestCreatePendingApproval:
 class TestGenerateShortId:
     def test_returns_2_char_alphanumeric(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             sid = generate_short_id("grp")
 
@@ -127,7 +132,8 @@ class TestGenerateShortId:
     def test_avoids_collision_with_existing(self, ipc_dir: Path, settings):
         """If existing pending has short_id 'ab', generating with 'ab' taken should differ."""
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             # Create a pending approval to occupy one short_id
             first_id = create_pending_approval("req1", "tool", "grp", "j@g.us", {})
@@ -149,7 +155,8 @@ class TestGenerateShortId:
 class TestFindPendingByShortId:
     def test_finds_by_short_id(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             short_id = create_pending_approval(
                 "req-abc", "tool_a", "grp", "j@g.us", {"msg": "test"}
@@ -162,7 +169,8 @@ class TestFindPendingByShortId:
 
     def test_returns_none_for_unknown(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             result = find_pending_by_short_id("zz")
 
@@ -175,7 +183,8 @@ class TestFindPendingByShortId:
 class TestListPendingApprovals:
     def test_lists_all_pending(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             create_pending_approval("req1", "tool_a", "grp1", "j1@g.us", {})
             create_pending_approval("req2", "tool_b", "grp2", "j2@g.us", {})
@@ -187,7 +196,8 @@ class TestListPendingApprovals:
 
     def test_filters_by_group(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             create_pending_approval("req1", "tool_a", "grp1", "j1@g.us", {})
             create_pending_approval("req2", "tool_b", "grp2", "j2@g.us", {})
@@ -198,7 +208,8 @@ class TestListPendingApprovals:
 
     def test_empty_when_no_pending(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             result = list_pending_approvals()
 
@@ -214,10 +225,12 @@ class TestSweepExpiredApprovals:
     async def test_expires_old_pending(self, ipc_dir: Path, settings):
         with (
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                settings.data_dir / "approvals",
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             create_pending_approval(
                 "req-old",
@@ -236,7 +249,7 @@ class TestSweepExpiredApprovals:
             data["timestamp"] = (datetime.now(UTC) - timedelta(seconds=2)).isoformat()
             pending_file.write_text(json.dumps(data))
 
-            expired = await sweep_expired_approvals()
+            expired = await sweep_expired_approvals(expire_action_intent)
 
         assert len(expired) == 1
         assert expired[0]["request_id"] == "req-old"
@@ -252,10 +265,11 @@ class TestSweepExpiredApprovals:
     @pytest.mark.asyncio
     async def test_keeps_fresh_pending(self, ipc_dir: Path, settings):
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
             create_pending_approval("req-fresh", "tool_b", "grp", "j@g.us", {})
-            expired = await sweep_expired_approvals()
+            expired = await sweep_expired_approvals(expire_action_intent)
 
         assert len(expired) == 0
         assert (
@@ -271,9 +285,10 @@ class TestSweepExpiredApprovals:
         orphan.write_text(json.dumps({"request_id": "orphan-req", "approved": True}))
 
         with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ):
-            await sweep_expired_approvals()
+            await sweep_expired_approvals(expire_action_intent)
 
         assert not orphan.exists()
 

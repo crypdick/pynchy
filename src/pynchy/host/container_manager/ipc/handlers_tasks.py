@@ -20,8 +20,15 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.types import GroupFolder, ScheduledTask, SessionPolicy, WorkspaceProfile
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @dataclass(frozen=True)

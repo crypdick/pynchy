@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationClaimId,
     ConversationDelivery,
     ExternalDeliveryId,
@@ -21,12 +21,12 @@ from pynchy.host.orchestrator.webhook_event_rendering import (
     event_public_source,
     prompt_for_event,
 )
-from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves processing annotations at runtime.
+from pynchy.identifiers import GroupFolder
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves processing annotations at runtime.
     WebhookEvent,
     WebhookRoute,
 )
-from pynchy.state.webhook_models import WebhookConversationRequest
-from pynchy.types import GroupFolder
+from pynchy.state.api import WebhookConversationRequest
 
 
 def conversation_admission_request(

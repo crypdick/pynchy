@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
@@ -31,7 +35,6 @@ from pynchy.state import (
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
 )
-from pynchy.types import InFlightTurn, InFlightWorkKind
 
 
 @dataclass

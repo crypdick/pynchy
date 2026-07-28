@@ -8,8 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from freezegun import freeze_time
 
-from pynchy.config.models import OwnerConfig, WorkspaceConfig
+from pynchy.config.api import OwnerConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
+from pynchy.plugins.api import (
+    Channel,
+    InboundFetchResult,
+    NewMessage,
+    OutboundEventType,
+)
 from pynchy.state import (
     get_channel_cursor,
     get_pending_outbound,
@@ -19,13 +25,7 @@ from pynchy.state import (
     store_chat_metadata,
 )
 from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
-from pynchy.types import (
-    Channel,
-    InboundFetchResult,
-    NewMessage,
-    OutboundEventType,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 from tests.conftest import init_test_database, make_settings
 
 # ---------------------------------------------------------------------------

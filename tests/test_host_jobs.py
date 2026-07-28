@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,7 +12,10 @@ from conftest import NullIpcDeps, init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
-from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    TemporalActivityInfo,
+    bind_scheduler_deps,
+)
 from pynchy.state import (
     create_host_job,
     get_host_job_by_id,
@@ -18,10 +23,26 @@ from pynchy.state import (
 )
 from pynchy.utils import ShellResult
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@dataclass(frozen=True)
+class _SchedulerRuntime:
+    project_root: Path
+
+
+@dataclass(frozen=True)
+class _SchedulerDeps:
+    scheduler_runtime: _SchedulerRuntime
+
 
 @pytest.fixture(autouse=True)
-async def _setup_db():
+async def _setup_db(tmp_path):
     await init_test_database()
+    bind_scheduler_deps(_SchedulerDeps(scheduler_runtime=_SchedulerRuntime(project_root=tmp_path)))
+    yield
+    bind_scheduler_deps(None)
 
 
 @pytest.fixture

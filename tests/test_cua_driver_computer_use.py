@@ -7,14 +7,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.plugins.computer_use import ComputerUseRouterConfig
+from pynchy.plugins.api import ComputerUseRouterConfig
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
-from pynchy.plugins.integrations.cua_driver import CuaDriverBackend, CuaDriverConfig
+from pynchy.plugins.integrations.cua_driver import (
+    CuaDriverBackend,
+    CuaDriverComputerUsePlugin,
+    CuaDriverConfig,
+)
 
 if TYPE_CHECKING:
-    from pynchy.capabilities import HostActionHandler
+    from pynchy.plugins.api import HostActionHandler
 
 
 class _FakeProcess:
@@ -37,11 +40,20 @@ class _FakeProcess:
         self.killed = True
 
 
-def _handler() -> HostActionHandler:
+def _handler(data_dir: Path | None = None) -> HostActionHandler:
     backend = CuaDriverBackend(CuaDriverConfig(binary="cua-driver", timeout_seconds=5))
     config = ComputerUseRouterConfig(providers=("cua-driver",))
-    registration = ComputerUsePlugin(config).pynchy_service_handler((backend,))
+    registration = ComputerUsePlugin(config, data_dir=data_dir).pynchy_service_handler((backend,))
     return registration.actions[0].handler
+
+
+def test_plugin_uses_lifecycle_configuration() -> None:
+    plugin = CuaDriverComputerUsePlugin()
+    config = CuaDriverConfig(binary="configured-cua", timeout_seconds=5)
+
+    plugin.configure(config)
+
+    assert plugin.pynchy_computer_use_backend().config is config
 
 
 @pytest.mark.asyncio
@@ -85,12 +97,8 @@ async def test_existing_actions_remain_available_through_cua_fallback(
             "pynchy.plugins.integrations.cua_driver.asyncio.create_subprocess_exec",
             new=AsyncMock(side_effect=fake_exec),
         ),
-        patch(
-            "pynchy.plugins.integrations.computer_use._plugin.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
     ):
-        result = await _handler()({"source_group": "admin", "action": action, **arguments})
+        result = await _handler(tmp_path)({"source_group": "admin", "action": action, **arguments})
 
     assert captured_calls[0][0:3] == ("/bin/cua-driver", "call", expected_action)
     assert result["result"]["backend"] == "cua-driver"

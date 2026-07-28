@@ -9,7 +9,12 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import ConversationSubjectKey
+from pynchy.identifiers import GroupFolder
 from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
     LinearPlanReviewResult,
@@ -22,6 +27,11 @@ from pynchy.plugins.integrations.linear_decision_inbox import (
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_work_item_lease,
+)
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
 )
 from pynchy.state import (
     WorkItemTransitionRequest,
@@ -41,13 +51,7 @@ from pynchy.state import (
     resolve_work_item_transition,
     update_task,
 )
-from pynchy.types import (
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    ScheduledTask,
-    SessionPolicy,
-    TaskRunLog,
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
 )

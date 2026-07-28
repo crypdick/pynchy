@@ -19,7 +19,11 @@ from pynchy.host.orchestrator.adapters import (
     SessionManager,
     resolve_admin_notification_jid,
 )
-from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.workspace.api import WorkspaceProfile
 
 CHANNEL_DOWN_MESSAGE = "channel down"
 

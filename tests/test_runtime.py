@@ -10,9 +10,9 @@ import pytest
 from conftest import make_settings
 
 import pynchy.plugins.runtimes.detection as runtime_mod
-from pynchy.config import ContainerConfig
-from pynchy.host.container_manager.cleanup import OrphanReapingRuntime
+from pynchy.config.api import ContainerConfig
 from pynchy.plugins.runtimes.apple_runtime.runtime import AppleContainerRuntime
+from pynchy.plugins.runtimes.cleanup import OrphanReapingRuntime
 from pynchy.plugins.runtimes.detection import detect_runtime
 from pynchy.plugins.runtimes.docker_runtime.runtime import DockerContainerRuntime
 
@@ -47,22 +47,20 @@ class TestDetectRuntime:
         apple = FakePluginRuntime(name="apple")
         docker = _docker_plugin()
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override="apple")),
             patch(
                 "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
                 return_value=[apple, docker],
             ),
         ):
-            r = detect_runtime()
+            r = detect_runtime("apple")
         assert r is apple
 
     def test_settings_override_docker(self):
         docker = _docker_plugin()
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override="docker")),
             patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[docker]),
         ):
-            r = detect_runtime()
+            r = detect_runtime("docker")
         assert r.name == "docker"
         assert r.cli == "docker"
 
@@ -70,7 +68,6 @@ class TestDetectRuntime:
         apple = FakePluginRuntime(name="apple")
         docker = _docker_plugin()
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
             patch(
                 "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
                 return_value=[apple, docker],
@@ -84,7 +81,6 @@ class TestDetectRuntime:
     def test_darwin_without_apple_plugin_uses_docker(self):
         docker = _docker_plugin()
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
             patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[docker]),
             patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
         ):
@@ -95,17 +91,15 @@ class TestDetectRuntime:
     def test_unknown_runtime_override_falls_back_to_docker(self):
         docker = _docker_plugin()
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override="podman")),
             patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[docker]),
             patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
         ):
             mock_sys.platform = "linux"
-            r = detect_runtime()
+            r = detect_runtime("podman")
         assert r.name == "docker"
 
     def test_no_plugins_raises(self):
         with (
-            patch("pynchy.config.get_settings", return_value=_settings(runtime_override=None)),
             patch("pynchy.plugins.runtimes.detection._iter_plugin_runtimes", return_value=[]),
             pytest.raises(RuntimeError, match="No container runtime plugins"),
         ):

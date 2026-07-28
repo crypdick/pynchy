@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
-
-if TYPE_CHECKING:
-    from pynchy.config.scheduler_models import SchedulerConfig
+from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
 
-from pynchy.config import get_settings
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
 from pynchy.host.orchestrator.config_job_execution import (
     ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
     prepare_config_job,
     run_deterministic_config_job,
 )
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
@@ -37,11 +36,20 @@ from pynchy.host.orchestrator.scheduled_turn import (
 from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - public runtime re-export.
     SchedulerDependencies,
 )
-from pynchy.host.orchestrator.temporal.runtime_state import (
+from pynchy.host.orchestrator.temporal.api import (
     TemporalActivityInfo,
+    get_temporal_scheduler_runtime,
     parse_temporal_activity_info,
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    TaskRunLog,
+)
 from pynchy.state.api import (
     claim_in_flight_turn,
     clear_in_flight_turn,
@@ -51,14 +59,9 @@ from pynchy.state.api import (
     record_task_completion,
     update_task,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    InFlightTurn,
-    OutboundEvent,
-    OutboundEventType,
-    ScheduledTask,
-    TaskRunLog,
-    WorkspaceProfile,
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 _config_job_run_locks: dict[str, asyncio.Lock] = {}
@@ -73,24 +76,19 @@ class TemporalRuntime(Protocol):
     async def reconcile_schedules(self) -> None: ...
 
 
-def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: object) -> object:
+def _build_temporal_runtime(deps: SchedulerDependencies) -> object:
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:
-        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - importing the Temporal scheduler at module load creates a cycle.
-            TemporalSchedulerRuntime as _TemporalSchedulerRuntime,
-        )
-
-        runtime_cls = _TemporalSchedulerRuntime
-    return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
+        runtime_cls = cast("Any", get_temporal_scheduler_runtime())
+    return runtime_cls(deps, deps.scheduler_runtime)
 
 
 async def _run_scheduler_owner(
     deps: SchedulerDependencies,
     ready: asyncio.Future[None] | None,
 ) -> None:
-    scheduler_config = get_settings().scheduler
-    async with _build_temporal_runtime(deps, scheduler_config) as temporal_runtime:
+    async with _build_temporal_runtime(deps) as temporal_runtime:
         logger.info("Scheduler loop started", backend="temporal")
         if ready is not None and not ready.done():
             ready.set_result(None)
@@ -130,7 +128,7 @@ async def _run_scheduler_loop(
         except Exception:  # noqa: BLE001, RUF100 - scheduler loop is a long-lived reconcile boundary.
             logger.exception("Error in scheduler loop")
 
-        await asyncio.sleep(get_settings().scheduler.poll_interval)
+        await asyncio.sleep(_deps.scheduler_runtime.poll_interval)
 
 
 def _temporal_run_metadata() -> TemporalActivityInfo | None:
@@ -261,7 +259,7 @@ async def resume_interrupted_scheduled_turn(
             deps=cast("ScheduledTurnDeps", deps),
             group=group,
             idle_enabled=True,
-            idle_timeout=get_settings().idle_timeout,
+            idle_timeout=deps.scheduler_runtime.idle_timeout,
             resume_turn=turn,
         )
     )
@@ -370,8 +368,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
         deps.reset_scheduled_context,
         update_task,
     )
-    s = get_settings()
-    group_dir = s.groups_dir / runtime_folder
+    group_dir = deps.scheduler_runtime.groups_dir / runtime_folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("Running scheduled task", task_id=task.id, group=runtime_folder)
@@ -419,7 +416,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             deps=cast("ScheduledTurnDeps", deps),
             group=group,
             idle_enabled=True,
-            idle_timeout=s.idle_timeout,
+            idle_timeout=deps.scheduler_runtime.idle_timeout,
             on_started=on_started,
         )
     )

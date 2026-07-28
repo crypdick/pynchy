@@ -7,12 +7,11 @@ agent process only when its selected tool explicitly authorizes that exposure.
 from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves credential runtime annotations.
+    Callable,
+)
 from urllib.parse import urlparse
 
-from pynchy.config import get_settings
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves credential helper annotations.
-)
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
@@ -22,23 +21,6 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 # Host-side discovery helpers
 # ---------------------------------------------------------------------------
-
-
-def _read_gh_token() -> str | None:
-    """Read GitHub token from the host's gh CLI."""
-    try:
-        result = subprocess.run(
-            ["gh", "auth", "token"],  # noqa: S607, RUF100 - gh is a trusted host CLI and argv is fixed.
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Failed to read GitHub token from gh CLI", err=str(exc))
-    return None
 
 
 def _read_git_config_value(key: str) -> str | None:
@@ -76,6 +58,22 @@ def _read_git_identity() -> tuple[str | None, str | None]:
 
 
 _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
+
+_workspace_env_vars: Callable[..., dict[str, str]] | None = None
+
+
+def configure_workspace_environment(
+    workspace_env_vars: Callable[..., dict[str, str]],
+) -> None:
+    """Install the selected workspace environment projection at composition."""
+    global _workspace_env_vars  # noqa: PLW0603, RUF100 - one host process owns credential policy composition.
+    _workspace_env_vars = workspace_env_vars
+
+
+def _configured_workspace_environment() -> Callable[..., dict[str, str]]:
+    if _workspace_env_vars is None:
+        raise RuntimeError("workspace environment has not been configured")
+    return _workspace_env_vars
 
 
 def has_api_credentials() -> bool:
@@ -146,38 +144,6 @@ def _git_identity_env_vars() -> dict[str, str]:
     return env_vars
 
 
-def _workspace_config_env_vars(s: Settings, *, is_admin: bool, group_folder: str) -> dict[str, str]:
-    """Authorized tool variables and Chrome profiles for one workspace.
-
-    Admin gets every configured chrome profile; non-admin workspaces get the
-    chrome profile suffixes from selected MCP tools such as ``gdrive.personal``.
-    """
-    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100
-        load_resolved_config,
-        load_resolved_tool_access,
-    )
-
-    access = load_resolved_tool_access(group_folder)
-    env_vars = dict(access.workspace_env) if access is not None else {}
-    if is_admin:
-        chrome_profiles = s.chrome_profiles
-    else:
-        chrome_profiles_set: set[str] = set()
-        resolved = load_resolved_config(group_folder)
-        for tool_name in resolved.tools if resolved else []:
-            tool = s.tools.get(tool_name)
-            if tool is None or tool.type != "mcp" or "." not in tool_name:
-                continue
-            _, inst_name = tool_name.split(".", 1)
-            if inst_name in s.chrome_profiles:
-                chrome_profiles_set.add(inst_name)
-        chrome_profiles = sorted(chrome_profiles_set)
-
-    if chrome_profiles:
-        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
-    return env_vars
-
-
 def build_agent_env_vars(
     *,
     is_admin: bool,
@@ -189,7 +155,6 @@ def build_agent_env_vars(
         get_gateway,
     )
 
-    s = get_settings()
     env_vars: dict[str, str] = {}
     gateway = get_gateway()
     gateway_env_vars = _gateway_env_vars(gateway)
@@ -199,5 +164,7 @@ def build_agent_env_vars(
     if gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
     env_vars.update(_git_identity_env_vars())
-    env_vars.update(_workspace_config_env_vars(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars.update(
+        _configured_workspace_environment()(is_admin=is_admin, group_folder=group_folder)
+    )
     return env_vars

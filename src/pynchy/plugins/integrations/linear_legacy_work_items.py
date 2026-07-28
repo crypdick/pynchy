@@ -1,8 +1,12 @@
-"""Migration bridge for approved work from the pre-lease Linear lifecycle."""
+"""Translate ready-for-planning Linear transitions into work-item leases."""
 
 from __future__ import annotations
 
 import re
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured transition callbacks at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -11,17 +15,12 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
-from pynchy.state.api import (
+from pynchy.work_items.api import (
     WorkItemClaimConflictError,
-    WorkItemClaimRequest,
-    create_work_item_claim,
-    get_active_work_item_execution,
-    get_all_tasks,
-    get_work_item_execution,
-    get_work_item_transition_by_request,
-    resolve_work_item_transition,
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+    WorkItemTransitionStatus,
 )
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus, WorkItemTransitionStatus
 
 _LEGACY_PLANNING_TASK_PREFIX = "linear-ready-for-planning-"
 
@@ -49,6 +48,38 @@ class LegacyAdoptionRequest:
     board: LinearWorkspaceBoard
 
 
+@dataclass(frozen=True)
+class LinearLegacyWorkItemRuntime:
+    """Durable operations that create work-item leases from transitions."""
+
+    get_all_tasks: Callable[[], Awaitable[list[Any]]]
+    get_transition_by_request: Callable[[str], Awaitable[Any]]
+    create_claim: Callable[[Any], Awaitable[Any]]
+    claim_request: Callable[..., Any]
+    get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    get_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    resolve_transition: Callable[..., Awaitable[WorkItemExecution]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearLegacyWorkItemRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_legacy_work_item_runtime(runtime: LinearLegacyWorkItemRuntime) -> None:
+    """Set the durable operations that translate planning transitions."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearLegacyWorkItemRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear legacy work-item runtime has not been configured")
+    return _runtime.runtime
+
+
 def _state_id(board: LinearWorkspaceBoard, status: str) -> str:
     state = board.states.get(status)
     state_id = state.get("id") if isinstance(state, dict) else None
@@ -67,7 +98,7 @@ async def _legacy_planning_task_id(request: LegacyAdoptionRequest) -> str | None
     task = next(
         (
             task
-            for task in await get_all_tasks()
+            for task in await _configured_runtime().get_all_tasks()
             if task.id.startswith(prefix)
             and task.status == "completed"
             and "[Source: linear-decision-inbox]" in task.prompt
@@ -82,6 +113,7 @@ async def adopt_legacy_in_progress_execution(
     request: LegacyAdoptionRequest,
 ) -> WorkItemExecution | None:
     """Adopt completed planning-task evidence into the execution lease."""
+    runtime = _configured_runtime()
     legacy_task_id = await _legacy_planning_task_id(request)
     provider_issue = await request.client.get_issue(request.issue.id)
     if legacy_task_id is None or provider_issue is None:
@@ -94,11 +126,11 @@ async def adopt_legacy_in_progress_execution(
         return None
 
     request_id = f"linear-legacy:{legacy_task_id}:lease"
-    transition = await get_work_item_transition_by_request(request_id)
+    transition = await runtime.get_transition_by_request(request_id)
     if transition is None:
         try:
-            await create_work_item_claim(
-                WorkItemClaimRequest(
+            await runtime.create_claim(
+                runtime.claim_request(
                     workspace=request.workspace.folder,
                     issue=provider_issue,
                     turn_id=None,
@@ -108,18 +140,18 @@ async def adopt_legacy_in_progress_execution(
                 )
             )
         except WorkItemClaimConflictError:
-            current_execution = await get_active_work_item_execution(request.issue.id)
+            current_execution = await runtime.get_active_execution(request.issue.id)
             if current_execution is None or current_execution.workspace != request.workspace.folder:
                 raise
-        transition = await get_work_item_transition_by_request(request_id)
+        transition = await runtime.get_transition_by_request(request_id)
     else:
-        prior_execution = await get_work_item_execution(transition.execution_id)
+        prior_execution = await runtime.get_execution(transition.execution_id)
         if prior_execution is None:
             raise RuntimeError("Legacy Linear lease transition lost its execution")
     if transition is None:
         raise RuntimeError("Legacy Linear lease transition was not persisted")
 
-    adopted = await resolve_work_item_transition(
+    adopted = await runtime.resolve_transition(
         transition=transition,
         execution_status=WorkItemExecutionStatus.IN_PROGRESS,
         transition_status=WorkItemTransitionStatus.SUCCEEDED,

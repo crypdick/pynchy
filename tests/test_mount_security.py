@@ -23,7 +23,7 @@ from pynchy.host.container_manager.security.mount_security import (
 from pynchy.host.container_manager.security.mount_security import (
     validate_mount as _validate_mount,
 )
-from pynchy.types import AdditionalMount
+from pynchy.workspace.api import AdditionalMount
 
 if TYPE_CHECKING:
     from pathlib import Path

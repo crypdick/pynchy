@@ -6,14 +6,16 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import init_test_database, make_settings
 
-from pynchy.config.models import (
+from pynchy.config.api import (
     MatrixConnectionConfig,
     MatrixEndpointConfig,
 )
+from pynchy.conversation.api import routed_conversation_folder
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDeliveryStatus,
@@ -26,10 +28,30 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.host.orchestrator.api import (
+    ConversationControlRequest,
+    ConversationWorkspaceContext,
+    RuntimeWorkspaceRestriction,
+    ensure_conversation_workspace,
+    register_runtime_workspace_restriction,
+    unregister_runtime_workspace_restriction,
+)
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
-from pynchy.plugins.connections import ConnectionRuntimeContext
-from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime
+from pynchy.identifiers import GroupFolder
+from pynchy.plugins.api import (
+    ConnectionRuntimeContext,
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+)
+from pynchy.plugins.integrations.matrix_connection import (
+    MatrixConnectionOperations,
+    MatrixConnectionRuntime,
+    MatrixPendingDelivery,
+    MatrixRouteControl,
+    matrix_route_subject,
+)
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayError,
     MatrixPortalAssertion,
@@ -47,19 +69,17 @@ from pynchy.state import (
     claim_next_conversation_delivery,
     complete_conversation_delivery,
     delete_workspace_profile,
+    get_conversation,
     get_conversation_delivery,
     get_external_delivery_receipt,
     get_external_provider_cursor,
+    list_pending_conversation_ids,
+    release_conversation_delivery_claim,
+    resolve_conversation,
     set_external_provider_cursor,
     set_workspace_profile,
 )
-from pynchy.types import (
-    GroupFolder,
-    InboundFetchResult,
-    NewMessage,
-    OutboundEvent,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import CapabilityRule, WorkspaceProfile
 
 _ROOM = "!family:matrix.example.com"
 _OWNER = "@me:matrix.example.com"
@@ -184,6 +204,78 @@ async def _harness() -> _RuntimeHarness:
     return _RuntimeHarness(_DiscordThreadChannel(), {_PARENT_JID: parent})
 
 
+def _operations() -> MatrixConnectionOperations:
+    async def admit_delivery(identity: Any, subject: Any, workspace: Any, payload: Any) -> None:
+        await admit_conversation_delivery(identity, subject, workspace, payload=payload)
+
+    async def ensure_route_control(
+        context: ConnectionRuntimeContext, route: ResolvedMatrixRoute, _assertion: Any
+    ) -> MatrixRouteControl:
+        parent = next(
+            (
+                profile
+                for profile in context.workspaces().values()
+                if profile.folder == route.workspace
+            ),
+            None,
+        )
+        if parent is None:
+            raise ValueError(f"Matrix route {route.name!r} workspace is not registered")
+        conversation = await resolve_conversation(
+            matrix_route_subject(route), GroupFolder(route.workspace)
+        )
+        folder = routed_conversation_folder(route.workspace, conversation.id)
+        register_runtime_workspace_restriction(
+            folder,
+            RuntimeWorkspaceRestriction(
+                parent_workspace=route.workspace,
+                tools=route.tools,
+                capabilities={
+                    capability: CapabilityRule(decision=decision)
+                    for capability, decision in route.capabilities.items()
+                },
+            ),
+        )
+        ensured = await ensure_conversation_workspace(
+            ConversationWorkspaceContext(
+                channels=context.channels,
+                workspaces=context.workspaces,
+                register_workspace=context.register_workspace,
+                unregister_workspace=context.unregister_workspace,
+                bind_session=context.bind_session,
+            ),
+            ConversationControlRequest(
+                conversation_id=conversation.id,
+                parent_workspace=GroupFolder(route.workspace),
+                parent_jid=parent.jid,
+                title=route.control_title,
+            ),
+        )
+        return MatrixRouteControl(conversation.id, ensured.control.binding.thread_jid)
+
+    async def claim_delivery(conversation_id: Any, claim_id: Any) -> MatrixPendingDelivery | None:
+        delivery = await claim_next_conversation_delivery(conversation_id, claim_id)
+        if delivery is None:
+            return None
+        return MatrixPendingDelivery(str(delivery.identity.delivery_id), delivery.payload)
+
+    async def conversation_exists(conversation_id: Any) -> bool:
+        return await get_conversation(conversation_id) is not None
+
+    return MatrixConnectionOperations(
+        get_cursor=get_external_provider_cursor,
+        set_cursor=set_external_provider_cursor,
+        admit_receipt=admit_external_delivery_receipt,
+        admit_delivery=admit_delivery,
+        ensure_route_control=ensure_route_control,
+        list_pending_conversation_ids=list_pending_conversation_ids,
+        claim_delivery=claim_delivery,
+        release_delivery_claim=release_conversation_delivery_claim,
+        conversation_exists=conversation_exists,
+        unregister_workspace_restriction=unregister_runtime_workspace_restriction,
+    )
+
+
 def _portal(**changes: object) -> MatrixPortalAssertion:
     values: dict[str, object] = {
         "room_id": _ROOM,
@@ -268,6 +360,7 @@ def _runtime(
         (_route(activation=activation),),
         poll_interval_seconds=interval,
         state_dir=Path("/state"),
+        operations=_operations(),
         client=stub,
     )
 
@@ -513,5 +606,6 @@ def test_runtime_rejects_connection_without_an_enabled_route() -> None:
             (),
             poll_interval_seconds=5.0,
             state_dir=Path("/state"),
+            operations=_operations(),
             client=_StubGateway([], _portal()),
         )

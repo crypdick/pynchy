@@ -7,8 +7,9 @@ from conftest import init_test_database
 
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
+from pynchy.plugins.api import NewMessage
 from pynchy.state import store_chat_metadata
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.fixture

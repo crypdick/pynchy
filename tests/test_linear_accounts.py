@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import ANY, patch
 
 import pytest
-from conftest import make_settings
+from conftest import configure_linear_accounts_for, make_settings
 
-from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.plugins.integrations.linear_accounts import (
     linear_account,
     linear_account_for_workspace,
@@ -33,7 +33,7 @@ def test_account_resolves_its_own_credentials_and_trust(monkeypatch: pytest.Monk
         }
     )
 
-    account = linear_account("linear_synapse", settings)
+    account = linear_account("linear_synapse", settings.tools)
 
     assert account.api_key == "lin_synapse"  # pragma: allowlist secret
     assert account.team_key == "SYN"
@@ -53,7 +53,15 @@ def test_workspace_must_select_at_most_one_linear_account() -> None:
     )
 
     with pytest.raises(ValueError, match="exactly one Linear account"):
-        linear_account_for_workspace("project", settings)
+        linear_account_for_workspace(
+            "project",
+            tools=settings.tools,
+            workspace_tool_names=lambda workspace: (
+                tuple(resolved.tools)
+                if (resolved := settings.resolved_workspace_config(workspace)) is not None
+                else None
+            ),
+        )
 
 
 async def test_host_client_uses_the_workspace_accounts_exact_key(
@@ -73,16 +81,11 @@ async def test_host_client_uses_the_workspace_accounts_exact_key(
             )
         },
     )
-    with (
-        patch(
-            "pynchy.plugins.integrations.linear_accounts.get_settings",
-            return_value=settings,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_work_item_provider.LinearClient",
-            side_effect=LinearClient,
-        ) as client_class,
-    ):
+    configure_linear_accounts_for(settings)
+    with patch(
+        "pynchy.plugins.integrations.linear_work_item_provider.LinearClient",
+        side_effect=LinearClient,
+    ) as client_class:
         async with linear_client(workspace="project") as client:
             assert client.team_key == "SYN"
 

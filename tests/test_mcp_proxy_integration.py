@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +16,7 @@ from pynchy.host.container_manager.mcp.manager import (
     build_direct_server_configs,
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig
 
 
 def _make_instance(
@@ -273,10 +273,7 @@ class TestBuildDirectServerConfigs:
 
     def test_default_container_host_resolves_for_apple_runtime(self):
         """Apple Container needs the host gateway IP, not Docker's DNS name."""
-        runtime = MagicMock()
-        runtime.name = "apple"
-
-        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+        with patch("pynchy.host.container_manager.gateway._apple_container_runtime", True):
             configs = _build_direct_configs(
                 instance_ids=("browser_abc",),
                 instances={"browser_abc": _make_instance("browser", transport="streamable_http")},

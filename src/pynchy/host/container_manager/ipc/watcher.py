@@ -10,7 +10,6 @@ from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC watcher 
 
 from watchdog.observers import Observer
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.approval_recovery import sweep_host_approval_decisions
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
@@ -31,6 +30,7 @@ from pynchy.host.container_manager.ipc.ledger import (
 from pynchy.host.container_manager.ipc.output_processing import process_output_file
 from pynchy.host.container_manager.ipc.protocol import parse_request_envelope
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 
 _ipc_watcher_lock = asyncio.Lock()
@@ -283,21 +283,20 @@ def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
         return 0
 
 
-async def _sweep_expired_state() -> None:
+async def _sweep_expired_state(deps: IpcDeps) -> None:
     """Auto-deny/expire stale approvals and pending questions left from a crash."""
     from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - approval state pulls IPC dispatch helpers; load only when sweeping.
         sweep_expired_approvals,
     )
 
-    expired = await sweep_expired_approvals()
+    expired = await sweep_expired_approvals(deps.expire_action_intent)
     if expired:
         logger.info("Expired approvals auto-denied during sweep", count=len(expired))
 
-    from pynchy.host.orchestrator.messaging.pending_questions import (  # noqa: PLC0415, RUF100 - messaging state is only needed for recovery sweeps.
-        sweep_expired_questions,
-    )
+    def write_expiration_response(group_name: str, request_id: str, error: str) -> None:
+        write_ipc_response(ipc_response_path(group_name, request_id), {"error": error})
 
-    expired_qs = await sweep_expired_questions()
+    expired_qs = await deps.sweep_expired_questions(write_expiration_response)
     if expired_qs:
         logger.info("Expired pending questions auto-expired during sweep", count=len(expired_qs))
 
@@ -348,7 +347,7 @@ async def recover_ipc_startup(
     if cleaned > 0:
         logger.info("IPC startup sweep cleaned stale files", cleaned=cleaned)
 
-    await _sweep_expired_state()
+    await _sweep_expired_state(deps)
 
     return processed + cleaned
 
@@ -392,7 +391,7 @@ async def recover_ipc_runtime(
     # recovers a file persisted immediately before a host crash.
     processed += await sweep_host_approval_decisions(deps)
 
-    await _sweep_expired_state()
+    await _sweep_expired_state(deps)
 
     return processed
 
@@ -450,7 +449,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
         await process_ipc_output_file(queued.path, queued.source_group, ipc_base_dir)
 
 
-async def start_ipc_watcher(deps: IpcDeps) -> None:
+async def start_ipc_watcher(deps: IpcDeps, *, ipc_base_dir: Path) -> None:
     """Start the IPC watcher using watchdog filesystem events.
 
     1. Performs a startup sweep to process files written while the process was down.
@@ -462,8 +461,6 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
             return
         _state.running = True
 
-    s = get_settings()
-    ipc_base_dir = s.data_dir / "ipc"
     await asyncio.to_thread(ipc_base_dir.mkdir, parents=True, exist_ok=True)
 
     # --- Startup sweep (crash recovery) ---

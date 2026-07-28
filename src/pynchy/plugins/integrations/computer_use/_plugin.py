@@ -12,7 +12,7 @@ import pluggy
 from pydantic import ValidationError
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ApprovalContract,
     ApprovalMode,
     AuditContract,
@@ -23,6 +23,10 @@ from pynchy.capabilities import (
     CapabilityProbeResult,
     CapabilityRequirement,
     CapabilityRequirementKind,
+    ComputerUseAction,
+    ComputerUseBackend,
+    ComputerUseRequest,
+    ComputerUseRouterConfig,
     HostActionAccess,
     HostActionDescriptor,
     HostActionHandler,
@@ -31,13 +35,6 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
     ProbeStatus,
-)
-from pynchy.config import get_settings
-from pynchy.plugins.computer_use import (
-    ComputerUseAction,
-    ComputerUseBackend,
-    ComputerUseRequest,
-    ComputerUseRouterConfig,
     SourceGroup,
 )
 
@@ -90,15 +87,11 @@ def _slug(value: object) -> str:
     return slug[:48] or "computer-use"
 
 
-def _artifact_path(*, source_group: SourceGroup, label: object) -> Path:
+def _artifact_path(*, data_dir: Path | None, source_group: SourceGroup, label: object) -> Path:
+    if data_dir is None:
+        raise RuntimeError("computer-use capture requires lifecycle configuration")
     filename = f"{_timestamp()}-{_slug(label)}.png"
-    return get_settings().data_dir / "ipc" / source_group / "computer-use" / filename
-
-
-def _plugin_config() -> ComputerUseRouterConfig:
-    plugin = get_settings().plugins.get("computer-use")
-    options = plugin.options if plugin is not None else {}
-    return ComputerUseRouterConfig.model_validate(options)
+    return data_dir / "ipc" / source_group / "computer-use" / filename
 
 
 def _backend_catalog(
@@ -192,6 +185,7 @@ def _capability(
 async def _execute_request(
     request: ComputerUseRequest,
     config: ComputerUseRouterConfig,
+    data_dir: Path | None,
     backends: dict[str, ComputerUseBackend],
 ) -> dict[str, Any]:
     if request.action is ComputerUseAction.WAIT:
@@ -206,7 +200,11 @@ async def _execute_request(
     backend, _, _ = await _select_backend(config, backends)
     screenshot_path = None
     if request.action is ComputerUseAction.CAPTURE:
-        screenshot_path = _artifact_path(source_group=request.source_group, label=request.label)
+        screenshot_path = _artifact_path(
+            data_dir=data_dir,
+            source_group=request.source_group,
+            label=request.label,
+        )
     result = await backend.execute(request, screenshot_path=screenshot_path)
     result["action"] = request.action.value
     if request.capture_after and request.action is not ComputerUseAction.CAPTURE:
@@ -217,19 +215,24 @@ async def _execute_request(
                 "label": f"after-{request.action.value}",
             }
         )
-        after_path = _artifact_path(source_group=request.source_group, label=capture.label)
+        after_path = _artifact_path(
+            data_dir=data_dir,
+            source_group=request.source_group,
+            label=capture.label,
+        )
         result["after"] = await backend.execute(capture, screenshot_path=after_path)
     return {"result": result}
 
 
 def _handler(
     config: ComputerUseRouterConfig,
+    data_dir: Path | None,
     backends: dict[str, ComputerUseBackend],
 ) -> HostActionHandler:
     async def handle(data: dict[str, Any]) -> dict[str, Any]:
         try:
             request = ComputerUseRequest.parse(data)
-            return await _execute_request(request, config, backends)
+            return await _execute_request(request, config, data_dir, backends)
         except (RuntimeError, TypeError, ValidationError, ValueError) as exc:
             return {"error": str(exc)}
 
@@ -239,20 +242,30 @@ def _handler(
 class ComputerUsePlugin:
     """Route one neutral host action through optional platform provider plugins."""
 
-    def __init__(self, config: ComputerUseRouterConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ComputerUseRouterConfig | None = None,
+        *,
+        data_dir: Path | None = None,
+    ) -> None:
+        self._config = config or ComputerUseRouterConfig()
+        self._data_dir = data_dir
+
+    def configure(self, config: ComputerUseRouterConfig, *, data_dir: Path) -> None:
+        """Apply the router's resolved configuration before registration."""
         self._config = config
+        self._data_dir = data_dir
 
     @hookimpl
     def pynchy_service_handler(
         self,
         computer_use_backends: tuple[ComputerUseBackend, ...],
     ) -> HostActionRegistration:
-        config = self._config or _plugin_config()
         backends = _backend_catalog(computer_use_backends)
         descriptor = HostActionDescriptor(
-            capability=_capability(config, backends),
+            capability=_capability(self._config, backends),
             tool_name=HostToolName("computer_use"),
-            handler=_handler(config, backends),
+            handler=_handler(self._config, self._data_dir, backends),
             access=HostActionAccess.WRITE,
             approval=ApprovalContract(mode=ApprovalMode.SESSION_TOOL),
             idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),

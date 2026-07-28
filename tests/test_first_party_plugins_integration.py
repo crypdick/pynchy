@@ -13,8 +13,7 @@ import pytest
 
 from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.channel_runtime import ChannelPluginContext
-from pynchy.plugins.observers import attach_observers
+from pynchy.plugins.api import ChannelPluginContext, attach_observers
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
 
 
@@ -72,12 +71,14 @@ class TestObserverPluginRuntimeTypes:
 
     def test_attach_observers_accepts_event_bus(self):
         """attach_observers should not crash resolving the EventBus annotation."""
-        with patch("pynchy.plugins.collect_hook_results", return_value=[]):
-            assert attach_observers(EventBus()) == []
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            plugin_manager = get_plugin_manager({"sqlite-observer": False})
+
+        assert attach_observers(plugin_manager, EventBus()) == []
 
     def test_sqlite_observer_subscribes_to_event_bus(self):
         """SqliteEventObserver.subscribe should accept a real EventBus."""
-        observer = SqliteEventObserver()
+        observer = SqliteEventObserver(store_event=AsyncMock())
 
         observer.subscribe(EventBus())
 
@@ -85,10 +86,11 @@ class TestObserverPluginRuntimeTypes:
     async def test_sqlite_observer_persists_bounded_trace_evidence(self):
         """SQLite keeps useful trace evidence without persisting detected private data."""
         bus = EventBus()
-        observer = SqliteEventObserver()
+        mock_store = AsyncMock()
+        observer = SqliteEventObserver(store_event=mock_store)
         observer.subscribe(bus)
 
-        with patch("pynchy.state.api.store_event", new_callable=AsyncMock) as mock_store:
+        with patch("pynchy.state.api.store_event", new_callable=AsyncMock):
             bus.emit(
                 AgentTraceEvent(
                     chat_jid="g@g.us",

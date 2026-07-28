@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels
+from pynchy.host.orchestrator.api import reconcile_all_channels
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,

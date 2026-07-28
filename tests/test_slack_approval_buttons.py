@@ -8,8 +8,11 @@ Validates that:
 
 from __future__ import annotations
 
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.plugins.channels.slack import SlackBlocksFormatter
-from pynchy.types import OutboundEvent, OutboundEventType
 
 
 def test_approval_event_has_buttons():

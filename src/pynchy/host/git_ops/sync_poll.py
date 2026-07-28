@@ -8,10 +8,6 @@ import subprocess  # noqa: S404, RUF100 - used only for subprocess exception typ
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
-from pynchy.config import get_settings
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
-)
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
@@ -45,6 +41,29 @@ class GitUpdateResult:
 
     succeeded: bool
     error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GitSyncRuntime:
+    """Resolved host paths and repository identities for sync polling."""
+
+    project_root: Path
+    repo_slugs: tuple[str, ...]
+
+
+_git_sync_runtime: GitSyncRuntime | None = None
+
+
+def configure_git_sync_runtime(runtime: GitSyncRuntime) -> None:
+    """Install host sync inputs at application composition."""
+    global _git_sync_runtime  # noqa: PLW0603, RUF100 - one host process owns sync configuration.
+    _git_sync_runtime = runtime
+
+
+def _configured_git_sync_runtime() -> GitSyncRuntime:
+    if _git_sync_runtime is None:
+        raise RuntimeError("git sync runtime has not been configured")
+    return _git_sync_runtime
 
 
 def get_local_head_sha(repo_root: Path | None = None) -> str:
@@ -200,11 +219,11 @@ def needs_container_rebuild(old_sha: str, new_sha: str) -> bool:
 def _hash_config_files() -> str:
     """Hash config files that require a restart when changed."""
     h = hashlib.sha256()
-    s = get_settings()
-    defaults = s.project_root / "data" / "defaults"
-    personalization = s.project_root / "data" / "personalization"
+    project_root = _configured_git_sync_runtime().project_root
+    defaults = project_root / "data" / "defaults"
+    personalization = project_root / "data" / "personalization"
     fixed_paths = (
-        s.project_root / ".env",
+        project_root / ".env",
         defaults / "pynchy.toml",
         personalization / "pynchy.toml",
         personalization / "litellm.yaml",
@@ -212,17 +231,17 @@ def _hash_config_files() -> str:
     # Agent-authored skills hot-refresh into session homes; including them here
     # would interrupt every conversation whenever an agent improves a skill.
     for path in fixed_paths:
-        h.update(path.relative_to(s.project_root).as_posix().encode())
+        h.update(path.relative_to(project_root).as_posix().encode())
         if path.exists():
             h.update(path.read_bytes())
         else:
             h.update(b"__missing__")
     for directory in (defaults / "automations", personalization / "automations"):
         if not directory.is_dir():
-            h.update(f"__missing__:{directory.relative_to(s.project_root).as_posix()}".encode())
+            h.update(f"__missing__:{directory.relative_to(project_root).as_posix()}".encode())
             continue
         for path in sorted(candidate for candidate in directory.rglob("*") if candidate.is_file()):
-            h.update(path.relative_to(s.project_root).as_posix().encode())
+            h.update(path.relative_to(project_root).as_posix().encode())
             h.update(path.read_bytes())
     return h.hexdigest()
 
@@ -232,9 +251,12 @@ def get_deploy_config_hash() -> str:
     return _hash_config_files()
 
 
-def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:
+def _find_pynchy_repo_ctx(
+    repo_slugs: tuple[str, ...],
+    pynchy_root: Path,
+) -> RepoContext | None:
     """Resolve pynchy's own RepoContext (for worktree notifications), if configured."""
-    for slug in s.repos.overrides:
+    for slug in repo_slugs:
         ctx = get_repo_context(slug)
         if ctx and ctx.root.resolve() == pynchy_root.resolve():
             return ctx

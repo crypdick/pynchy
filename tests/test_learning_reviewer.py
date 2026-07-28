@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
+from pynchy.learning_packets import LearningPacket
 
 if TYPE_CHECKING:
     from pathlib import Path

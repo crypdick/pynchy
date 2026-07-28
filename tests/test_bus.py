@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.host.orchestrator.messaging.sender import broadcast, finalize_stream_or_broadcast
-from pynchy.types import Channel, OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    Channel,
+    OutboundEvent,
+    OutboundEventType,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

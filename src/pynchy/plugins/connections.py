@@ -11,11 +11,15 @@ from typing import Protocol, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations.
 
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+from pynchy.identifiers import (
+    SessionId,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+)
+from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
     Channel,
     NewMessage,
-    SessionId,
-    WorkspaceProfile,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
 )
 
 

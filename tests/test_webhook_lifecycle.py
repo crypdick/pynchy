@@ -39,7 +39,9 @@ from pynchy.host.orchestrator.webhook_delivery_admission import (
     admit_prepared_event,
 )
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
-from pynchy.plugins.webhooks import (
+from pynchy.identifiers import SessionId
+from pynchy.plugins.api import (
+    NewMessage,
     WebhookConversation,
     WebhookEvent,
     WebhookLifecycle,
@@ -57,7 +59,6 @@ from pynchy.state import (
     prepare_conversation_delivery_recovery,
     set_conversation_session,
 )
-from pynchy.types import NewMessage, SessionId
 
 _NOW = datetime(2026, 7, 26, tzinfo=UTC).isoformat()
 _SUBJECT = ConversationSubject(

@@ -20,6 +20,10 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
 from pynchy.plugins.integrations.linear_client import (
     LinearClient,
     LinearError,
@@ -47,7 +51,6 @@ from pynchy.state import (
     set_conversation_control_binding,
     store_chat_metadata,
 )
-from pynchy.types import ChatJid, GroupFolder
 from pynchy.webhook_effects import WebhookEffectId, WebhookEffectScope
 
 _RECEIVED_AT = "2026-07-26T16:00:00+00:00"

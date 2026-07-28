@@ -8,27 +8,38 @@ from collections.abc import (
 )
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-)
-from pynchy.config.models import (
-    WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-)
-from pynchy.config.refs import parse_chat_ref
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+)
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-    Channel,
-    RuntimeId,
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
+
+type ResolvedWorkspaceConfig = Any
+type Settings = Any
+type WorkspaceConfig = Any
+
+
+def _unconfigured_chat_ref(_chat_ref: str) -> NoReturn:
+    raise RuntimeError("Workspace chat parsing has not been composed")
+
+
+parse_chat_ref: Callable[[str], Any] = _unconfigured_chat_ref
+
+
+def configure_workspace_registration_runtime(*, parse_chat_reference: Callable[[str], Any]) -> None:
+    """Bind workspace chat parsing at host composition."""
+    global parse_chat_ref  # noqa: PLW0603, RUF100 - one host process owns the configured chat parser.
+    parse_chat_ref = parse_chat_reference
 
 
 @runtime_checkable

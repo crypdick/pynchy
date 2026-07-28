@@ -14,7 +14,8 @@ from pynchy.host.container_manager.security.cop import (
 )
 from pynchy.host.container_manager.security.cop_gate import cop_gate
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import OutboundEventType, WorkspaceSecurity
+from pynchy.plugins.api import OutboundEventType
+from pynchy.workspace.api import WorkspaceSecurity
 
 
 @pytest.fixture
@@ -23,17 +24,10 @@ def mock_deps():
     deps.workspaces.return_value = {"jid-1": MagicMock(folder="admin-1")}
     deps.broadcast_to_channels = AsyncMock()
     deps.broadcast_host_message = AsyncMock()
+    deps.load_cop_inspection_context = AsyncMock(
+        return_value=CopInspectionContext(availability=CopContextAvailability.AVAILABLE)
+    )
     return deps
-
-
-@pytest.fixture(autouse=True)
-def _available_context():
-    with patch(
-        "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
-        new_callable=AsyncMock,
-        return_value=CopInspectionContext(availability=CopContextAvailability.AVAILABLE),
-    ):
-        yield
 
 
 @pytest.mark.asyncio
@@ -279,12 +273,8 @@ async def test_missing_context_requires_human_approval(mock_deps):
         availability=CopContextAvailability.UNAVAILABLE,
         unavailable_reason="database unavailable",
     )
+    mock_deps.load_cop_inspection_context.return_value = unavailable
     with (
-        patch(
-            "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
-            new_callable=AsyncMock,
-            return_value=unavailable,
-        ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
             new_callable=AsyncMock,

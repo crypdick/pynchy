@@ -24,11 +24,14 @@ import hashlib
 import json
 import secrets
 import string
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves expiry callback annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves approval file paths at runtime.
 from typing import Any, cast
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import (
     ipc_response_path,
     write_ipc_response,
@@ -40,18 +43,16 @@ from pynchy.host.container_manager.security.identity import (
     request_payload_hash,
 )
 from pynchy.logger import logger
-from pynchy.state.api import expire_action_intent
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
 # 2-char IDs give 1296 combinations — more than enough for the handful
 # of concurrent pending approvals in a personal assistant.
 _SHORT_ID_ALPHABET = string.ascii_lowercase + string.digits
-
-# How long before a pending approval expires (seconds).
-# Matches the container-side IPC response poll timeout (300s).
-APPROVAL_TIMEOUT_SECONDS = 300
-
 
 # ---------------------------------------------------------------------------
 # MCP proxy approval futures -- awaited by the proxy HTTP handler
@@ -61,6 +62,13 @@ APPROVAL_TIMEOUT_SECONDS = 300
 # Future before broadcasting the approval request; the IPC approval handler
 # resolves it when the human responds.
 _mcp_proxy_futures: dict[str, asyncio.Future[bool]] = {}
+_approval_root: Path | None = None
+
+
+def configure_approval_state_root(path: Path) -> None:
+    """Set host-only approval storage during application composition."""
+    global _approval_root  # noqa: PLW0603, RUF100 - one host process owns one approval root.
+    _approval_root = path
 
 
 def register_mcp_proxy_approval(request_id: str) -> asyncio.Future[bool]:
@@ -115,7 +123,9 @@ def _approval_decisions_dir(source_group: str) -> Path:
 
 def approval_state_root() -> Path:
     """Return approval state that is never mounted into an agent runtime."""
-    return get_settings().data_dir / "approvals"
+    if _approval_root is None:
+        raise RuntimeError("approval state root has not been configured")
+    return _approval_root
 
 
 def _path_exists(path: Path) -> bool:
@@ -302,7 +312,9 @@ def find_pending_by_short_id(short_id: str) -> dict[str, Any] | None:
     return None
 
 
-async def sweep_expired_approvals() -> list[dict[str, Any]]:
+async def sweep_expired_approvals(
+    expire_action_intent: Callable[..., Awaitable[object]],
+) -> list[dict[str, Any]]:
     """Find and auto-deny expired pending approvals. Clean orphaned decisions.
 
     Called on startup (crash recovery) and optionally on a slow timer.
@@ -318,7 +330,9 @@ async def sweep_expired_approvals() -> list[dict[str, Any]]:
     for group in await asyncio.to_thread(_approval_groups, approval_dir):
         pending_dir = approval_dir / group / "pending_approvals"
         decisions_dir = approval_dir / group / "approval_decisions"
-        expired.extend(await _expire_pending_approvals(group, pending_dir, now))
+        expired.extend(
+            await _expire_pending_approvals(group, pending_dir, now, expire_action_intent)
+        )
         pending_ids = await asyncio.to_thread(_pending_request_ids, pending_dir)
         await asyncio.to_thread(_remove_orphaned_decisions, decisions_dir, pending_ids)
 
@@ -335,10 +349,13 @@ async def _expire_pending_approvals(
     group: str,
     pending_dir: Path,
     now: datetime,
+    expire_action_intent: Callable[..., Awaitable[object]],
 ) -> list[dict[str, Any]]:
     expired: list[dict[str, Any]] = []
     for filepath in await asyncio.to_thread(_pending_approval_files, pending_dir):
-        expired_approval = await _expired_pending_approval(group, filepath, now)
+        expired_approval = await _expired_pending_approval(
+            group, filepath, now, expire_action_intent
+        )
         if expired_approval is not None:
             expired.append(expired_approval)
     return expired
@@ -348,6 +365,7 @@ async def _expired_pending_approval(
     group: str,
     filepath: Path,
     now: datetime,
+    expire_action_intent: Callable[..., Awaitable[object]],
 ) -> dict[str, Any] | None:
     try:
         data = cast("dict[str, Any]", await asyncio.to_thread(_read_json_file, filepath))
@@ -366,7 +384,7 @@ async def _expired_pending_approval(
     if age_seconds <= timeout:
         return None
 
-    await _auto_deny_expired_approval(group, filepath, data, age_seconds)
+    await _auto_deny_expired_approval(group, filepath, data, age_seconds, expire_action_intent)
     return data
 
 
@@ -375,6 +393,7 @@ async def _auto_deny_expired_approval(
     filepath: Path,
     data: dict[str, Any],
     age_seconds: float,
+    expire_action_intent: Callable[..., Awaitable[object]],
 ) -> None:
     await expire_action_intent(
         data["request_id"],

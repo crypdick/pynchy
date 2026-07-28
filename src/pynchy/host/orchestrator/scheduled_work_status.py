@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pynchy.types import (  # noqa: TC001, RUF100 - type aliases evaluate at module import.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - type aliases evaluate at module import.
     HostJob,
     ScheduledTask,
     TaskRunLog,

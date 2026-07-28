@@ -5,34 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.types import (
-    WorkItemExecution as RuntimeWorkItemExecution,
-)
-from pynchy.types import (
-    WorkItemExecutionStatus as RuntimeWorkItemExecutionStatus,
-)
-from pynchy.types import (
-    WorkItemTransition as RuntimeWorkItemTransition,
-)
-from pynchy.types import (
-    WorkItemTransitionStatus as RuntimeWorkItemTransitionStatus,
-)
+from pynchy.work_items.api import WorkItemClaimConflictError as RuntimeWorkItemClaimConflictError
+from pynchy.work_items.api import WorkItemExecution as RuntimeWorkItemExecution
+from pynchy.work_items.api import WorkItemExecutionStatus as RuntimeWorkItemExecutionStatus
+from pynchy.work_items.api import WorkItemTransition as RuntimeWorkItemTransition
+from pynchy.work_items.api import WorkItemTransitionRequest as RuntimeWorkItemTransitionRequest
+from pynchy.work_items.api import WorkItemTransitionStatus as RuntimeWorkItemTransitionStatus
 
 # Dataclass constructors are runtime type-checked, so beartype must resolve these names here.
 WorkItemExecution = RuntimeWorkItemExecution
 WorkItemExecutionStatus = RuntimeWorkItemExecutionStatus
+WorkItemClaimConflictError = RuntimeWorkItemClaimConflictError
 WorkItemTransition = RuntimeWorkItemTransition
+WorkItemTransitionRequest = RuntimeWorkItemTransitionRequest
 WorkItemTransitionStatus = RuntimeWorkItemTransitionStatus
-
-
-class WorkItemClaimConflictError(RuntimeError):
-    """Raised when an active execution already owns a Linear issue."""
-
-    def __init__(self, execution: WorkItemExecution) -> None:
-        self.execution = execution
-        super().__init__(
-            f"{execution.linear_issue_identifier} is already claimed by execution {execution.id}"
-        )
 
 
 @dataclass(frozen=True)
@@ -45,22 +31,6 @@ class WorkItemClaimRequest:
     task_id: str | None
     initiated_by: str
     request_id: str
-
-
-@dataclass(frozen=True)
-class WorkItemTransitionRequest:
-    """A lifecycle operation that requires an external provider receipt."""
-
-    execution: WorkItemExecution
-    request_id: str
-    operation: str
-    target_status: str
-    result_execution_status: WorkItemExecutionStatus
-    evidence_refs: tuple[str, ...] | None = None
-    summary: str | None = None
-    blocker: str | None = None
-    handoff_to: str | None = None
-    requester_delivery_turn_id: str | None = None
 
 
 @dataclass(frozen=True)

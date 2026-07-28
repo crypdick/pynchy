@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from pynchy.host.git_ops.utils import (
+from pynchy.host.git_ops.api import (
     count_commits,
     count_unpushed_commits,
     detect_main_branch,

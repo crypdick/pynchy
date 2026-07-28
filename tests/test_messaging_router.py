@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.messaging import router, streaming
 from pynchy.host.orchestrator.messaging.router import (
     broadcast_agent_input,
@@ -16,13 +17,12 @@ from pynchy.host.orchestrator.messaging.router import (
     pop_last_result_ids,
 )
 from pynchy.host.orchestrator.messaging.streaming import OutputDeps, StreamState, stream_states
-from pynchy.types import (
+from pynchy.plugins.api import (
     Channel,
-    ContainerOutput,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)

@@ -8,23 +8,33 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal, NoReturn
 
-from pynchy.config import get_settings
-from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves child policy annotations.
-    ResolvedWorkspaceConfig,
-)
-from pynchy.config.models import (
-    WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations at runtime.
-)
-from pynchy.config.workspace_layout import (  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
-    WorkspaceThreadConfig,
-)
-from pynchy.conversation.workspaces import dynamic_thread_folder
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+from pynchy.workspace.api import WorkspaceProfile
+
+type ResolvedWorkspaceConfig = Any
+type WorkspaceConfig = Any
+type WorkspaceThreadConfig = Any
+
+
+def _unconfigured_settings() -> NoReturn:
+    raise RuntimeError("Workspace thread configuration has not been composed")
+
+
+get_settings: Callable[[], Any] = _unconfigured_settings
+
+
+def configure_workspace_threads_runtime(*, settings: Callable[[], Any]) -> None:
+    """Bind child-policy settings at host composition."""
+    global get_settings  # noqa: PLW0603, RUF100 - one host process owns workspace thread policy.
+    get_settings = settings
 
 
 @dataclass(frozen=True)

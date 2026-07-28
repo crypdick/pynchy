@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.messaging.channel_handler import (
     send_reaction_to_channels,
@@ -31,7 +32,11 @@ from pynchy.host.orchestrator.messaging.router import (
     handle_streamed_output,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
-from pynchy.types import ContainerOutput, OutboundEvent, OutboundEventType, WorkspaceProfile
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.workspace.api import WorkspaceProfile
 
 from .conftest import (
     RecordingChannel,

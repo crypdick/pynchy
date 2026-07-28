@@ -9,8 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.config.api import ProfileConfig, WorkspaceConfig, validate_settings_mapping
 from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
@@ -32,7 +31,7 @@ from pynchy.host.orchestrator.workspace_config import (
     clear_runtime_workspace_restrictions,
     register_runtime_workspace_restriction,
 )
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig
 
 ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test fixture for pass-through MCP args that intentionally contain bind-all data.
 

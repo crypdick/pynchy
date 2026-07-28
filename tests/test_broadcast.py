@@ -14,14 +14,16 @@ from unittest.mock import patch
 import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
+from pynchy.plugins.api import NewMessage
 from pynchy.state import get_chat_history, store_message
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -83,20 +85,15 @@ def _patch_test_settings(tmp_path: Path):
         data_dir=tmp_path / "data",
     )
     with contextlib.ExitStack() as stack:
-        for mod in (
-            "pynchy.host.container_manager.credentials",
-            "pynchy.host.learning.skill_activation",
-            "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.app",
-        ):
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.orchestrator.app.get_settings", return_value=s))
         stack.enter_context(
             patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
+        stack.enter_context(patch("pynchy.host.orchestrator.app.docker_rm_force", _noop_docker_rm))
+        stack.enter_context(patch(f"{_CR_ORCH}._ensure_agent_image"))
         yield
 
 

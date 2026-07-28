@@ -5,29 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import asdict
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves temporal Git runtime annotations.
+)
+from dataclasses import asdict, dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from pynchy.config import get_settings
-from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
-from pynchy.host.git_ops.repo import get_repo_context
-from pynchy.host.git_ops.sync_poll import (
-    HostSyncState,
-    _check_local_head_drift,
-    _find_pynchy_repo_ctx,
-    check_origin_drift,
-    get_deploy_config_hash,
-    get_local_head_sha,
-    host_get_origin_main_sha,
-    host_update_main_result,
-    probe_origin_main_sha,
-)
-from pynchy.host.git_ops.utils import git_env_with_token
-from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
+from pynchy.deployments import DeployRevision
+from pynchy.host.orchestrator.api import SessionManager, resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.deploy import (
     DeployFailureDeps,
     DeployRequest,
@@ -44,9 +33,8 @@ from pynchy.state.api import (
     get_router_state,
     set_router_state,
 )
-from pynchy.types import (
-    DeployRevision,
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal git-sync annotations at runtime.
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -57,6 +45,91 @@ HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
+
+
+@dataclass
+class HostSyncState:
+    last_origin_sha: str | None
+    deployed_sha: str
+    config_hash: str
+    local_head: str | None
+    offered_sha: str
+
+
+def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
+    raise RuntimeError("Temporal Git sync has not been composed")
+
+
+@dataclass(frozen=True)
+class TemporalGitSyncRuntime:
+    get_settings: Callable[[], Any]
+    check_local_head_drift: Callable[..., Any]
+    check_origin_drift: Callable[..., Any]
+    find_pynchy_repo_ctx: Callable[..., Any]
+    get_deploy_config_hash: Callable[[], str]
+    get_local_head_sha: Callable[..., str]
+    get_repo_context: Callable[..., Any]
+    git_env_with_token: Callable[..., Any]
+    host_get_origin_main_sha: Callable[..., Any]
+    host_notify_worktree_updates: Callable[..., Any]
+    host_update_main_result: Callable[..., Any]
+    last_notified_sha: dict[str, str]
+    probe_origin_main_sha: Callable[..., Any]
+
+
+_runtime = TemporalGitSyncRuntime(
+    get_settings=_unconfigured_runtime,
+    check_local_head_drift=_unconfigured_runtime,
+    check_origin_drift=_unconfigured_runtime,
+    find_pynchy_repo_ctx=_unconfigured_runtime,
+    get_deploy_config_hash=_unconfigured_runtime,
+    get_local_head_sha=_unconfigured_runtime,
+    get_repo_context=_unconfigured_runtime,
+    git_env_with_token=_unconfigured_runtime,
+    host_get_origin_main_sha=_unconfigured_runtime,
+    host_notify_worktree_updates=_unconfigured_runtime,
+    host_update_main_result=_unconfigured_runtime,
+    last_notified_sha={},
+    probe_origin_main_sha=_unconfigured_runtime,
+)
+
+
+def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None:
+    """Bind Temporal Git sync operations at host composition."""
+    global _runtime, get_settings, _check_local_head_drift, _find_pynchy_repo_ctx  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    global get_deploy_config_hash, get_local_head_sha, get_repo_context, git_env_with_token  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    global host_update_main_result, check_origin_drift  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    global probe_origin_main_sha, last_notified_sha  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    _runtime = runtime
+    get_settings = runtime.get_settings
+    _check_local_head_drift = runtime.check_local_head_drift
+    _find_pynchy_repo_ctx = runtime.find_pynchy_repo_ctx
+    get_deploy_config_hash = runtime.get_deploy_config_hash
+    get_local_head_sha = runtime.get_local_head_sha
+    get_repo_context = runtime.get_repo_context
+    git_env_with_token = runtime.git_env_with_token
+    host_get_origin_main_sha = runtime.host_get_origin_main_sha
+    host_notify_worktree_updates = runtime.host_notify_worktree_updates
+    host_update_main_result = runtime.host_update_main_result
+    check_origin_drift = runtime.check_origin_drift
+    probe_origin_main_sha = runtime.probe_origin_main_sha
+    last_notified_sha = runtime.last_notified_sha
+
+
+get_settings: Callable[[], Any] = _unconfigured_runtime
+_check_local_head_drift: Callable[..., Any] = _unconfigured_runtime
+_find_pynchy_repo_ctx: Callable[..., Any] = _unconfigured_runtime
+get_deploy_config_hash: Callable[[], str] = _unconfigured_runtime
+get_local_head_sha: Callable[..., str] = _unconfigured_runtime
+get_repo_context: Callable[..., Any] = _unconfigured_runtime
+git_env_with_token: Callable[..., Any] = _unconfigured_runtime
+host_get_origin_main_sha: Callable[..., Any] = _unconfigured_runtime
+host_notify_worktree_updates: Callable[..., Any] = _unconfigured_runtime
+host_update_main_result: Callable[..., Any] = _unconfigured_runtime
+check_origin_drift: Callable[..., Any] = _unconfigured_runtime
+probe_origin_main_sha: Callable[..., Any] = _unconfigured_runtime
+last_notified_sha: dict[str, str] = {}
 
 
 def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:
@@ -208,7 +281,7 @@ async def run_host_git_sync() -> str:
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
     settings = get_settings()
     state = await _load_host_state()
-    repo_ctx = _find_pynchy_repo_ctx(settings, settings.project_root)
+    repo_ctx = _find_pynchy_repo_ctx(tuple(settings.repos.overrides), settings.project_root)
     result = "idle"
 
     try:

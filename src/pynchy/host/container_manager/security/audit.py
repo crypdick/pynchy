@@ -13,17 +13,33 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
-from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
-from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
-from pynchy.state.api import prune_messages_by_sender, store_message_direct
+from pynchy.redaction import irreversibly_redact
+from pynchy.secrets_scanner import scan_payload_for_secrets
 
 _SENSITIVE_VALUE = re.compile(
     r"(?i)\b(token|secret|password|api[_-]?key|authorization)\b\s*[:=]\s*\S+"
 )
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+\S+")
 _URL_QUERY = re.compile(r"(https?://[^\s?]+)\?\S+")
+type StoreSecurityAudit = Callable[..., Awaitable[None]]
+type PruneSecurityAudit = Callable[[str, str], Awaitable[int]]
+
+_store_security_audit: StoreSecurityAudit | None = None
+_prune_security_audit: PruneSecurityAudit | None = None
+
+
+def configure_security_audit_storage(
+    *,
+    store_security_audit: StoreSecurityAudit,
+    prune_security_audit: PruneSecurityAudit,
+) -> None:
+    """Inject the durable audit store at host composition."""
+    global _store_security_audit, _prune_security_audit  # noqa: PLW0603, RUF100 - one host process owns one audit store.
+    _store_security_audit = store_security_audit
+    _prune_security_audit = prune_security_audit
 
 
 def redact_audit_reason(reason: str | None) -> str | None:
@@ -71,7 +87,9 @@ async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror th
     }
     metadata = {k: v for k, v in metadata.items() if v is not None}
 
-    await store_message_direct(
+    if _store_security_audit is None:
+        raise RuntimeError("security audit storage has not been configured")
+    await _store_security_audit(
         message_id=f"audit-{request_id or int(time.time() * 1000)}-{decision}",
         chat_jid=chat_jid,
         sender="security",
@@ -92,4 +110,6 @@ async def prune_security_audit(retention_days: int = 30) -> int:
     """
     cutoff_ts = time.time() - (retention_days * 86400)
     cutoff_iso = datetime.fromtimestamp(cutoff_ts, tz=UTC).isoformat()
-    return await prune_messages_by_sender("security", cutoff_iso)
+    if _prune_security_audit is None:
+        raise RuntimeError("security audit storage has not been configured")
+    return await _prune_security_audit("security", cutoff_iso)
