@@ -118,3 +118,20 @@ def test_doctor_without_a_socket_uses_loopback_tcp(monkeypatch, capsys, tmp_path
 
     assert exit_code == 0
     opened.assert_called_once_with("http://localhost:8484/capabilities", timeout=10)
+
+
+def test_doctor_reports_an_invalid_capability_response(monkeypatch, capsys, tmp_path: Path):
+    monkeypatch.setattr(cli.urllib.request, "urlopen", Mock(return_value=_Response([])))
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["pynchy", "--token-file", str(tmp_path / "missing-token"), "doctor"],
+    )
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 1
+    assert capsys.readouterr().err == (
+        "Capability doctor failed: Capability endpoint returned a non-object response\n"
+    )
