@@ -30,8 +30,10 @@ from pynchy.config.api import (
     access,
     repository_settings_sources,
 )
+from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
+from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
 from pynchy.host.container_manager.process import configure_container_process_runtime
 from pynchy.host.container_manager.security.approval import configure_approval_state_root
@@ -45,6 +47,8 @@ from pynchy.host.git_ops.utils import configure_git_default_cwd
 from pynchy.host.learning.api import (
     LearningPathsRuntime,
     configure_learning_paths_runtime,
+    prepare_agent_homes,
+    prepare_vault_mount_root,
     resolve_learning_paths,
 )
 from pynchy.host.learning.mirror import configure_vault_mount_mirror
@@ -910,9 +914,35 @@ def reset_settings(monkeypatch):
         configure_learning_paths_for(safe)
         configure_skill_activation_for(safe)
         configure_linear_accounts_for(safe)
+
+        def mount_agent_homes(folder: str, plugins: object | None) -> AgentHomeMounts:
+            homes = prepare_agent_homes(folder, plugins)
+            return AgentHomeMounts(
+                claude_home=homes.claude_home,
+                codex_home=homes.codex_home,
+                vault_mount_root=(
+                    prepare_vault_mount_root(homes.learning_paths)
+                    if homes.learning_paths is not None
+                    else None
+                ),
+                vault_mount_path=(
+                    homes.learning_paths.vault_mount_path
+                    if homes.learning_paths is not None
+                    else None
+                ),
+            )
+
+        configure_mount_operations(
+            MountOperations(
+                prepare_agent_homes=mount_agent_homes,
+                repo_container_path=lambda slug: f"/workspace/repos/{slug}",
+                runtime_name=lambda: "docker",
+            )
+        )
         configure_container_spawn_runtime(
             container_cli="docker",
             ensure_agent_image=lambda **_kwargs: None,
+            resolve_repo_mounts=lambda _folder, _repos: RepoMountResolution(),
         )
         configure_container_process_runtime(
             container_cli="docker",

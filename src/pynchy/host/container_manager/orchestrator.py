@@ -18,13 +18,9 @@ from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolv
     VolumeMount,
     input_to_dict,
 )
+from pynchy.host.container_manager.contracts import RepoMount, RepoMountResolution
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
-from pynchy.host.git_ops.api import (
-    RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
-    ensure_worktree,
-    get_repo_context,
-)
 from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
 from pynchy.logger import logger
 from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_configs
@@ -35,24 +31,30 @@ from pynchy.workspace.api import (
 )
 
 type EnsureAgentImage = Callable[..., None]
+type ResolveRepoMounts = Callable[[str, tuple[str, ...]], RepoMountResolution]
 
 _container_cli: str | None = None
 _ensure_agent_image: EnsureAgentImage | None = None
+_resolve_repo_mounts: ResolveRepoMounts | None = None
 
 
 def configure_container_spawn_runtime(
-    *, container_cli: str, ensure_agent_image: EnsureAgentImage
+    *,
+    container_cli: str,
+    ensure_agent_image: EnsureAgentImage,
+    resolve_repo_mounts: ResolveRepoMounts,
 ) -> None:
     """Inject the selected container runtime at host composition."""
-    global _container_cli, _ensure_agent_image  # noqa: PLW0603, RUF100 - one host process owns one spawn runtime.
+    global _container_cli, _ensure_agent_image, _resolve_repo_mounts  # noqa: PLW0603, RUF100 - one host process owns one spawn runtime.
     _container_cli = container_cli
     _ensure_agent_image = ensure_agent_image
+    _resolve_repo_mounts = resolve_repo_mounts
 
 
-def _configured_container_runtime() -> tuple[str, EnsureAgentImage]:
-    if _container_cli is None or _ensure_agent_image is None:
+def _configured_container_runtime() -> tuple[str, EnsureAgentImage, ResolveRepoMounts]:
+    if _container_cli is None or _ensure_agent_image is None or _resolve_repo_mounts is None:
         raise RuntimeError("container spawn runtime has not been configured")
-    return _container_cli, _ensure_agent_image
+    return _container_cli, _ensure_agent_image, _resolve_repo_mounts
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,7 @@ async def _spawn_container(
         raise ValueError("Agent execution runtime is required")
     # The harness deliberately defers this expensive check at host startup,
     # but an agent container must never be spawned without its image.
-    container_cli, ensure_agent_image = _configured_container_runtime()
+    container_cli, ensure_agent_image, resolve_repo_mounts = _configured_container_runtime()
     await asyncio.to_thread(
         ensure_agent_image,
         project_root=runtime.project_root,
@@ -164,23 +166,17 @@ async def _spawn_container(
 
     # --- Resolve worktree ---
     phase_start = time.monotonic()
-    repo_mounts: list[tuple[RepoContext, Path]] = []
+    repo_mounts: list[RepoMount] = []
     if input_data.repo_accesses:
         # Preflight resolves workspace defaults or an invocation-specific override
         # into this semantic mount scope. Re-reading the workspace here would widen
         # an explicitly scoped scheduled task back to every configured repository.
-        repo_contexts = [
-            repo_ctx
-            for slug in input_data.repo_accesses
-            if (repo_ctx := get_repo_context(slug)) is not None
-        ]
-        for repo_ctx in repo_contexts:
-            wt_result = ensure_worktree(group.folder, repo_ctx)
-            repo_mounts.append((repo_ctx, wt_result.path))
-            if wt_result.notices:
-                if input_data.system_notices is None:
-                    input_data.system_notices = []
-                input_data.system_notices.extend(wt_result.notices)
+        resolution = resolve_repo_mounts(group.folder, tuple(input_data.repo_accesses))
+        repo_mounts.extend(resolution.mounts)
+        if resolution.notices:
+            if input_data.system_notices is None:
+                input_data.system_notices = []
+            input_data.system_notices.extend(resolution.notices)
     worktree_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build mounts ---

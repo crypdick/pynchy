@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves mount operation annotations at runtime.
+)
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,9 +15,8 @@ if TYPE_CHECKING:
     from pynchy.plugins.api import AgentHookSpec
 
 from pynchy.agent_protocol.api import VolumeMount
+from pynchy.host.container_manager.contracts import AgentHomeMounts, RepoMount
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
-from pynchy.host.git_ops.api import RepoContext, repo_container_path
-from pynchy.host.learning.api import prepare_agent_homes, prepare_vault_mount_root
 from pynchy.host.paths import (
     PERSONALIZATION_RELATIVE_DIR,
     PERSONALIZATION_SKILLS_CONTAINER_PATH,
@@ -23,6 +26,30 @@ from pynchy.plugins.api import agent_hook_mounts
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves mount annotations at runtime.
 )
+
+
+@dataclass(frozen=True, slots=True)
+class MountOperations:
+    """Concrete host operations needed to assemble container mounts."""
+
+    prepare_agent_homes: Callable[..., AgentHomeMounts]
+    repo_container_path: Callable[[str], str]
+    runtime_name: Callable[[], str]
+
+
+_mount_operations: MountOperations | None = None
+
+
+def configure_mount_operations(operations: MountOperations) -> None:
+    """Install composition-owned mount operations for this host process."""
+    global _mount_operations  # noqa: PLW0603, RUF100 - one host process owns mount composition.
+    _mount_operations = operations
+
+
+def _configured_mount_operations() -> MountOperations:
+    if _mount_operations is None:
+        raise RuntimeError("container mount operations have not been configured")
+    return _mount_operations
 
 
 def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point with explicit mount inputs.
@@ -35,9 +62,9 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     mount_allowlist_path: Path,
     blocked_mount_patterns: tuple[str, ...],
     plugin_manager: pluggy.PluginManager | None = None,
-    repo_ctx: RepoContext | None = None,
+    repo_ctx: RepoMount | None = None,
     worktree_path: Path | None = None,
-    repo_mounts: list[tuple[RepoContext, Path]] | None = None,
+    repo_mounts: list[RepoMount] | None = None,
     agent_hooks: tuple[AgentHookSpec, ...] = (),
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
@@ -55,17 +82,18 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         List of volume mounts for the container
     """
     mounts: list[VolumeMount] = []
+    operations = _configured_mount_operations()
 
     group_dir = groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
     effective_repo_mounts = _effective_repo_mounts(repo_ctx, worktree_path, repo_mounts)
 
-    agent_homes = prepare_agent_homes(group.folder, plugin_manager)
-    if agent_homes.learning_paths is not None:
+    agent_homes = operations.prepare_agent_homes(group.folder, plugin_manager)
+    if agent_homes.vault_mount_root is not None and agent_homes.vault_mount_path is not None:
         mounts.append(
             VolumeMount(
-                str(prepare_vault_mount_root(agent_homes.learning_paths)),
-                agent_homes.learning_paths.vault_mount_path,
+                str(agent_homes.vault_mount_root),
+                str(agent_homes.vault_mount_path),
                 readonly=False,
             )
         )
@@ -78,7 +106,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
             readonly=False,
         )
     )
-    _add_workspace_mounts(mounts, group_dir, effective_repo_mounts)
+    _add_workspace_mounts(mounts, group_dir, effective_repo_mounts, operations)
     mounts.append(VolumeMount(str(agent_homes.claude_home), "/home/agent/.claude", readonly=False))
     mounts.append(VolumeMount(str(agent_homes.codex_home), "/home/agent/.codex", readonly=False))
     mounts.extend(agent_hook_mounts(agent_hooks))
@@ -96,7 +124,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
 
     _add_raw_repo_mount(
         mounts,
-        [repo_ctx for repo_ctx, _ in effective_repo_mounts],
+        effective_repo_mounts,
         is_admin=is_admin,
     )
 
@@ -112,29 +140,40 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
 
 
 def _effective_repo_mounts(
-    repo_ctx: RepoContext | None,
+    repo_ctx: RepoMount | None,
     worktree_path: Path | None,
-    repo_mounts: list[tuple[RepoContext, Path]] | None,
-) -> list[tuple[RepoContext, Path]]:
+    repo_mounts: list[RepoMount] | None,
+) -> list[RepoMount]:
     if repo_mounts is not None:
         return repo_mounts
     if repo_ctx is not None and worktree_path is not None:
-        return [(repo_ctx, worktree_path)]
+        return [
+            RepoMount(
+                slug=repo_ctx.slug,
+                root=repo_ctx.root,
+                worktree_path=worktree_path,
+            )
+        ]
     return []
 
 
 def _add_workspace_mounts(
     mounts: list[VolumeMount],
     group_dir: Path,
-    repo_mounts: list[tuple[RepoContext, Path]],
+    repo_mounts: list[RepoMount],
+    operations: MountOperations,
 ) -> None:
-    for repo_ctx, worktree_path in repo_mounts:
+    for repo_mount in repo_mounts:
         mounts.append(
-            VolumeMount(str(worktree_path), repo_container_path(repo_ctx.slug), readonly=False)
+            VolumeMount(
+                str(repo_mount.worktree_path),
+                operations.repo_container_path(repo_mount.slug),
+                readonly=False,
+            )
         )
         # Worktree .git file references the main repo's .git dir via absolute path.
         # Mount it at the same host path so git resolves the reference inside the container.
-        git_dir = repo_ctx.root / ".git"
+        git_dir = repo_mount.root / ".git"
         mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
     mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
 
@@ -151,7 +190,7 @@ def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str)
 
 def _add_raw_repo_mount(
     mounts: list[VolumeMount],
-    repo_contexts: list[RepoContext],
+    repo_mounts: list[RepoMount],
     *,
     is_admin: bool,
 ) -> None:
@@ -164,11 +203,11 @@ def _add_raw_repo_mount(
     mounts.extend(
         [
             VolumeMount(
-                str(repo_ctx.root),
-                f"/danger/raw-host-repos/{repo_ctx.slug}",
+                str(repo_mount.root),
+                f"/danger/raw-host-repos/{repo_mount.slug}",
                 readonly=False,
             )
-            for repo_ctx in repo_contexts
+            for repo_mount in repo_mounts
         ]
     )
 
@@ -219,11 +258,8 @@ def build_container_args(
     from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
         get_gateway,
     )
-    from pynchy.plugins.runtimes.api import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when building container argv.
-        get_runtime,
-    )
 
-    runtime = get_runtime()
+    runtime_name = _configured_mount_operations().runtime_name()
 
     # No --rm: persistent sessions need explicit cleanup via docker rm -f
     # (handled in _session.py on stop/create).
@@ -242,7 +278,7 @@ def build_container_args(
     # so containers can reach the host process via ``host.docker.internal``.
     # Docker Desktop sets this automatically; on Linux it requires --add-host.
     gateway = get_gateway()
-    if gateway is not None and runtime.name == "docker":
+    if gateway is not None and runtime_name == "docker":
         args.extend(["--add-host", "host.docker.internal:host-gateway"])
 
     for name in sorted(env_names):
@@ -252,7 +288,7 @@ def build_container_args(
         if m.readonly:
             # Apple Container rejects file sources with --mount ...,readonly,
             # but accepts the same file bind through -v ...:ro.
-            if runtime.name == "apple" and Path(m.host_path).is_file():
+            if runtime_name == "apple" and Path(m.host_path).is_file():
                 args.extend(["-v", f"{m.host_path}:{m.container_path}:ro"])
             else:
                 args.extend(

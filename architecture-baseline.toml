@@ -141,50 +141,6 @@ imports = [
 reason = "pynchy.host.container_manager.mcp.resolution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.mounts"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mounts"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.api",
-]
-reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mounts"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.api",
-]
-reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.orchestrator"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.container_manager.orchestrator still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
 importer = "pynchy.host.container_manager.security.gate"
 target_role = "application"
 rule = "direction"

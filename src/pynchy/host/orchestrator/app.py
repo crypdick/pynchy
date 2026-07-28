@@ -37,7 +37,10 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
 )
 from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager.api import (
+    AgentHomeMounts,  # noqa: TC001, RUF100 - beartype resolves composition contracts at runtime.
     McpStartupFailure,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RepoMount,
+    RepoMountResolution,
 )
 from pynchy.host.container_manager.credentials import build_agent_env_vars, has_api_credentials
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
@@ -52,6 +55,7 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_response,
 )
 from pynchy.host.container_manager.mcp.manager import get_mcp_manager
+from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     configure_container_spawn_runtime,
@@ -88,6 +92,7 @@ from pynchy.host.git_ops.api import (
     is_repo_dirty,
     needs_container_rebuild,
     needs_deploy,
+    repo_container_path,
     repo_host_root,
     run_git,
 )
@@ -95,12 +100,14 @@ from pynchy.host.git_ops.utils import configure_git_default_cwd
 from pynchy.host.git_ops.worktree import (
     WorktreeStartupRuntime,
     configure_worktree_startup_runtime,
+    ensure_worktree,
 )
 from pynchy.host.learning.api import (
     LearningPathsRuntime,
     configure_learning_paths_runtime,
     prepare_agent_homes,
     prepare_full_vault_host_root,
+    prepare_vault_mount_root,
     profile_name_for_group,
     refresh_personalized_agent_skills,
     resolve_learning_paths,
@@ -601,9 +608,59 @@ class PynchyApp(ThreadRouting):
         )
         configure_runtime_override(settings.container.runtime)
         runtime = get_runtime()
+
+        def resolve_repo_mounts(
+            group_folder: str,
+            repo_accesses: tuple[str, ...],
+        ) -> RepoMountResolution:
+            mounts: list[RepoMount] = []
+            notices: list[str] = []
+            for slug in repo_accesses:
+                repo_context = get_repo_context(slug)
+                if repo_context is None:
+                    continue
+                worktree = ensure_worktree(group_folder, repo_context)
+                mounts.append(
+                    RepoMount(
+                        slug=repo_context.slug,
+                        root=repo_context.root,
+                        worktree_path=worktree.path,
+                    )
+                )
+                notices.extend(worktree.notices)
+            return RepoMountResolution(tuple(mounts), tuple(notices))
+
+        def mount_agent_homes(
+            group_folder: str,
+            plugin_manager: pluggy.PluginManager | None,
+        ) -> AgentHomeMounts:
+            homes = prepare_agent_homes(group_folder, plugin_manager)
+            return AgentHomeMounts(
+                claude_home=homes.claude_home,
+                codex_home=homes.codex_home,
+                vault_mount_root=(
+                    prepare_vault_mount_root(homes.learning_paths)
+                    if homes.learning_paths is not None
+                    else None
+                ),
+                vault_mount_path=(
+                    homes.learning_paths.vault_mount_path
+                    if homes.learning_paths is not None
+                    else None
+                ),
+            )
+
+        configure_mount_operations(
+            MountOperations(
+                prepare_agent_homes=mount_agent_homes,
+                repo_container_path=repo_container_path,
+                runtime_name=lambda: runtime.name,
+            )
+        )
         configure_container_spawn_runtime(
             container_cli=runtime.cli,
             ensure_agent_image=ensure_agent_image_available,
+            resolve_repo_mounts=resolve_repo_mounts,
         )
         configure_container_process_runtime(
             container_cli=runtime.cli,

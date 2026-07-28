@@ -1,6 +1,7 @@
 """Curated container-runtime capabilities for composition and internal assurance."""
 
 from pynchy.agent_protocol.api import McpStartupFailure
+from pynchy.host.container_manager.contracts import AgentHomeMounts, RepoMount, RepoMountResolution
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.handlers_artifact_security import (
     evaluate_package_coordinates,
@@ -39,6 +40,7 @@ from pynchy.redaction import (
 )
 
 __all__ = [
+    "AgentHomeMounts",
     "BuiltinGateway",
     "CopContextAvailability",
     "CopInspectionContext",
@@ -55,6 +57,8 @@ __all__ = [
     "PackageSource",
     "ReceiptVerification",
     "RegistryMetadataError",
+    "RepoMount",
+    "RepoMountResolution",
     "assess_package_metadata",
     "clear_approval_receipts",
     "clear_package_metadata_cache",

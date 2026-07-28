@@ -62,6 +62,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.container_manager import process as process_mod
 from pynchy.host.container_manager import session as session_mod
+from pynchy.host.container_manager.api import AgentHomeMounts, RepoMount
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
@@ -210,6 +211,20 @@ def build_volume_mounts(group, **kwargs):
     settings = _test_settings.get()
     if settings is None:
         raise RuntimeError("build_volume_mounts requires _patch_settings")
+    repo_ctx = kwargs.get("repo_ctx")
+    worktree_path = kwargs.get("worktree_path")
+    if isinstance(repo_ctx, RepoContext) and isinstance(worktree_path, Path):
+        kwargs["repo_ctx"] = RepoMount(
+            slug=repo_ctx.slug,
+            root=repo_ctx.root,
+            worktree_path=worktree_path,
+        )
+    repo_mounts = kwargs.get("repo_mounts")
+    if repo_mounts is not None:
+        kwargs["repo_mounts"] = [
+            RepoMount(slug=repo.slug, root=repo.root, worktree_path=worktree)
+            for repo, worktree in repo_mounts
+        ]
     return _build_volume_mounts(
         group,
         groups_dir=settings.groups_dir,
@@ -909,7 +924,10 @@ class TestContainerArgs:
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
 
-        with patch("pynchy.plugins.runtimes.api.get_runtime", return_value=runtime):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
             )
@@ -922,7 +940,10 @@ class TestContainerArgs:
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
 
-        with patch("pynchy.plugins.runtimes.api.get_runtime", return_value=runtime):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 [], "test-container", memory_mb=2048, image="pynchy-agent:latest"
             )
@@ -935,9 +956,10 @@ class TestContainerArgs:
         runtime.name = "docker"
         settings = make_settings(container=ContainerConfig(memory_mb=1536))
 
-        with (
-            patch("pynchy.plugins.runtimes.api.get_runtime", return_value=runtime),
-        ):
+        with patch(
+            "pynchy.host.container_manager.mounts._configured_mount_operations"
+        ) as configured:
+            configured.return_value.runtime_name.return_value = runtime.name
             args = build_container_args(
                 [],
                 "test-container",
@@ -1003,7 +1025,7 @@ class TestMountBuilding:
         assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
         assert skill_mount.readonly is False
 
-    def test_learning_enabled_mounts_vault_readwrite(self, monkeypatch, tmp_path: Path):
+    def test_learning_enabled_mounts_vault_readwrite(self, tmp_path: Path):
         vault = tmp_path / "vault"
         vault.mkdir()
         learning = LearningConfig(
@@ -1016,12 +1038,16 @@ class TestMountBuilding:
 
         with _patch_settings(tmp_path, learning=learning):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            monkeypatch.setattr(
-                "pynchy.host.container_manager.mounts.prepare_vault_mount_root",
-                lambda paths: paths.vault_root,
-            )
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+            with patch(
+                "pynchy.host.container_manager.mounts._configured_mount_operations"
+            ) as configured:
+                configured.return_value.prepare_agent_homes.return_value = AgentHomeMounts(
+                    claude_home=tmp_path / "claude",
+                    codex_home=tmp_path / "codex",
+                    vault_mount_root=vault.resolve(),
+                    vault_mount_path="/mnt/obsidian",
+                )
+                mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         vault_mount = next(
             (m for m in mounts if m.container_path == "/mnt/obsidian"),
