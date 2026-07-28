@@ -13,7 +13,6 @@ import pluggy  # noqa: TC002 - beartype resolves agent core lookup signatures at
 
 from pynchy.agent_protocol.api import (
     # beartype resolves container orchestration signatures at runtime.
-    # beartype resolves container orchestration signatures at runtime.
     AgentExecutionRuntime,
     ContainerInput,
     McpStartupFailure,

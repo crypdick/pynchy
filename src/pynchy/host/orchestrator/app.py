@@ -269,7 +269,6 @@ from pynchy.identifiers import (
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     # beartype resolves app annotations at runtime.
-    # beartype resolves app annotations at runtime.
     Channel,
     MemoryProvider,
     NewMessage,
