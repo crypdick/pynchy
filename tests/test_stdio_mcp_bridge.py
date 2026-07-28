@@ -6,11 +6,14 @@ import asyncio
 import socket
 import subprocess  # noqa: S404 - test starts a local stdio MCP fixture.
 import sys
+from unittest.mock import ANY, Mock
 
 import aiohttp
 import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
+from pynchy.host.container_manager.mcp import stdio_bridge
 
 _BACKEND = """
 import asyncio
@@ -101,3 +104,25 @@ async def test_stdio_bridge_proxies_tool_discovery_and_calls(tmp_path):
         if process.poll() is None:
             process.terminate()
             await asyncio.to_thread(process.wait, 5)
+
+
+def test_stdio_bridge_cli_starts_a_loopback_server_for_its_backend_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Mock()
+    monkeypatch.setattr(stdio_bridge.uvicorn, "run", started)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["stdio-bridge", "--port", "8765", "--", "backend", "--safe-mode"],
+    )
+
+    stdio_bridge.main()
+
+    started.assert_called_once_with(
+        ANY,
+        host="127.0.0.1",
+        port=8765,
+        log_level="warning",
+        access_log=False,
+    )
