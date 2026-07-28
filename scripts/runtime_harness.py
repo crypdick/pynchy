@@ -758,6 +758,7 @@ def _stop_pid(
         # checks the whole owned process group, not only the leader PID, before
         # deciding that teardown succeeded.
         if not _process_group_has_live_member(pid):
+            _reap_harness_child(pid)
             return
         time.sleep(0.25)
     with contextlib.suppress(ProcessLookupError):
@@ -766,6 +767,7 @@ def _stop_pid(
     while time.monotonic() < kill_deadline:
         _reap_harness_child(pid)
         if not _process_group_has_live_member(pid):
+            _reap_harness_child(pid)
             return
         time.sleep(0.25)
     _reap_harness_child(pid)
@@ -783,6 +785,10 @@ def _process_group_has_live_member(process_group_id: int) -> bool:
         os.killpg(process_group_id, 0)
     except ProcessLookupError:
         return False
+    except PermissionError:
+        # Darwin can deny a signal-zero probe for a group containing only zombies.
+        # The status scan below still distinguishes it from a live owned group.
+        pass
     ps = shutil.which("ps")
     if ps is None:
         return True

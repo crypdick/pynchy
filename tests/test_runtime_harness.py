@@ -855,6 +855,55 @@ def test_stop_treats_a_process_group_with_only_a_zombie_leader_as_stopped(
     assert signals == [harness.signal.SIGTERM, 0]
 
 
+def test_stop_treats_a_permission_denied_zombie_group_probe_as_stopped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Darwin can deny killpg(..., 0) while ps still proves only zombies remain."""
+    spec = _spec(_runtime_root(tmp_path))
+    marker = _process_marker("pynchy")
+    _write_runtime_state(
+        spec,
+        {
+            "version": 2,
+            "namespace": "pynchy/../../production",
+            "pynchy_pid": 1234,
+            "pynchy_marker": marker,
+        },
+    )
+    calls: list[list[str]] = []
+    signals: list[int] = []
+    waitpid_calls: list[tuple[int, int]] = []
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[:2] == ["/usr/bin/ps", "-ww"]:
+            return subprocess.CompletedProcess(command, 0, stdout=f"/bin/sh -c ... {marker} ...")
+        return subprocess.CompletedProcess(command, 0, stdout="1234 Zs\n")
+
+    def killpg(_pid: int, signal: int) -> None:
+        signals.append(signal)
+        if signal == 0:
+            raise PermissionError
+
+    def waitpid(pid: int, flags: int) -> tuple[int, int]:
+        waitpid_calls.append((pid, flags))
+        return (0, 0) if len(waitpid_calls) == 1 else (pid, 0)
+
+    monkeypatch.setattr(harness.os, "killpg", killpg)
+    monkeypatch.setattr(harness.os, "waitpid", waitpid)
+    monkeypatch.setattr(harness.shutil, "which", lambda _name: "/usr/bin/ps")
+    monkeypatch.setattr(harness.subprocess, "run", run)
+
+    harness.stop(spec.root)
+
+    assert calls == [
+        ["/usr/bin/ps", "-ww", "-p", "1234", "-o", "command="],
+        ["/usr/bin/ps", "-eo", "pgid=,stat="],
+    ]
+    assert signals == [harness.signal.SIGTERM, 0]
+    assert waitpid_calls == [(1234, harness.os.WNOHANG), (1234, harness.os.WNOHANG)]
+
+
 def test_stop_escalates_for_a_term_ignoring_group_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -891,7 +940,7 @@ def test_stop_escalates_for_a_term_ignoring_group_child(
         harness.stop(root)
         _wait_for_process_group_to_disappear(process.pid)
     finally:
-        with contextlib.suppress(ProcessLookupError):
+        with contextlib.suppress(PermissionError, ProcessLookupError):
             harness.os.killpg(process.pid, harness.signal.SIGKILL)
         with contextlib.suppress(ChildProcessError):
             harness.os.waitpid(process.pid, 0)
@@ -902,7 +951,7 @@ def _wait_for_process_group_to_disappear(process_group_id: int) -> None:
     while time.monotonic() < deadline:
         try:
             harness.os.killpg(process_group_id, 0)
-        except ProcessLookupError:
+        except (PermissionError, ProcessLookupError):
             return
         time.sleep(0.05)
     pytest.fail("SIGKILL did not remove the harness-owned process group")
