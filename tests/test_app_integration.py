@@ -16,24 +16,26 @@ import pytest
 from conftest import NullChannel, make_settings
 
 from pynchy import state
-from pynchy.config.models import NotificationsConfig
-from pynchy.host.container_manager import serialization
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    InFlightTurn,
+    InFlightWorkKind,
+    parse_container_output,
+)
+from pynchy.config.api import NotificationsConfig
+from pynchy.deployments import DeployRevision
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
-from pynchy.plugins.channel_runtime import ChannelPluginContext
+from pynchy.identifiers import RuntimeId
+from pynchy.plugins.api import ChannelPluginContext, NewMessage
 from pynchy.state import get_chat_history, set_router_state, store_message
-from pynchy.types import (
-    AgentExecutionRuntime,
-    DeployRevision,
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.workspace.api import (
+    RuntimeTarget,
     WorkspaceProfile,
 )
 
@@ -117,23 +119,17 @@ def _patch_test_settings(tmp_path: Path):
         data_dir=tmp_path / "data",
     )
     with contextlib.ExitStack() as stack:
-        for mod in (
-            "pynchy.host.container_manager.credentials",
-            "pynchy.host.learning.skill_activation",
-            "pynchy.host.orchestrator.messaging.pipeline",
-        ):
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch docker_rm_force which spawns a real subprocess to remove
-        # containers — would hang in the test environment.  Must patch at both
-        # the canonical location (process) and the import site (session)
-        # because Python's from-import creates a separate reference.
+        # containers — would hang in the test environment. Patch each import
+        # site because Python's from-import creates a separate reference.
         stack.enter_context(
             patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        yield stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
+        stack.enter_context(patch("pynchy.host.orchestrator.app.docker_rm_force", _noop_docker_rm))
+        yield stack.enter_context(patch(f"{_CR_ORCH}._ensure_agent_image"))
 
 
 class FakeChannel(NullChannel):
@@ -203,7 +199,7 @@ class FakeProcess(asyncio.subprocess.Process):
         assert handler is not None, "Session has no output handler"
 
         if self._output:
-            output = serialization.parse_container_output(json.dumps(self._output))
+            output = parse_container_output(json.dumps(self._output))
             await handler(output)
 
             # Emit query-done pulse via signal_query_done
@@ -212,7 +208,7 @@ class FakeProcess(asyncio.subprocess.Process):
                 "result": None,
                 "new_session_id": self._output.get("new_session_id", "test-session"),
             }
-            pulse = serialization.parse_container_output(json.dumps(pulse_data))
+            pulse = parse_container_output(json.dumps(pulse_data))
             await handler(pulse)
             session.signal_query_done()
 
@@ -276,7 +272,7 @@ async def _schedule_outputs_via_session(
 
     for output_dict in outputs:
         await asyncio.sleep(0.01)
-        parsed = serialization.parse_container_output(json.dumps(output_dict))
+        parsed = parse_container_output(json.dumps(output_dict))
         await handler(parsed)
         if is_query_done_pulse(parsed):
             emitted_pulse = True
@@ -284,7 +280,7 @@ async def _schedule_outputs_via_session(
 
     # If no output triggered query done, append a pulse
     if not emitted_pulse:
-        pulse = serialization.parse_container_output(
+        pulse = parse_container_output(
             json.dumps({"status": "success", "result": None, "new_session_id": final_session_id})
         )
         await handler(pulse)
@@ -395,10 +391,7 @@ async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> Non
 
     with (
         patch.object(app, "prepare_context_reset", new_callable=AsyncMock) as prepare,
-        patch(
-            "pynchy.host.orchestrator.session_handler.destroy_session",
-            new_callable=AsyncMock,
-        ) as destroy,
+        patch.object(app.queue, "destroy_runtime_session", new_callable=AsyncMock) as destroy,
         patch(
             "pynchy.host.orchestrator.session_handler.clear_session",
             new_callable=AsyncMock,
@@ -407,7 +400,7 @@ async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> Non
         await make_ipc_deps(app).clear_session("test-group")
 
     prepare.assert_awaited_once_with(app.workspaces["group@g.us"])
-    destroy.assert_awaited_once_with("test-group")
+    destroy.assert_awaited_once_with(RuntimeId("test-group"))
     clear.assert_awaited_once_with("test-group")
     assert "test-group" not in app.sessions
     assert "test-group" in app.session_cleared

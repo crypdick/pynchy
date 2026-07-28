@@ -12,8 +12,13 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state import create_host_job, create_task, log_task_run, record_task_completion
-from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
 
 def _orchestration_states(

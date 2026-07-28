@@ -3,15 +3,15 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from pynchy.config.models import (
+from pynchy.config.api import (
     BuiltinTool,
     LinearTool,
     MatrixConnectionConfig,
     McpTool,
     ToolConfig,
     WorkspaceTool,
+    validate_settings_mapping,
 )
-from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
 
 

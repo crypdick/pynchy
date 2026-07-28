@@ -10,7 +10,11 @@ import pytest
 from temporalio.client import WorkflowExecutionStatus
 
 from pynchy.host.orchestrator.temporal import status as temporal_status
-from pynchy.types import HostJob, ScheduledTask, SessionPolicy
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+)
 
 
 @dataclass(frozen=True)

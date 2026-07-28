@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+)
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+)
 
 FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]
+StartLearningReviewWorkflow = Callable[["LearningPacket"], Awaitable[None]]
 LearningRunSummary = learning_packets.LearningRunSummary
+
+if TYPE_CHECKING:
+    from pynchy.learning_packets import LearningPacket
 
 
 def is_after_turn_learning_enabled(*, enabled: bool, review_after_turn: bool) -> bool:
@@ -78,6 +89,7 @@ async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learn
     final_cursor: str,
     summary: LearningRunSummary,
     fetch_messages_since: FetchMessagesSince,
+    start_review_workflow: StartLearningReviewWorkflow,
     *,
     enabled: bool,
     review_after_turn: bool,
@@ -114,6 +126,7 @@ async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learn
             summary=summary,
             enabled=enabled,
             packet_max_chars=packet_max_chars,
+            start_review_workflow=start_review_workflow,
         )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
         logger.exception(

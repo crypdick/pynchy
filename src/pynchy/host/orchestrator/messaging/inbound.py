@@ -16,10 +16,10 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 
-import pynchy.config.access as config_access
 import pynchy.host.orchestrator.todos as todos
-import pynchy.plugins.integrations.linear_boot as linear_boot
-from pynchy.config import get_settings
+from pynchy.agent_protocol.api import (
+    InFlightWorkKind,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+)
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves routing annotations.
     MessageHandlerDeps,
@@ -32,19 +32,22 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     reclassify_batch_host_controls,
     turn_boundary_lock,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.state.api import (
     get_messages_since,
     get_new_messages,
     get_oldest_resumable_turn_for_group,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
-    InFlightWorkKind,
-    NewMessage,
-    OutboundEvent,
-    OutboundEventType,
-    RuntimeId,
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    RuntimeTarget,
     WorkspaceProfile,
 )
 
@@ -97,9 +100,7 @@ def _allowed_group_messages(
     ]
     allowed_channel_ids = {
         message.id
-        for message in config_access.filter_allowed_messages(
-            channel_messages, group, channel_plugin_name
-        )
+        for message in deps.filter_allowed_messages(channel_messages, group, channel_plugin_name)
     }
     # The marker bypasses only the control channel's sender allowlist. The
     # provider body remains untrusted and taints the agent invocation.
@@ -414,14 +415,14 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # Linear workspace writes only its canonical board. Both use a system
         # notice so the agent treats this as informational rather than a request.
         item = request.last_content[5:]  # strip "todo " prefix
-        linear_enabled = linear_boot.linear_workspace_enabled(request.group)
+        linear_enabled = request.deps.linear_workspace_enabled(request.group)
         issue = (
-            await linear_boot.create_linear_workspace_todo(request.group, item)
+            await request.deps.create_linear_workspace_todo(request.group, item)
             if linear_enabled
             else None
         )
         if not linear_enabled:
-            todos.add_todo(get_settings().data_dir, request.group.folder, item)
+            todos.add_todo(request.deps.message_data_dir, request.group.folder, item)
         elif issue is None:
             await request.deps.broadcast_to_channels(
                 request.group_jid,
@@ -487,8 +488,7 @@ async def start_message_loop(
     shutting_down: Callable[[], bool],
 ) -> None:
     """Main polling loop — checks for incoming messages every message_poll interval."""
-    s = get_settings()
-    logger.info("🦞 Pynchy running", trigger=s.agent.name)
+    logger.info("🦞 Pynchy running", trigger=deps.agent_name)
 
     while not shutting_down():
         try:
@@ -496,4 +496,4 @@ async def start_message_loop(
         except Exception:  # noqa: BLE001, RUF100 - message loop is the routing boundary; keep polling after a failure.
             logger.exception("Error in message loop")
 
-        await asyncio.sleep(s.intervals.message_poll)
+        await asyncio.sleep(deps.message_poll_interval)

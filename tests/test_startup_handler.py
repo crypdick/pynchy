@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import json
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import NotificationsConfig
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+)
+from pynchy.config.api import NotificationsConfig
+from pynchy.deployments import (
+    DeploymentState,
+    DeployRevision,
+)
 from pynchy.host.orchestrator import startup_handler, startup_rollback
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
@@ -22,6 +31,7 @@ from pynchy.host.orchestrator.startup_handler import (
     terminate_failed_startup,
     validate_plugin_credentials,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.state import (
     begin_in_flight_turn,
     claim_deployment,
@@ -33,15 +43,7 @@ from pynchy.state import (
     initialize_deployment_state,
     set_session,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    DeploymentState,
-    DeployRevision,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 _ACTIVE_REVISION = DeployRevision("active-sha", "active-config")
 
@@ -182,10 +184,6 @@ class TestAutoRollback:
             lambda _max_length: "Recovered deploy",
         )
         monkeypatch.setattr("pynchy.host.orchestrator.startup_handler.is_repo_dirty", lambda: False)
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.startup_handler.credentials.has_api_credentials",
-            lambda: True,
-        )
         deps = FakeDeps({"discord:admin": _make_workspace("discord:admin", "admin", True)})
 
         await send_boot_notification(deps)
@@ -310,6 +308,8 @@ class FakeDeps:
         self.start_interrupted_turn = AsyncMock()
         self.register_workspace = AsyncMock()
         self.prepare_context_reset = AsyncMock()
+        self.destroy_runtime_session = AsyncMock()
+        self.has_api_credentials = MagicMock(return_value=True)
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:

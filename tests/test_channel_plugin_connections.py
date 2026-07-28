@@ -9,13 +9,13 @@ from typing import Any
 from unittest.mock import ANY, MagicMock, patch
 
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
-from pynchy.config.models import (
+from pynchy.config.api import (
     DiscordConnectionConfig,
 )
 from pynchy.discord import (  # noqa: TC001, RUF100 - test context exposes the concrete domain value.
     DiscordConnectionSettings,
 )
-from pynchy.plugins.channel_runtime import ChannelPluginContext
+from pynchy.plugins.api import ChannelPluginContext
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
 from pynchy.plugins.speech.pocket_tts import PocketTtsProvider
@@ -75,8 +75,8 @@ neonize_enum.ChatPresenceMedia = _ChatPresenceMedia
 neonize_jid.Jid2String = lambda jid: getattr(jid, "value", "")
 neonize_jid.build_jid = lambda *parts: parts
 
+from pynchy.plugins.api import Channel  # noqa: E402
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
-from pynchy.types import Channel  # noqa: E402
 
 
 def _context(
@@ -161,6 +161,9 @@ def test_discord_plugin_uses_flat_connection_name_and_type(tmp_path: Path) -> No
         on_approval_decision=context.on_approval_decision_callback,
         workspaces=context.workspaces,
         speech_synthesizer=speech_synthesizer,
+        transcribe_audio=None,
+        process_inbound_audio=None,
+        find_chat_jids_by_name=None,
         audio_cache_dir=audio_cache_dir,
     )
     assert channel_class.call_args.kwargs["bot_token"] == discord_token

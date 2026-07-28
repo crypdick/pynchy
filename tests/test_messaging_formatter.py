@@ -14,7 +14,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     parse_host_tag,
     strip_internal_tags,
 )
-from pynchy.types import NewMessage
+from pynchy.plugins.api import NewMessage
 
 # ---------------------------------------------------------------------------
 # format_tool_preview — one branch per tool type

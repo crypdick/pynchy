@@ -10,18 +10,22 @@ from typing import TYPE_CHECKING
 import pytest
 from conftest import NullChannel, NullIpcDeps, make_settings
 
-from pynchy.config.models import MatrixConnectionConfig, WhatsAppConnectionConfig
-from pynchy.config.source_health import MessagingSourceHealthConfig
+from pynchy.config.api import (
+    MatrixConnectionConfig,
+    MessagingSourceHealthConfig,
+    WhatsAppConnectionConfig,
+)
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.state import init_test_database, store_message_direct
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pynchy.config import Settings
+    from pynchy.config.api import Settings
 
 
 class _WhatsAppChannel(NullChannel):
@@ -61,6 +65,11 @@ class _ConnectionHealthDeps(_SourceHealthDeps):
         return {"connection.matrix.gateway": True}
 
 
+def _configure_test_settings(monkeypatch, settings: Settings) -> None:
+    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    configure_ipc_base_dir(settings.data_dir / "ipc")
+
+
 @pytest.fixture
 async def source_health_setup(monkeypatch, tmp_path):
     await init_test_database()
@@ -68,7 +77,7 @@ async def source_health_setup(monkeypatch, tmp_path):
         data_dir=tmp_path,
         connections={"personal-phone": WhatsAppConnectionConfig()},
     )
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    _configure_test_settings(monkeypatch, settings)
     await store_message_direct(
         message_id="inbound-1",
         chat_jid="family@g.us",
@@ -182,7 +191,7 @@ async def test_projects_host_aggregate_health_without_identity_or_body(
         data_dir=tmp_path / "pynchy-data",
         messaging_source_health=MessagingSourceHealthConfig(data_dir=aggregate_root),
     )
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    _configure_test_settings(monkeypatch, settings)
 
     await dispatch(
         {
@@ -242,7 +251,7 @@ async def test_reports_non_channel_connection_runtime_status(monkeypatch, tmp_pa
         data_dir=tmp_path,
         connections={"gateway": MatrixConnectionConfig(expected_user_id="@owner:example.test")},
     )
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    _configure_test_settings(monkeypatch, settings)
 
     await dispatch(
         {
@@ -280,7 +289,7 @@ async def test_host_ipc_omission_preserves_complete_source_inventory(monkeypatch
         data_dir=tmp_path,
         connections={"gateway": MatrixConnectionConfig(expected_user_id="@owner:example.test")},
     )
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    _configure_test_settings(monkeypatch, settings)
 
     await dispatch(
         {
@@ -331,7 +340,7 @@ async def test_rejects_non_list_source_filter(source_health_setup: Settings) -> 
 async def test_unknown_source_remains_not_established(monkeypatch, tmp_path) -> None:
     await init_test_database()
     settings = make_settings(data_dir=tmp_path)
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    _configure_test_settings(monkeypatch, settings)
 
     await dispatch(
         {

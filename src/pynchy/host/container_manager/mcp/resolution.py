@@ -10,29 +10,116 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess  # noqa: S404, TC003, RUF100 - beartype resolves tracked MCP process annotations at runtime.
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves MCP resolution annotations at runtime.
+    Callable,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass, field
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves MCP instance annotations at runtime.
 )
-from typing import Any
+from typing import Any, Protocol, cast, runtime_checkable
 
-from pynchy.config import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
-    apply_tool_access,
-    tool_process_environment,
-)
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
-)
-from pynchy.config.models import McpTool
-from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.logger import logger
-from pynchy.plugins.mcp_server import McpServerConfig
-from pynchy.types import (
-    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution models at runtime.
+from pynchy.plugins.api import McpServerConfig
+from pynchy.runtime_names import runtime_container_name
+from pynchy.workspace.api import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 _SERVER_NAME_MUST_BE_NON_EMPTY = "server_name must be a non-empty string"
+
+
+@runtime_checkable
+class ResolvedMcpWorkspace(Protocol):
+    @property
+    def tools(self) -> Sequence[str]: ...
+
+
+@runtime_checkable
+class _McpRuntimeConfig(Protocol):
+    runtime: str
+    model_fields_set: set[str]
+
+    def model_dump(self, **kwargs: object) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class _McpToolConfig(Protocol):
+    type: str
+    mcp: _McpRuntimeConfig
+
+
+@runtime_checkable
+class _ToolTrustConfig(Protocol):
+    public_source: bool
+    secret_data: bool
+    public_sink: bool
+    dangerous_writes: bool
+
+
+class McpSettings(Protocol):
+    @property
+    def tools(self) -> Mapping[str, object]: ...
+
+    @property
+    def mcp_server_instances(self) -> Mapping[str, Mapping[str, Mapping[str, object]]]: ...
+
+    @property
+    def mcp_groups(self) -> Mapping[str, Sequence[str]]: ...
+
+    @property
+    def mcp_presets(self) -> Mapping[str, Mapping[str, str]]: ...
+
+    @property
+    def workspaces(self) -> Mapping[str, object]: ...
+
+    @property
+    def project_root(self) -> Path: ...
+
+    def resolved_workspace_config(self, group_folder: str) -> object | None: ...
+
+    def workspace_names(self) -> list[str]: ...
+
+
+def _unconfigured_tool_access(
+    _tools: Mapping[str, object], _resolved: object
+) -> tuple[ResolvedMcpWorkspace, object]:
+    raise RuntimeError("MCP tool access has not been composed")
+
+
+def _unconfigured_tool_environment(_tool: object) -> dict[str, str]:
+    raise RuntimeError("MCP tool environment has not been composed")
+
+
+_apply_tool_access: Callable[
+    [Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]
+] = _unconfigured_tool_access
+_tool_process_environment: Callable[[object], dict[str, str]] = _unconfigured_tool_environment
+
+
+def configure_mcp_resolution_runtime(
+    *,
+    apply_tool_access: Callable[
+        [Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]
+    ],
+    tool_process_environment: Callable[[object], dict[str, str]],
+) -> None:
+    """Bind config expansion helpers at host composition."""
+    global _apply_tool_access, _tool_process_environment  # noqa: PLW0603, RUF100 - one host process owns these MCP policy operations.
+    _apply_tool_access = apply_tool_access
+    _tool_process_environment = tool_process_environment
+
+
+def _settings(settings: object) -> McpSettings:
+    return cast("McpSettings", settings)
+
+
+def _mcp_tool(tool: object) -> _McpToolConfig | None:
+    if not isinstance(tool, _McpToolConfig) or tool.type != "mcp":
+        return None
+    return tool
 
 
 # ---------------------------------------------------------------------------
@@ -98,17 +185,18 @@ class _SyncState:
 
 
 def _resolved_workspace_config(
-    settings: Settings,
+    settings: object,
     group_folder: str,
-) -> ResolvedWorkspaceConfig | None:
+) -> ResolvedMcpWorkspace | None:
     """Resolve workspace config before reading selected MCP tool declarations."""
-    resolved = settings.resolved_workspace_config(group_folder)
+    settings_view = _settings(settings)
+    resolved = settings_view.resolved_workspace_config(group_folder)
     if resolved is None:
         return None
-    return apply_tool_access(settings.tools, resolved)[0]
+    return _apply_tool_access(settings_view.tools, resolved)[0]
 
 
-def _mcp_runtime_updates(tool: McpTool) -> dict[str, Any]:
+def _mcp_runtime_updates(tool: _McpToolConfig) -> dict[str, Any]:
     fields = set(tool.mcp.model_fields_set)
     fields.discard("credentials_path")
     if not fields:
@@ -121,7 +209,7 @@ def _mcp_runtime_updates(tool: McpTool) -> dict[str, Any]:
 
 
 def merged_mcp_servers(
-    settings: Settings,
+    settings: object,
     plugin_mcp_servers: dict[str, McpServerConfig],
 ) -> dict[str, McpServerConfig]:
     """Tool-declared MCP runtime configs + plugin-provided servers.
@@ -133,8 +221,10 @@ def merged_mcp_servers(
     """
     result = dict(plugin_mcp_servers)
 
-    for name, tool in settings.tools.items():
-        if not isinstance(tool, McpTool):
+    settings_view = _settings(settings)
+    for name, configured_tool in settings_view.tools.items():
+        tool = _mcp_tool(configured_tool)
+        if tool is None:
             continue
         updates = _mcp_runtime_updates(tool)
         if not updates:
@@ -150,7 +240,7 @@ def merged_mcp_servers(
         )
 
     # Expand template x instance pairs
-    for template, instances in getattr(settings, "mcp_server_instances", {}).items():
+    for template, instances in getattr(settings_view, "mcp_server_instances", {}).items():
         base = result.pop(template, None)
         if base is None:
             logger.warning(
@@ -181,12 +271,13 @@ def merged_mcp_servers(
 
 
 def resolve_workspace_servers(
-    settings: Settings,
+    settings: object,
     all_servers: dict[str, McpServerConfig],
     group_folder: str,
 ) -> list[str]:
     """Expand resolved MCP tool names into concrete server names."""
-    ws_config = _resolved_workspace_config(settings, group_folder)
+    settings_view = _settings(settings)
+    ws_config = _resolved_workspace_config(settings_view, group_folder)
     if not ws_config:
         return []
 
@@ -198,8 +289,8 @@ def resolve_workspace_servers(
         # confirming no external Settings substitutes bypass strict schema validation.
         if entry == "all":
             servers.update(all_servers.keys())
-        elif entry in getattr(settings, "mcp_groups", {}):
-            servers.update(settings.mcp_groups[entry])
+        elif entry in getattr(settings_view, "mcp_groups", {}):
+            servers.update(settings_view.mcp_groups[entry])
         elif entry in all_servers:
             servers.add(entry)
         else:
@@ -211,12 +302,13 @@ def resolve_workspace_servers(
     return sorted(servers)
 
 
-def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> dict[str, str]:
+def resolve_kwargs(settings: object, group_folder: str, server_name: str) -> dict[str, str]:
     """Resolve per-workspace kwargs for an MCP server.
 
     Expands presets and merges with explicit values.
     """
-    if group_folder not in settings.workspaces:
+    settings_view = _settings(settings)
+    if group_folder not in settings_view.workspaces:
         return {}
     if not server_name:
         raise ValueError(_SERVER_NAME_MUST_BE_NON_EMPTY)
@@ -228,7 +320,7 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
     merged: dict[str, str] = {}
 
     for preset_name in preset_names:
-        preset = getattr(settings, "mcp_presets", {}).get(preset_name, {})
+        preset = getattr(settings_view, "mcp_presets", {}).get(preset_name, {})
         for key, value in preset.items():
             if key in merged:
                 # Merge values with semicolons (for domain lists, etc.)
@@ -260,7 +352,7 @@ def get_instance_id(server_name: str, kwargs: dict[str, str]) -> str:
 
 
 def resolve_all_instances(
-    settings: Settings,
+    settings: object,
     all_servers: dict[str, McpServerConfig],
 ) -> _SyncState:
     """Resolve all (server, kwargs) instances needed across all workspaces.
@@ -278,7 +370,8 @@ def resolve_all_instances(
 
     # Semantic child workspaces own policy independently from their physical
     # roots, so they must receive their own selected MCP instances too.
-    for folder in settings.workspace_names():
+    settings_view = _settings(settings)
+    for folder in settings_view.workspace_names():
         servers = resolve_workspace_servers(settings, all_servers, folder)
         if not servers:
             continue
@@ -301,7 +394,7 @@ def resolve_all_instances(
 
             if iid not in state.instances:
                 container_name = runtime_container_name(f"mcp-{iid}")
-                tool = settings.tools.get(server_name)
+                tool = settings_view.tools.get(server_name)
                 offset = port_counters.get(server_name, 0)
                 base_port = server_config.port
                 instance_port = (base_port + offset) if base_port is not None else None
@@ -321,9 +414,9 @@ def resolve_all_instances(
                     kwargs=kwargs,
                     instance_id=iid,
                     container_name=container_name,
-                    project_root=settings.project_root,
+                    project_root=settings_view.project_root,
                     port=instance_port,
-                    tool_environment=tool_process_environment(tool) if tool is not None else {},
+                    tool_environment=_tool_process_environment(tool) if tool is not None else {},
                 )
 
             instance_ids.append(iid)
@@ -337,7 +430,7 @@ def resolve_all_instances(
 def build_trust_map(
     instances: dict[str, McpInstance],
     plugin_trust_defaults: dict[str, ServiceTrustConfig],
-    settings: Settings | None = None,
+    settings: object | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build trust metadata for each instance (used by proxy for fencing decisions).
 
@@ -345,13 +438,14 @@ def build_trust_map(
     """
     trust_map: dict[str, dict[str, Any]] = {}
     for iid, instance in instances.items():
-        tool = settings.tools.get(instance.server_name) if settings else None
-        if tool:
+        tool = settings and _settings(settings).tools.get(instance.server_name)
+        trust = tool if isinstance(tool, _ToolTrustConfig) else None
+        if trust is not None:
             trust_map[iid] = {
-                "public_source": tool.public_source,
-                "secret_data": tool.secret_data,
-                "public_sink": tool.public_sink,
-                "dangerous_writes": tool.dangerous_writes,
+                "public_source": trust.public_source,
+                "secret_data": trust.secret_data,
+                "public_sink": trust.public_sink,
+                "dangerous_writes": trust.dangerous_writes,
             }
             continue
 

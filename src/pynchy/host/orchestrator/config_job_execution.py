@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
-from pynchy.types import ScheduledTask  # noqa: TC001, RUF100
+from pynchy.scheduling.api import ScheduledTask  # noqa: TC001, RUF100
 from pynchy.utils import ShellResult, run_shell_command
 
 _MAX_PRE_RUN_STREAM_CHARS = 12_000

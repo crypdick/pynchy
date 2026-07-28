@@ -21,11 +21,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import init_test_database, make_settings
 
-from pynchy.config.models import CommandCenterConfig
+from pynchy.config.api import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.api import RepoContext
 from pynchy.state import get_all_host_jobs, get_all_tasks
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

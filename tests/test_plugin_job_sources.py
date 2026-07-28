@@ -8,10 +8,9 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.job_sources import configure_plugin_jobs
-from pynchy.plugins.contracts import JobSpec
+from pynchy.plugins.api import JobSpec
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +39,7 @@ def test_plugin_jobs_join_native_agent_and_deterministic_paths() -> None:
                 workspace="fam",
                 prompt="Review fam.",
                 pre_run_command="scripts/gate.py",
-            ),
+            ).model_dump(),
         ),
         JobSpec(
             name="vault-shell",
@@ -49,7 +48,7 @@ def test_plugin_jobs_join_native_agent_and_deterministic_paths() -> None:
                 workspace="fam",
                 agent=False,
                 command="scripts/remind.py",
-            ),
+            ).model_dump(),
         ),
     )
     plugin_manager = _PluginManager(hook=_Hooks(pynchy_job_specs=lambda: [specs]))
@@ -86,7 +85,7 @@ def test_user_job_wins_over_plugin_registry_entry() -> None:
                             schedule="0 8 * * *",
                             workspace="fam",
                             prompt="Plugin prompt.",
-                        ),
+                        ).model_dump(),
                     ),
                 )
             ]
@@ -117,7 +116,7 @@ def test_user_replacement_survives_plugin_reconfiguration() -> None:
                             schedule="0 8 * * *",
                             workspace="fam",
                             prompt="Plugin prompt.",
-                        ),
+                        ).model_dump(),
                     ),
                 )
             ]

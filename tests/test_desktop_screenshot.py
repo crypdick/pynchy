@@ -10,9 +10,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import AgentConfig
+from pynchy.config.api import AgentConfig, Settings
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.integrations.desktop_screenshot import DesktopScreenshotPlugin
+from pynchy.plugins.integrations.desktop_screenshot import (
+    DesktopScreenshotPlugin,
+    DesktopScreenshotRuntime,
+    DesktopVisionGateway,
+)
 
 
 class _FakeProcess:
@@ -24,32 +28,41 @@ class _FakeProcess:
         return b"", self._stderr
 
 
-def _handler(tool_name: str = "take_screenshot"):
-    action = DesktopScreenshotPlugin().pynchy_service_handler().action_for(tool_name)
+def _runtime(settings: Settings) -> DesktopScreenshotRuntime:
+    return DesktopScreenshotRuntime(
+        data_dir=settings.data_dir,
+        default_model=settings.agent.model or "gpt-5.5",
+        vision_gateway=lambda: DesktopVisionGateway(port=4000, api_key="test-key"),
+    )
+
+
+def _handler(settings: Settings, tool_name: str = "take_screenshot"):
+    registration = DesktopScreenshotPlugin(_runtime(settings)).pynchy_service_handler()
+    action = registration.action_for(tool_name)
     assert action is not None
     return action.handler
 
 
-def test_desktop_screenshot_plugin_is_registered() -> None:
+def test_desktop_screenshot_plugin_is_registered(tmp_path: Path) -> None:
     with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
         pm = get_plugin_manager()
 
     assert "builtin-desktop-screenshot" in [pm.get_name(p) for p in pm.get_plugins()]
-    registration = pm.get_plugin("builtin-desktop-screenshot").pynchy_service_handler()
+    plugin = pm.get_plugin("builtin-desktop-screenshot")
+    assert isinstance(plugin, DesktopScreenshotPlugin)
+    plugin.configure(_runtime(make_settings(data_dir=tmp_path)))
+    registration = plugin.pynchy_service_handler()
     assert registration.action_for("take_screenshot") is not None
     assert registration.action_for("analyze_screenshot") is not None
 
 
 @pytest.mark.asyncio
 async def test_take_screenshot_rejects_non_macos(tmp_path: Path) -> None:
-    handler = _handler()
     settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
 
-    with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
-        patch(
-            "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Linux"
-        ),
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Linux"
     ):
         result = await handler({"source_group": "admin"})
 
@@ -59,8 +72,8 @@ async def test_take_screenshot_rejects_non_macos(tmp_path: Path) -> None:
 @pytest.mark.action("desktop.screenshot.capture")
 @pytest.mark.asyncio
 async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: Path) -> None:
-    handler = _handler()
     settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
     captured_args: tuple[str, ...] | None = None
 
     async def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
@@ -70,7 +83,6 @@ async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: P
         return _FakeProcess()
 
     with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
         patch(
             "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
         ),
@@ -100,8 +112,8 @@ async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: P
 
 @pytest.mark.asyncio
 async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path: Path) -> None:
-    handler = _handler()
     settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
     captured_args: tuple[str, ...] | None = None
 
     async def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
@@ -111,7 +123,6 @@ async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path
         return _FakeProcess()
 
     with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
         patch(
             "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
         ),
@@ -153,11 +164,10 @@ async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path
 
 @pytest.mark.asyncio
 async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
-    handler = _handler()
     settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
 
     with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
         patch(
             "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
         ),
@@ -178,19 +188,16 @@ async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
 @pytest.mark.action("desktop.screenshot.analyze")
 @pytest.mark.asyncio
 async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: Path) -> None:
-    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
+    handler = _handler(settings, "analyze_screenshot")
     screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
     screenshot.parent.mkdir(parents=True)
     screenshot.write_bytes(b"png bytes")
 
-    with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
-        patch(
-            "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
-            new=AsyncMock(return_value="The screen shows a terminal."),
-        ) as request_vision,
-    ):
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(return_value="The screen shows a terminal."),
+    ) as request_vision:
         result = await handler(
             {
                 "source_group": "admin",
@@ -212,18 +219,15 @@ async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: P
 
 @pytest.mark.asyncio
 async def test_analyze_screenshot_rejects_image_path_outside_workspace(tmp_path: Path) -> None:
-    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
+    handler = _handler(settings, "analyze_screenshot")
     outside = tmp_path / "ipc" / "other" / "screenshots" / "screen.png"
     outside.parent.mkdir(parents=True)
     outside.write_bytes(b"png bytes")
 
-    with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
-        patch(
-            "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
-            new=AsyncMock(),
-        ),
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(),
     ):
         result = await handler({"source_group": "admin", "image_path": str(outside)})
 
@@ -234,8 +238,8 @@ async def test_analyze_screenshot_rejects_image_path_outside_workspace(tmp_path:
 
 @pytest.mark.asyncio
 async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Path) -> None:
-    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
+    handler = _handler(settings, "analyze_screenshot")
     screenshot_dir = tmp_path / "ipc" / "admin" / "screenshots"
     screenshot_dir.mkdir(parents=True)
     old = screenshot_dir / "20260709T010000Z-old.png"
@@ -243,13 +247,10 @@ async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Pat
     old.write_bytes(b"old")
     latest.write_bytes(b"latest")
 
-    with (
-        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
-        patch(
-            "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
-            new=AsyncMock(return_value="The screen shows the latest capture."),
-        ) as request_vision,
-    ):
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(return_value="The screen shows the latest capture."),
+    ) as request_vision:
         result = await handler({"source_group": "admin"})
 
     request_vision.assert_awaited_once()

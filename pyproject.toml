@@ -119,6 +119,8 @@ PYNCHY_RUNTIME_NAMESPACE = { allocate = "name", prefix = "pynchy", max_length = 
 testpaths = ["tests"]
 pythonpath = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0 --failed-first"
 timeout = 30
 markers = [

@@ -9,6 +9,10 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import (
     create_host_job,
     create_task,
@@ -19,7 +23,7 @@ from pynchy.state import (
     get_task_run_logs,
     set_workspace_profile,
 )
-from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",

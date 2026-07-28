@@ -5,13 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
     from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
@@ -19,6 +16,8 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     settle_turn_activity,
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.workspace.api import RuntimeTarget
 
 _INTERACTIVE_TURN_RETRY_REQUESTED = "Interactive message turn requested retry"
 
@@ -78,7 +77,7 @@ async def run_interactive_runtime_turn(group_folder: str) -> str:
 
 
 async def _process_interactive_message_turn(deps: object, chat_jid: str) -> TurnOutcome:
-    typed = cast("messaging_pipeline.MessageHandlerDeps", deps)
+    typed = cast("SchedulerDependencies", deps)
     workspace = typed.workspaces.get(chat_jid)
     if workspace is None:
         return TurnOutcome.COMPLETED
@@ -89,7 +88,7 @@ async def _process_interactive_runtime_turn(
     deps: object,
     group_folder: str,
 ) -> TurnOutcome:
-    typed = cast("messaging_pipeline.MessageHandlerDeps", deps)
+    typed = cast("SchedulerDependencies", deps)
     workspace = next(
         (candidate for candidate in typed.workspaces.values() if candidate.folder == group_folder),
         None,

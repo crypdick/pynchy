@@ -8,49 +8,92 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 from __future__ import annotations
 
 import json as json_mod
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves service runtime annotations.
+)
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype resolves dataclass.
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
-    ApprovalMode,
-    HostActionDescriptor,
-    missing_workspace_tool,
-)
-from pynchy.config import get_settings
-from pynchy.config.models import McpTool
-from pynchy.host.container_manager.action_intents import (
-    execute_action_intent,
-    policy_approval_timestamp,
-    prepare_action_intent,
-)
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
+    ResolvedSecurityConfig,
     SecurityGate,
+    SecuritySettings,
     build_workspace_security,
     evaluate_host_action_policy,
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.host.orchestrator import workspace_config
+from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
-from pynchy.plugins.host_actions import (
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ApprovalMode,
     HostActionCatalog,
+    HostActionDescriptor,
     clear_host_action_catalog_cache,
     get_host_action_catalog,
+    missing_workspace_tool,
 )
-from pynchy.plugins.integrations.matrix_route_registry import get_active_matrix_route
-from pynchy.state.api import (
-    approve_action_intent,
-    deny_action_intent,
-    get_conversation_control_by_thread,
-    mark_action_intent_awaiting_approval,
+
+
+class ServiceSettings(SecuritySettings, Protocol):
+    pass
+
+
+@runtime_checkable
+class _McpRuntime(Protocol):
+    runtime: str
+
+
+@runtime_checkable
+class _McpTool(Protocol):
+    type: str
+    mcp: _McpRuntime
+
+
+def _unconfigured_settings() -> ServiceSettings:
+    raise RuntimeError("Service configuration has not been composed")
+
+
+def _unconfigured_resolved_config(
+    _source_group: str, _settings: SecuritySettings | None
+) -> ResolvedSecurityConfig | None:
+    raise RuntimeError("Service workspace resolution has not been composed")
+
+
+def _unconfigured_matrix_route(_source_group: str) -> object | None:
+    raise RuntimeError("Service route policy has not been composed")
+
+
+_get_settings: Callable[[], ServiceSettings] = _unconfigured_settings
+load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedSecurityConfig | None] = (
+    _unconfigured_resolved_config
 )
-from pynchy.types import ChatJid
+get_active_matrix_route: Callable[[str], object | None] = _unconfigured_matrix_route
+
+
+def configure_service_runtime(
+    *,
+    get_settings: Callable[[], ServiceSettings],
+    resolve_workspace_config: Callable[
+        [str, SecuritySettings | None], ResolvedSecurityConfig | None
+    ],
+    active_matrix_route: Callable[[str], object | None],
+) -> None:
+    """Bind configuration and route policy sources at host composition."""
+    global _get_settings, load_resolved_config, get_active_matrix_route  # noqa: PLW0603, RUF100 - one host process owns these policy sources.
+    _get_settings = get_settings
+    load_resolved_config = resolve_workspace_config
+    get_active_matrix_route = active_matrix_route
+
+
+def get_settings() -> ServiceSettings:
+    return _get_settings()
 
 
 @dataclass(frozen=True)
@@ -111,7 +154,7 @@ def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate | None:
     if gate is not None:
         return gate
 
-    resolved = workspace_config.load_resolved_config(source_group)
+    resolved = load_resolved_config(source_group, None)
     if resolved is None:
         if get_active_matrix_route(source_group) is not None:
             return None
@@ -143,7 +186,7 @@ def _service_action_and_gate(
             {"error": f"Unknown service tool: {request.tool_name}"},
         )
         return None
-    resolved = workspace_config.load_resolved_config(source_group)
+    resolved = load_resolved_config(source_group, None)
     active_route = get_active_matrix_route(source_group)
     if active_route is not None and resolved is None:
         logger.warning(
@@ -208,7 +251,7 @@ async def _request_human_approval(
         create_pending_approval,
     )
 
-    control = await get_conversation_control_by_thread(ChatJid(context.chat_jid))
+    control = await context.deps.get_conversation_control_by_thread(ChatJid(context.chat_jid))
     short_id = create_pending_approval(
         request_id=context.request.request_id,
         tool_name=context.request.tool_name,
@@ -223,7 +266,7 @@ async def _request_human_approval(
         secret_tainted=context.gate.policy.secret_tainted,
     )
     if context.action.action_intent is not None:
-        await mark_action_intent_awaiting_approval(
+        await context.deps.mark_action_intent_awaiting_approval(
             context.request.request_id,
             policy_decision=context.reason or "human approval required",
         )
@@ -275,7 +318,11 @@ async def _maybe_require_cop_approval(
     settings = get_settings()
 
     tool = settings.tools.get(request.tool_name)
-    if not isinstance(tool, McpTool) or tool.mcp.runtime not in ("script", "stdio"):
+    if (
+        not isinstance(tool, _McpTool)
+        or tool.type != "mcp"
+        or tool.mcp.runtime not in ("script", "stdio")
+    ):
         return True
 
     operation = f"script_mcp:{request.tool_name}"
@@ -331,7 +378,7 @@ async def _handle_service_request(
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
-    intent, replay_response = await prepare_action_intent(
+    intent, replay_response = await deps.prepare_action_intent(
         action,
         data,
         workspace=source_group,
@@ -349,7 +396,7 @@ async def _handle_service_request(
 
     if not decision.allowed:
         if intent is not None:
-            await deny_action_intent(
+            await deps.deny_action_intent(
                 request.request_id,
                 reason=f"Policy denied: {decision.reason}",
             )
@@ -404,10 +451,10 @@ async def _handle_service_request(
         return
 
     if intent is not None:
-        await approve_action_intent(
+        await deps.approve_action_intent(
             request.request_id,
             approver="policy",
-            approved_at=policy_approval_timestamp(),
+            approved_at=deps.policy_approval_timestamp(),
             policy_decision=decision.reason or "allowed by current policy",
         )
 
@@ -432,7 +479,7 @@ async def _handle_service_request(
     )
 
     try:
-        response = await execute_action_intent(action, data, request_id=request.request_id)
+        response = await deps.execute_action_intent(action, data, request_id=request.request_id)
     except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.
         await record_security_event(
             chat_jid=chat_jid,

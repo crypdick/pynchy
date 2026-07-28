@@ -6,13 +6,16 @@ from datetime import UTC, datetime
 
 from aiosqlite import Connection  # noqa: TC002, RUF100 - beartype resolves annotations.
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.state.connection import atomic_write
 from pynchy.state.conversation_lifecycle_fences import lifecycle_fence_matches
 from pynchy.state.work_item_rows import row_to_execution
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+)
 
 
 async def cancel_work_item_execution(

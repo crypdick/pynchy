@@ -19,16 +19,17 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config.models import RepoConfig, ReposConfig
-from pynchy.host.git_ops.repo import (
+from pynchy.config.api import RepoConfig, ReposConfig
+from pynchy.host.git_ops.api import (
     RepoContext,
     check_token_expiry,
     ensure_repo_cloned,
     get_repo_context,
     get_repo_token,
+    git_env_with_token,
     repo_container_path,
+    run_git,
 )
-from pynchy.host.git_ops.utils import git_env_with_token, run_git
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,7 +97,7 @@ class TestRepoContext:
         worktrees_root = tmp_path / "worktrees"
         s = make_settings(repos=ReposConfig(root=repos_root), worktrees_dir=worktrees_root)
 
-        with patch("pynchy.config.get_settings", return_value=s):
+        with patch("pynchy.config.api.get_settings", return_value=s):
             repo_ctx = get_repo_context("owner/project")
 
         assert repo_ctx == RepoContext(
@@ -122,9 +123,9 @@ class TestGetRepoToken:
             secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
         )
         with (
-            patch("pynchy.config.get_settings", return_value=s),
+            patch("pynchy.config.api.get_settings", return_value=s),
             patch(
-                "pynchy.host.container_manager.credentials._read_gh_token",
+                "pynchy.host.git_ops.repo._read_gh_token",
                 return_value=GH_CLI_CREDENTIAL,
             ),
         ):
@@ -137,9 +138,9 @@ class TestGetRepoToken:
             secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
         )
         with (
-            patch("pynchy.config.get_settings", return_value=s),
+            patch("pynchy.config.api.get_settings", return_value=s),
             patch(
-                "pynchy.host.container_manager.credentials._read_gh_token",
+                "pynchy.host.git_ops.repo._read_gh_token",
                 return_value=GH_CLI_CREDENTIAL,
             ),
         ):
@@ -152,9 +153,9 @@ class TestGetRepoToken:
             secrets=MagicMock(gh_token=None),
         )
         with (
-            patch("pynchy.config.get_settings", return_value=s),
+            patch("pynchy.config.api.get_settings", return_value=s),
             patch(
-                "pynchy.host.container_manager.credentials._read_gh_token",
+                "pynchy.host.git_ops.repo._read_gh_token",
                 return_value=GH_CLI_CREDENTIAL,
             ),
         ):
@@ -167,8 +168,8 @@ class TestGetRepoToken:
             secrets=MagicMock(gh_token=None),
         )
         with (
-            patch("pynchy.config.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.credentials._read_gh_token", return_value=None),
+            patch("pynchy.config.api.get_settings", return_value=s),
+            patch("pynchy.host.git_ops.repo._read_gh_token", return_value=None),
         ):
             assert get_repo_token(REPO_SLUG) is None
 
@@ -179,8 +180,8 @@ class TestGetRepoToken:
             secrets=MagicMock(gh_token=SecretStr(BROAD_CREDENTIAL)),
         )
         with (
-            patch("pynchy.config.get_settings", return_value=s),
-            patch("pynchy.host.container_manager.credentials._read_gh_token", return_value=None),
+            patch("pynchy.config.api.get_settings", return_value=s),
+            patch("pynchy.host.git_ops.repo._read_gh_token", return_value=None),
         ):
             assert get_repo_token("unknown/repo") == BROAD_CREDENTIAL
 
@@ -358,7 +359,7 @@ class TestEnsureRepoCloned:
             return True
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
@@ -389,7 +390,7 @@ class TestEnsureRepoCloned:
             return True
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
@@ -413,7 +414,7 @@ class TestEnsureRepoCloned:
         settings = make_settings(repos=ReposConfig(root=repos_root))
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to", return_value=False),
         ):
             assert ensure_repo_cloned(repo_ctx) is False
@@ -439,7 +440,7 @@ class TestEnsureRepoCloned:
         )
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
         ):
             assert ensure_repo_cloned(repo_ctx) is False
@@ -483,7 +484,7 @@ class TestEnsureRepoCloned:
         )
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
             patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
@@ -512,7 +513,7 @@ class TestEnsureRepoCloned:
         )
 
         with (
-            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.config.api.get_settings", return_value=settings),
             patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
         ):
             assert ensure_repo_cloned(repo_ctx) is False

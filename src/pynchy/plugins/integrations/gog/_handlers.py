@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
+from pynchy.content_fencing import fence_untrusted_content
 from pynchy.plugins.integrations.gog._client import GogError, create_gog_client
 from pynchy.plugins.integrations.gog._models import (
     DocumentArguments,

@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.dispatch import notify_conversation_delivery_completed
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationDeliveryCompletion,  # noqa: TC001, RUF100 - beartype resolves completion results.
+    notify_conversation_delivery_completed,
 )
 from pynchy.state.api import complete_in_flight_turn
 

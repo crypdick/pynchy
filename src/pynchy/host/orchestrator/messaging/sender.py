@@ -16,9 +16,16 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from pynchy.identifiers import (
+    ChannelName,
+    ChatJid,
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,
+    OutboundEvent,
+)
 from pynchy.state import api as state
-from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
 
 
 @runtime_checkable

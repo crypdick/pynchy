@@ -16,12 +16,16 @@ import pytest
 from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc.write import write_ipc_response
-from pynchy.host.git_ops import host_notify_worktree_updates, sync_poll
-from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.sync import host_sync_worktree
-from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
-from pynchy.host.git_ops.worktree import ensure_worktree
-from pynchy.types import WorkspaceProfile
+from pynchy.host.git_ops.api import (
+    RepoContext,
+    ensure_worktree,
+    host_notify_worktree_updates,
+    host_sync_worktree,
+    needs_container_rebuild,
+    needs_deploy,
+    sync_poll,
+)
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -78,8 +82,13 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/pynchy", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.host.git_ops.sync_poll.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils._default_cwd", s.project_root))
+        sync_poll.configure_git_sync_runtime(
+            sync_poll.GitSyncRuntime(
+                project_root=s.project_root,
+                repo_slugs=tuple(s.repos.overrides),
+            )
+        )
         yield {
             "origin": origin,
             "project": project,

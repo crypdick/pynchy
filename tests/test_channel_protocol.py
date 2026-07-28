@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 
-from pynchy.types import Channel
+from pynchy.plugins.api import Channel
 
 
 def test_channel_protocol_requires_send_event() -> None:

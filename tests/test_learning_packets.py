@@ -8,15 +8,15 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import configure_learning_paths_for, make_settings
 
-from pynchy.config.models import (
+from pynchy.agent_protocol.api import ContainerOutput
+from pynchy.config.api import (
     LearningConfig,
     ObsidianLearningConfig,
     ProfileConfig,
     WorkspaceConfig,
 )
-from pynchy.host.learning.packet_codec import packet_from_payload, packet_to_payload
 from pynchy.host.learning.packets import (
     LearningRunSummary,
     build_learning_packet,
@@ -25,7 +25,9 @@ from pynchy.host.learning.packets import (
     packet_to_reviewer_payload,
     start_learning_review_workflow,
 )
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.learning_packets import packet_from_payload, packet_to_payload
+from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -55,8 +57,8 @@ def _settings(
 
 @contextmanager
 def _patch_learning_settings(settings) -> Iterator[None]:
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
-        yield
+    configure_learning_paths_for(settings)
+    yield
 
 
 def _build_packet(settings, **kwargs):
@@ -68,10 +70,12 @@ def _build_packet(settings, **kwargs):
 
 
 async def _start_learning_review(settings, **kwargs):
+    start_review_workflow = kwargs.pop("start_review_workflow", AsyncMock())
     return await start_learning_review_workflow(
         **kwargs,
         enabled=settings.learning.enabled,
         packet_max_chars=settings.learning.packet_max_chars,
+        start_review_workflow=start_review_workflow,
     )
 
 
@@ -556,6 +560,7 @@ async def test_learning_disabled_returns_no_packet_and_does_not_start_workflow(
         )
         job_id = await _start_learning_review(
             settings,
+            start_review_workflow=temporal_start,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -583,6 +588,7 @@ async def test_start_learning_review_workflow_starts_temporal_with_enabled_packe
     ):
         job_id = await _start_learning_review(
             settings,
+            start_review_workflow=temporal_start,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],

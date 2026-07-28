@@ -8,8 +8,11 @@ asyncio.gather() for fast response times (~200ms budget).
 from __future__ import annotations
 
 import asyncio
-import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in status collection.
+import subprocess  # noqa: S404, RUF100 - used for git subprocess exception types in status collection.
 import time
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves GitStatusOperations annotations at runtime.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,25 +20,21 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio.client import Client
 
-from pynchy.canaries import get_canary_report
-from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.runtime_names import runtime_container_name
-from pynchy.host.git_ops.repo import RepoContext, get_repo_context
-from pynchy.host.git_ops.utils import (
-    count_unpushed_commits,
-    detect_main_branch,
-    get_head_commit_message,
-    get_head_sha,
-    is_repo_dirty,
-    run_git,
+from pynchy.host.orchestrator.capability_status import (
+    CapabilityStatusOperations,
+    collect_capability_status,
 )
-from pynchy.host.orchestrator.capability_status import collect_capability_status
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.speech_status import collect_speech_status
-from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
+from pynchy.host.orchestrator.temporal.api import get_temporal_orchestration_states
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
+)
+from pynchy.runtime_names import runtime_container_name
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+    HostJob,
+    ScheduledTask,
 )
 from pynchy.state.api import (
     get_all_host_jobs,
@@ -43,10 +42,6 @@ from pynchy.state.api import (
     get_messaging_stats,
     get_router_state,
     get_task_run_logs,
-)
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
-    HostJob,
-    ScheduledTask,
 )
 
 
@@ -58,6 +53,29 @@ class _StatusState:
 _state = _StatusState()
 
 
+@dataclass(frozen=True, slots=True)
+class GitStatusOperations:
+    """Concrete source-control operations used by the status projection."""
+
+    get_repo_context: Callable[[str], RepoStatusContext | None]
+    get_head_sha: Callable[..., str]
+    is_repo_dirty: Callable[..., bool]
+    count_unpushed_commits: Callable[..., int]
+    get_head_commit_message: Callable[..., str]
+    detect_main_branch: Callable[..., str]
+    run_git: Callable[..., subprocess.CompletedProcess[str]]
+
+
+class RepoStatusContext(Protocol):
+    """Repository paths required by the status projection."""
+
+    @property
+    def root(self) -> Path: ...
+
+    @property
+    def worktrees_dir(self) -> Path: ...
+
+
 def record_start_time() -> None:
     """Called once at service startup to record the wall-clock start time."""
     _state.started_at = datetime.now(UTC)
@@ -65,7 +83,7 @@ def record_start_time() -> None:
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return worker status lazily so status imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
+    from pynchy.host.orchestrator.temporal.api import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
         get_temporal_scheduler_status as _get_temporal_scheduler_status,
     )
 
@@ -85,15 +103,19 @@ class StatusDeps(Protocol):
     temporal_address: str
     temporal_namespace: str
     temporal_task_queue: str
+    capability_status_operations: CapabilityStatusOperations
+    git_status: GitStatusOperations
 
     def is_shutting_down(self) -> bool: ...
     def get_channel_status(self) -> dict[str, bool]: ...
     def get_connection_status(self) -> dict[str, bool]: ...
     def get_queue_snapshot(self) -> dict[str, Any]: ...
     def get_gateway_info(self) -> dict[str, Any]: ...
+    async def get_container_state(self, name: str) -> str: ...
     def get_active_sessions_count(self) -> int: ...
     def get_workspace_count(self) -> int: ...
     def get_speech_synthesizer(self) -> SpeechSynthesizer | None: ...
+    async def get_canary_report(self, *, history_limit: int) -> dict[str, object]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -131,22 +153,25 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         canaries,
         speech,
     ) = await asyncio.gather(
-        _collect_deploy(),
-        asyncio.to_thread(_collect_repos, deps.repo_slugs),
+        _collect_deploy(deps),
+        asyncio.to_thread(_collect_repos, deps.repo_slugs, deps.git_status),
         _collect_messages(),
         _collect_scheduled_work(deps.temporal_address, deps.temporal_namespace),
-        _collect_gateway(deps.get_gateway_info()),
+        _collect_gateway(deps),
         _collect_temporal(
             deps.temporal_address,
             deps.temporal_namespace,
             deps.temporal_task_queue,
         ),
-        get_canary_report(history_limit=10),
+        deps.get_canary_report(history_limit=10),
         _collect_speech(deps.get_speech_synthesizer()),
     )
     tasks, host_jobs = scheduled_work
     canary_report = cast("dict[str, object]", canaries)
-    capabilities = await collect_capability_status(canary_report)
+    capabilities = await collect_capability_status(
+        canary_report,
+        operations=deps.capability_status_operations,
+    )
 
     return {
         "service": service,
@@ -186,13 +211,14 @@ async def _collect_speech(synthesizer: SpeechSynthesizer | None) -> dict[str, An
     return await collect_speech_status(synthesizer)
 
 
-async def _collect_deploy() -> dict[str, Any]:
+async def _collect_deploy(deps: StatusDeps) -> dict[str, Any]:
     """Deploy info — git subprocesses + DB reads."""
+    git_status = deps.git_status
     sha, dirty, unpushed, commit_msg, last_deploy_at, last_deploy_sha = await asyncio.gather(
-        asyncio.to_thread(get_head_sha),
-        asyncio.to_thread(is_repo_dirty),
-        asyncio.to_thread(count_unpushed_commits),
-        asyncio.to_thread(get_head_commit_message),
+        asyncio.to_thread(git_status.get_head_sha),
+        asyncio.to_thread(git_status.is_repo_dirty),
+        asyncio.to_thread(git_status.count_unpushed_commits),
+        asyncio.to_thread(git_status.get_head_commit_message),
         get_router_state("last_deploy_at"),
         get_router_state("last_deploy_sha"),
     )
@@ -206,7 +232,10 @@ async def _collect_deploy() -> dict[str, Any]:
     }
 
 
-def _collect_repos(repo_slugs: tuple[str, ...]) -> dict[str, Any]:
+def _collect_repos(
+    repo_slugs: tuple[str, ...],
+    git_status: GitStatusOperations,
+) -> dict[str, Any]:
     """Repo and worktree status — blocking git subprocesses.
 
     Called inside asyncio.to_thread() by the orchestrator.
@@ -214,46 +243,63 @@ def _collect_repos(repo_slugs: tuple[str, ...]) -> dict[str, Any]:
     result: dict[str, Any] = {}
 
     for slug in repo_slugs:
-        repo_ctx = get_repo_context(slug)
+        repo_ctx = git_status.get_repo_context(slug)
         if repo_ctx is None or not repo_ctx.root.exists():
             continue
-        result[slug] = _repo_status(repo_ctx)
+        result[slug] = _repo_status(repo_ctx, git_status)
 
     return result
 
 
-def _repo_status(repo_ctx: RepoContext) -> dict[str, Any]:
+def _repo_status(
+    repo_ctx: RepoStatusContext,
+    git_status: GitStatusOperations,
+) -> dict[str, Any]:
     """Status for a single tracked repo, including its worktrees."""
     root = repo_ctx.root
     data: dict[str, Any] = {
-        "head_sha": get_head_sha(cwd=root),
-        "dirty": is_repo_dirty(cwd=root),
-        "unpushed_commits": count_unpushed_commits(cwd=root),
+        "head_sha": git_status.get_head_sha(cwd=root),
+        "dirty": git_status.is_repo_dirty(cwd=root),
+        "unpushed_commits": git_status.count_unpushed_commits(cwd=root),
     }
 
     # Enumerate worktrees
     worktrees_dir = repo_ctx.worktrees_dir
     if worktrees_dir.is_dir():
-        main_branch = detect_main_branch(cwd=root)
+        main_branch = git_status.detect_main_branch(cwd=root)
         wt_data: dict[str, Any] = {}
         for wt_path in sorted(worktrees_dir.iterdir()):
             if wt_path.is_dir():
-                wt_data[wt_path.name] = _worktree_status(wt_path, main_branch, root)
+                wt_data[wt_path.name] = _worktree_status(
+                    wt_path,
+                    main_branch,
+                    root,
+                    git_status,
+                )
         if wt_data:
             data["worktrees"] = wt_data
 
     return data
 
 
-def _worktree_status(worktree_path: Path, main_branch: str, repo_root: Path) -> dict[str, Any]:
+def _worktree_status(
+    worktree_path: Path,
+    main_branch: str,
+    repo_root: Path,
+    git_status: GitStatusOperations,
+) -> dict[str, Any]:
     """Status for a single git worktree."""
-    sha = get_head_sha(cwd=worktree_path)
-    dirty = is_repo_dirty(cwd=worktree_path)
+    sha = git_status.get_head_sha(cwd=worktree_path)
+    dirty = git_status.is_repo_dirty(cwd=worktree_path)
     branch = f"worktree/{worktree_path.name}"
 
     # Ahead/behind relative to main
-    ahead_result = run_git("rev-list", f"{main_branch}..{branch}", "--count", cwd=repo_root)
-    behind_result = run_git("rev-list", f"{branch}..{main_branch}", "--count", cwd=repo_root)
+    ahead_result = git_status.run_git(
+        "rev-list", f"{main_branch}..{branch}", "--count", cwd=repo_root
+    )
+    behind_result = git_status.run_git(
+        "rev-list", f"{branch}..{main_branch}", "--count", cwd=repo_root
+    )
 
     ahead = int(ahead_result.stdout.strip()) if ahead_result.returncode == 0 else None
     behind = int(behind_result.stdout.strip()) if behind_result.returncode == 0 else None
@@ -261,7 +307,7 @@ def _worktree_status(worktree_path: Path, main_branch: str, repo_root: Path) -> 
     # Conflict detection: check for MERGE_HEAD or REBASE_HEAD in the actual git dir
     conflict = False
     try:
-        git_dir_result = run_git("rev-parse", "--git-dir", cwd=worktree_path)
+        git_dir_result = git_status.run_git("rev-parse", "--git-dir", cwd=worktree_path)
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.debug("Conflict detection failed", worktree=str(worktree_path), err=str(exc))
     else:
@@ -346,12 +392,13 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
     return {"healthy": healthy, "error": None}
 
 
-async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
+async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
     """Gateway health — Docker inspect + HTTP health check.
 
     Args:
-        info: Dict from deps.get_gateway_info() with mode, port, key.
+        deps: Runtime state and container-status operation.
     """
+    info = deps.get_gateway_info()
     result: dict[str, Any] = {
         "mode": info.get("mode", "unknown"),
         "redaction": info.get("redaction", "unknown"),
@@ -361,8 +408,8 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
         return result
 
     litellm_state, pg_state = await asyncio.gather(
-        _container_state(runtime_container_name("litellm")),
-        _container_state(runtime_container_name("litellm-db")),
+        deps.get_container_state(runtime_container_name("litellm")),
+        deps.get_container_state(runtime_container_name("litellm-db")),
     )
     result["litellm_container"] = litellm_state
     result["postgres_container"] = pg_state
@@ -407,16 +454,3 @@ async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
     if "litellm_version" in data:
         result["litellm_version"] = data["litellm_version"]
     return result
-
-
-async def _container_state(name: str) -> str:
-    """Return 'running', 'stopped', or 'not_found' for a Docker container."""
-    try:
-        result = await run_docker("inspect", "-f", "{{.State.Status}}", name, check=False)
-        if result.returncode != 0:
-            return "not_found"
-        return result.stdout.strip()  # "running", "exited", "created", etc.
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        # TimeoutExpired: docker CLI hung; FileNotFoundError: docker not installed.
-        # Both are expected in degraded environments — return not_found.
-        return "not_found"

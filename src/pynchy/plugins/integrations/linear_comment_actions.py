@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.capabilities import ActionIntentDraft, ActionIntentReceipt
-from pynchy.host.orchestrator.workspace_config import static_workspace_folder
+from pynchy.conversation.api import parent_workspace_name
+from pynchy.plugins.api import ActionIntentDraft, ActionIntentReceipt
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
@@ -37,7 +37,7 @@ def _required_text(data: dict[str, Any], key: str, message: str) -> str:
 def _comment_request(data: dict[str, Any]) -> _CommentRequest:
     source_group = _required_text(data, "source_group", _SOURCE_GROUP_REQUIRED)
     return _CommentRequest(
-        workspace=static_workspace_folder(source_group),
+        workspace=parent_workspace_name(source_group) or source_group,
         issue_id=_required_text(data, "issue_id", _ISSUE_ID_REQUIRED),
         body=_required_text(data, "body", _BODY_REQUIRED),
     )

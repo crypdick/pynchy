@@ -9,7 +9,7 @@ from aiosqlite import OperationalError
 if TYPE_CHECKING:
     import aiosqlite
 
-from pynchy.conversation.workspaces import dynamic_thread_folder
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.logger import logger
 
 TASK_SCHEMA = """\

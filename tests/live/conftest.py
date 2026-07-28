@@ -17,8 +17,9 @@ from conftest import make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.plugins.api import NewMessage
 from pynchy.state import init_test_database
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -227,7 +228,6 @@ def patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
         ):

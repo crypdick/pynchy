@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ChannelName,
     ChatJid,
 )
+from pynchy.state.connection import _get_db, atomic_write
 
 
 async def get_channel_cursor(channel_name: ChannelName, chat_jid: ChatJid, direction: str) -> str:

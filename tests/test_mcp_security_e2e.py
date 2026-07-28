@@ -18,7 +18,10 @@ from aiohttp.test_utils import TestClient, TestServer
 from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, get_gate
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)

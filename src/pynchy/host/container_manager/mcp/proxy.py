@@ -23,14 +23,12 @@ from typing import Any, cast
 import aiohttp
 from aiohttp import web
 
-from pynchy.host.container_manager.security.approval import (
-    APPROVAL_TIMEOUT_SECONDS,
-    register_mcp_proxy_approval,
-)
+from pynchy.content_fencing import fence_untrusted_content
+from pynchy.host.container_manager.security.approval import register_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import inspect_inbound
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
 from pynchy.host.container_manager.security.gate import SecurityGate, get_gate
 from pynchy.logger import logger
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 # Callback to request human approval.  Provided by the orchestrator at
 # construction time.  Signature: (group_folder, tool_name, request_data,

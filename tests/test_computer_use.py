@@ -3,29 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
-from pynchy.capabilities import (
+from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.api import (
     ApprovalMode,
     CapabilityProbeContext,
-    HostActionHandler,
-    ProbeStatus,
-)
-from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.computer_use import (
     ComputerUseBackendAvailability,
     ComputerUseRequest,
     ComputerUseRouterConfig,
+    HostActionHandler,
+    ProbeStatus,
+    get_host_action_catalog,
 )
-from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @dataclass
@@ -208,6 +204,22 @@ async def test_router_rejects_empty_shortcuts(keys: object) -> None:
 def test_router_config_rejects_duplicate_providers() -> None:
     with pytest.raises(ValidationError, match="computer-use providers must be unique"):
         ComputerUseRouterConfig(providers=("peekaboo", "peekaboo"))
+
+
+@pytest.mark.action("desktop.computer.capture")
+@pytest.mark.asyncio
+async def test_router_uses_lifecycle_configuration(tmp_path: Path) -> None:
+    backend = _RecordingBackend("configured")
+    plugin = ComputerUsePlugin()
+    plugin.configure(ComputerUseRouterConfig(providers=("configured",)), data_dir=tmp_path)
+
+    handler = plugin.pynchy_service_handler((backend,)).actions[0].handler
+    result = await handler({"source_group": "admin", "action": "capture", "label": "shot"})
+
+    assert result["result"]["backend"] == "configured"
+    assert Path(result["result"]["output"]["screenshot_path"]).parent == (
+        tmp_path / "ipc" / "admin" / "computer-use"
+    )
 
 
 @pytest.mark.asyncio

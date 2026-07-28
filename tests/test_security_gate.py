@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_container_runtime_operations
 
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.agent_protocol.api import ContainerInput
+from pynchy.config.api import validate_settings_mapping
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     create_gate,
@@ -17,10 +20,9 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState, QueuePolicy
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-from pynchy.types import (
-    ContainerInput,
+from pynchy.workspace.api import (
+    RuntimeTarget,
     ServiceTrustConfig,
     WorkspaceSecurity,
 )
@@ -192,7 +194,7 @@ class TestSecurityGateTaintPersistence:
                 },
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         gate = SecurityGate(resolve_security("admin", is_admin=True))
 
@@ -216,7 +218,7 @@ class TestSecurityGateTaintPersistence:
                 },
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         gate = SecurityGate(resolve_security("synapse", is_admin=False))
 
@@ -301,7 +303,7 @@ class TestResolveSecurity:
                 },
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         security = resolve_security("research")
 
@@ -322,7 +324,7 @@ class TestResolveSecurity:
                 "workspaces": {"research": {"profiles": ["worker"]}},
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         security = resolve_security("research")
 
@@ -351,7 +353,7 @@ class TestResolveSecurity:
                 },
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         security = resolve_security(dynamic_thread_folder("research", "thread:123"))
 
@@ -389,7 +391,7 @@ class TestResolveSecurity:
                 },
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         security = resolve_security(dynamic_thread_folder("research", "thread:123"))
 
@@ -405,7 +407,7 @@ class TestResolveSecurity:
                 "workspaces": {"admin": {"profiles": ["admin"]}},
             }
         )
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+        monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
 
         security = resolve_security("admin", is_admin=True)
 
@@ -491,7 +493,10 @@ class TestInvocationTsOnContainerInput:
 class TestRegisterHostProcessInvocation:
     def test_release_destroys_matching_invocation_gate(self):
         """A registered host process releases the gate for its invocation."""
-        queue = GroupQueue(QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0))
+        queue = GroupQueue(
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            replace(make_container_runtime_operations(), destroy_gate=destroy_gate),
+        )
         gate = create_gate("test-ws", 42.0, WorkspaceSecurity())
         lease = queue.acquire_host_process(RuntimeTarget.from_binding("test-ws", "test@g.us"))
 

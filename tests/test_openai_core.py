@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pynchy.config import Settings, get_settings
+from pynchy.config.api import Settings, get_settings
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.agent_cores.openai import OpenAIAgentCorePlugin
 

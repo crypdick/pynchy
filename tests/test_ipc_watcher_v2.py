@@ -25,7 +25,7 @@ from pynchy.host.container_manager.ipc.events import IpcEventHandler
 from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
 from pynchy.host.container_manager.ipc.protocol import make_ipc_request
 from pynchy.state.tasks import get_all_tasks
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

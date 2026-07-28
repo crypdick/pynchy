@@ -9,7 +9,7 @@ import pluggy
 import pytest
 
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.contracts import AgentCoreSpec
+from pynchy.plugins.api import AgentCoreSpec
 
 
 @pytest.fixture(autouse=True)

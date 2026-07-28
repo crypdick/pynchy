@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployClaimStatus,
+    DeploymentState,
+    DeployRevision,
+)
 from pynchy.state import (
     advance_deployment_baseline,
     claim_deployment,
@@ -12,12 +18,6 @@ from pynchy.state import (
     get_deployment_state,
     init_test_database,
     initialize_deployment_state,
-)
-from pynchy.types import (
-    DeployChangeKind,
-    DeployClaimStatus,
-    DeploymentState,
-    DeployRevision,
 )
 
 

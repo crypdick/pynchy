@@ -10,7 +10,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves transactional
     Connection,
 )
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationDeliveryCompletion,
     ConversationId,
     ExternalDeliveryId,
@@ -24,8 +24,12 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import CheckpointControlState, InFlightTurn, InFlightWorkKind
 
 # NOTE: Update docs/architecture/message-routing.md § Interrupted Turn Recovery
 # when this ledger's lifecycle or source-of-truth semantics change.

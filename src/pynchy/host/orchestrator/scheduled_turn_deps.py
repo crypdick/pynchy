@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ContainerOutput,
     OnOutput,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
-    ContainerOutput,
-    RuntimeId,
-    WorkspaceProfile,
+from pynchy.identifiers import RuntimeId  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves annotations.
 )
 
 

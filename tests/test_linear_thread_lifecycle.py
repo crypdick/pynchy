@@ -29,7 +29,7 @@ from pynchy.state import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.types import NewMessage
+    from pynchy.plugins.api import NewMessage
 
 
 @pytest.fixture(autouse=True)

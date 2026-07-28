@@ -22,11 +22,7 @@ from collections.abc import (
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
 
-import pynchy.config as pynchy_config
 import pynchy.host.git_ops.repo as repo_manager
-from pynchy.config import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves worktree signatures at runtime.
-)
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -45,6 +41,30 @@ _DEFAULT_PRE_COMMIT_CONFIG_ARG = "--config=.pre-commit-config.yaml"
 
 class WorktreeError(Exception):
     """Failed to create or sync a git worktree."""
+
+
+@dataclass(frozen=True)
+class WorktreeStartupRuntime:
+    """Resolved host paths and configured repository tokens for startup."""
+
+    home_dir: Path
+    project_root: Path
+    configured_tokens: dict[str, str | None]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: WorktreeStartupRuntime = field(
+        default_factory=lambda: WorktreeStartupRuntime(Path.home(), Path.cwd(), {})
+    )
+
+
+_runtime = _RuntimeState()
+
+
+def configure_worktree_startup_runtime(runtime: WorktreeStartupRuntime) -> None:
+    """Set worktree startup configuration from the composition root."""
+    _runtime.runtime = runtime
 
 
 def _safe_rebase(target_branch: str, *, cwd: Path) -> bool:
@@ -393,17 +413,16 @@ def reconcile_worktrees_at_startup(
     """
     repo_groups = repo_groups or {}
 
-    # Source base path worktrees are relocated from
-    s = pynchy_config.get_settings()
-    old_base = s.home_dir / ".config" / "pynchy" / "worktrees"
+    runtime = _runtime.runtime
+    old_base = runtime.home_dir / ".config" / "pynchy" / "worktrees"
 
     for slug, folders in repo_groups.items():
-        repo_ctx = _startup_repo_context(s, slug, repo_manager.get_repo_context)
+        repo_ctx = _startup_repo_context(slug, repo_manager.get_repo_context)
         if repo_ctx is None:
             continue
         _warn_if_repo_token_missing(
-            s,
             slug,
+            runtime.configured_tokens.get(slug),
             repo_manager.check_token_expiry,
             repo_manager.get_repo_token,
         )
@@ -412,7 +431,7 @@ def reconcile_worktrees_at_startup(
             slug,
             repo_manager.ensure_repo_cloned,
             old_base,
-            s.project_root,
+            runtime.project_root,
         ):
             continue
         _ensure_startup_worktrees(slug, folders, repo_ctx)
@@ -420,7 +439,6 @@ def reconcile_worktrees_at_startup(
 
 
 def _startup_repo_context(
-    _settings: Settings,
     slug: str,
     get_repo_context: Callable[[str], RepoContext | None],
 ) -> RepoContext | None:
@@ -431,14 +449,13 @@ def _startup_repo_context(
 
 
 def _warn_if_repo_token_missing(
-    settings: Settings,
     slug: str,
+    configured_token: str | None,
     check_token_expiry: Callable[[str, str], None],
     get_repo_token: Callable[[str], str | None],
 ) -> None:
-    repo_cfg = settings.repos.overrides.get(slug)
-    if repo_cfg and repo_cfg.token:
-        check_token_expiry(slug, repo_cfg.token.get_secret_value())
+    if configured_token is not None:
+        check_token_expiry(slug, configured_token)
         return
     if get_repo_token(slug):
         return

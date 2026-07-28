@@ -7,6 +7,10 @@ import json
 import os
 import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves HTTP operation annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
@@ -15,18 +19,10 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.canaries import canary_run_to_dict, get_canary_report
-from pynchy.conversation.dispatch import notify_conversation_delivery_completed
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.git_ops.utils import (
-    files_changed_between,
-    get_head_commit_message,
-    get_head_sha,
-    is_repo_dirty,
-    push_local_commits,
-    run_git,
-)
+from pynchy.conversation.api import notify_conversation_delivery_completed
+from pynchy.deployments import DeployClaim, DeployClaimStatus
 from pynchy.host.orchestrator.capability_status import (
+    CapabilityStatusOperations,
     canary_outcomes_from_report,
     collect_capability_status,
     resolve_workspace_capabilities,
@@ -43,8 +39,7 @@ from pynchy.host.orchestrator.http_readiness import (
     readiness_middleware,
 )
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.temporal.api import DeployRequest
 from pynchy.host.orchestrator.webhook_ingress import (
     WebhookIngressDeps,
     build_webhook_ingress,
@@ -52,17 +47,15 @@ from pynchy.host.orchestrator.webhook_ingress import (
     recover_webhook_conversations,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
-from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes, validate_webhook_routes
+from pynchy.plugins.api import WebhookRoute, collect_webhook_routes, validate_webhook_routes
 from pynchy.state.api import (
     action_intent_to_dict,
     get_recent_canary_runs,
     list_action_intents,
+    list_webhook_effects,
     list_work_item_executions,
     reconcile_webhook_effect_absent,
 )
-from pynchy.state.webhook_effects import list_webhook_effects
-from pynchy.types import DeployClaimStatus
 from pynchy.webhook_effects import WebhookEffect, WebhookEffectId, WebhookEffectStatus
 
 if TYPE_CHECKING:
@@ -89,6 +82,20 @@ class PreparedHttpServer:
     readiness: ControlPlaneReadiness
 
 
+@dataclass(frozen=True, slots=True)
+class HttpDeployOperations:
+    """Concrete deployment operations supplied by the composition root."""
+
+    get_head_sha: Callable[[], str]
+    push_local_commits: Callable[..., bool]
+    run_git: Callable[..., subprocess.CompletedProcess[str]]
+    files_changed_between: Callable[[str, str, str], bool]
+    get_deploy_config_hash: Callable[[], str]
+    get_head_commit_message: Callable[[], str]
+    is_repo_dirty: Callable[[], bool]
+    start_deploy_workflow: Callable[[DeployRequest], Awaitable[DeployClaim]]
+
+
 def _write_boot_warning(data_dir: Path, message: str) -> None:
     """Append a warning to boot_warnings.json, picked up by _send_boot_notification on restart."""
     path = data_dir / "boot_warnings.json"
@@ -106,9 +113,17 @@ def _write_boot_warning(data_dir: Path, message: str) -> None:
 class HttpDeps(Protocol):
     """Dependencies injected by app.py."""
 
+    capability_status_operations: CapabilityStatusOperations
+    deploy_operations: HttpDeployOperations
+
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
     def admin_chat_jid(self) -> str: ...
+
+    async def get_canary_report(self, *, history_limit: int) -> dict[str, object]: ...
+
+    canary_run_to_dict: Callable[..., dict[str, object]]
+    work_item_execution_to_dict: Callable[..., dict[str, object]]
 
 
 @runtime_checkable
@@ -140,22 +155,23 @@ async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029,
 
 async def _handle_deploy(request: web.Request) -> web.Response:
     deps = cast("DeployHttpDeps", request.app[deps_key])
-    old_sha = get_head_sha()
+    operations = deps.deploy_operations
+    old_sha = operations.get_head_sha()
 
     # 1. Push any local commits before pulling (prevents divergence)
-    run_git("fetch", "origin")
-    if not push_local_commits(skip_fetch=True):
+    operations.run_git("fetch", "origin")
+    if not operations.push_local_commits(skip_fetch=True):
         logger.warning("Pre-deploy push failed, continuing with rebase")
 
     # 2. Stash dirty files so they don't block the rebase
-    stash = run_git("stash")
+    stash = operations.run_git("stash")
     stashed = stash.returncode == 0 and "No local changes" not in stash.stdout
 
     # 3. Rebase to incorporate incoming remote changes
-    pull = run_git("rebase", "origin/main")
+    pull = operations.run_git("rebase", "origin/main")
     if pull.returncode != 0:
         # Abort failed rebase to leave repo clean, then continue with current code
-        run_git("rebase", "--abort")
+        operations.run_git("rebase", "--abort")
         logger.warning(
             "git rebase failed, restarting with current code", stderr=pull.stderr.strip()
         )
@@ -167,9 +183,9 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # Restore stashed files regardless of rebase outcome
     if stashed:
-        run_git("stash", "pop")
+        operations.run_git("stash", "pop")
 
-    new_sha = get_head_sha()
+    new_sha = operations.get_head_sha()
     has_new_code = new_sha != old_sha
 
     # 4. Validate import (only when the pull changed HEAD)
@@ -184,7 +200,7 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         if validate.returncode != 0:
             err = validate.stderr.strip()[-300:]
             logger.error("Deploy validation failed, rolling back", error=err)
-            run_git("reset", "--hard", old_sha)
+            operations.run_git("reset", "--hard", old_sha)
             chat_jid = deps.admin_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."
@@ -196,12 +212,14 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 5. Start deploy workflow. The activity owns rebuild, continuation, and restart.
     chat_jid = deps.admin_chat_jid()
-    rebuild = has_new_code and files_changed_between(old_sha, new_sha, "src/pynchy/agent/")
-    claim = await start_deploy_workflow(
+    rebuild = has_new_code and operations.files_changed_between(
+        old_sha, new_sha, "src/pynchy/agent/"
+    )
+    claim = await operations.start_deploy_workflow(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=new_sha,
-            config_hash=get_deploy_config_hash(),
+            config_hash=operations.get_deploy_config_hash(),
             previous_sha=old_sha,
             rebuild=rebuild,
             reason="http",
@@ -213,8 +231,8 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         {
             "status": "restarting" if restarting else claim.status.value,
             "sha": new_sha,
-            "commit": get_head_commit_message(),
-            "dirty": is_repo_dirty(),
+            "commit": operations.get_head_commit_message(),
+            "dirty": operations.is_repo_dirty(),
             "previous_sha": old_sha,
         }
     )
@@ -229,6 +247,7 @@ async def _handle_status(request: web.Request) -> web.Response:
 
 async def _handle_work_items(request: web.Request) -> web.Response:
     """Return bounded, read-only execution records for operator diagnosis."""
+    deps: HttpDeps = request.app[deps_key]
     raw_limit = request.query.get("limit", "100")
     if not raw_limit.isdecimal() or not 1 <= int(raw_limit) <= 200:
         return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
@@ -237,7 +256,7 @@ async def _handle_work_items(request: web.Request) -> web.Response:
     return web.json_response(
         {
             "workspace": workspace,
-            "work_items": [work_item_execution_to_dict(item) for item in executions],
+            "work_items": [deps.work_item_execution_to_dict(item) for item in executions],
         }
     )
 
@@ -323,15 +342,22 @@ async def _handle_webhook_effect_absent(request: web.Request) -> web.Response:
 
 async def _handle_capabilities(request: web.Request) -> web.Response:
     """Return effective host-action capabilities for one or every workspace."""
-    report = await get_canary_report(history_limit=10)
+    deps: HttpDeps = request.app[deps_key]
+    report = await deps.get_canary_report(history_limit=10)
     workspace = request.query.get("workspace")
     if workspace:
         snapshot = await resolve_workspace_capabilities(
             workspace,
+            operations=deps.capability_status_operations,
             canary_outcomes=canary_outcomes_from_report(report),
         )
         return web.json_response(snapshot.to_dict())
-    return web.json_response(await collect_capability_status(report))
+    return web.json_response(
+        await collect_capability_status(
+            report,
+            operations=deps.capability_status_operations,
+        )
+    )
 
 
 def _canary_history_limit(request: web.Request) -> int | None:
@@ -344,20 +370,22 @@ def _canary_history_limit(request: web.Request) -> int | None:
 
 async def _handle_canary_report(request: web.Request) -> web.Response:
     """Return current external-service canary evidence and regressions."""
+    deps: HttpDeps = request.app[deps_key]
     limit = _canary_history_limit(request)
     if limit is None:
         return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
-    return web.json_response(await get_canary_report(history_limit=limit))
+    return web.json_response(await deps.get_canary_report(history_limit=limit))
 
 
 async def _handle_canary_runs(request: web.Request) -> web.Response:
     """Return result history for all canaries or one declared scenario."""
+    deps: HttpDeps = request.app[deps_key]
     limit = _canary_history_limit(request)
     if limit is None:
         return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
     scenario_id = request.query.get("scenario_id") or None
     runs = await get_recent_canary_runs(limit=limit, scenario_id=scenario_id)
-    return web.json_response({"runs": [canary_run_to_dict(run) for run in runs]})
+    return web.json_response({"runs": [deps.canary_run_to_dict(run) for run in runs]})
 
 
 async def _handle_runtime_harness_message(request: web.Request) -> web.Response:

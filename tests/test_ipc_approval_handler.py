@@ -8,18 +8,24 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import init_test_database, make_host_action_catalog, make_settings
+from conftest import NullIpcDeps, init_test_database, make_host_action_catalog, make_settings
 
-from pynchy.capabilities import ApprovalMode
 from pynchy.host.container_manager.ipc.approval_decision_context import (
     ApprovalDecision,
     build_approval_decision_context,
 )
-from pynchy.host.container_manager.ipc.approval_replay import approval_replay_gate
+from pynchy.host.container_manager.ipc.approval_replay import (
+    ApprovalReplayPolicy,
+    approval_replay_gate,
+)
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.host.container_manager.security.identity import request_payload_hash
-from pynchy.types import CapabilityRule, WorkspaceSecurity
+from pynchy.plugins.api import ApprovalMode
+from pynchy.workspace.api import (
+    CapabilityRule,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,7 +133,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
@@ -137,7 +145,7 @@ class TestProcessApprovalDecision:
                 return_value=current_gate,
             ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         # Handler was called with original request data
         mock_handler.assert_awaited_once()
@@ -167,9 +175,11 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         response_file = ipc_dir / "grp" / "responses" / "req456.json"
         response = json.loads(response_file.read_text())
@@ -191,7 +201,7 @@ class TestProcessApprovalDecision:
             "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
             return_value=settings,
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         assert not decision_file.exists()
 
@@ -265,7 +275,7 @@ class TestProcessApprovalDecision:
                 return_value=make_host_action_catalog("my_tool", handler=handler),
             ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         handler.assert_not_awaited()
         assert pending_file.exists()
@@ -288,7 +298,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog("my_tool", handler=handler),
@@ -300,13 +312,17 @@ class TestProcessApprovalDecision:
         ):
             await process_approval_decision(decision_file, "grp")
 
-        replay_gate.assert_called_once_with(
-            settings,
-            "grp",
-            require_resolved=False,
-            request_corruption_tainted=True,
-            request_secret_tainted=True,
-        )
+        replay_gate.assert_called_once()
+        args, kwargs = replay_gate.call_args
+        assert args == ("grp",)
+        policy = kwargs.pop("policy")
+        assert isinstance(policy, ApprovalReplayPolicy)
+        assert callable(policy.configured_security)
+        assert kwargs == {
+            "require_resolved": False,
+            "request_corruption_tainted": True,
+            "request_secret_tainted": True,
+        }
 
     def test_unresolved_workspace_replay_gate_reapplies_persisted_taints(self, settings):
         """Fallback policy retains durable taint after the active gate is lost."""
@@ -316,18 +332,16 @@ class TestProcessApprovalDecision:
                 return_value=None,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
-                "load_resolved_config",
-                return_value=None,
-            ),
-            patch(
                 "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
                 return_value=WorkspaceSecurity(),
             ),
         ):
             gate = approval_replay_gate(
-                settings,
                 "unconfigured-workspace",
+                policy=ApprovalReplayPolicy(
+                    configured_security=lambda _group: WorkspaceSecurity(),
+                    workspace_tools=lambda _group: None,
+                ),
                 request_corruption_tainted=True,
                 request_secret_tainted=True,
             )
@@ -371,11 +385,6 @@ class TestProcessApprovalDecision:
                 return_value=None,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
-                "load_resolved_config",
-                return_value=None,
-            ),
-            patch(
                 "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
                 return_value=WorkspaceSecurity(),
             ),
@@ -385,8 +394,11 @@ class TestProcessApprovalDecision:
                 decision,
                 source_group="unconfigured-workspace",
                 replay_gate=lambda **kwargs: approval_replay_gate(
-                    settings,
                     "unconfigured-workspace",
+                    policy=ApprovalReplayPolicy(
+                        configured_security=lambda _group: WorkspaceSecurity(),
+                        workspace_tools=lambda _group: None,
+                    ),
                     **kwargs,
                 ),
             )
@@ -407,7 +419,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog(handler=AsyncMock()),
@@ -417,7 +431,7 @@ class TestProcessApprovalDecision:
                 record_event,
             ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         response_file = ipc_dir / "grp" / "responses" / "req789.json"
         response = json.loads(response_file.read_text())
@@ -446,13 +460,15 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
             ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         response_file = ipc_dir / "grp" / "responses" / "reqfail.json"
         response = json.loads(response_file.read_text())
@@ -484,7 +500,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
@@ -494,7 +512,7 @@ class TestProcessApprovalDecision:
                 return_value=current_gate,
             ),
         ):
-            await process_approval_decision(decision_file, "grp")
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
         mock_handler.assert_not_awaited()
         response = json.loads((ipc_dir / "grp/responses/policy-changed.json").read_text())
@@ -515,7 +533,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog("my_tool", handler=handler),
@@ -542,7 +562,9 @@ class TestProcessApprovalDecision:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog("my_tool", handler=handler),
@@ -581,7 +603,9 @@ class TestIpcApprovalDispatch:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):
             await process_approval_decision(decision_file, "grp", deps=mock_deps)
@@ -619,14 +643,16 @@ class TestIpcApprovalDispatch:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await process_approval_decision(decision_file, "grp")  # No deps!
 
         response_file = ipc_dir / "grp" / "responses" / "ipc-req2.json"
         response = json.loads(response_file.read_text())
         assert "error" in response
-        assert "deps" in response["error"].lower()
+        assert "dependencies" in response["error"].lower()
 
     @pytest.mark.asyncio
     async def test_ipc_dispatch_failure_writes_error(self, ipc_dir: Path, settings):
@@ -649,7 +675,9 @@ class TestIpcApprovalDispatch:
                 "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
                 return_value=settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
             patch("pynchy.host.container_manager.ipc.registry.dispatch", mock_dispatch),
         ):
             await process_approval_decision(decision_file, "grp", deps=mock_deps)

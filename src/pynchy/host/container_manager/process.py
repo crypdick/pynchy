@@ -4,7 +4,6 @@ Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
   - graceful_stop() — stops a container gracefully, killing it if it times out
   - docker_rm_force() — async force-remove a container by name
-  - OnOutput type alias — callback for output events
 """
 
 from __future__ import annotations
@@ -13,15 +12,16 @@ import asyncio
 import contextlib
 import os
 import signal
-import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
+from dataclasses import dataclass
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype validates query-done output at runtime.
+)
 from pynchy.logger import logger
-from pynchy.plugins.runtimes.detection import get_runtime
-from pynchy.types import ContainerOutput
 from pynchy.utils import create_background_task
-
-OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 DEFAULT_RM_FORCE_TIMEOUT_SECONDS = 15.0
 DEFAULT_RM_FORCE_KILL_WAIT_SECONDS = 2.0
@@ -29,6 +29,34 @@ DEFAULT_STOP_CLI_KILL_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_POLL_SECONDS = 0.05
 _pending_cli_reapers: set[asyncio.Task[int]] = set()
+
+
+@dataclass
+class _ProcessRuntime:
+    container_cli: str | None = None
+    is_apple_runtime: bool = False
+    container_is_running: Callable[[str], bool] | None = None
+
+
+_runtime = _ProcessRuntime()
+
+
+def configure_container_process_runtime(
+    *,
+    container_cli: str,
+    is_apple_runtime: bool,
+    container_is_running: Callable[[str], bool],
+) -> None:
+    """Inject the selected container runtime's process operations."""
+    _runtime.container_cli = container_cli
+    _runtime.is_apple_runtime = is_apple_runtime
+    _runtime.container_is_running = container_is_running
+
+
+def _configured_container_cli() -> str:
+    if _runtime.container_cli is None:
+        raise RuntimeError("container process runtime has not been configured")
+    return _runtime.container_cli
 
 
 def _retain_cli_reaper(
@@ -62,6 +90,23 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
     )
 
 
+async def runtime_container_running(container_name: str) -> bool:
+    """Return whether Apple Container still reports one container running."""
+    container_is_running = _runtime.container_is_running
+    if not _runtime.is_apple_runtime or container_is_running is None:
+        return False
+
+    try:
+        return await asyncio.to_thread(container_is_running, container_name)
+    except Exception as exc:  # noqa: BLE001, RUF100 - best-effort probe degrades to not running.
+        logger.debug(
+            "Failed to inspect runtime container state",
+            container=container_name,
+            err=str(exc),
+        )
+        return False
+
+
 async def graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
     """Stop container gracefully with a short timeout, killing it if it doesn't exit."""
     try:
@@ -77,7 +122,7 @@ async def graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -
 
 async def _stop_container_process(proc: asyncio.subprocess.Process, container_name: str) -> None:
     stop_proc = await asyncio.create_subprocess_exec(
-        get_runtime().cli,
+        _configured_container_cli(),
         "stop",
         "-t",
         "5",
@@ -130,7 +175,7 @@ async def _run_rm_force(
 ) -> bool:
     """Run ``container rm -f``/``docker rm -f`` once, bounded by ``rm_timeout_seconds``."""
     proc = await asyncio.create_subprocess_exec(
-        get_runtime().cli,
+        _configured_container_cli(),
         "rm",
         "-f",
         container_name,
@@ -165,19 +210,7 @@ async def _run_rm_force(
 
 async def _find_apple_runtime_pids(container_name: str) -> list[int]:
     """Return Apple ``container-runtime-linux`` PIDs for one exact container."""
-    if sys.platform != "darwin":
-        return []
-
-    try:
-        runtime = get_runtime()
-    except RuntimeError as exc:
-        logger.debug(
-            "Skipping Apple runtime process scan; runtime unavailable",
-            container=container_name,
-            err=str(exc),
-        )
-        return []
-    if runtime.name != "apple":
+    if not _runtime.is_apple_runtime:
         return []
 
     try:

@@ -7,13 +7,13 @@ for channel iteration, JID resolution, and error handling.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.types import Channel
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @runtime_checkable

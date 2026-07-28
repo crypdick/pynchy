@@ -1,7 +1,10 @@
 """Tests for TextFormatter — the default plain-text renderer."""
 
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 def test_render_tool_trace_bash():

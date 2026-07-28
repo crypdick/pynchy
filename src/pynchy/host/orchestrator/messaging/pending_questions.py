@@ -16,25 +16,44 @@ See docs/plans/2026-02-22-ask-user-blocking-design.md
 from __future__ import annotations
 
 import json
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves recovery callback annotations.
+)
 from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves pending-question path annotations at runtime.
 )
 from typing import Any, cast
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 # How long before a pending question expires (seconds).
 # Matches the container-side ASK_USER_TIMEOUT (1800s = 30 minutes).
 PENDING_QUESTION_TIMEOUT_SECONDS = 1800
+_EXPIRATION_ERROR = "Question expired (no response within timeout)"
+type ExpirationResponseWriter = Callable[[str, str, str], None]
+
+_ipc_base_dir: Path | None = None
+
+
+def configure_pending_questions_ipc_base_dir(path: Path) -> None:
+    """Set the host-owned IPC root during application composition."""
+    global _ipc_base_dir  # noqa: PLW0603, RUF100 - one host process owns one pending-question IPC root.
+    _ipc_base_dir = path
+
+
+def _configured_ipc_base_dir() -> Path:
+    if _ipc_base_dir is None:
+        raise RuntimeError("pending-question IPC base directory has not been configured")
+    return _ipc_base_dir
+
 
 # -- Directory helpers ---------------------------------------------------------
 
 
 def _pending_questions_dir(source_group: str) -> Path:
     """Return the pending_questions directory for a group, creating it if needed."""
-    d = get_settings().data_dir / "ipc" / source_group / "pending_questions"
+    d = _configured_ipc_base_dir() / source_group / "pending_questions"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -86,8 +105,7 @@ def create_pending_question(  # noqa: PLR0913, RUF100 - file-backed pending-ques
 
 def find_pending_question(request_id: str) -> dict[str, Any] | None:
     """Find a pending question by exact request_id, searching across all groups."""
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
+    ipc_dir = _configured_ipc_base_dir()
     if not ipc_dir.exists():
         return None
 
@@ -114,8 +132,7 @@ def find_pending_for_jid(chat_jid: str) -> dict[str, Any] | None:
     of groups and pending questions. If this becomes a bottleneck, consider
     an in-memory index keyed by chat_jid.
     """
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
+    ipc_dir = _configured_ipc_base_dir()
     if not ipc_dir.exists():
         return None
 
@@ -198,7 +215,9 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
 # -- Startup sweep -------------------------------------------------------------
 
 
-async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RUF100 - IPC startup awaits the recovery sweep API.
+async def sweep_expired_questions(  # noqa: RUF029, RUF100 - IPC startup awaits the recovery sweep API.
+    write_expiration_response: ExpirationResponseWriter,
+) -> list[dict[str, Any]]:
     """Find and auto-expire stale pending questions (crash recovery).
 
     Called on startup alongside ``sweep_expired_approvals()``.  Writes an
@@ -207,8 +226,7 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
 
     Returns list of expired question dicts.
     """
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
+    ipc_dir = _configured_ipc_base_dir()
     if not ipc_dir.exists():
         return []
 
@@ -237,7 +255,7 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
             if age <= PENDING_QUESTION_TIMEOUT_SECONDS:
                 continue
             try:
-                _expire_pending_question(grp, filepath, data, age)
+                _expire_pending_question(grp, filepath, data, age, write_expiration_response)
             except (OSError, KeyError) as exc:
                 logger.warning(
                     "Failed to process pending question during sweep",
@@ -250,20 +268,14 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
     return expired
 
 
-def _expire_pending_question(
-    group_name: str, filepath: Path, data: dict[str, Any], age_seconds: float
+def _expire_pending_question(  # noqa: PLR0913, RUF100 - expiry context is preserved for recovery audit logging.
+    group_name: str,
+    filepath: Path,
+    data: dict[str, Any],
+    age_seconds: float,
+    write_expiration_response: ExpirationResponseWriter,
 ) -> None:
-    # Deferred import to avoid circular dependency:
-    # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
-    from pynchy.host.container_manager.ipc.write import (  # noqa: PLC0415, RUF100 - avoids pending_questions <-> IPC handler import cycle.
-        ipc_response_path,
-        write_ipc_response,
-    )
-
-    write_ipc_response(
-        ipc_response_path(group_name, data["request_id"]),
-        {"error": "Question expired (no response within timeout)"},
-    )
+    write_expiration_response(group_name, data["request_id"], _EXPIRATION_ERROR)
 
     filepath.unlink()
 

@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from conftest import make_settings
+from conftest import make_container_runtime_operations, make_settings
 from temporalio import activity
 from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
 from temporalio.exceptions import ActivityError, WorkflowAlreadyStartedError
@@ -24,31 +24,47 @@ import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
 import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
 import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
 import pynchy.host.orchestrator.temporal.interrupted as temporal_interrupted
-import pynchy.host.orchestrator.temporal.learning as temporal_learning
 import pynchy.host.orchestrator.temporal.linear_work_items as temporal_linear_work_items
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
-from pynchy.config import (
-    CanaryConfig,
-    ProfileConfig,
-    RepoConfig,
-    SchedulerConfig,
-    WorkspaceConfig,
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
 )
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ReposConfig
-from pynchy.host.learning.packet_codec import packet_to_payload
-from pynchy.host.learning.packet_models import LearningPacket
+from pynchy.canary_contracts import (
+    CanaryOutcome,
+    CanaryRun,
+)
+from pynchy.config.api import (
+    CanaryConfig,
+    JobConfig,
+    SchedulerConfig,
+)
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployClaimStatus,
+    DeployRevision,
+)
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
+from pynchy.host.orchestrator.scheduler_deps import (
+    ConfigHostCronJob,
+    SchedulerRuntimeConfig,
+)
 from pynchy.host.orchestrator.startup_readiness import (
     StartupReadiness,
     StartupReadinessError,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
+from pynchy.learning_packets import LearningPacket, packet_to_payload
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import (
     begin_in_flight_turn,
     claim_in_flight_turn,
@@ -56,24 +72,59 @@ from pynchy.state import (
     init_test_database,
     initialize_deployment_state,
 )
-from pynchy.types import (
-    CanaryOutcome,
-    CanaryRun,
-    CheckpointControlState,
-    DeployChangeKind,
-    DeployClaimStatus,
-    DeployRevision,
-    HostJob,
-    InFlightTurn,
-    InFlightWorkKind,
-    ScheduledTask,
-    SessionPolicy,
-    WorkspaceProfile,
-)
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.utils import ShellResult
+from pynchy.workspace.api import WorkspaceProfile
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"
+
+
+def _scheduler_runtime(
+    scheduler: SchedulerConfig | None = None,
+    *,
+    timezone: str | None = "UTC",
+    jobs: dict[str, JobConfig] | None = None,
+    canary: CanaryConfig | None = None,
+    project_root: Path = Path("/project"),
+    external_repo_sync_slugs: tuple[str, ...] = (),
+) -> SchedulerRuntimeConfig:
+    scheduler = scheduler or SchedulerConfig()
+    canary = canary or CanaryConfig()
+    config_host_cron_jobs = {
+        name: ConfigHostCronJob(
+            command=job.command or "",
+            schedule=job.schedule or "",
+            cwd=job.cwd,
+            timeout_seconds=job.timeout_seconds,
+            quiet_on_success=job.quiet_on_success is True,
+        )
+        for name, job in (jobs or {}).items()
+        if job.is_host and job.enabled
+    }
+    return SchedulerRuntimeConfig(
+        temporal_address=scheduler.temporal_address,
+        temporal_namespace=scheduler.temporal_namespace,
+        temporal_task_queue=scheduler.temporal_task_queue,
+        poll_interval=scheduler.poll_interval,
+        timezone=timezone,
+        git_sync_interval_seconds=scheduler.git_sync_interval_seconds,
+        channel_reconciliation_interval_seconds=scheduler.channel_reconciliation_interval_seconds,
+        auto_deploy=scheduler.auto_deploy,
+        idle_timeout=300.0,
+        groups_dir=Path("groups"),
+        project_root=project_root,
+        admin_workspace=None,
+        queue_max_retries=5,
+        queue_base_retry_seconds=5.0,
+        learning_max_attempts=3,
+        canary_enabled=canary.enabled,
+        canary_schedule=canary.schedule,
+        canary_target_profile=canary.target_profile,
+        canary_scenario_ids=tuple(canary.scenario_ids),
+        external_repo_sync_slugs=external_repo_sync_slugs,
+        config_host_cron_jobs=config_host_cron_jobs,
+    )
 
 
 def _ready_startup() -> StartupReadiness:
@@ -94,13 +145,15 @@ class NullSchedulerDeps:
 
     queue: GroupQueue = field(
         default_factory=lambda: GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            make_container_runtime_operations(),
         )
     )
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
     last_agent_timestamp: dict[str, str] = field(default_factory=dict)
     startup_readiness: StartupReadiness = field(default_factory=_ready_startup)
     agent_execution_runtime: _RuntimePaths = field(default_factory=_RuntimePaths)
+    scheduler_runtime: SchedulerRuntimeConfig = field(default_factory=_scheduler_runtime)
 
     @property
     def workspaces(self):
@@ -111,6 +164,16 @@ class NullSchedulerDeps:
     async def broadcast_host_message(self, chat_jid, text) -> None: ...
 
     async def broadcast_system_notice(self, chat_jid, text) -> None: ...
+
+    async def run_declared_canaries(self, target_profile, scenario_ids) -> list[CanaryRun]:
+        return []
+
+    async def run_learning_review(self, packet) -> str:
+        del packet
+        return "completed"
+
+    async def reconcile_linear_work_items(self) -> int | None:
+        return None
 
     async def reset_scheduled_context(self, task, group, occurrence_id) -> None: ...
 
@@ -388,9 +451,7 @@ class TestTemporalSchedulerRuntime:
         assert (
             "pynchy.host.orchestrator.temporal.workflows" in runner.restrictions.passthrough_modules
         )
-        assert (
-            "pynchy.host.orchestrator.execution_outcomes" in runner.restrictions.passthrough_modules
-        )
+        assert "pynchy.turn_outcomes" in runner.restrictions.passthrough_modules
 
     def test_agent_task_workflow_id_is_stable_and_temporal_safe(self, temporal_task):
         workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)
@@ -488,7 +549,7 @@ class TestTemporalSchedulerRuntime:
             temporal_task_queue="pynchy-test",
         )
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = FakeClient()
 
@@ -522,7 +583,7 @@ class TestTemporalSchedulerRuntime:
         temporal_scheduler.reset_temporal_scheduler_status()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = FakeClient()
 
@@ -540,7 +601,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = client
 
@@ -559,7 +620,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = client
 
@@ -578,7 +639,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = client
 
@@ -607,7 +668,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
         runtime.client = client
 
@@ -639,7 +700,7 @@ class TestTemporalSchedulerRuntime:
         )
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
 
@@ -655,7 +716,7 @@ class TestTemporalSchedulerRuntime:
 
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -663,8 +724,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -688,10 +747,9 @@ class TestTemporalSchedulerRuntime:
     ):
         """Config jobs remain serial while retaining one pending run."""
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
         temporal_task.config_job_name = "fam_daily_checkin"
 
-        schedule = temporal_schedules.schedule_for_agent_task(temporal_task)
+        schedule = temporal_schedules.schedule_for_agent_task(temporal_task, _scheduler_runtime())
 
         assert schedule.policy.overlap is ScheduleOverlapPolicy.BUFFER_ONE
 
@@ -704,7 +762,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
-            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -712,8 +770,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -750,7 +806,7 @@ class TestTemporalSchedulerRuntime:
         client.workflow_ids.add(previous_workflow_id)
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
-            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -758,8 +814,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await asyncio.gather(runtime.reconcile_schedules(), runtime.reconcile_schedules())
 
@@ -792,7 +846,7 @@ class TestTemporalSchedulerRuntime:
         ]
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
-            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -800,8 +854,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -848,7 +900,7 @@ class TestTemporalSchedulerRuntime:
         ]
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
-            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -858,8 +910,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -886,7 +936,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
-            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
         )
         runtime.client = client
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
@@ -894,8 +944,6 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
         )
         settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -961,7 +1009,7 @@ class TestTemporalSchedulerRuntime:
         client = FakeScheduleClient()
         client.workflow_executions = executions
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -973,8 +1021,6 @@ class TestTemporalSchedulerRuntime:
             AsyncMock(return_value=[paused_host_job]),
         )
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1002,7 +1048,7 @@ class TestTemporalSchedulerRuntime:
             )
         ]
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         monkeypatch.setattr(
@@ -1010,8 +1056,6 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1037,14 +1081,12 @@ class TestTemporalSchedulerRuntime:
         handle = client.get_workflow_handle(workflow_id, run_id=run_id)
         handle.cancel_error = RPCError("missing", RPCStatusCode.NOT_FOUND, b"")
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1065,7 +1107,7 @@ class TestTemporalSchedulerRuntime:
         )
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
@@ -1073,8 +1115,6 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
         )
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1088,28 +1128,20 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_config_cron_job(self, monkeypatch):
-
+        jobs = {
+            "backup_db": JobConfig(
+                schedule="15 3 * * *",
+                workspace="host",
+                command="scripts/backup_runtime_dbs.sh",
+            )
+        }
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(jobs=jobs)
         )
         runtime.client = client
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        settings = make_settings(
-            timezone="UTC",
-            scheduler=SchedulerConfig(),
-            jobs={
-                "backup_db": JobConfig(
-                    schedule="15 3 * * *",
-                    workspace="host",
-                    command="scripts/backup_runtime_dbs.sh",
-                )
-            },
-        )
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
-
         await runtime.reconcile_schedules()
 
         schedules = {schedule_id: schedule for schedule_id, schedule, _ in client.created_schedules}
@@ -1123,25 +1155,17 @@ class TestTemporalSchedulerRuntime:
     @pytest.mark.asyncio
     async def test_reconcile_creates_schedule_for_enabled_canaries(self, monkeypatch):
         client = FakeScheduleClient()
+        canary = CanaryConfig(
+            enabled=True,
+            target_profile="external-canary",
+            schedule="30 4 * * *",
+        )
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(canary=canary)
         )
         runtime.client = client
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        settings = make_settings(
-            timezone="UTC",
-            scheduler=SchedulerConfig(),
-            canary=CanaryConfig(
-                enabled=True,
-                target_profile="external-canary",
-                schedule="30 4 * * *",
-            ),
-            jobs={},
-        )
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
-
         await runtime.reconcile_schedules()
 
         schedules = {schedule_id: schedule for schedule_id, schedule, _ in client.created_schedules}
@@ -1153,19 +1177,20 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_quiet_success_config_host_job_suppresses_success_output_log(self, monkeypatch):
-
-        settings = make_settings(
-            jobs={
-                "backup_db": JobConfig(
-                    schedule="15 3 * * *",
-                    workspace="host",
-                    command="scripts/backup_runtime_dbs.sh",
-                    quiet_on_success=True,
-                )
-            },
+        deps = NullSchedulerDeps(
+            scheduler_runtime=_scheduler_runtime(
+                jobs={
+                    "backup_db": JobConfig(
+                        schedule="15 3 * * *",
+                        workspace="host",
+                        command="scripts/backup_runtime_dbs.sh",
+                        quiet_on_success=True,
+                    )
+                }
+            )
         )
-        monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
+        temporal_scheduler.bind_scheduler_deps(deps)
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd, _root: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",
@@ -1181,17 +1206,19 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_failed_config_host_job_fails_its_temporal_activity(self, monkeypatch):
-        settings = make_settings(
-            jobs={
-                "backup_db": JobConfig(
-                    schedule="15 3 * * *",
-                    workspace="host",
-                    command="scripts/backup_runtime_dbs.sh",
-                )
-            },
+        deps = NullSchedulerDeps(
+            scheduler_runtime=_scheduler_runtime(
+                jobs={
+                    "backup_db": JobConfig(
+                        schedule="15 3 * * *",
+                        workspace="host",
+                        command="scripts/backup_runtime_dbs.sh",
+                    )
+                }
+            )
         )
-        monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
+        temporal_scheduler.bind_scheduler_deps(deps)
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd, _root: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",
@@ -1205,26 +1232,17 @@ class TestTemporalSchedulerRuntime:
     async def test_reconcile_creates_temporal_schedules_for_git_sync_and_channel_reconcile(
         self, monkeypatch, tmp_path
     ):
-
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(),
+            scheduler_config=_scheduler_runtime(
+                project_root=tmp_path / "pynchy",
+                external_repo_sync_slugs=("owner/project",),
+            ),
         )
         runtime.client = client
-        repo_root = tmp_path / "external"
-        settings = make_settings(
-            project_root=tmp_path / "pynchy",
-            timezone="UTC",
-            scheduler=SchedulerConfig(),
-            jobs={},
-            repos=ReposConfig(overrides={"owner/project": RepoConfig(path=str(repo_root))}),
-            profiles={"worker": ProfileConfig(repo="owner/project")},
-            workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
-        )
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1246,18 +1264,13 @@ class TestTemporalSchedulerRuntime:
         assert work_items.spec.intervals[0].every == timedelta(minutes=1)
         assert work_items.policy.catchup_window == timedelta(minutes=1)
 
-    def test_poller_schedules_bound_default_catchup_to_their_intervals(self, monkeypatch):
-        settings = make_settings(
-            scheduler=SchedulerConfig(),
-            jobs={},
-        )
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
-
+    def test_poller_schedules_bound_default_catchup_to_their_intervals(self):
+        runtime = _scheduler_runtime()
         schedules = (
-            temporal_schedules.schedule_for_host_git_sync(),
-            temporal_schedules.schedule_for_external_git_sync("owner/project"),
-            temporal_schedules.schedule_for_channel_reconciliation(),
-            temporal_schedules.schedule_for_linear_work_item_reconciliation(),
+            temporal_schedules.schedule_for_host_git_sync(runtime),
+            temporal_schedules.schedule_for_external_git_sync("owner/project", runtime),
+            temporal_schedules.schedule_for_channel_reconciliation(runtime),
+            temporal_schedules.schedule_for_linear_work_item_reconciliation(runtime),
         )
 
         expected_intervals = (
@@ -1270,24 +1283,21 @@ class TestTemporalSchedulerRuntime:
             assert schedule.spec.intervals[0].every == interval
             assert schedule.policy.catchup_window == interval
 
-    def test_poller_schedules_bound_custom_catchup_to_their_intervals(self, monkeypatch):
-        settings = make_settings(
-            scheduler=SchedulerConfig(
+    def test_poller_schedules_bound_custom_catchup_to_their_intervals(self):
+        runtime = _scheduler_runtime(
+            SchedulerConfig(
                 git_sync_interval_seconds=120,
                 channel_reconciliation_interval_seconds=180,
-            ),
-            jobs={},
+            )
         )
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
-
         schedules = (
-            (temporal_schedules.schedule_for_host_git_sync(), timedelta(seconds=120)),
+            (temporal_schedules.schedule_for_host_git_sync(runtime), timedelta(seconds=120)),
             (
-                temporal_schedules.schedule_for_external_git_sync("owner/project"),
+                temporal_schedules.schedule_for_external_git_sync("owner/project", runtime),
                 timedelta(seconds=120),
             ),
             (
-                temporal_schedules.schedule_for_channel_reconciliation(),
+                temporal_schedules.schedule_for_channel_reconciliation(runtime),
                 timedelta(seconds=180),
             ),
         )
@@ -1297,29 +1307,14 @@ class TestTemporalSchedulerRuntime:
             assert schedule.policy.catchup_window == interval
 
     @pytest.mark.asyncio
-    async def test_reconcile_uses_flat_host_repo_root_for_external_sync_detection(
-        self, monkeypatch, tmp_path
-    ):
-
+    async def test_reconcile_uses_composed_external_repo_sync_slugs(self, monkeypatch):
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime()
         )
         runtime.client = client
-        repos_root = tmp_path / "repos"
-        settings = make_settings(
-            project_root=repos_root / "project",
-            timezone="UTC",
-            scheduler=SchedulerConfig(),
-            jobs={},
-            repos=ReposConfig(root=repos_root),
-            profiles={"worker": ProfileConfig(repo="owner/project")},
-            workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
-        )
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1333,14 +1328,12 @@ class TestTemporalSchedulerRuntime:
         stale_schedule_id = "pynchy-agent-schedule-stale"
         client.schedule_ids = [stale_schedule_id]
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
         runtime.client = client
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
         await runtime.reconcile_schedules()
 
@@ -1360,7 +1353,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
         monkeypatch.setattr(temporal_scheduler, "Worker", fake_worker)
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
 
         async with runtime:
@@ -1379,7 +1372,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
         monkeypatch.setattr(temporal_scheduler, "Worker", self._capturing_worker(captured))
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(SchedulerConfig())
         )
 
         async with runtime:
@@ -1397,7 +1390,7 @@ class TestTemporalSchedulerRuntime:
             temporal_task_queue="pynchy-test",
         )
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=scheduler
+            deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime(scheduler)
         )
 
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fail_connect)
@@ -1510,14 +1503,7 @@ class TestTemporalSchedulerRuntime:
     async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
 
         deps = NullSchedulerDeps()
-        called = {}
-
-        def fake_run_learning_review(packet, runner_deps):
-            called["packet"] = packet
-            called["deps"] = runner_deps
-            return asyncio.sleep(0, result="completed")
-
-        monkeypatch.setattr(temporal_learning, "_run_learning_review", fake_run_learning_review)
+        deps.run_learning_review = AsyncMock(return_value="completed")
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
@@ -1529,7 +1515,7 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_scheduler.run_learning_review(packet_to_payload(learning_packet))
 
         assert result == "completed"
-        assert called == {"packet": learning_packet, "deps": deps}
+        deps.run_learning_review.assert_awaited_once_with(learning_packet)
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["last_workflow_id"] == "learning-workflow-completed"
         assert status["last_task_id"] == learning_packet.job_id
@@ -2130,18 +2116,7 @@ class TestTemporalSchedulerRuntime:
                 )
             }
         )
-        boards = {"project": object()}
-        reconcile = AsyncMock(return_value=[object(), object()])
-        monkeypatch.setattr(
-            temporal_linear_work_items,
-            "linear_workspace_boards",
-            lambda: boards,
-        )
-        monkeypatch.setattr(
-            temporal_linear_work_items,
-            "reconcile_all_linear_work_items",
-            reconcile,
-        )
+        deps.reconcile_linear_work_items = AsyncMock(return_value=2)
         monkeypatch.setattr(
             temporal_linear_work_items.activity,
             "info",
@@ -2153,12 +2128,7 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_linear_work_items.run_linear_work_item_reconciliation()
 
         assert result == "completed:2"
-        reconcile.assert_awaited_once_with(
-            deps.workspaces,
-            boards,
-            review_plan=deps.review_linear_plan,
-            broadcast_host_message=deps.broadcast_host_message,
-        )
+        deps.reconcile_linear_work_items.assert_awaited_once_with()
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["tracked_results"]["linear-work-item-reconciliation"]["result"] == (
             "completed:2"
@@ -2361,7 +2331,7 @@ class TestTemporalSchedulerRuntime:
             ),
         }
         deps.broadcast_host_message = AsyncMock()
-        settings = make_settings(
+        deps.scheduler_runtime = _scheduler_runtime(
             canary=CanaryConfig(
                 enabled=True,
                 target_profile="external-canary",
@@ -2386,19 +2356,14 @@ class TestTemporalSchedulerRuntime:
                 )
             ]
         )
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_scheduler, "run_declared_canaries", runner)
+        deps.run_declared_canaries = runner
         temporal_scheduler.bind_scheduler_deps(deps)
         temporal_scheduler.reset_temporal_scheduler_status()
 
         result = await temporal_scheduler.run_scheduled_canaries()
 
         assert result == "completed:1"
-        runner.assert_awaited_once_with(
-            target_profile="external-canary",
-            scenario_ids=["calendar.round.trip"],
-            scheduler_deps=deps,
-        )
+        runner.assert_awaited_once_with("external-canary", ("calendar.round.trip",))
         deps.broadcast_host_message.assert_awaited_once_with(
             "slack:admin",
             "Canary regression: calendar.round.trip on external-canary "

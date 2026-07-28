@@ -2,172 +2,102 @@
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from conftest import make_settings
 
-from pynchy.host.container_manager.security.approval import create_pending_approval
 from pynchy.host.orchestrator.messaging.approval_handler import (
     handle_approval_command,
     handle_pending_query,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-@pytest.fixture
-def ipc_dir(tmp_path: Path) -> Path:
-    d = tmp_path / "ipc"
-    d.mkdir()
-    return d
-
-
-@pytest.fixture
-def settings(tmp_path: Path):
-    return make_settings(data_dir=tmp_path)
+from pynchy.host.orchestrator.messaging.deps import ApprovalRuntimeOperations
 
 
 class FakeDeps:
-    """Minimal deps for testing approval handling."""
+    """Minimal deps for testing approval command semantics."""
 
-    def __init__(self):
-        self.broadcast_messages: list[tuple[str, str]] = []
+    def __init__(self, pending: dict[str, object] | None = None) -> None:
+        self.broadcast_host_message = AsyncMock()
+        self.find_pending_by_short_id = MagicMock(return_value=pending)
+        self.list_pending_approvals = MagicMock(return_value=[])
+        self.persist_and_process = AsyncMock()
+        self.approval_runtime_operations = ApprovalRuntimeOperations(
+            find_pending_by_short_id=self.find_pending_by_short_id,
+            list_pending_approvals=self.list_pending_approvals,
+            persist_and_process=self.persist_and_process,
+        )
 
-    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        self.broadcast_messages.append((chat_jid, text))
+
+@pytest.fixture
+def pending() -> dict[str, object]:
+    return {
+        "request_id": "aabb001122334455",
+        "guarded_action_id": "action-123",
+        "request_payload_hash": "payload-456",
+        "source_group": "grp",
+        "approval_chat_jid": "j@g.us",
+        "tool_name": "x_post",
+        "short_id": "ab",
+    }
 
 
 class TestHandleApprovalCommand:
     @pytest.mark.asyncio
-    async def test_writes_decision_file_on_approve(self, ipc_dir: Path, settings):
-        process_decision = AsyncMock()
-        with (
-            patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
-                process_decision,
-            ),
-        ):
-            short_id = create_pending_approval(
-                "aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"}
-            )
-            deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "approve", short_id, "testuser")
+    @pytest.mark.parametrize(("action", "approved"), [("approve", True), ("deny", False)])
+    async def test_persists_and_processes_matched_decision(
+        self, pending: dict[str, object], action: str, approved: bool
+    ) -> None:
+        deps = FakeDeps(pending)
 
-        decisions_dir = ipc_dir.parent / "approvals" / "grp" / "approval_decisions"
-        files = list(decisions_dir.glob("*.json"))
-        assert len(files) == 1
+        await handle_approval_command(deps, "j@g.us", action, "ab", "testuser")
 
-        data = json.loads(files[0].read_text())
-        assert data["approved"] is True
-        assert data["decided_by"] == "testuser"
-        assert data["request_id"] == "aabb001122334455"
-        process_decision.assert_awaited_once_with(files[0], "grp", deps=deps)
-
-    @pytest.mark.asyncio
-    async def test_writes_decision_file_on_deny(self, ipc_dir: Path, settings):
-        process_decision = AsyncMock()
-        with (
-            patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
-                process_decision,
-            ),
-        ):
-            short_id = create_pending_approval(
-                "aabb001122334455", "x_post", "grp", "j@g.us", {"text": "hi"}
-            )
-            deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "deny", short_id, "testuser")
-
-        decisions_dir = ipc_dir.parent / "approvals" / "grp" / "approval_decisions"
-        data = json.loads(next(iter(decisions_dir.glob("*.json"))).read_text())
-        assert data["approved"] is False
-
-    @pytest.mark.asyncio
-    async def test_unknown_id_sends_error(self, ipc_dir: Path, settings):
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
-        ):
-            deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "approve", "nonexist", "testuser")
-
-        assert len(deps.broadcast_messages) == 1
-        assert "no pending" in deps.broadcast_messages[0][1].lower()
-
-    @pytest.mark.asyncio
-    async def test_rejects_decision_from_another_chat(self, ipc_dir: Path, settings):
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
-        ):
-            short_id = create_pending_approval("request-1", "x_post", "grp", "one@g.us", {})
-            deps = FakeDeps()
-            await handle_approval_command(deps, "two@g.us", "approve", short_id, "testuser")
-
-        assert not list(
-            (ipc_dir.parent / "approvals" / "grp" / "approval_decisions").glob("*.json")
+        deps.persist_and_process.assert_awaited_once()
+        source_group, decision, decision_deps = deps.persist_and_process.call_args.args
+        assert source_group == "grp"
+        assert decision_deps is deps
+        assert decision == {
+            "request_id": "aabb001122334455",
+            "guarded_action_id": "action-123",
+            "request_payload_hash": "payload-456",
+            "source_group": "grp",
+            "approved": approved,
+            "decided_by": "testuser",
+            "decided_at": decision["decided_at"],
+        }
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "j@g.us", f"✅ {'Approved' if approved else 'Denied'}: x_post (ab)"
         )
-        assert "no pending" in deps.broadcast_messages[0][1].lower()
 
     @pytest.mark.asyncio
-    async def test_confirmation_broadcast(self, ipc_dir: Path, settings):
-        process_decision = AsyncMock()
-        with (
-            patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
-                process_decision,
-            ),
-        ):
-            short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {})
-            deps = FakeDeps()
-            await handle_approval_command(deps, "j@g.us", "approve", short_id, "testuser")
+    async def test_rejects_unknown_or_wrong_chat(self, pending: dict[str, object]) -> None:
+        for deps, chat_jid in ((FakeDeps(), "j@g.us"), (FakeDeps(pending), "other@g.us")):
+            await handle_approval_command(deps, chat_jid, "approve", "ab", "testuser")
 
-        assert len(deps.broadcast_messages) == 1
-        msg = deps.broadcast_messages[0][1]
-        assert "Approved" in msg
-        assert "x_post" in msg
+            deps.persist_and_process.assert_not_awaited()
+            deps.broadcast_host_message.assert_awaited_once_with(
+                chat_jid, "No pending approval found for ID: ab"
+            )
 
 
 class TestHandlePendingQuery:
     @pytest.mark.asyncio
-    async def test_lists_pending_approvals(self, ipc_dir: Path, settings):
-        with (
-            patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
-            ),
-        ):
-            create_pending_approval("req1", "x_post", "grp", "j@g.us", {})
-            create_pending_approval("req2", "send_email", "grp", "j@g.us", {})
-            deps = FakeDeps()
-            await handle_pending_query(deps, "j@g.us")
+    async def test_lists_pending_approvals(self) -> None:
+        deps = FakeDeps()
+        deps.list_pending_approvals.return_value = [
+            {"tool_name": "x_post", "short_id": "ab", "source_group": "grp"},
+            {"tool_name": "send_email", "short_id": "cd", "source_group": "other"},
+        ]
 
-        assert len(deps.broadcast_messages) == 1
-        msg = deps.broadcast_messages[0][1]
-        assert "x_post" in msg
-        assert "send_email" in msg
+        await handle_pending_query(deps, "j@g.us")
+
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "j@g.us", "Pending approvals:\n\n  • x_post (ab) — grp\n  • send_email (cd) — other"
+        )
 
     @pytest.mark.asyncio
-    async def test_no_pending_shows_message(self, ipc_dir: Path, settings):
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
-        ):
-            deps = FakeDeps()
-            await handle_pending_query(deps, "j@g.us")
+    async def test_no_pending_shows_message(self) -> None:
+        deps = FakeDeps()
 
-        assert len(deps.broadcast_messages) == 1
-        assert "no pending" in deps.broadcast_messages[0][1].lower()
+        await handle_pending_query(deps, "j@g.us")
+
+        deps.broadcast_host_message.assert_awaited_once_with("j@g.us", "No pending approvals.")

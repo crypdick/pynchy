@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -11,17 +12,22 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import NullIpcDeps
 
-from pynchy.config.caldav import CalDAVConfig, CalDAVServerConfig
-from pynchy.config.models import CalDAVTool
+from pynchy.config.api import CalDAVConfig, CalDAVServerConfig, CalDAVTool
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.plugins.integrations.caldav import (
     CalDAVMcpServerPlugin,
+    CalDAVRuntime,
     clear_caldav_client_cache,
+    configure_caldav_runtime,
 )
 from pynchy.state import init_test_database
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 # CalDAV service handlers are exposed through the plugin's public tool contract —
 # the same registry the IPC service dispatcher consumes. Resolve them here rather
@@ -105,6 +111,13 @@ EMPTY_CALDAV_CONFIG = CalDAVConfig()
 def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
     """Create fake settings with CalDAV and workspace security configured."""
 
+    configure_caldav_runtime(
+        CalDAVRuntime(
+            default_server=caldav_cfg.default_server,
+            servers=caldav_cfg.servers,
+        )
+    )
+
     class FakeSettings:
         def __init__(self):
             self.tools = {
@@ -176,7 +189,7 @@ def _make_fake_client(*calendar_names):
 async def test_list_calendar_not_configured():
     """Returns error when no CalDAV servers are configured."""
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings):
+    with nullcontext():
         result = await _handle_list_calendar({"calendar": "primary"})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -185,7 +198,7 @@ async def test_list_calendar_not_configured():
 @pytest.mark.asyncio
 async def test_create_event_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings):
+    with nullcontext():
         result = await _handle_create_event(
             {
                 "title": "Test",
@@ -200,7 +213,7 @@ async def test_create_event_not_configured():
 @pytest.mark.asyncio
 async def test_delete_event_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings):
+    with nullcontext():
         result = await _handle_delete_event({"event_id": "uid-123", "calendar": "primary"})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -209,7 +222,7 @@ async def test_delete_event_not_configured():
 @pytest.mark.asyncio
 async def test_list_calendars_not_configured():
     settings = _make_settings(caldav_cfg=EMPTY_CALDAV_CONFIG)
-    with patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings):
+    with nullcontext():
         result = await _handle_list_calendars({})
     assert "error" in result
     assert "not configured" in result["error"].lower()
@@ -252,7 +265,6 @@ async def _resolve_via_list(cfg, calendar_arg, *calendar_names):
     get_client = MagicMock(return_value=fake_client)
     data = {} if calendar_arg is _NO_CALENDAR else {"calendar": calendar_arg}
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", get_client),
     ):
         result = await _handle_list_calendar(data)
@@ -267,7 +279,6 @@ async def _visible_calendars(cfg, *calendar_names):
     fake_client, _ = _make_fake_client(*calendar_names)
     settings = _make_settings(caldav_cfg=cfg)
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
@@ -422,7 +433,6 @@ async def test_list_calendar_returns_events():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar(
@@ -451,7 +461,6 @@ async def test_list_calendar_defaults_to_7_days():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "primary"})
@@ -476,7 +485,6 @@ async def test_list_calendar_explicit_server():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "personal/my-cal"})
@@ -492,7 +500,6 @@ async def test_list_calendar_not_found():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "nonexistent"})
@@ -520,7 +527,6 @@ async def test_list_calendar_filtered_out():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendar({"calendar": "secret-cal"})
@@ -543,7 +549,6 @@ async def test_list_calendars_discovers_all():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
@@ -576,7 +581,6 @@ async def test_list_calendars_respects_ignore():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
@@ -606,7 +610,6 @@ async def test_list_calendars_respects_allow():
     settings = _make_settings(caldav_cfg=cfg)
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_list_calendars({})
@@ -632,7 +635,6 @@ async def test_create_event_success():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
@@ -670,7 +672,6 @@ async def test_create_event_minimal():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
@@ -699,7 +700,6 @@ async def test_create_event_explicit_server():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_create_event(
@@ -731,7 +731,6 @@ async def test_delete_event_success():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         result = await _handle_delete_event(
@@ -759,7 +758,6 @@ async def test_caldav_connection_error():
     settings = _make_settings()
 
     with (
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch(
             "pynchy.plugins.integrations.caldav.get_caldav_client",
             side_effect=Exception("Connection refused"),
@@ -776,7 +774,7 @@ async def test_unknown_server_error():
     """Requesting a nonexistent server returns error."""
     settings = _make_settings()
 
-    with patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings):
+    with nullcontext():
         result = await _handle_list_calendar({"calendar": "nonexistent-server/cal"})
 
     assert "error" in result
@@ -818,8 +816,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
-        patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client),
     ):
         data = {

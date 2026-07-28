@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from pynchy.host.container_manager.labels import (
+from pynchy.container_labels import (
     AGENT_CONTAINER_LABEL,
     AGENT_CONTAINER_LABEL_VALUE,
 )

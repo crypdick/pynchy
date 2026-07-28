@@ -6,21 +6,19 @@ import secrets
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.dispatch import (
-    conversation_runtime_lock,
-    notify_conversation_delivery_completed,
-    register_conversation_delivery_waker,
-    unregister_conversation_delivery_waker,
-)
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationClaimId,
     ConversationDelivery,
     ConversationDeliveryCompletion,
     ConversationId,
     ExternalProvider,
     ExternalRoute,
+    conversation_runtime_lock,
+    notify_conversation_delivery_completed,
+    register_conversation_delivery_waker,
+    routed_conversation_folder,
+    unregister_conversation_delivery_waker,
 )
-from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import sync_conversation_control_state
 from pynchy.host.orchestrator.webhook_conversation_admission import (
     conversation_admission_request,
@@ -43,8 +41,10 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_restriction,
     unregister_runtime_workspace_restriction,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
+    NewMessage,
     WebhookEvent,
     WebhookRoute,
 )
@@ -60,7 +60,9 @@ from pynchy.state.api import (
     release_conversation_delivery_claim,
     resolve_conversation,
 )
-from pynchy.types import GroupFolder, NewMessage, WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @runtime_checkable

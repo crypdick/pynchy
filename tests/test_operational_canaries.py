@@ -8,15 +8,23 @@ from unittest.mock import AsyncMock
 import pytest
 from conftest import make_settings
 
-from pynchy.canaries import CanaryRunContext, registered_canary_scenarios
-from pynchy.config import CanaryConfig
-from pynchy.config.models import McpTool, McpToolConfig
-from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
+import pynchy.plugins.integrations.operational_canaries as operational_canaries
+from pynchy.canaries import (
+    CanaryRunContext,
+    registered_canary_scenarios,
+)
 from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
-from pynchy.operational_canaries import (
+from pynchy.host.container_manager.mcp.google_canaries import (
+    GoogleCalendarRoundTripCanary,
+    GoogleDriveRoundTripCanary,
+)
+from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
+from pynchy.plugins.integrations.linear import WorkspaceContext
+from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
+    proton_client_factory,
 )
 from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailbox,
@@ -27,6 +35,7 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMessageEnvelope,
 )
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
+from pynchy.utils import filtered_process_environment
 
 _TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 
@@ -48,11 +57,8 @@ async def test_calendar_canary_uses_configured_calendar_and_removes_event(monkey
     )
     create_event = AsyncMock(return_value={"result": {"uid": "event-1", "status": "created"}})
     delete_event = AsyncMock(return_value={"result": {"uid": "event-1", "status": "deleted"}})
-    monkeypatch.setattr(
-        "pynchy.operational_canaries.get_settings",
-        lambda: make_settings(canary=CanaryConfig(calendar_name="canary")),
-    )
     scenario = CalendarRoundTripCanary(
+        "canary",
         list_calendars=list_calendars,
         list_events=list_events,
         create_event=create_event,
@@ -112,17 +118,15 @@ async def test_linear_canary_exercises_issue_and_todo_lifecycle(monkeypatch):
     list_todos = AsyncMock(return_value=[{"id": "todo-1"}])
     create_todo = AsyncMock(return_value={"id": "todo-1"})
     move_todo = AsyncMock(return_value={"id": "todo-1", "state": {"type": "completed"}})
-    monkeypatch.setattr("pynchy.operational_canaries.select_team", select_team)
-    monkeypatch.setattr("pynchy.operational_canaries.list_workspace_todos", list_todos)
-    monkeypatch.setattr("pynchy.operational_canaries.create_workspace_todo", create_todo)
-    monkeypatch.setattr("pynchy.operational_canaries.move_workspace_todo", move_todo)
-    monkeypatch.setattr(
-        "pynchy.operational_canaries.get_settings",
-        lambda: make_settings(
-            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
-        ),
+    monkeypatch.setattr(operational_canaries, "select_team", select_team)
+    monkeypatch.setattr(operational_canaries, "list_workspace_todos", list_todos)
+    monkeypatch.setattr(operational_canaries, "create_workspace_todo", create_todo)
+    monkeypatch.setattr(operational_canaries, "move_workspace_todo", move_todo)
+    scenario = LinearWorkspaceRoundTripCanary(
+        "CANARY",
+        WorkspaceContext(folder="canary-workspace", name="Canary Workspace"),
+        client_context=client_context,
     )
-    scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
 
     exercise = await scenario.exercise(_context("linear.workspace.round.trip"))
     verified = await scenario.verify(_context("linear.workspace.round.trip"), exercise)
@@ -143,22 +147,25 @@ async def test_linear_canary_cleans_an_issue_when_todo_creation_fails(monkeypatc
         yield client
 
     monkeypatch.setattr(
-        "pynchy.operational_canaries.select_team", AsyncMock(return_value={"id": "team-1"})
+        operational_canaries,
+        "select_team",
+        AsyncMock(return_value={"id": "team-1"}),
     )
     monkeypatch.setattr(
-        "pynchy.operational_canaries.list_workspace_todos", AsyncMock(return_value=[])
+        operational_canaries,
+        "list_workspace_todos",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
-        "pynchy.operational_canaries.create_workspace_todo",
+        operational_canaries,
+        "create_workspace_todo",
         AsyncMock(side_effect=RuntimeError("provider failed")),
     )
-    monkeypatch.setattr(
-        "pynchy.operational_canaries.get_settings",
-        lambda: make_settings(
-            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
-        ),
+    scenario = LinearWorkspaceRoundTripCanary(
+        "CANARY",
+        WorkspaceContext(folder="canary-workspace", name="Canary Workspace"),
+        client_context=client_context,
     )
-    scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
 
     with pytest.raises(RuntimeError, match="provider failed"):
         await scenario.exercise(_context("linear.workspace.round.trip"))
@@ -294,13 +301,11 @@ async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_
     monkeypatch,
 ):
     client = _FakeProtonClient()
-    monkeypatch.setattr(
-        "pynchy.operational_canaries.get_settings",
-        lambda: make_settings(
-            canary=CanaryConfig(proton_mailbox="INBOX", proton_recipient="canary@example.test")
-        ),
+    scenario = ProtonMailRoundTripCanary(
+        "INBOX",
+        "canary@example.test",
+        client_factory=lambda: client,
     )
-    scenario = ProtonMailRoundTripCanary(client_factory=lambda: client)
 
     exercise = await scenario.exercise(_context("proton.mail.round.trip"))
     verified = await scenario.verify(_context("proton.mail.round.trip"), exercise)
@@ -327,23 +332,6 @@ async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_
 
 
 async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
-    settings = make_settings(
-        tools={
-            "proton-mail": McpTool(
-                type="mcp",
-                required_env=[
-                    "PYNCHY_PROTON_BRIDGE_USERNAME",
-                    "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND",
-                ],
-                optional_env=["PYNCHY_PROTON_BRIDGE_IMAP_PORT"],
-                mcp=McpToolConfig(
-                    runtime="script",
-                    command="uv",
-                    port=8475,
-                ),
-            )
-        }
-    )
     captured_environment: dict[str, str] | None = None
 
     def create_client(*, environment: dict[str, str]):
@@ -355,10 +343,20 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
     monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND", _TEST_PASSWORD_COMMAND)
     monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_IMAP_PORT", "2143")
     monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
-    monkeypatch.setattr("pynchy.operational_canaries.get_settings", lambda: settings)
-    monkeypatch.setattr("pynchy.operational_canaries.create_proton_mail_client", create_client)
+    monkeypatch.setattr(operational_canaries, "create_proton_mail_client", create_client)
 
-    await ProtonMailRoundTripCanary().exercise(_context("proton.mail.round.trip"))
+    environment = filtered_process_environment(
+        {
+            "PYNCHY_PROTON_BRIDGE_USERNAME": "mail@example.test",
+            "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND": _TEST_PASSWORD_COMMAND,
+            "PYNCHY_PROTON_BRIDGE_IMAP_PORT": "2143",
+        }
+    )
+    await ProtonMailRoundTripCanary(
+        "INBOX",
+        "canary@example.test",
+        client_factory=proton_client_factory(environment),
+    ).exercise(_context("proton.mail.round.trip"))
 
     assert captured_environment is not None
     assert captured_environment["PYNCHY_PROTON_BRIDGE_USERNAME"] == "mail@example.test"
@@ -368,6 +366,7 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
 
 
 def test_built_in_operational_canaries_register_only_safe_supported_services():
+    configure_builtin_canaries(make_settings())
     assert set(registered_canary_scenarios()) == {
         "calendar.round.trip",
         "calendar.google.round.trip",

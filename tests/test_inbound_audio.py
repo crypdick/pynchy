@@ -6,8 +6,8 @@ import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
-from pynchy.host.audio import AudioTranscriptionResult
-from pynchy.host.inbound_audio import (
+from pynchy.host.audio import (
+    AudioTranscriptionResult,
     InboundAudioAttachment,
     InboundAudioProcessingRequest,
     process_inbound_audio_attachments,
@@ -34,7 +34,7 @@ async def test_process_inbound_audio_caches_transcribes_and_returns_metadata_pat
         )
 
     with patch(
-        "pynchy.host.inbound_audio.transcribe_audio_file",
+        "pynchy.host.audio.transcribe_audio_file",
         new=AsyncMock(side_effect=transcribe),
     ):
         result = await process_inbound_audio_attachments(

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from conftest import make_settings
+import pytest
+from conftest import configure_linear_accounts_for, make_settings
 
-from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
@@ -14,7 +15,12 @@ from pynchy.plugins.integrations.linear_boot import (
     create_linear_workspace_todo,
     reconcile_linear_workspace_boards,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
+
+
+@pytest.fixture(autouse=True)
+def _configure_linear_boot() -> None:
+    configure_linear_accounts_for(make_settings())
 
 
 def _workspace(folder: str, name: str) -> WorkspaceProfile:
@@ -44,16 +50,14 @@ async def test_reconcile_linear_workspace_boards_uses_env_defaults(monkeypatch):
         states={},
     )
     reconcile = AsyncMock(return_value={"alpha": fake_board})
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
 
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=make_settings(
-                profiles={"linear": ProfileConfig(tools=["linear"])},
-                workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
-                tools={"linear": LinearTool(type="linear")},
-            ),
-        ),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
         patch("pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards", reconcile),
     ):
@@ -104,8 +108,8 @@ async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypa
             ),
         },
     )
+    configure_linear_accounts_for(settings)
     with (
-        patch("pynchy.plugins.integrations.linear_boot.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient") as client_class,
         patch(
             "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
@@ -142,9 +146,9 @@ async def test_project_routes_only_admit_discord_thread_parents(monkeypatch):
     project = _workspace("project", "Project")
     project.jid = "discord:channel:project"
 
-    with patch("pynchy.plugins.integrations.linear_boot.get_settings", return_value=settings):
-        await reconcile_linear_workspace_boards([voice, project])
-        candidates = configured_linear_workspace_names("linear")
+    configure_linear_accounts_for(settings)
+    await reconcile_linear_workspace_boards([voice, project])
+    candidates = configured_linear_workspace_names("linear")
 
     assert candidates == ("project",)
 
@@ -162,16 +166,14 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
     monkeypatch.delenv("LINEAR_TEAM_KEY", raising=False)
     fake_client = MagicMock()
     create_todo = AsyncMock(return_value={"identifier": "SYN-1"})
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
 
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=make_settings(
-                profiles={"linear": ProfileConfig(tools=["linear"])},
-                workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
-                tools={"linear": LinearTool(type="linear")},
-            ),
-        ),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
         patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
     ):
@@ -190,16 +192,14 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
 async def test_create_linear_workspace_todo_requires_linear_tool_selection(monkeypatch):
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
     create_todo = AsyncMock(return_value={"identifier": "SYN-1"})
+    settings = make_settings(
+        profiles={"plain": ProfileConfig(tools=[])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["plain"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
 
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=make_settings(
-                profiles={"plain": ProfileConfig(tools=[])},
-                workspaces={"alpha": WorkspaceConfig(profiles=["plain"])},
-                tools={"linear": LinearTool(type="linear")},
-            ),
-        ),
         patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
     ):
         result = await create_linear_workspace_todo(_workspace("alpha", "Alpha"), "Review docs")
@@ -217,16 +217,14 @@ async def test_create_linear_workspace_todo_uses_parent_board_for_dynamic_thread
         "Admin/thread-1",
     )
     thread_workspace.jid = "discord:channel:thread"
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"admin": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
 
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_boot.get_settings",
-            return_value=make_settings(
-                profiles={"linear": ProfileConfig(tools=["linear"])},
-                workspaces={"admin": WorkspaceConfig(profiles=["linear"])},
-                tools={"linear": LinearTool(type="linear")},
-            ),
-        ),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
         patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
     ):

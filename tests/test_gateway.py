@@ -10,7 +10,7 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config.models import AgentConfig, GatewayConfig, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import AgentConfig, GatewayConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
@@ -29,7 +29,7 @@ from pynchy.host.container_manager.gateway_litellm import (
     resolve_litellm_environment,
 )
 from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
-from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
+from pynchy.redaction import GatewayRedactionPosture
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -730,7 +730,7 @@ class TestGatewayModeSelection:
 
         with (
             patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
-            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+            patch(f"{_GATEWAY_MOD}._apple_container_runtime", True),
             patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
         ):
             gw = await start_gateway()
@@ -759,7 +759,7 @@ class TestGatewayModeSelection:
 
         with (
             patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
-            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+            patch(f"{_GATEWAY_MOD}._apple_container_runtime", True),
             patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
         ):
             gw = await start_gateway()

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,6 +26,7 @@ from pynchy.host.orchestrator.http_control import (
     RequestRateLimiter,
 )
 from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.plugins.api import WebhookAuthenticationError, WebhookPayloadError, WebhookRoute
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
@@ -33,9 +35,11 @@ from pynchy.plugins.integrations.github_webhooks import (
     parse_github_webhook,
     prepare_github_webhook_event,
 )
-from pynchy.plugins.webhooks import WebhookAuthenticationError, WebhookPayloadError, WebhookRoute
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.scheduling.api import ScheduledTask
 
 _SIGNING_KEY = "github-webhook-test-signing-key-long-enough"
 _DELIVERY_ID = "ee7b4ec5-daa1-48fa-8c8f-c4de20e9d65f"
@@ -329,6 +333,7 @@ async def test_unlinked_actionable_review_falls_back_to_workspace_notification(
 
 class _WebhookDeps:
     def __init__(self) -> None:
+        self.capability_status_operations = AsyncMock()
         self.workspace = WorkspaceProfile(
             jid="discord:project-channel",
             name="Project",
@@ -364,6 +369,7 @@ def _public_runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=ControlPlaneToken("control-plane-token-that-is-long-enough"),
         rate_limiter=RequestRateLimiter(request_limit=100, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 

@@ -3,30 +3,33 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from temporalio import activity
 
-from pynchy.config import get_settings
-from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
+from pynchy.host.orchestrator.scheduler_deps import (
+    ConfigHostCronJob,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
     _record_activity_result,
+    _require_scheduler_deps,
 )
 from pynchy.host.orchestrator.temporal.schedules import (
     is_stale_database_host_job_once_workflow,
 )
 from pynchy.logger import logger
-from pynchy.state.api import get_host_job_by_id, record_host_job_completion
-from pynchy.types import (
-    HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
+from pynchy.scheduling.api import (
+    HostJob,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
+from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 from pynchy.utils import ShellResult, log_shell_result, run_shell_command
 
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
 
-def _resolve_job_cwd(cwd: str | None) -> str:
-    project_root = get_settings().project_root
+
+def _resolve_job_cwd(cwd: str | None, project_root: Path) -> str:
     if not cwd:
         return str(project_root)
     path = Path(cwd)
@@ -63,14 +66,17 @@ async def run_database_host_job(job_id: str) -> str:
 @activity.defn(name="run_config_host_cron_job")
 async def run_config_host_cron_job(job_name: str) -> str:
     """Temporal activity that runs one enabled config-backed host cron job."""
-    job = get_settings().jobs.get(job_name)
-    if job is None or not job.is_host or not job.enabled:
+    scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
+    job = scheduler_deps.scheduler_runtime.config_host_cron_jobs.get(job_name)
+    if job is None:
         logger.info("Temporal config host cron job skipped", job=job_name)
         _record_activity_result(job_name, "skipped")
         return "skipped"
 
     try:
-        await _run_config_host_cron_job(job_name, job)
+        await _run_config_host_cron_job(
+            job_name, job, scheduler_deps.scheduler_runtime.project_root
+        )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(job_name, "error", str(exc))
         raise
@@ -78,11 +84,11 @@ async def run_config_host_cron_job(job_name: str) -> str:
     return "completed"
 
 
-async def _run_config_host_cron_job(job_name: str, job: JobConfig) -> None:
+async def _run_config_host_cron_job(
+    job_name: str, job: ConfigHostCronJob, project_root: Path
+) -> None:
     """Run a config-backed host cron job and surface shell failures to Temporal."""
-    if job.command is None or job.schedule is None:
-        raise RuntimeError(f"validated host job {job_name!r} is incomplete")
-    command_cwd = _resolve_job_cwd(job.cwd)
+    command_cwd = _resolve_job_cwd(job.cwd, project_root)
     logger.info(
         "Running config host cron job",
         job=job_name,
@@ -100,7 +106,8 @@ async def _run_config_host_cron_job(job_name: str, job: JobConfig) -> None:
 
 
 async def _run_database_host_job(job: HostJob) -> None:
-    command_cwd = _resolve_job_cwd(job.cwd)
+    scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
+    command_cwd = _resolve_job_cwd(job.cwd, scheduler_deps.scheduler_runtime.project_root)
     logger.info(
         "Running database host job",
         job_id=job.id,

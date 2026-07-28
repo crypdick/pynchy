@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.plugins.webhooks import (
+from pynchy.plugins.api import (
     WebhookActor,
     WebhookConversation,
     WebhookEvent,

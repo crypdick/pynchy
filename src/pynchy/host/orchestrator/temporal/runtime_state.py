@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.turn_outcomes import TurnOutcome
 
 _SCHEDULER_DEPS_NOT_BOUND = "Temporal scheduler dependencies are not bound"
 

@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from conftest import init_test_database, make_settings
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.dispatch import (
     register_conversation_delivery_waker,
     unregister_conversation_delivery_waker,
@@ -38,6 +42,16 @@ from pynchy.host.orchestrator.conversation_control import (
 from pynchy.host.orchestrator.session_handler import send_clear_confirmation
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
+from pynchy.plugins.api import (
+    Channel,
+    InboundFetchResult,
+    OutboundEvent,
+)
 from pynchy.state import (
     ConversationControlWorkspaceChangedError,
     WebhookReceipt,
@@ -69,17 +83,7 @@ from pynchy.state import (
     set_workspace_profile,
     store_chat_metadata,
 )
-from pynchy.types import (
-    Channel,
-    ChatJid,
-    GroupFolder,
-    InboundFetchResult,
-    InFlightTurn,
-    InFlightWorkKind,
-    OutboundEvent,
-    SessionId,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
 from typing import Any
 
-import pynchy.types as types
-from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.learning import capture as learning_capture
-from pynchy.host.orchestrator.execution_outcomes import (
-    TurnOutcome,
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightTurn,
+    InFlightWorkKind,
 )
+from pynchy.event_bus import AgentActivityEvent
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     MessageHandlerDeps,
 )
@@ -31,20 +32,25 @@ from pynchy.host.orchestrator.messaging.turn_recovery import (
     handle_reset_handoff,
     resume_interrupted_message_if_present,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.identifiers import RuntimeId
+from pynchy.plugins.api import NewMessage
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
     resume_paused_in_flight_turn,
 )
+from pynchy.turn_outcomes import (
+    TurnOutcome,
+)
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 ProcessPending = Callable[[str], Awaitable[TurnOutcome]]
-GetPendingMessages = Callable[[str, str], Awaitable[list[types.NewMessage]]]
+GetPendingMessages = Callable[[str, str], Awaitable[list[NewMessage]]]
 _MESSAGE_WORK_KINDS = {
-    types.InFlightWorkKind.INTERACTIVE,
-    types.InFlightWorkKind.RESET_HANDOFF,
-    types.InFlightWorkKind.SCHEDULED,
+    InFlightWorkKind.INTERACTIVE,
+    InFlightWorkKind.RESET_HANDOFF,
+    InFlightWorkKind.SCHEDULED,
 }
 
 
@@ -53,7 +59,7 @@ class AgentBatch:
     """Prepared ordinary input that should start a fresh interactive checkpoint."""
 
     since_timestamp: str
-    missed_messages: list[types.NewMessage]
+    missed_messages: list[NewMessage]
     messages: list[dict[str, Any]]
     reset_system_notices: list[str]
 
@@ -70,9 +76,9 @@ class TurnPreparationCallbacks:
 class _PausedResumeRequest:
     deps: MessageHandlerDeps
     chat_jid: str
-    group: types.WorkspaceProfile
-    turn: types.InFlightTurn
-    missed_messages: list[types.NewMessage]
+    group: WorkspaceProfile
+    turn: InFlightTurn
+    missed_messages: list[NewMessage]
     messages: list[dict[str, Any]]
     process_pending: ProcessPending
 
@@ -81,17 +87,17 @@ async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcom
     """Attach pending guidance and resume the frozen occurrence exactly once."""
     deps = request.deps
     turn = request.turn
-    if turn.control_state is types.CheckpointControlState.PAUSE_REQUESTED:
+    if turn.control_state is CheckpointControlState.PAUSE_REQUESTED:
         # A reply can race the process shutdown. Its interactive workflow may
         # retry, but the paused occurrence itself never retries automatically.
         return TurnOutcome.RETRY
-    if turn.control_state is types.CheckpointControlState.RESET_REQUESTED:
+    if turn.control_state is CheckpointControlState.RESET_REQUESTED:
         await clear_in_flight_turn(turn.turn_id)
         return TurnOutcome.RESET
-    if turn.control_state is not types.CheckpointControlState.PAUSED:
+    if turn.control_state is not CheckpointControlState.PAUSED:
         return TurnOutcome.COMPLETED
 
-    is_scheduled = turn.work_kind is types.InFlightWorkKind.SCHEDULED
+    is_scheduled = turn.work_kind is InFlightWorkKind.SCHEDULED
     resumed = await resume_paused_in_flight_turn(
         turn.turn_id,
         request.messages,
@@ -118,7 +124,7 @@ async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcom
 async def prepare_agent_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
+    group: WorkspaceProfile,
     data_dir: Path,
     callbacks: TurnPreparationCallbacks,
 ) -> AgentBatch | TurnOutcome:
@@ -145,8 +151,8 @@ async def prepare_agent_batch(
             _MESSAGE_WORK_KINDS,
         )
         if checkpoint is not None and checkpoint.control_state in {
-            types.CheckpointControlState.PAUSE_REQUESTED,
-            types.CheckpointControlState.PAUSED,
+            CheckpointControlState.PAUSE_REQUESTED,
+            CheckpointControlState.PAUSED,
         }:
             return TurnOutcome.PAUSED
         return TurnOutcome.COMPLETED
@@ -156,11 +162,9 @@ async def prepare_agent_batch(
         group,
         missed_messages,
         is_admin_group=group.is_admin,
+        repo_is_dirty=deps.repo_is_dirty,
     )
-    if (
-        checkpoint is not None
-        and checkpoint.control_state is not types.CheckpointControlState.ACTIVE
-    ):
+    if checkpoint is not None and checkpoint.control_state is not CheckpointControlState.ACTIVE:
         return await _resume_paused_checkpoint(
             _PausedResumeRequest(
                 deps=deps,
@@ -188,7 +192,7 @@ class InteractiveAgentRun:
     had_error: bool
     missing_terminal_result: bool
     output_sent_to_user: bool
-    learning_summary: learning_capture.LearningRunSummary
+    learning_summary: object
     control_outcome: TurnOutcome | None
 
 
@@ -211,10 +215,10 @@ async def _requested_control_after_agent_exit(
 
 async def run_interactive_agent(
     deps: MessageHandlerDeps,
-    group: types.WorkspaceProfile,
+    group: WorkspaceProfile,
     messages: list[dict[str, Any]],
     reset_system_notices: list[str],
-    turn: types.InFlightTurn,
+    turn: InFlightTurn,
 ) -> InteractiveAgentRun:
     """Invoke one checkpointed interactive turn and settle control requests."""
     chat_jid = turn.chat_jid
@@ -222,13 +226,13 @@ async def run_interactive_agent(
     missing_terminal_result = False
     terminal_result_observed = False
     output_sent_to_user = False
-    learning_summary = learning_capture.LearningRunSummary()
+    learning_summary = deps.new_learning_run_summary()
 
-    async def on_output(result: types.ContainerOutput) -> None:
+    async def on_output(result: ContainerOutput) -> None:
         nonlocal had_error, missing_terminal_result, terminal_result_observed
         nonlocal output_sent_to_user
 
-        learning_capture.observe_learning_output(learning_summary, result)
+        deps.observe_learning_output(learning_summary, result)
         missing_terminal_result = missing_terminal_result or (
             (result.result_metadata or {}).get("subtype") == "missing_terminal_turn"
         )
@@ -247,7 +251,7 @@ async def run_interactive_agent(
         if result.status == "error":
             had_error = True
         if result.type == "tool_result":
-            await deps.queue.interrupt_after_tool_result(types.RuntimeId(group.folder))
+            await deps.queue.interrupt_after_tool_result(RuntimeId(group.folder))
 
     control_outcome: TurnOutcome | None = None
     try:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from pynchy.config import get_settings
+from pynchy.config.api import get_settings
 from pynchy.host.personal_messaging_health import (
     PERSONAL_PROVIDERS,
     PersonalProvider,

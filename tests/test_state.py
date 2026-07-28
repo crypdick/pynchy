@@ -9,7 +9,17 @@ import aiosqlite
 import pytest
 from freezegun import freeze_time
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
+from pynchy.plugins.api import NewMessage
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
@@ -69,16 +79,12 @@ from pynchy.state import (
 )
 from pynchy.state.connection import atomic_write
 from pynchy.state.schema import create_schema
-from pynchy.types import (
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
-    ScheduledTask,
-    ServiceTrustConfig,
-    SessionPolicy,
-    TaskRunLog,
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
+)
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
 )

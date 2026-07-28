@@ -5,9 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured task callbacks at runtime.
+    Awaitable,
+    Callable,
+)
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
+from pynchy.content_fencing import fence_untrusted_content
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves task annotations.
     WorkspaceLike,
 )
@@ -16,8 +21,10 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     ensure_task_active,
     linear_issue_conversation_id,
 )
-from pynchy.state.api import get_all_tasks
-from pynchy.types import ScheduledTask, SessionPolicy
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 
 _PLANNING_CONTRACT = (
     "Objective: produce a concrete implementation plan for the exact Ready for Planning "
@@ -31,6 +38,32 @@ _PLANNING_CONTRACT = (
     "Awaiting Plan Approval. Do not pad the plan with generic confirmation or permission steps. "
     "Do not execute, claim, or move the item to Human Approved."
 )
+
+
+@dataclass(frozen=True)
+class LinearPlanningTaskRuntime:
+    """Durable task reads selected during Linear plugin composition."""
+
+    get_all_tasks: Callable[[], Awaitable[list[ScheduledTask]]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearPlanningTaskRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_planning_task_runtime(runtime: LinearPlanningTaskRuntime) -> None:
+    """Set the durable task reads used for planning-task recovery."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearPlanningTaskRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear planning-task runtime has not been configured")
+    return _runtime.runtime
 
 
 def _canonical_task_id(issue: DecisionIssue) -> str:
@@ -50,7 +83,7 @@ async def _recoverable_task_id(
     issue_id_pattern = re.compile(rf'"issue_id"\s*:\s*"{re.escape(issue.id)}"')
     candidates = [
         task
-        for task in await get_all_tasks()
+        for task in await _configured_runtime().get_all_tasks()
         if task.group_folder == workspace.folder
         and task.id.startswith(prefixes)
         and issue_id_pattern.search(task.prompt) is not None

@@ -1,5 +1,6 @@
 version = 2
 default_violation_guidance = "Move the shared semantic contract inward or inject a narrow capability from a named composition root."
+root_module_max_inbound_importers = 20
 
 source_roots = [
   { path = "src/pynchy", module = "pynchy", exclude = ["agent/agent_runner/**"] },
@@ -12,9 +13,20 @@ composition_roots = [
   "pynchy.host.orchestrator.app",
   "pynchy.host.orchestrator.dep_factory",
   "pynchy.host.orchestrator.lifecycle",
+  "pynchy.host.orchestrator.plugin_configuration",
   "pynchy.host.orchestrator.source_health_deps",
   "pynchy.host.orchestrator.terminal_task_retirement",
 ]
+
+# Root-level modules are first-class architecture units. This exception only
+# lifts their inbound-importer budget; the owning package role still constrains
+# every first-party dependency the module imports.
+[file_overrides."src/pynchy/identifiers.py"]
+# Universal semantic IDs are the intentionally small shared leaf.
+allow_unbounded_inbound_imports = true
+
+[file_overrides."src/pynchy/logger.py"]
+allow_unbounded_inbound_imports = true
 
 [roles.foundation]
 allowed_dependencies = []
@@ -133,12 +145,6 @@ role = "application"
 public_modules = []
 
 [[packages]]
-name = "runtime_typing"
-root = "pynchy._runtime_typing"
-role = "foundation"
-public_modules = ["pynchy._runtime_typing"]
-
-[[packages]]
 name = "logger"
 root = "pynchy.logger"
 role = "foundation"
@@ -157,6 +163,12 @@ role = "foundation"
 public_modules = ["pynchy.agent"]
 
 [[packages]]
+name = "agent_home"
+root = "pynchy.agent_home"
+role = "domain"
+public_modules = ["pynchy.agent_home"]
+
+[[packages]]
 name = "host_root"
 root = "pynchy.host"
 role = "foundation"
@@ -170,159 +182,82 @@ role = "foundation"
 public_modules = ["pynchy.host.paths"]
 
 [[packages]]
-name = "action_contract"
-root = "pynchy._action_contract"
-role = "extension_api"
-public_modules = ["pynchy._action_contract"]
+name = "identifiers"
+root = "pynchy.identifiers"
+role = "foundation"
+public_modules = ["pynchy.identifiers"]
 
 [[packages]]
-name = "action_spec_helpers"
-root = "pynchy._action_spec_helpers"
-role = "extension_api"
-public_modules = ["pynchy._action_spec_helpers"]
+name = "conversation_primitives"
+root = "pynchy.conversation_primitives"
+role = "foundation"
+public_modules = ["pynchy.conversation_primitives"]
 
 [[packages]]
-name = "action_specs"
-root = "pynchy._action_specs"
-role = "extension_api"
-public_modules = ["pynchy._action_specs"]
+name = "container_labels"
+root = "pynchy.container_labels"
+role = "foundation"
+public_modules = ["pynchy.container_labels"]
 
 [[packages]]
-name = "action_specs_computer_use"
-root = "pynchy._action_specs_computer_use"
-role = "extension_api"
-public_modules = ["pynchy._action_specs_computer_use"]
+name = "runtime_names"
+root = "pynchy.runtime_names"
+role = "foundation"
+public_modules = ["pynchy.runtime_names"]
 
 [[packages]]
-name = "action_specs_core"
-root = "pynchy._action_specs_core"
-role = "extension_api"
-public_modules = ["pynchy._action_specs_core"]
+name = "secrets_scanner"
+root = "pynchy.secrets_scanner"
+role = "foundation"
+public_modules = ["pynchy.secrets_scanner"]
 
 [[packages]]
-name = "action_specs_gog"
-root = "pynchy._action_specs_gog"
-role = "extension_api"
-public_modules = ["pynchy._action_specs_gog"]
+name = "redaction"
+root = "pynchy.redaction"
+role = "domain"
+public_modules = ["pynchy.redaction"]
+
+[[packages]]
+name = "content_fencing"
+root = "pynchy.content_fencing"
+role = "domain"
+public_modules = ["pynchy.content_fencing"]
+
+[[packages]]
+name = "ipc_snapshots"
+root = "pynchy.ipc_snapshots"
+role = "domain"
+public_modules = ["pynchy.ipc_snapshots"]
 
 [[packages]]
 name = "actions"
 root = "pynchy.actions"
-role = "extension_api"
+role = "domain"
 public_modules = ["pynchy.actions"]
-
-[[packages]]
-name = "capabilities"
-root = "pynchy.capabilities"
-role = "extension_api"
-public_modules = ["pynchy.capabilities"]
 
 [[packages]]
 name = "event_bus"
 root = "pynchy.event_bus"
-role = "extension_api"
+role = "domain"
 public_modules = ["pynchy.event_bus"]
 
 [[packages]]
 name = "plugins_root"
 root = "pynchy.plugins"
 role = "extension_api"
-public_modules = ["pynchy.plugins"]
-include_descendants = false
-
-[[packages]]
-name = "plugin_agent_hooks"
-root = "pynchy.plugins.agent_hooks"
-role = "extension_api"
-public_modules = ["pynchy.plugins.agent_hooks"]
-
-[[packages]]
-name = "plugin_channel_runtime"
-root = "pynchy.plugins.channel_runtime"
-role = "extension_api"
-public_modules = ["pynchy.plugins.channel_runtime"]
-
-[[packages]]
-name = "plugin_connections"
-root = "pynchy.plugins.connections"
-role = "extension_api"
-public_modules = ["pynchy.plugins.connections"]
-
-[[packages]]
-name = "plugin_contracts"
-root = "pynchy.plugins.contracts"
-role = "extension_api"
-public_modules = ["pynchy.plugins.contracts"]
-
-[[packages]]
-name = "plugin_hookspecs"
-root = "pynchy.plugins.hookspecs"
-role = "extension_api"
-public_modules = ["pynchy.plugins.hookspecs"]
-
-[[packages]]
-name = "plugin_host_actions"
-root = "pynchy.plugins.host_actions"
-role = "extension_api"
-public_modules = ["pynchy.plugins.host_actions"]
-
-[[packages]]
-name = "plugin_mcp_server"
-root = "pynchy.plugins.mcp_server"
-role = "extension_api"
-public_modules = ["pynchy.plugins.mcp_server"]
-
-[[packages]]
-name = "plugin_registry"
-root = "pynchy.plugins.registry"
-role = "extension_api"
-public_modules = ["pynchy.plugins.registry"]
-
-[[packages]]
-name = "plugin_session_lifecycle"
-root = "pynchy.plugins.session_lifecycle"
-role = "extension_api"
-public_modules = ["pynchy.plugins.session_lifecycle"]
-
-[[packages]]
-name = "plugin_webhooks"
-root = "pynchy.plugins.webhooks"
-role = "extension_api"
-public_modules = ["pynchy.plugins.webhooks"]
-
-[[packages]]
-name = "plugin_memory_api"
-root = "pynchy.plugins.memory"
-role = "extension_api"
-public_modules = ["pynchy.plugins.memory", "pynchy.plugins.memory._api"]
-
-[[packages]]
-name = "plugin_observer_api"
-root = "pynchy.plugins.observers"
-role = "extension_api"
-public_modules = ["pynchy.plugins.observers", "pynchy.plugins.observers._api"]
+public_modules = ["pynchy.plugins.api"]
 
 [[packages]]
 name = "plugin_speech_api"
 root = "pynchy.plugins.speech"
-role = "extension_api"
+role = "domain"
 public_modules = ["pynchy.plugins.speech", "pynchy.plugins.speech._api"]
 
 [[packages]]
 name = "plugin_tunnel_api"
 root = "pynchy.plugins.tunnels"
-role = "extension_api"
+role = "domain"
 public_modules = ["pynchy.plugins.tunnels", "pynchy.plugins.tunnels._api"]
-
-[[packages]]
-name = "plugin_computer_use_api"
-root = "pynchy.plugins.computer_use"
-role = "extension_api"
-public_modules = [
-  "pynchy.plugins.computer_use",
-  "pynchy.plugins.computer_use.contract",
-  "pynchy.plugins.computer_use.models",
-]
 
 [[packages]]
 name = "channel_plugin_api"
@@ -350,20 +285,16 @@ role = "domain"
 public_modules = ["pynchy.channels"]
 
 [[packages]]
+name = "canary_contracts"
+root = "pynchy.canary_contracts"
+role = "domain"
+public_modules = ["pynchy.canary_contracts"]
+
+[[packages]]
 name = "conversation"
 root = "pynchy.conversation"
 role = "domain"
-public_modules = [
-  "pynchy.conversation.events",
-  "pynchy.conversation.models",
-  "pynchy.conversation.workspaces",
-]
-
-[[packages]]
-name = "deployment_types"
-root = "pynchy.deployment_types"
-role = "domain"
-public_modules = ["pynchy.deployment_types"]
+public_modules = ["pynchy.conversation.api"]
 
 [[packages]]
 name = "discord_types"
@@ -378,22 +309,64 @@ role = "domain"
 public_modules = ["pynchy.linear_plan_types"]
 
 [[packages]]
+name = "learning_packets"
+root = "pynchy.learning_packets"
+role = "domain"
+public_modules = ["pynchy.learning_packets"]
+
+[[packages]]
 name = "security_canary_ids"
 root = "pynchy.security_canary_ids"
 role = "domain"
 public_modules = ["pynchy.security_canary_ids"]
 
 [[packages]]
-name = "session_policy"
-root = "pynchy.session_policy"
+name = "agent_protocol"
+root = "pynchy.agent_protocol"
 role = "domain"
-public_modules = ["pynchy.session_policy"]
+public_modules = ["pynchy.agent_protocol.api"]
 
 [[packages]]
-name = "types"
-root = "pynchy.types"
+name = "deployments"
+root = "pynchy.deployments"
 role = "domain"
-public_modules = ["pynchy.types"]
+public_modules = ["pynchy.deployments"]
+
+[[packages]]
+name = "integration_contracts"
+root = "pynchy.integration_contracts"
+role = "domain"
+public_modules = ["pynchy.integration_contracts"]
+
+[[packages]]
+name = "scheduling"
+root = "pynchy.scheduling"
+role = "domain"
+public_modules = ["pynchy.scheduling.api"]
+
+[[packages]]
+name = "security_context"
+root = "pynchy.security_context"
+role = "domain"
+public_modules = ["pynchy.security_context"]
+
+[[packages]]
+name = "work_items"
+root = "pynchy.work_items"
+role = "domain"
+public_modules = ["pynchy.work_items.api"]
+
+[[packages]]
+name = "workspace"
+root = "pynchy.workspace"
+role = "domain"
+public_modules = ["pynchy.workspace.api"]
+
+[[packages]]
+name = "turn_outcomes"
+root = "pynchy.turn_outcomes"
+role = "domain"
+public_modules = ["pynchy.turn_outcomes"]
 
 [[packages]]
 name = "webhook_effects"
@@ -405,19 +378,13 @@ public_modules = ["pynchy.webhook_effects"]
 name = "config"
 root = "pynchy.config"
 role = "config"
-public_modules = ["pynchy.config"]
-
-[[packages]]
-name = "capability_policy"
-root = "pynchy.capability_policy"
-role = "application"
-public_modules = []
+public_modules = ["pynchy.config.api"]
 
 [[packages]]
 name = "orchestrator"
 root = "pynchy.host.orchestrator"
 role = "application"
-public_modules = []
+public_modules = ["pynchy.host.orchestrator.api"]
 
 [[packages]]
 name = "messaging_ports"
@@ -447,43 +414,31 @@ public_modules = ["pynchy.state.api"]
 name = "container_manager"
 root = "pynchy.host.container_manager"
 role = "container_adapter"
-public_modules = []
-
-[[packages]]
-name = "temporal"
-root = "pynchy.host.orchestrator.temporal"
-role = "driving_adapter"
-public_modules = []
+public_modules = ["pynchy.host.container_manager.api"]
 
 [[packages]]
 name = "git"
 root = "pynchy.host.git_ops"
 role = "git_adapter"
-public_modules = []
+public_modules = ["pynchy.host.git_ops.api"]
 
 [[packages]]
 name = "learning"
 root = "pynchy.host.learning"
 role = "learning_adapter"
-public_modules = []
+public_modules = ["pynchy.host.learning.api"]
 
 [[packages]]
 name = "host_audio"
 root = "pynchy.host.audio"
 role = "host_adapter"
-public_modules = []
-
-[[packages]]
-name = "host_inbound_audio"
-root = "pynchy.host.inbound_audio"
-role = "host_adapter"
-public_modules = []
+public_modules = ["pynchy.host.audio"]
 
 [[packages]]
 name = "host_migration_backups"
 root = "pynchy.host.migration_backups"
-role = "host_adapter"
-public_modules = []
+role = "foundation"
+public_modules = ["pynchy.host.migration_backups"]
 
 [[packages]]
 name = "host_personal_messaging_health"
@@ -495,7 +450,7 @@ public_modules = []
 name = "integrations"
 root = "pynchy.plugins.integrations"
 role = "integration_adapter"
-public_modules = []
+public_modules = ["pynchy.plugins.integrations.api"]
 
 [[packages]]
 name = "sqlite_memory"
@@ -513,7 +468,7 @@ public_modules = []
 name = "runtimes"
 root = "pynchy.plugins.runtimes"
 role = "runtime_adapter"
-public_modules = []
+public_modules = ["pynchy.plugins.runtimes.api"]
 
 [[packages]]
 name = "pocket_tts"
@@ -536,38 +491,14 @@ public_modules = []
 [[packages]]
 name = "computer_use_artifacts"
 root = "pynchy.plugins.computer_use.artifacts"
-role = "computer_use_adapter"
-public_modules = []
+role = "extension_api"
+public_modules = ["pynchy.plugins.computer_use.artifacts"]
 
 [[packages]]
 name = "canaries"
 root = "pynchy.canaries"
 role = "canary_adapter"
-public_modules = []
-
-[[packages]]
-name = "google_mcp_canaries"
-root = "pynchy.google_mcp_canaries"
-role = "canary_adapter"
-public_modules = []
-
-[[packages]]
-name = "operational_canaries"
-root = "pynchy.operational_canaries"
-role = "canary_adapter"
-public_modules = []
-
-[[packages]]
-name = "security_canaries"
-root = "pynchy.security_canaries"
-role = "canary_adapter"
-public_modules = []
-
-[[packages]]
-name = "security_canary_artifact"
-root = "pynchy.security_canaries_artifact"
-role = "canary_adapter"
-public_modules = []
+public_modules = ["pynchy.canaries.api"]
 
 [[packages]]
 name = "agent_plugin_requirements"

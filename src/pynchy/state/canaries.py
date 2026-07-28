@@ -11,8 +11,11 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.canary_contracts import (
+    CanaryOutcome,
+    CanaryRun,
+)
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import CanaryOutcome, CanaryRun
 
 _REGRESSION_OUTCOMES = frozenset({CanaryOutcome.FAILED, CanaryOutcome.CLEANUP_FAILED})
 

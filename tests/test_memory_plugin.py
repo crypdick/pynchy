@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pynchy.plugins.memory import MemoryProvider, get_memory_provider
+from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.api import MemoryProvider, get_memory_provider
 from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin
 from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 
@@ -139,7 +140,7 @@ class TestMcpHandlers:
 class TestDiscovery:
     def test_get_memory_provider_returns_backend(self, tmp_path):
         """get_memory_provider finds the sqlite-memory plugin."""
-        provider = get_memory_provider(tmp_path / "memories.db")
+        provider = get_memory_provider(get_plugin_manager(), tmp_path / "memories.db")
         # May be None if plugin loading context differs in tests,
         # but when it loads it should be valid.
         if provider is not None:

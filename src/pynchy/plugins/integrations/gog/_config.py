@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves Gog runtime callbacks at runtime.
+)
+from dataclasses import dataclass
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves Gog runtime annotations at runtime.
+)
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from pynchy.config import get_settings
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001 - beartype resolves this annotation at runtime.
-)
 
 PositiveTimeout = Annotated[float, Field(gt=0, le=300)]
 
@@ -54,25 +55,32 @@ class GogConfig(BaseModel):
             raise ValueError("path must be non-empty and cannot contain a NUL byte")
         return normalized
 
-    def resolved_home(self, settings: Settings) -> Path:
-        """Return Gog's private host state directory."""
-        return _resolve_path(self.home, settings, default=settings.data_dir / "gog")
 
-    def resolved_oauth_client_path(self, settings: Settings) -> Path | None:
-        """Return the configured Desktop OAuth client file, if one was supplied."""
-        if self.oauth_client_path is None:
-            return None
-        return _resolve_path(self.oauth_client_path, settings, default=settings.data_dir)
+@dataclass(frozen=True)
+class GogRuntime:
+    """Resolved Gog configuration and workspace authorization."""
 
-
-def gog_config() -> GogConfig:
-    """Parse the plugin-owned options transport at the integration boundary."""
-    plugin = get_settings().plugins.get("gog")
-    return GogConfig.model_validate(plugin.options if plugin is not None else {})
+    config: GogConfig
+    home: Path
+    oauth_client_path: Path | None
+    workspace_enables_gog: Callable[[str], bool]
 
 
-def _resolve_path(value: str | None, settings: Settings, *, default: Path) -> Path:
-    if value is None:
-        return default
-    path = Path(value).expanduser()
-    return path if path.is_absolute() else settings.project_root / path
+@dataclass
+class _RuntimeState:
+    runtime: GogRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_gog_runtime(runtime: GogRuntime) -> None:
+    """Set Gog configuration before host actions run."""
+    _runtime.runtime = runtime
+
+
+def gog_runtime() -> GogRuntime:
+    """Return the resolved Gog runtime or fail before processing a request."""
+    if _runtime.runtime is None:
+        raise RuntimeError("Gog runtime has not been configured")
+    return _runtime.runtime

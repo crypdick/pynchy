@@ -7,9 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
-from pynchy.config.settings import validate_settings_mapping
-from pynchy.config.toml_io import parse_settings_toml
+from pynchy.config.api import Settings, parse_settings_toml, validate_settings_mapping
 
 
 def _settings_from_toml(source: str) -> Settings:

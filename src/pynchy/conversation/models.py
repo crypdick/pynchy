@@ -4,21 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, NewType
+from typing import Any
 
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves model annotations at runtime.
+from pynchy.conversation_primitives import (  # noqa: F401, TC001, RUF100 - public runtime re-exports preserve the established conversation surface.
+    ConversationClaimId,
+    ConversationDeliveryCompletion,
+    ConversationId,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
+)
+from pynchy.identifiers import (  # noqa: F401, TC001, RUF100 - public runtime re-exports preserve the established conversation surface.
     ChatJid,
     GroupFolder,
     SessionId,
 )
-
-ConversationId = NewType("ConversationId", str)
-ConversationSubjectNamespace = NewType("ConversationSubjectNamespace", str)
-ConversationSubjectKey = NewType("ConversationSubjectKey", str)
-ExternalProvider = NewType("ExternalProvider", str)
-ExternalRoute = NewType("ExternalRoute", str)
-ExternalDeliveryId = NewType("ExternalDeliveryId", str)
-ConversationClaimId = NewType("ConversationClaimId", str)
 
 
 def _require_text(value: str, field_name: str) -> None:
@@ -43,20 +46,6 @@ class ConversationSubject:
     def __post_init__(self) -> None:
         _require_text(self.namespace, "Conversation subject namespace")
         _require_text(self.key, "Conversation subject key")
-
-
-@dataclass(frozen=True, slots=True)
-class ExternalDeliveryIdentity:
-    """Identity of one authenticated provider delivery."""
-
-    provider: ExternalProvider
-    route: ExternalRoute
-    delivery_id: ExternalDeliveryId
-
-    def __post_init__(self) -> None:
-        _require_text(self.provider, "External provider")
-        _require_text(self.route, "External route")
-        _require_text(self.delivery_id, "External delivery ID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,14 +107,6 @@ class ConversationDeliveryAdmission:
     delivery: ConversationDelivery
     created: bool
     terminal_retirement: TerminalConversationRetirement | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ConversationDeliveryCompletion:
-    """Identity needed to wake a completed delivery's pending sibling."""
-
-    identity: ExternalDeliveryIdentity
-    conversation_id: ConversationId
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,13 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_session_reset import (
+    LinearSessionResetState,
     cancel_linear_execution_for_reset,
 )
-from pynchy.types import (
+from pynchy.state import WorkItemTransitionRequest
+from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass(frozen=True)
@@ -76,35 +78,28 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
         assert workspace == execution.workspace
         yield client
 
+    cancel_workflow = AsyncMock(return_value=True)
+    get_control = AsyncMock(return_value=_Binding(conversation_id="conversation-1"))
+    get_conversation = AsyncMock(
+        return_value=_Conversation(
+            subject=_Subject(
+                namespace="linear:tenant:issue",
+                key=execution.linear_issue_id,
+            )
+        )
+    )
+    get_execution = AsyncMock(return_value=execution)
+    cancel_task = AsyncMock()
+    cancel_local = AsyncMock()
+    state = LinearSessionResetState(
+        get_control_by_thread=get_control,
+        get_conversation=get_conversation,
+        get_active_execution=get_execution,
+        cancel_task=cancel_task,
+        cancel_execution=cancel_local,
+        transition_request=WorkItemTransitionRequest,
+    )
     with (
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.get_conversation_control_by_thread",
-            new_callable=AsyncMock,
-            return_value=_Binding(conversation_id="conversation-1"),
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.get_conversation",
-            new_callable=AsyncMock,
-            return_value=_Conversation(
-                subject=_Subject(
-                    namespace="linear:tenant:issue",
-                    key=execution.linear_issue_id,
-                )
-            ),
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.get_active_work_item_execution",
-            new_callable=AsyncMock,
-            return_value=execution,
-        ),
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.cancel_scheduled_agent_workflow",
-            new_callable=AsyncMock,
-        ) as cancel_workflow,
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.cancel_task_and_checkpoint",
-            new_callable=AsyncMock,
-        ) as cancel_task,
         patch(
             "pynchy.plugins.integrations.linear_session_reset.linear_client",
             new=fake_linear_client,
@@ -117,10 +112,6 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
                 status=WorkItemExecutionStatus.CANCELLED,
             ),
         ) as transition,
-        patch(
-            "pynchy.plugins.integrations.linear_session_reset.cancel_work_item_execution",
-            new_callable=AsyncMock,
-        ) as cancel_local,
     ):
         cancelled = await cancel_linear_execution_for_reset(
             WorkspaceProfile(
@@ -128,7 +119,9 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
                 name="SYN-89",
                 folder="linear-thread",
                 trigger="@Pynchy",
-            )
+            ),
+            cancel_scheduled_workflow=cancel_workflow,
+            state=state,
         )
 
     assert cancelled is True

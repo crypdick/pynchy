@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
-from pynchy.types import (
+from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransition,

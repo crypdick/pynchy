@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
-from pynchy.config.models import DiscordConnectionConfig
-from pynchy.host.audio import AudioTranscriptionResult
+from pynchy.config.api import DiscordConnectionConfig
+from pynchy.host.audio import AudioTranscriptionResult, process_inbound_audio_attachments
 from pynchy.plugins.channels.discord import (
     DiscordAttachment,
     DiscordAuthor,
@@ -20,7 +20,14 @@ from pynchy.plugins.channels.discord import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.types import NewMessage
+    from collections.abc import Awaitable, Callable
+
+    from pynchy.plugins.api import (
+        InboundAudioProcessingRequest,
+        InboundAudioProcessingResult,
+        NewMessage,
+    )
+
 
 BOT_ID = "999"
 DISCORD_BOT_ENV = "X"
@@ -117,6 +124,9 @@ def _attachment(
 async def _deliver(
     msg: DiscordInboundMessage,
     audio_cache_dir: Path = Path("data/media/discord"),
+    process_inbound_audio: (
+        Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None
+    ) = None,
     **cfg_kwargs: Any,
 ) -> tuple[str, NewMessage, list[tuple[str, str, str | None]]]:
     delivered: list[tuple[str, NewMessage]] = []
@@ -128,6 +138,7 @@ async def _deliver(
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
         audio_cache_dir=audio_cache_dir,
+        process_inbound_audio=process_inbound_audio,
     )
     channel.bot_user_id = BOT_ID
 
@@ -320,7 +331,7 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
         )
 
     with patch(
-        "pynchy.host.inbound_audio.transcribe_audio_file",
+        "pynchy.host.audio.transcribe_audio_file",
         new=AsyncMock(side_effect=transcribe),
         create=True,
     ):
@@ -340,6 +351,7 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
                 mentions=(BOT_ID,),
             ),
             audio_cache_dir=tmp_path,
+            process_inbound_audio=process_inbound_audio_attachments,
             group_policy="open",
         )
 

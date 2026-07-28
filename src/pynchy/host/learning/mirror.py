@@ -10,19 +10,19 @@ from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resol
     LearningPaths,
 )
 from pynchy.logger import logger
-from pynchy.plugins.runtimes.detection import get_runtime
+
+_use_vault_mount_mirror = False
+
+
+def configure_vault_mount_mirror(*, enabled: bool) -> None:
+    """Select Apple Container mirror behavior at host composition."""
+    global _use_vault_mount_mirror  # noqa: PLW0603, RUF100 - one host process owns one vault mount mode.
+    _use_vault_mount_mirror = enabled
 
 
 def should_use_vault_mount_mirror() -> bool:
     """Return whether container mounts should use a local vault mirror."""
-    if sys.platform != "darwin":
-        return False
-
-    try:
-        return get_runtime().name == "apple"
-    except RuntimeError as exc:
-        logger.debug("Skipping vault mirror runtime check", err=str(exc))
-        return False
+    return sys.platform == "darwin" and _use_vault_mount_mirror
 
 
 def prepare_vault_mount_root(paths: LearningPaths) -> Path:

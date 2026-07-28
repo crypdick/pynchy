@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.conversation.models import ConversationId
+from pynchy.conversation.api import ConversationId
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
 )
 from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
-from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.gate import (  # noqa: TC001, RUF100 - beartype resolves replay-gate annotations.
     SecurityGate,
 )
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ def build_approval_decision_context(
     action_payload = pending.get("action_payload")
     if action_payload is not None and not isinstance(action_payload, dict):
         raise TypeError("pending approval action_payload must be an object or null")
-    raw_timeout = pending.get("expires_after_seconds", security_approval.APPROVAL_TIMEOUT_SECONDS)
+    raw_timeout = pending.get("expires_after_seconds", APPROVAL_TIMEOUT_SECONDS)
     return ApprovalDecisionContext(
         request_id=decision.request_id,
         source_group=source_group,

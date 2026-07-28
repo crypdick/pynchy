@@ -15,7 +15,11 @@ from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC protocol paths at runtime.
 from typing import Any, cast
 
-from pynchy.types import ChatJid, ContainerConfig, GroupFolder
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
+from pynchy.workspace.api import ContainerConfig
 
 IPC_SCHEMA_VERSION = 1
 

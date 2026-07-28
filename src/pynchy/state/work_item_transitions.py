@@ -8,7 +8,7 @@ from typing import Any
 
 import aiosqlite  # noqa: TC002, RUF100 - beartype resolves this annotation at runtime.
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.state.connection import _get_db, atomic_write
@@ -20,7 +20,7 @@ from pynchy.state.work_item_models import (
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.state.work_item_transition_records import insert_work_item_transition
 from pynchy.state.work_items import get_work_item_execution
-from pynchy.types import (
+from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransition,

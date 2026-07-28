@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# allow: file-length - task admission and recovery share one durable lease policy.
 import hashlib
 import json
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves task annotations at runtime.
@@ -12,9 +13,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
-from pynchy.conversation.models import ConversationId
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
-from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
+from pynchy.content_fencing import fence_untrusted_content
+from pynchy.conversation.api import ConversationControlBinding, ConversationId
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves task annotations.
@@ -45,21 +45,13 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_work_item_lease,
 )
-from pynchy.state.api import (
-    WorkItemClaimConflictError,
-    bind_work_item_execution_to_task,
-    create_task_if_absent,
-    get_active_work_item_execution,
-    get_conversation_control_binding,
-    get_task_by_id,
-    get_task_run_logs,
-    get_work_item_execution_for_issue,
-    resume_once_task_after_unclaimed_scheduled_turn,
-    update_task,
-)
-from pynchy.types import (
+from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
+    agent_task_workflow_id,
+)
+from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
     WorkItemExecution,
     WorkItemExecutionStatus,
 )
@@ -134,6 +126,47 @@ class DecisionAdmission:
     public_source: bool
     review_plan: LinearPlanReviewer | None = None
     broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None
+
+
+@dataclass(frozen=True)
+class LinearWorkItemTaskRuntime:
+    """Durable task and execution operations selected during plugin composition."""
+
+    get_control_binding: Callable[[ConversationId], Awaitable[ConversationControlBinding | None]]
+    get_task: Callable[[str], Awaitable[ScheduledTask | None]]
+    create_task: Callable[[ScheduledTask], Awaitable[bool]]
+    update_task: Callable[[str, dict[str, object]], Awaitable[None]]
+    get_task_logs: Callable[..., Awaitable[list[Any]]]
+    bind_execution_to_task: Callable[..., Awaitable[object]]
+    get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    resume_once_task: Callable[[str], Awaitable[bool]]
+    get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearWorkItemTaskRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_work_item_task_runtime(runtime: LinearWorkItemTaskRuntime) -> None:
+    """Set the durable operations used for Linear task admission and recovery."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearWorkItemTaskRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear work-item task runtime has not been configured")
+    return _runtime.runtime
+
+
+async def get_conversation_control_binding(
+    conversation_id: ConversationId,
+) -> ConversationControlBinding | None:
+    """Read one control binding through the configured durable capability."""
+    return await _configured_runtime().get_control_binding(conversation_id)
 
 
 def _text(payload: dict[str, Any], key: str) -> str:
@@ -254,9 +287,10 @@ async def ensure_task_active(
     observed_at: datetime,
 ) -> tuple[ScheduledTask, bool]:
     """Create missing work or reactivate a quiet orphan after a grace period."""
-    existing = await get_task_by_id(task.id)
+    runtime = _configured_runtime()
+    existing = await runtime.get_task(task.id)
     if existing is None:
-        return task, await create_task_if_absent(task)
+        return task, await runtime.create_task(task)
     ownership_updates: dict[str, object] = {}
     if existing.session_policy is not SessionPolicy.CONTINUE:
         ownership_updates["session_policy"] = SessionPolicy.CONTINUE
@@ -265,7 +299,7 @@ async def ensure_task_active(
     if existing.derived_thread_name != task.derived_thread_name:
         ownership_updates["derived_thread_name"] = task.derived_thread_name
     if ownership_updates:
-        await update_task(task.id, ownership_updates)
+        await runtime.update_task(task.id, ownership_updates)
         existing = replace(
             existing,
             session_policy=SessionPolicy.CONTINUE,
@@ -279,7 +313,7 @@ async def ensure_task_active(
 
     counted_runs = sum(
         log.status in {"success", "incomplete"}
-        for log in await get_task_run_logs(task.id, limit=10)
+        for log in await runtime.get_task_logs(task.id, limit=10)
     )
     if counted_runs >= _ORPHAN_RUN_LIMIT:
         logger.warning(
@@ -302,7 +336,7 @@ async def ensure_task_active(
         last_result=existing.last_result,
         created_at=existing.created_at,
     )
-    await update_task(
+    await runtime.update_task(
         task.id,
         {
             "prompt": resumed.prompt,
@@ -324,7 +358,7 @@ async def _bind_execution_task(
     execution: WorkItemExecution,
     task: ScheduledTask,
 ) -> None:
-    await bind_work_item_execution_to_task(
+    await _configured_runtime().bind_execution_to_task(
         execution.id,
         task_id=task.id,
         temporal_workflow_id=agent_task_workflow_id(task),
@@ -348,7 +382,8 @@ async def _admit_in_progress_issue(
     board: LinearWorkspaceBoard,
     context: DecisionAdmission,
 ) -> ScheduledTask | None:
-    execution = await get_active_work_item_execution(issue.id)
+    runtime = _configured_runtime()
+    execution = await runtime.get_active_execution(issue.id)
     if execution is None:
         execution = await adopt_legacy_in_progress_execution(
             LegacyAdoptionRequest(
@@ -389,9 +424,9 @@ async def _admit_in_progress_issue(
         active_task.status == "paused"
         and execution.task_id == active_task.id
         and not _last_run_is_recent(active_task, context.observed_at)
-        and await resume_once_task_after_unclaimed_scheduled_turn(active_task.id)
+        and await runtime.resume_once_task(active_task.id)
     ):
-        refreshed_task = await get_task_by_id(active_task.id)
+        refreshed_task = await runtime.get_task(active_task.id)
         if refreshed_task is not None and refreshed_task.status == "active":
             active_task = refreshed_task
             admitted = True
@@ -404,7 +439,10 @@ async def _admit_follow_ups_issue(
     workspace: WorkspaceLike,
     context: DecisionAdmission,
 ) -> ScheduledTask | None:
-    latest = await get_work_item_execution_for_issue(issue.id, workspace=workspace.folder)
+    latest = await _configured_runtime().get_execution_for_issue(
+        issue.id,
+        workspace=workspace.folder,
+    )
     if latest is not None and latest.status is WorkItemExecutionStatus.UNKNOWN:
         logger.warning(
             "Linear Follow-ups deferred for an uncertain execution",
@@ -428,7 +466,7 @@ async def _admit_human_approved_issue(
     board: LinearWorkspaceBoard,
     context: DecisionAdmission,
 ) -> ScheduledTask | None:
-    if await get_active_work_item_execution(issue.id) is not None:
+    if await _configured_runtime().get_active_execution(issue.id) is not None:
         return None
     if PLAN_START in issue.description:
         await _report_plan_review_status(

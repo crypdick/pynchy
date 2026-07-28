@@ -9,7 +9,11 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundar
     Row,
 )
 
-from pynchy.conversation.models import ConversationDeliveryStatus
+from pynchy.conversation.api import ConversationDeliveryStatus
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.conversation_controls import (
     _apply_conversation_control_state,
@@ -23,7 +27,6 @@ from pynchy.state.webhook_models import (
     WebhookConversationRequest,
     WebhookReceipt,
 )
-from pynchy.types import ScheduledTask, SessionPolicy
 from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves admission evidence.
     WebhookEffectEvidence,
 )

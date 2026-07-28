@@ -12,7 +12,10 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.protocol import InboundChatMessage, parse_ipc_file
 from pynchy.logger import logger
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 def _path_exists(path: Path) -> bool:

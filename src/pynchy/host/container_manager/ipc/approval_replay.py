@@ -4,26 +4,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves replay policy callbacks at runtime.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
-    HostActionDescriptor,
-    missing_workspace_tool,
-)
-from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves policy annotations.
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
     ConversationId,
+)
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves approval replay dependencies at runtime.
 )
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
-    build_workspace_security,
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.host.orchestrator import workspace_config
-from pynchy.state.api import get_action_intent_by_request, get_conversation_control_binding
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
+    HostActionDescriptor,
+    missing_workspace_tool,
+)
+from pynchy.workspace.api import (
+    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+
+type WorkspaceTools = tuple[str, ...] | None
 
 
 @dataclass(frozen=True)
@@ -50,23 +57,33 @@ class ApprovalDecisionContext:
     expires_after_seconds: int
 
 
+@dataclass(frozen=True)
+class ApprovalReplayPolicy:
+    """Current workspace policy required to replay an approved service action."""
+
+    configured_security: Callable[[str], WorkspaceSecurity | None]
+    workspace_tools: Callable[[str], WorkspaceTools]
+
+
 async def approval_replay_validation_error(
     context: ApprovalDecisionContext,
+    deps: IpcDeps,
+    policy: ApprovalReplayPolicy,
 ) -> str | None:
     """Recheck exact payload, expiry, policy, and conversation presentation."""
     if context.handler_type == "service" and context.gate is None:
         return "effective routed workspace policy is unavailable"
     if context.handler_type == "service":
-        resolved = workspace_config.load_resolved_config(context.source_group)
-        if context.origin_conversation_id is not None and resolved is None:
+        selected_tools = policy.workspace_tools(context.source_group)
+        if context.origin_conversation_id is not None and selected_tools is None:
             return "host tool is no longer enabled for this routed workspace"
         if (
-            resolved is not None
+            selected_tools is not None
             and context.action is not None
             and (
                 missing_tool := missing_workspace_tool(
                     context.action,
-                    resolved.tools,
+                    list(selected_tools),
                     service_aliases=(
                         context.gate.service_names if context.gate is not None else ()
                     ),
@@ -78,10 +95,10 @@ async def approval_replay_validation_error(
     time_error = _approval_time_error(context)
     if time_error is not None:
         return time_error
-    payload_error = await _approval_payload_error(context)
+    payload_error = await _approval_payload_error(context, deps)
     if payload_error is not None:
         return payload_error
-    return await _approval_conversation_error(context)
+    return await _approval_conversation_error(context, deps)
 
 
 def _approval_time_error(context: ApprovalDecisionContext) -> str | None:
@@ -98,14 +115,14 @@ def _approval_time_error(context: ApprovalDecisionContext) -> str | None:
     return None
 
 
-async def _approval_payload_error(context: ApprovalDecisionContext) -> str | None:
+async def _approval_payload_error(context: ApprovalDecisionContext, deps: IpcDeps) -> str | None:
     if context.action_payload is not None:
         payload_hash = hashlib.sha256(
             json.dumps(context.action_payload, sort_keys=True).encode()
         ).hexdigest()
         if payload_hash != context.action_payload_sha256:
             return "approval payload evidence is corrupt"
-        intent = await get_action_intent_by_request(context.request_id)
+        intent = await deps.get_action_intent_by_request(context.request_id)
         if intent is None or intent.payload != context.action_payload:
             return "approved action payload no longer matches its durable intent"
         binding_error = _bound_presentation_error(context)
@@ -131,31 +148,35 @@ def _bound_presentation_error(context: ApprovalDecisionContext) -> str | None:
     return None
 
 
-async def _approval_conversation_error(context: ApprovalDecisionContext) -> str | None:
+async def _approval_conversation_error(
+    context: ApprovalDecisionContext, deps: IpcDeps
+) -> str | None:
     if context.origin_conversation_id is not None:
-        binding = await get_conversation_control_binding(context.origin_conversation_id)
+        binding = await deps.get_conversation_control_binding(context.origin_conversation_id)
         if binding is None or binding.thread_jid != context.chat_jid:
             return "conversation control binding changed; request a new approval"
     return None
 
 
 def approval_replay_gate(
-    settings: Settings,
     source_group: str,
     *,
+    policy: ApprovalReplayPolicy,
     require_resolved: bool = False,
     request_corruption_tainted: bool = False,
     request_secret_tainted: bool = False,
 ) -> SecurityGate | None:
     """Rebuild current policy while retaining sticky taint from the active gate."""
     active_gate = get_gate_for_group(source_group)
-    resolved = workspace_config.load_resolved_config(source_group)
-    if resolved is None:
+    if policy.workspace_tools(source_group) is None:
         if require_resolved:
             return None
         gate = active_gate or SecurityGate(resolve_security(source_group))
     else:
-        gate = SecurityGate(build_workspace_security(settings, resolved))
+        security = policy.configured_security(source_group)
+        if security is None:
+            return None
+        gate = SecurityGate(security)
     if request_corruption_tainted or (
         active_gate is not None and active_gate.policy.corruption_tainted
     ):

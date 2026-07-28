@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import os
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,
+    Mapping,
+)
 from dataclasses import dataclass
 
-from pynchy.config import Settings, get_settings
-from pynchy.types import LinearAccountConfig, is_linear_account_config
+from pynchy.integration_contracts import (
+    LinearAccountConfig,
+    is_linear_account_config,
+)
 
 
 @dataclass(frozen=True)
@@ -27,20 +33,49 @@ class LinearAccount:
         return os.environ.get(self.config.team_key_env)
 
 
-def configured_linear_accounts(settings: Settings | None = None) -> tuple[LinearAccount, ...]:
+@dataclass(frozen=True)
+class LinearAccountRuntime:
+    """Configured Linear tools and workspace selections from application composition."""
+
+    tools: Mapping[str, object]
+    workspace_tool_names: Callable[[str], tuple[str, ...] | None]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearAccountRuntime | None = None
+
+
+_state = _RuntimeState()
+
+
+def configure_linear_account_runtime(runtime: LinearAccountRuntime) -> None:
+    """Inject the configured Linear accounts and workspace selectors."""
+    _state.runtime = runtime
+
+
+def _configured_runtime() -> LinearAccountRuntime:
+    if _state.runtime is None:
+        raise RuntimeError("Linear account runtime has not been configured")
+    return _state.runtime
+
+
+def configured_linear_accounts(
+    tools: Mapping[str, object] | None = None,
+) -> tuple[LinearAccount, ...]:
     """Return every named Linear tool as an independently trusted account."""
-    current = settings or get_settings()
+    current_tools = _configured_runtime().tools if tools is None else tools
     return tuple(
         LinearAccount(name, tool)
-        for name, tool in sorted(current.tools.items())
+        for name, tool in sorted(current_tools.items())
         if is_linear_account_config(tool)
     )
 
 
-def linear_account(name: str, settings: Settings | None = None) -> LinearAccount:
+def linear_account(name: str, tools: Mapping[str, object] | None = None) -> LinearAccount:
     """Resolve an exact configured Linear account name."""
-    current = settings or get_settings()
-    tool = current.tools.get(name)
+    current_tools = _configured_runtime().tools if tools is None else tools
+    tool = current_tools.get(name)
     if not is_linear_account_config(tool):
         raise TypeError(f"Linear account tool is not configured: {name}")
     return LinearAccount(name, tool)
@@ -48,17 +83,23 @@ def linear_account(name: str, settings: Settings | None = None) -> LinearAccount
 
 def linear_account_for_workspace(
     workspace: str,
-    settings: Settings | None = None,
+    *,
+    tools: Mapping[str, object] | None = None,
+    workspace_tool_names: Callable[[str], tuple[str, ...] | None] | None = None,
 ) -> LinearAccount | None:
     """Resolve the single Linear account selected by a workspace."""
-    current = settings or get_settings()
-    resolved = current.resolved_workspace_config(workspace)
-    if resolved is None:
+    runtime = _configured_runtime()
+    current_tools = runtime.tools if tools is None else tools
+    resolve_tools = (
+        runtime.workspace_tool_names if workspace_tool_names is None else workspace_tool_names
+    )
+    selected_tools = resolve_tools(workspace)
+    if selected_tools is None:
         return None
     accounts = tuple(
         LinearAccount(name, tool)
-        for name in resolved.tools
-        if is_linear_account_config(tool := current.tools.get(name))
+        for name in selected_tools
+        if is_linear_account_config(tool := current_tools.get(name))
     )
     if len(accounts) > 1:
         names = ", ".join(account.name for account in accounts)

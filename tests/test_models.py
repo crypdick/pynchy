@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.models import ProfileConfig, WorkspaceConfig, WorkspaceThreadConfig
+from pynchy.config.api import ProfileConfig, WorkspaceConfig, WorkspaceThreadConfig
 
 
 class TestProfileConfigDefaults:

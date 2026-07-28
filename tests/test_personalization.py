@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pynchy.config.personalization import (
+from pynchy.config.api import (
     PersonalizationError,
+    Settings,
     load_layered_settings_mapping,
+    repository_settings_sources,
     validate_personalization_tree,
+    validate_settings_mapping,
 )
-from pynchy.config.settings import Settings, validate_settings_mapping
-from pynchy.config.settings_sources import repository_settings_sources
 
 if TYPE_CHECKING:
     from pathlib import Path

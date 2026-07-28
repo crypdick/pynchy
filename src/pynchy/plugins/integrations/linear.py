@@ -22,16 +22,17 @@ import aiohttp
 import pluggy
 from aiohttp import web
 
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
-    HostActionRegistration,
-)
-from pynchy.config import get_settings
 from pynchy.logger import logger
-from pynchy.plugins.computer_use import (  # noqa: TC001, RUF100 - beartype resolves the hook parameter annotation at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.  # noqa: TC001, RUF100 - beartype resolves the hook parameter annotation at runtime.
     ComputerUseBackend,
+    HostActionRegistration,
+    McpServerConfig,
+    McpServerSpec,
+    WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
 )
-from pynchy.plugins.contracts import McpServerSpec
-from pynchy.plugins.integrations.linear_accounts import configured_linear_accounts
+from pynchy.plugins.integrations.linear_accounts import (  # noqa: TC001, RUF100 - beartype resolves plugin configuration annotations at runtime.
+    LinearAccount,
+)
 from pynchy.plugins.integrations.linear_boards import (
     WorkspaceTodoProposal,
     create_workspace_todo,
@@ -39,17 +40,17 @@ from pynchy.plugins.integrations.linear_boards import (
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_session_reset import (
+    LinearSessionResetState,
     cancel_linear_execution_for_reset,
 )
 from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.plugins.mcp_server import McpServerConfig
-from pynchy.plugins.webhooks import (
-    WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
 )
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -74,6 +75,29 @@ class WorkspaceContext:
 
 class LinearMcpPlugin:
     """Register the built-in Linear script MCP server."""
+
+    def __init__(
+        self,
+        accounts: tuple[LinearAccount, ...] = (),
+        *,
+        cancel_scheduled_workflow: Callable[[str], Awaitable[bool]] | None = None,
+        session_reset_state: LinearSessionResetState | None = None,
+    ) -> None:
+        self._accounts = accounts
+        self._cancel_scheduled_workflow = cancel_scheduled_workflow
+        self._session_reset_state = session_reset_state
+
+    def configure(
+        self,
+        accounts: tuple[LinearAccount, ...],
+        *,
+        cancel_scheduled_workflow: Callable[[str], Awaitable[bool]],
+        session_reset_state: LinearSessionResetState,
+    ) -> None:
+        """Apply the resolved Linear accounts before MCP specs are collected."""
+        self._accounts = accounts
+        self._cancel_scheduled_workflow = cancel_scheduled_workflow
+        self._session_reset_state = session_reset_state
 
     @hookimpl
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
@@ -106,7 +130,7 @@ class LinearMcpPlugin:
                     dangerous_writes=account.config.dangerous_writes,
                 ),
             )
-            for account in configured_linear_accounts(get_settings())
+            for account in self._accounts
         )
 
     @hookimpl
@@ -125,7 +149,13 @@ class LinearMcpPlugin:
     @hookimpl
     async def pynchy_before_context_reset(self, group: WorkspaceProfile) -> None:
         """Settle Linear execution ownership before a session is cleared."""
-        await cancel_linear_execution_for_reset(group)
+        if self._cancel_scheduled_workflow is None or self._session_reset_state is None:
+            raise RuntimeError("Linear plugin was not configured for context-reset settlement")
+        await cancel_linear_execution_for_reset(
+            group,
+            cancel_scheduled_workflow=self._cancel_scheduled_workflow,
+            state=self._session_reset_state,
+        )
 
 
 def build_app(*, workspace: str | None = None) -> object:

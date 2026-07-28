@@ -2,25 +2,34 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves message-context callback annotations at runtime.
+    Callable,
+)
 from pathlib import (  # noqa: TC003, RUF100 - beartype resolves message-context path annotations at runtime.
     Path,
 )
 from typing import Any
 
-import pynchy.types as types  # noqa: TC001, RUF100 - beartype resolves message-context annotations at runtime.
-from pynchy.host.git_ops.utils import is_repo_dirty
 from pynchy.host.orchestrator.messaging import formatter as message_formatter
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
-def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
+def _check_dirty_repo(
+    group_name: str, dirty_check_file: Path, repo_is_dirty: Callable[[], bool]
+) -> list[str]:
     """Consume the dirty-check marker and return any system notices."""
     notices: list[str] = []
     if not dirty_check_file.exists():
         return notices
     try:
         dirty_check_file.unlink()
-        if is_repo_dirty():
+        if repo_is_dirty():
             notices.append(
                 "WARNING: Uncommitted changes detected in the repository. "
                 "Please review and commit these changes so that you may work "
@@ -36,13 +45,16 @@ def _check_dirty_repo(group_name: str, dirty_check_file: Path) -> list[str]:
 
 def prepare_message_context(
     data_dir: Path,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
     *,
     is_admin_group: bool,
+    repo_is_dirty: Callable[[], bool],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Format SDK messages and gather any reset-time system notices."""
     messages = message_formatter.format_messages_for_sdk(missed_messages)
     dirty_check_file = data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-    reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
+    reset_system_notices = (
+        _check_dirty_repo(group.name, dirty_check_file, repo_is_dirty) if is_admin_group else []
+    )
     return messages, reset_system_notices

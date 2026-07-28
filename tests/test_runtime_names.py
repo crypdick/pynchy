@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pynchy.host.container_manager.orchestrator import stable_container_name
-from pynchy.host.container_manager.runtime_names import (
+from pynchy.runtime_names import (
     runtime_container_name,
     runtime_namespace,
     runtime_network_name,

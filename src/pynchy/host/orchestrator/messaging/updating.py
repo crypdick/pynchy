@@ -6,10 +6,17 @@ from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
+from pynchy.identifiers import (
+    ChannelName,
+    ChatJid,
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,
+    OutboundEvent,
+)
 from pynchy.state import api as state
-from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
-from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
+from pynchy.state.api import OutboundDelivery, OutboundDeliveryOperation
 
 
 @runtime_checkable

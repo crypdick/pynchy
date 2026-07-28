@@ -6,7 +6,7 @@ import subprocess  # noqa: S404, RUF100 - tests invoke fixed git argv.
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-from pynchy.host.git_ops.personalization import sync_personalization_repo
+from pynchy.host.git_ops.api import sync_personalization_repo
 
 if TYPE_CHECKING:
     from pathlib import Path

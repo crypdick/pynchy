@@ -13,16 +13,18 @@ from typing import Any
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.state.api import clear_session, store_message_direct
-from pynchy.types import (
+from pynchy.plugins.api import (
     Channel,
-    GroupFolder,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
 )
+from pynchy.state.api import clear_session, store_message_direct
 from pynchy.utils import create_background_task, generate_message_id
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]

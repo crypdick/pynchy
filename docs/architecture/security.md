@@ -114,7 +114,7 @@ Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityP
 Each service declares four trust properties in
 `data/personalization/pynchy.toml`:
 
-<!-- Source of truth: ServiceTrustConfig in src/pynchy/types.py — keep these properties/defaults in sync. -->
+<!-- Source of truth: ServiceTrustConfig in src/pynchy/workspace/types.py — keep these properties/defaults in sync. -->
 | Property | Question it answers |
 |----------|-------------------|
 | `public_source` | Can this service deliver content from untrusted parties? |

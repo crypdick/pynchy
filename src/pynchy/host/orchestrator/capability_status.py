@@ -3,30 +3,28 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import (  # noqa: TC003, RUF100 - capability operations are stored at runtime.
+    Callable,
+    Mapping,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pynchy.actions import ActionId, ActionSpec, EvidenceRequirement
-from pynchy.capabilities import (
+from pynchy.logger import logger
+from pynchy.plugins.api import (
     CapabilityProbeContext,
     CapabilityStatus,
+    HostActionCatalog,
     HostActionDescriptor,
     ProbeStatus,
     ResolvedCapability,
     WorkspaceCapabilitySnapshot,
+    get_host_action_catalog,
     missing_workspace_tool,
 )
-from pynchy.config import Settings, apply_tool_access, get_settings
-from pynchy.host.container_manager.security.gate import (
-    SecurityGate,
-    build_workspace_security,
-    evaluate_host_action_policy,
-)
-from pynchy.logger import logger
-from pynchy.plugins.host_actions import HostActionCatalog, get_host_action_catalog
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    WorkspaceSecurity,
+from pynchy.workspace.api import (
+    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
 )
 
 
@@ -37,24 +35,50 @@ class _ResolutionContext:
     security: WorkspaceSecurity
     canary_outcomes: Mapping[str, str]
     action_specs: tuple[ActionSpec, ...]
+    evaluate_action_policy: Callable[
+        [HostActionDescriptor, WorkspaceSecurity], CapabilityPolicyDecision
+    ]
+
+
+@dataclass(frozen=True)
+class CapabilityPolicyDecision:
+    """Policy fields that affect the operator-facing capability projection."""
+
+    allowed: bool
+    reason: str | None
+    approval_required: bool
+    cop_review_required: bool
+
+
+@dataclass(frozen=True)
+class WorkspaceCapabilityConfiguration:
+    """Resolved workspace data needed to project host-action capabilities."""
+
+    enabled_tools: frozenset[str]
+    security: WorkspaceSecurity
+
+
+@dataclass(frozen=True)
+class CapabilityStatusOperations:
+    """Configuration and policy operations supplied by the composition root."""
+
+    workspaces: tuple[str, ...]
+    workspace_configuration: Callable[[str], WorkspaceCapabilityConfiguration | None]
+    evaluate_action_policy: Callable[
+        [HostActionDescriptor, WorkspaceSecurity], CapabilityPolicyDecision
+    ]
 
 
 async def resolve_workspace_capabilities(
     workspace: str,
     *,
-    settings: Settings | None = None,
+    operations: CapabilityStatusOperations,
     catalog: HostActionCatalog | None = None,
     canary_outcomes: Mapping[str, str] | None = None,
 ) -> WorkspaceCapabilitySnapshot:
     """Resolve every registered host action for one workspace."""
-    effective_settings = settings or get_settings()
     effective_catalog = catalog or get_host_action_catalog()
-    resolved_workspace = effective_settings.resolved_workspace_config(workspace)
-    if resolved_workspace is not None:
-        resolved_workspace = apply_tool_access(
-            effective_settings.tools,
-            resolved_workspace,
-        )[0]
+    resolved_workspace = operations.workspace_configuration(workspace)
     outcomes = canary_outcomes or {}
     if resolved_workspace is None:
         capabilities = tuple(
@@ -68,10 +92,11 @@ async def resolve_workspace_capabilities(
     else:
         context = _ResolutionContext(
             workspace=workspace,
-            enabled_tools=frozenset(resolved_workspace.tools),
-            security=build_workspace_security(effective_settings, resolved_workspace),
+            enabled_tools=resolved_workspace.enabled_tools,
+            security=resolved_workspace.security,
             canary_outcomes=outcomes,
             action_specs=effective_catalog.action_specs,
+            evaluate_action_policy=operations.evaluate_action_policy,
         )
         capabilities = tuple(
             await asyncio.gather(
@@ -88,22 +113,21 @@ async def resolve_workspace_capabilities(
 async def collect_capability_status(
     canary_report: Mapping[str, object],
     *,
-    settings: Settings | None = None,
+    operations: CapabilityStatusOperations,
     catalog: HostActionCatalog | None = None,
 ) -> dict[str, object]:
     """Return all configured workspace snapshots plus aggregate status counts."""
-    effective_settings = settings or get_settings()
     effective_catalog = catalog or get_host_action_catalog()
     outcomes = canary_outcomes_from_report(canary_report)
     snapshots = await asyncio.gather(
         *(
             resolve_workspace_capabilities(
                 workspace,
-                settings=effective_settings,
+                operations=operations,
                 catalog=effective_catalog,
                 canary_outcomes=outcomes,
             )
-            for workspace in sorted(effective_settings.workspaces)
+            for workspace in sorted(operations.workspaces)
         )
     )
     summary = {status.value: 0 for status in CapabilityStatus}
@@ -159,7 +183,7 @@ async def _resolve_action(
             reason=f"Tool {missing_tool} is not enabled for this workspace",
         )
 
-    decision = evaluate_host_action_policy(action, SecurityGate(context.security), {})
+    decision = context.evaluate_action_policy(action, context.security)
     if not decision.allowed:
         return ResolvedCapability(
             descriptor=action.capability,
@@ -181,16 +205,16 @@ async def _resolve_action(
                 descriptor=action.capability,
                 status=CapabilityStatus.UNAVAILABLE,
                 reason=f"Availability probe failed: {type(exc).__name__}",
-                approval_required=decision.needs_human,
-                cop_review_required=decision.needs_cop,
+                approval_required=decision.approval_required,
+                cop_review_required=decision.cop_review_required,
             )
         if probe_result.status is ProbeStatus.UNAVAILABLE:
             return ResolvedCapability(
                 descriptor=action.capability,
                 status=CapabilityStatus.UNAVAILABLE,
                 reason=probe_result.reason,
-                approval_required=decision.needs_human,
-                cop_review_required=decision.needs_cop,
+                approval_required=decision.approval_required,
+                cop_review_required=decision.cop_review_required,
             )
 
     scenarios = _required_canary_scenarios(
@@ -206,16 +230,16 @@ async def _resolve_action(
             descriptor=action.capability,
             status=CapabilityStatus.DEGRADED,
             reason=probe_result.reason,
-            approval_required=decision.needs_human,
-            cop_review_required=decision.needs_cop,
+            approval_required=decision.approval_required,
+            cop_review_required=decision.cop_review_required,
             canary_scenarios=scenarios,
         )
     return ResolvedCapability(
         descriptor=action.capability,
         status=evidence_status,
         reason=evidence_reason or decision.reason,
-        approval_required=decision.needs_human,
-        cop_review_required=decision.needs_cop,
+        approval_required=decision.approval_required,
+        cop_review_required=decision.cop_review_required,
         canary_scenarios=scenarios,
     )
 

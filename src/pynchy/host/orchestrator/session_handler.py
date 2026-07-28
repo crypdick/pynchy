@@ -12,29 +12,27 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves teardow
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.conversation.dispatch import notify_conversation_delivery_completed
+from pynchy.conversation.api import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
-from pynchy.host.container_manager.session import destroy_session
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-from pynchy.logger import logger
-from pynchy.state.api import clear_session, set_chat_cleared_at, store_message
-from pynchy.types import (
-    Channel,
+from pynchy.identifiers import (
     GroupFolder,
+    RuntimeId,
+)
+from pynchy.logger import logger
+from pynchy.plugins.api import (
+    Channel,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
-    RuntimeId,
-    WorkspaceProfile,
 )
+from pynchy.state.api import clear_session, set_chat_cleared_at, store_message
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
@@ -51,6 +49,8 @@ class ContextResetDeps(Protocol):
     def session_cleared(self) -> set[str]: ...
 
     async def prepare_context_reset(self, group: WorkspaceProfile) -> None: ...
+
+    async def destroy_runtime_session(self, group_folder: str) -> None: ...
 
 
 @runtime_checkable
@@ -77,6 +77,8 @@ class SessionDeps(Protocol):
 
     def emit(self, event: Event) -> None: ...
 
+    def current_deploy_revision(self) -> tuple[str, str]: ...
+
 
 @runtime_checkable
 class ResetSessionDeps(SessionDeps, ContextResetDeps, Protocol):
@@ -89,7 +91,7 @@ async def clear_durable_context(
 ) -> None:
     """Clear every session-owned runtime and security reference."""
     await deps.prepare_context_reset(group)
-    await destroy_session(group.folder)
+    await deps.destroy_runtime_session(group.folder)
     deps.sessions.pop(group.folder, None)
     deps.session_cleared.add(group.folder)
     await clear_session(GroupFolder(group.folder))
@@ -116,11 +118,12 @@ async def _teardown_group(
         resets_context=reset_context is not None,
     )
 
+    runtime_id = RuntimeId(group.folder)
     if reset_context is not None:
         await deps.queue.stop_active_process_for_control(RuntimeId(group.folder))
     else:
         create_background_task(
-            destroy_session(group.folder),
+            deps.queue.destroy_runtime_session(runtime_id),
             name=f"destroy-session-{group.folder}",
         )
     if reset_context is not None:
@@ -128,7 +131,6 @@ async def _teardown_group(
         await reset_context()
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
-    runtime_id = RuntimeId(group.folder)
     deps.queue.clear_pending_tasks(runtime_id)
     if reset_context is None:
         create_background_task(
@@ -241,7 +243,7 @@ async def trigger_manual_redeploy(
     source_message: NewMessage | None = None,
 ) -> None:
     """Handle a manual redeploy command through Temporal."""
-    sha = get_head_sha()
+    sha, config_hash = deps.current_deploy_revision()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
     await _send_command_confirmation(deps, chat_jid, source_message, "🔄")
 
@@ -249,7 +251,7 @@ async def trigger_manual_redeploy(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=sha,
-            config_hash=get_deploy_config_hash(),
+            config_hash=config_hash,
             previous_sha=sha,
             rebuild=False,
             reason="manual_redeploy",

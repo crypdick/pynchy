@@ -11,12 +11,11 @@ import pytest
 from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 from pynchy import state
-from pynchy.capabilities import ApprovalMode
-from pynchy.config.merge import ResolvedWorkspaceConfig
-from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import LinearTool, ProfileConfig, ResolvedWorkspaceConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
+    ApprovalReplayPolicy,
     approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
@@ -26,9 +25,14 @@ from pynchy.host.container_manager.security.gate import (
     create_gate,
     destroy_gate,
 )
-from pynchy.plugins.host_actions import HostActionCatalog
+from pynchy.plugins.api import ApprovalMode, HostActionCatalog
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -168,7 +172,7 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -232,14 +236,13 @@ async def test_named_linear_account_admits_stable_host_service_action(tmp_path):
             "pynchy.host.container_manager.ipc.handlers_service.get_settings",
             return_value=settings,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service."
-            "workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
     ):
@@ -292,10 +295,10 @@ async def test_raw_ipc_cannot_invoke_route_tool_omitted_by_runtime_policy(
             return_value=object(),
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
     ):
         await registry.dispatch(_make_request(tool_name), "routed-workspace", False, FakeDeps())
 
@@ -331,7 +334,7 @@ async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, reg
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -362,7 +365,7 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -420,7 +423,8 @@ async def test_dangerous_writes_requires_human(
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ),
     ):
         data = _make_request("sensitive_tool", item_id="123")
@@ -480,14 +484,13 @@ async def test_omitted_workspace_tool_fails_before_human_approval(tmp_path, regi
             "pynchy.host.container_manager.ipc.handlers_service.get_settings",
             return_value=settings,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service."
-            "workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
     ):
@@ -539,11 +542,14 @@ async def test_approved_replay_rejects_tool_removed_from_workspace_profile():
         expires_after_seconds=300,
     )
 
-    with patch(
-        "pynchy.host.container_manager.ipc.approval_replay.workspace_config.load_resolved_config",
-        return_value=resolved,
-    ):
-        error = await approval_replay_validation_error(context)
+    error = await approval_replay_validation_error(
+        context,
+        NullIpcDeps(),
+        ApprovalReplayPolicy(
+            configured_security=lambda _group: WorkspaceSecurity(),
+            workspace_tools=lambda _group: tuple(resolved.tools),
+        ),
+    )
 
     assert error == "host tool computer_use is no longer enabled for this workspace"
 
@@ -574,7 +580,7 @@ async def test_explicit_profile_allow_executes_dangerous_write_without_approval(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings",
             return_value=settings,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -602,7 +608,7 @@ async def test_unknown_tool_type(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -663,13 +669,14 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.config.get_settings", return_value=settings),
+        patch("pynchy.config.api.get_settings", return_value=settings),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+            "pynchy.host.container_manager.security.approval._approval_root",
+            settings.data_dir / "approvals",
         ),
     ):
         data = _make_request("some_tool")
@@ -710,7 +717,7 @@ async def test_safe_service_allowed(tmp_path, register_gate):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,

@@ -5,14 +5,19 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves startup runtime annotations.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NoReturn, Protocol, runtime_checkable
 
-from pynchy.config import get_settings
-from pynchy.host.container_manager import credentials
-from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
+from pynchy.deployments import DeployRevision
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
 from pynchy.host.orchestrator.startup_rollback import (
@@ -31,17 +36,73 @@ from pynchy.state.api import (
     prepare_in_flight_turn_recovery,
     set_chat_cleared_at,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    DeployRevision,
-    InFlightTurn,
+from pynchy.utils import write_json_atomic
+from pynchy.workspace.api import (
     WorkspaceProfile,
     WorkspaceSecurity,
 )
-from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
+
+
+class _NotificationsConfig(Protocol):
+    admin_workspace: str | None
+
+
+class _AgentConfig(Protocol):
+    name: str
+
+
+class StartupSettings(Protocol):
+    data_dir: Path
+    notifications: _NotificationsConfig
+    agent: _AgentConfig
+
+
+class _GitResult(Protocol):
+    returncode: int
+    stderr: str
+
+
+def _unconfigured_settings() -> StartupSettings:
+    raise RuntimeError("Startup configuration has not been composed")
+
+
+def _unconfigured_git(*_args: object, **_kwargs: object) -> NoReturn:
+    raise RuntimeError("Startup Git operations have not been composed")
+
+
+_get_settings: Callable[[], StartupSettings] = _unconfigured_settings
+get_head_commit_message: Callable[[int], str] = _unconfigured_git
+get_head_sha: Callable[[], str] = _unconfigured_git
+is_repo_dirty: Callable[[], bool] = _unconfigured_git
+run_git: Callable[..., _GitResult] = _unconfigured_git
+
+
+@dataclass(frozen=True)
+class StartupRuntime:
+    get_settings: Callable[[], StartupSettings]
+    head_commit_message: Callable[[int], str]
+    head_sha: Callable[[], str]
+    repo_dirty: Callable[[], bool]
+    git: Callable[..., _GitResult]
+
+
+def configure_startup_runtime(runtime: StartupRuntime) -> None:
+    """Bind startup configuration and source-control operations at composition."""
+    global _get_settings, get_head_commit_message, get_head_sha  # noqa: PLW0603, RUF100 - one host process owns startup operations.
+    global is_repo_dirty, run_git  # noqa: PLW0603, RUF100 - one host process owns startup operations.
+    _get_settings = runtime.get_settings
+    get_head_commit_message = runtime.head_commit_message
+    get_head_sha = runtime.head_sha
+    is_repo_dirty = runtime.repo_dirty
+    run_git = runtime.git
+
+
+def get_settings() -> StartupSettings:
+    return _get_settings()
+
 
 _DEPLOY_CONTINUATION_NAME = "deploy_continuation.json"
 _CLAIMED_DEPLOY_CONTINUATION_NAME = "deploy_continuation.startup.json"
@@ -77,6 +138,10 @@ class StartupDeps(Protocol):
 
     async def prepare_context_reset(self, group: WorkspaceProfile) -> None: ...
 
+    async def destroy_runtime_session(self, group_folder: str) -> None: ...
+
+    def has_api_credentials(self) -> bool: ...
+
 
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""
@@ -97,7 +162,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
     # Check for API credentials and warn if missing
 
-    if not credentials.has_api_credentials():
+    if not deps.has_api_credentials():
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
             "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env."

@@ -7,26 +7,22 @@ Supports two execution paths:
 
 from __future__ import annotations
 
+import asyncio  # noqa: TC003, RUF100 - beartype resolves container-operation annotations.
 import time
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves container-operation annotations.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
-import pynchy.host.container_manager.mcp.manager as mcp_manager
-import pynchy.host.container_manager.process as container_process
-from pynchy.conversation.events import new_turn_id
-from pynchy.host.container_manager import (
-    ContainerSession,
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
+    AgentExecutionRuntime,
+    ContainerInput,
+    McpStartupFailure,
     OnOutput,
-    SessionDiedError,
-    create_session,
-    destroy_session,
-    get_session,
 )
-from pynchy.host.container_manager.orchestrator import (
-    _spawn_container,
-    stable_container_name,
-)
-from pynchy.host.learning.skill_activation import refresh_personalized_agent_skills
+from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
 from pynchy.host.orchestrator.agent_core_config import (
     agent_core_config,
@@ -38,20 +34,21 @@ from pynchy.host.orchestrator.host_agent_dispatch import run_host_execution as _
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
-from pynchy.logger import logger
-from pynchy.state.api import clear_session
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ContainerInput,
+from pynchy.identifiers import (
     GroupFolder,
     RuntimeId,
-    WorkspaceProfile,
+)
+from pynchy.logger import logger
+from pynchy.state.api import clear_session
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
 )
 
 if TYPE_CHECKING:
     import pluggy
 
     from pynchy.host.orchestrator.concurrency import GroupQueue
+    from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
 
 
 PreContainerResult = _preflight.PreContainerResult
@@ -60,6 +57,58 @@ pre_container_setup = _preflight.pre_container_setup
 session_tracking_output_handler = _preflight.session_tracking_output_handler
 build_admin_system_notices = _preflight.build_admin_system_notices
 session_id_from_output = _preflight.session_id_from_output
+
+
+@runtime_checkable
+class AgentSession(Protocol):
+    """The persistent worker behavior required by agent orchestration."""
+
+    @property
+    def proc(self) -> asyncio.subprocess.Process: ...
+
+    @property
+    def container_name(self) -> str: ...
+
+    @property
+    def is_alive(self) -> bool: ...
+
+    def set_output_handler(
+        self, on_output: OnOutput | None, *, query_id: str | None = None
+    ) -> None: ...
+
+    async def send_ipc_message(
+        self,
+        text: str,
+        *,
+        turn_id: str,
+        query_id: str,
+        metadata: dict[str, str] | None = None,
+    ) -> None: ...
+
+    async def wait_for_query_done(self, *, query_timeout_seconds: float) -> None: ...
+
+
+@dataclass
+class ContainerAgentOperations:
+    """Container capabilities selected by the application composition root."""
+
+    get_session: Callable[[GroupFolder], object | None]
+    fresh_container_name: Callable[[str], Awaitable[str]]
+    spawn: Callable[
+        ...,
+        Awaitable[
+            tuple[
+                asyncio.subprocess.Process,
+                str,
+                object,
+                tuple[McpStartupFailure, ...],
+            ]
+        ],
+    ]
+    create_session: Callable[..., Awaitable[object]]
+    destroy_session: Callable[[str], Awaitable[None]]
+    ensure_workspace_mcp: Callable[[str], Awaitable[tuple[McpStartupFailure, ...]]]
+    wait_for_query: Callable[[object, float], Awaitable[bool]]
 
 
 @runtime_checkable
@@ -84,6 +133,12 @@ class AgentRunnerDeps(Protocol):
     @property
     def agent_execution_runtime(self) -> AgentExecutionRuntime: ...
 
+    @property
+    def host_runtime_operations(self) -> HostRuntimeOperations: ...
+
+    @property
+    def container_agent_operations(self) -> ContainerAgentOperations: ...
+
     async def get_available_groups(self) -> list[dict[str, Any]]: ...
 
     async def broadcast_agent_input(
@@ -92,10 +147,17 @@ class AgentRunnerDeps(Protocol):
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
+    def refresh_personalized_agent_skills(self, group_folder: str) -> None: ...
+
+    def admin_repo_notices(
+        self, group_folder: str, *, is_admin: bool, repo_access: str | None
+    ) -> list[str]: ...
+
 
 @dataclass(frozen=True)
 class _SpawnAndAwaitRequest:
     deps: AgentRunnerDeps
+    operations: ContainerAgentOperations
     group: WorkspaceProfile
     chat_jid: str
     input_data: ContainerInput
@@ -109,9 +171,10 @@ class _SpawnAndAwaitRequest:
 @dataclass(frozen=True)
 class _WarmQueryRequest:
     deps: AgentRunnerDeps
+    operations: ContainerAgentOperations
     group: WorkspaceProfile
     chat_jid: str
-    session: ContainerSession
+    session: AgentSession
     messages: list[dict[str, Any]]
     ctx: PreContainerResult
 
@@ -152,7 +215,8 @@ def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire input
 
 
 async def _await_query(
-    session: ContainerSession,
+    operations: ContainerAgentOperations,
+    session: object,
     group: WorkspaceProfile,
     query_timeout_seconds: float,
     label: str,
@@ -161,15 +225,15 @@ async def _await_query(
 
     Handles the two expected failure modes:
     - TimeoutError: container unresponsive — destroy the session.
-    - SessionDiedError: container exited mid-query — leave cleanup to caller.
+    - A dead worker: reported by the container operation without extra cleanup.
     """
     try:
-        await session.wait_for_query_done(query_timeout_seconds=query_timeout_seconds)
+        completed = await operations.wait_for_query(session, query_timeout_seconds)
     except TimeoutError:
         logger.error("query timed out, destroying session", label=label, group=group.name)
-        await destroy_session(group.folder)
+        await operations.destroy_session(group.folder)
         return "error"
-    except SessionDiedError:
+    if not completed:
         logger.error("container died during query", label=label, group=group.name)
         return "error"
     return "success"
@@ -187,7 +251,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
     sequence together for every durable cold start.
     """
     try:
-        proc, container_name, _mounts, mcp_startup_failures = await _spawn_container(
+        proc, container_name, _mounts, mcp_startup_failures = await request.operations.spawn(
             request.group,
             request.input_data,
             request.container_name,
@@ -205,13 +269,16 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
             mcp_startup_failures,
         )
 
-    session = await create_session(
-        request.group.folder,
-        container_name,
-        proc,
-        data_dir=request.runtime.data_dir,
-        idle_timeout=request.idle_timeout,
-        invocation_ts=request.input_data.invocation_ts,
+    session = cast(
+        "AgentSession",
+        await request.operations.create_session(
+            request.group.folder,
+            container_name,
+            proc,
+            data_dir=request.runtime.data_dir,
+            idle_timeout=request.idle_timeout,
+            invocation_ts=request.input_data.invocation_ts,
+        ),
     )
     registered = request.deps.queue.register_process(
         RuntimeId(request.group.folder),
@@ -220,14 +287,20 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         request.input_data.invocation_ts,
     )
     if not registered:
-        await destroy_session(request.group.folder)
+        await request.operations.destroy_session(request.group.folder)
         return "interrupted"
     session.set_output_handler(
         request.ctx.wrapped_on_output,
         query_id=request.input_data.query_id,
     )
 
-    return await _await_query(session, request.group, request.ctx.config_timeout, request.label)
+    return await _await_query(
+        request.operations,
+        session,
+        request.group,
+        request.ctx.config_timeout,
+        request.label,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -237,18 +310,16 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
 
 async def _warm_query(request: _WarmQueryRequest) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
-    refresh_personalized_agent_skills(request.group.folder)
+    request.deps.refresh_personalized_agent_skills(request.group.folder)
 
     # Ensure MCP servers are running (they may have stopped since last query)
-    mcp_mgr = mcp_manager.get_mcp_manager()
-    if mcp_mgr is not None:
-        mcp_startup = await mcp_mgr.ensure_workspace_running(request.group.folder)
-        if mcp_startup.failures:
-            await notify_mcp_startup_failures(
-                request.deps.broadcast_host_message,
-                request.chat_jid,
-                mcp_startup.failures,
-            )
+    mcp_startup_failures = await request.operations.ensure_workspace_mcp(request.group.folder)
+    if mcp_startup_failures:
+        await notify_mcp_startup_failures(
+            request.deps.broadcast_host_message,
+            request.chat_jid,
+            mcp_startup_failures,
+        )
 
     # Register the session's process so send_message() works for follow-ups
     registered = request.deps.queue.register_process(
@@ -277,7 +348,11 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
     )
 
     return await _await_query(
-        request.session, request.group, request.ctx.config_timeout, "warm query"
+        request.operations,
+        request.session,
+        request.group,
+        request.ctx.config_timeout,
+        "warm query",
     )
 
 
@@ -293,20 +368,20 @@ async def _cold_start(  # noqa: PLR0913, RUF100 - cold-start values remain expli
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
     runtime: AgentExecutionRuntime,
+    operations: ContainerAgentOperations,
 ) -> str:
     """Spawn a container, create a persistent session, and wait for the first query."""
-    container_name = stable_container_name(group.folder)
+    container_name = await operations.fresh_container_name(group.folder)
     input_data = build_container_input(messages, ctx, chat_jid, group, runtime=runtime)
 
     # Remove stale container with the same name before spawning.
     # After a service restart or container crash, a dead Docker container may
     # still exist with this stable name, causing `docker run` to fail with
     # exit code 125 (name conflict).
-    await container_process.docker_rm_force(container_name)
-
     return await _spawn_and_await(
         _SpawnAndAwaitRequest(
             deps=deps,
+            operations=operations,
             group=group,
             chat_jid=chat_jid,
             input_data=input_data,
@@ -356,6 +431,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     run_agent_start = time.monotonic()
     resolved_turn_id = turn_id or new_turn_id()
     runtime = deps.agent_execution_runtime
+    operations = deps.container_agent_operations
 
     # Pre-container setup is shared by all durable worker paths.
     ctx = await pre_container_setup(
@@ -386,7 +462,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             session_id=ctx.session_id,
             model=(resolved_agent_core_config or {}).get("model"),
         )
-        await destroy_session(group.folder)
+        await operations.destroy_session(group.folder)
         await clear_session(GroupFolder(group.folder))
         deps.sessions.pop(group.folder, None)
         ctx.session_id = None
@@ -403,9 +479,10 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             build_container_input,
             runtime,
             is_scheduled_task=is_scheduled_task,
+            destroy_session=operations.destroy_session,
         )
 
-    session = get_session(GroupFolder(group.folder))
+    session = cast("AgentSession | None", operations.get_session(GroupFolder(group.folder)))
 
     pre_container_ms = (time.monotonic() - run_agent_start) * 1000
     is_warm = session is not None and session.is_alive
@@ -424,6 +501,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             return await _warm_query(
                 _WarmQueryRequest(
                     deps=deps,
+                    operations=operations,
                     group=group,
                     chat_jid=chat_jid,
                     session=session,
@@ -431,7 +509,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
                     ctx=ctx,
                 )
             )
-        return await _cold_start(deps, group, chat_jid, messages, ctx, runtime)
+        return await _cold_start(deps, group, chat_jid, messages, ctx, runtime, operations)
     except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"

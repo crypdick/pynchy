@@ -10,18 +10,22 @@ from __future__ import annotations
 
 import warnings
 
-from pynchy.types import (
-    AdditionalMount,
-    AllowedRoot,
-    ContainerConfig,
+from pynchy.agent_protocol.api import (
     ContainerInput,
     ContainerOutput,
-    MountAllowlist,
-    NewMessage,
+    VolumeMount,
+)
+from pynchy.plugins.api import NewMessage
+from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
     TaskRunLog,
-    VolumeMount,
+)
+from pynchy.workspace.api import (
+    AdditionalMount,
+    AllowedRoot,
+    ContainerConfig,
+    MountAllowlist,
 )
 
 # ---------------------------------------------------------------------------

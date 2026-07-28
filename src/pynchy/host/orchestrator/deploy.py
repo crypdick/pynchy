@@ -14,12 +14,14 @@ from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves deploy path annotations at runtime.
 )
+from typing import Any, cast
 
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.git_ops.utils import get_head_sha, run_git
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployRevision,
+)
 from pynchy.logger import logger
 from pynchy.state import api as pynchy_state
-from pynchy.types import DeployChangeKind, DeployRevision
 from pynchy.utils import write_json_atomic
 
 
@@ -41,11 +43,40 @@ class RollbackResult:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class DeployGitRuntime:
+    """Git operations selected by the application composition root."""
+
+    get_head_sha: Callable[[], str]
+    get_deploy_config_hash: Callable[[], str]
+    run_git: Callable[..., object]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: DeployGitRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_deploy_git_runtime(runtime: DeployGitRuntime) -> None:
+    """Set concrete Git operations before deploy handling starts."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> DeployGitRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Deploy Git runtime has not been configured")
+    return _runtime.runtime
+
+
 def current_deploy_revision() -> DeployRevision:
     """Capture the code and configuration revision effective for a restart."""
+    runtime = _configured_runtime()
     return DeployRevision(
-        commit_sha=get_head_sha(),
-        config_hash=get_deploy_config_hash(),
+        commit_sha=runtime.get_head_sha(),
+        config_hash=runtime.get_deploy_config_hash(),
     )
 
 
@@ -58,8 +89,9 @@ def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
     if not previous_sha:
         return RollbackResult(success=False, error="no previous deploy SHA was recorded")
 
+    runtime = _configured_runtime()
     try:
-        result = run_git("reset", "--hard", previous_sha)
+        result = cast("Any", runtime.run_git("reset", "--hard", previous_sha))
     except (OSError, subprocess.SubprocessError) as exc:
         error = f"git reset could not run: {exc}"
         logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
@@ -69,7 +101,7 @@ def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
         logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
         return RollbackResult(success=False, error=error)
 
-    actual_sha = get_head_sha()
+    actual_sha = runtime.get_head_sha()
     if actual_sha == "unknown":
         return RollbackResult(success=False, error="could not verify checkout SHA after git reset")
 

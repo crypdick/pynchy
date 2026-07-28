@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.state.connection import atomic_write
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves recovery annotations at runtime.
+from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves recovery annotations at runtime.
     ChatJid,
     GroupFolder,
     SessionId,
 )
+from pynchy.state.connection import atomic_write
 
 
 async def clear_runtime_session_references(

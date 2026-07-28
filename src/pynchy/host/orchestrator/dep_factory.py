@@ -3,31 +3,57 @@
 from __future__ import annotations
 
 # allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
+import subprocess  # noqa: S404, RUF100 - status adapter catches Docker command timeouts.
 from collections.abc import (
     Sequence,  # noqa: TC003, RUF100 - beartype resolves channel collections at runtime.
 )
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
-from pynchy.config import get_settings
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import WorkspaceConfig
-from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
+from pynchy.agent_home import is_skill_selected, parse_skill_tier
+from pynchy.canaries.api import canary_run_to_dict, get_canary_report
+from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
+from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
 )
 from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     CreatePeriodicAgentRequest,
 )
-from pynchy.host.container_manager.session import destroy_session
-from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
-    GitSyncDeps,
+from pynchy.host.container_manager.security.cop import (
+    CopInspectionContext,
 )
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.container_manager.security.cop import (
+    load_cop_inspection_context as build_cop_inspection_context,
+)
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    build_workspace_security,
+    evaluate_host_action_policy,
+)
+from pynchy.host.container_manager.session import destroy_session
+from pynchy.host.git_ops.api import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    GitSyncDeps,
+    count_unpushed_commits,
+    detect_main_branch,
+    files_changed_between,
+    get_deploy_config_hash,
+    get_head_commit_message,
+    get_head_sha,
+    get_repo_context,
+    is_repo_dirty,
+    push_local_commits,
+    run_git,
+)
+from pynchy.host.learning.api import find_personalized_skill_dir
 from pynchy.host.orchestrator import session_handler, workspace_config
+from pynchy.host.orchestrator.action_intents import (
+    execute_action_intent,
+    policy_approval_timestamp,
+    prepare_action_intent,
+)
 from pynchy.host.orchestrator.adapters import (
     GroupMetadataManager,
     GroupRegistrationManager,
@@ -39,13 +65,20 @@ from pynchy.host.orchestrator.adapters import (
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     PynchyApp,
 )
+from pynchy.host.orchestrator.capability_status import (
+    CapabilityPolicyDecision,
+    CapabilityStatusOperations,
+    WorkspaceCapabilityConfiguration,
+)
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    HttpDeployOperations,
     HttpServerDeps,
 )
 from pynchy.host.orchestrator.messaging import pending_questions
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    GitStatusOperations,
     StatusDeps,
 )
 from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -58,11 +91,28 @@ from pynchy.host.orchestrator.temporal.scheduler import (
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.host.orchestrator.terminal_task_retirement import retire_conversation_tasks
+from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    GroupFolder,
+    RuntimeId,
+    SessionId,
+)
+from pynchy.ipc_snapshots import write_groups_snapshot as _write_groups_snapshot
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    Channel,
+    NewMessage,
+)
+from pynchy.plugins.integrations.api import work_item_execution_to_dict
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state.api import (
+    approve_action_intent,
     clear_session,
     complete_conversation_delivery,
     conversation_control_state_matches,
@@ -70,30 +120,33 @@ from pynchy.state.api import (
     create_task,
     delete_host_job,
     delete_task,
+    deny_action_intent,
+    expire_action_intent,
+    fail_action_intent,
+    get_action_intent_by_request,
     get_all_host_jobs,
     get_all_tasks,
     get_conversation,
     get_conversation_control_binding,
+    get_conversation_control_by_thread,
     get_host_job_by_id,
     get_task_by_id,
     get_task_run_logs,
     get_terminal_conversation_retirement,
+    load_recent_security_context,
+    mark_action_intent_awaiting_approval,
     resume_task,
     update_host_job,
     update_task,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
-    Channel,
-    GroupFolder,
-    HostJob,
-    NewMessage,
-    RuntimeId,
-    ScheduledTask,
-    SessionId,
-    SessionPolicy,
-    WorkspaceProfile,
-)
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import HostActionDescriptor
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -105,10 +158,61 @@ def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBr
     return app.message_broadcaster, app.host_broadcaster
 
 
+async def _load_cop_inspection_context(chat_jid: str) -> CopInspectionContext:
+    """Build the bounded security projection from the durable store."""
+    return await build_cop_inspection_context(chat_jid, load_recent_security_context)
+
+
+def _skill_access_status(group_folder: str, skill_name: str) -> str:
+    """Project one learned skill's current access state for IPC."""
+    skill_dir = find_personalized_skill_dir(skill_name)
+    if skill_dir is None:
+        return "unknown"
+    resolved = workspace_config.load_resolved_config(group_folder)
+    if resolved is None:
+        return "unavailable"
+    if skill_name in resolved.denied_skills:
+        return "denied"
+    name, tier = parse_skill_tier(skill_dir)
+    return "granted" if is_skill_selected(name, tier, resolved.skills) else "available"
+
+
 def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
     create_background_task(
         app.start_interactive_turn(chat_jid),
         name=f"interactive-turn-{chat_jid[:20]}",
+    )
+
+
+def _capability_status_operations(settings: Settings) -> CapabilityStatusOperations:
+    """Compose the fixed workspace policy projection used by status endpoints."""
+
+    def workspace_configuration(workspace: str) -> WorkspaceCapabilityConfiguration | None:
+        resolved = settings.resolved_workspace_config(workspace)
+        if resolved is None:
+            return None
+        resolved = apply_tool_access(settings.tools, resolved)[0]
+        return WorkspaceCapabilityConfiguration(
+            enabled_tools=frozenset(resolved.tools),
+            security=build_workspace_security(settings, resolved),
+        )
+
+    def evaluate_action_policy(
+        action: HostActionDescriptor,
+        security: WorkspaceSecurity,
+    ) -> CapabilityPolicyDecision:
+        decision = evaluate_host_action_policy(action, SecurityGate(security), {})
+        return CapabilityPolicyDecision(
+            allowed=decision.allowed,
+            reason=decision.reason,
+            approval_required=decision.needs_human,
+            cop_review_required=decision.needs_cop,
+        )
+
+    return CapabilityStatusOperations(
+        workspaces=tuple(settings.workspaces),
+        workspace_configuration=workspace_configuration,
+        evaluate_action_policy=evaluate_action_policy,
     )
 
 
@@ -256,6 +360,17 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     settings = get_settings()
 
     class HttpDeps:
+        capability_status_operations = _capability_status_operations(settings)
+        deploy_operations = HttpDeployOperations(
+            get_head_sha=get_head_sha,
+            push_local_commits=push_local_commits,
+            run_git=run_git,
+            files_changed_between=files_changed_between,
+            get_deploy_config_hash=get_deploy_config_hash,
+            get_head_commit_message=get_head_commit_message,
+            is_repo_dirty=is_repo_dirty,
+            start_deploy_workflow=start_deploy_workflow,
+        )
         broadcast_host_message = host_broadcaster.broadcast_host_message
         complete_conversation_delivery = staticmethod(complete_conversation_delivery)
         conversation_control_state_matches = staticmethod(conversation_control_state_matches)
@@ -284,6 +399,10 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             return resolve_admin_notification_jid(
                 app.workspaces, get_settings().notifications.admin_workspace
             )
+
+        get_canary_report = staticmethod(get_canary_report)
+        canary_run_to_dict = staticmethod(canary_run_to_dict)
+        work_item_execution_to_dict = staticmethod(work_item_execution_to_dict)
 
         def get_plugin_manager(self) -> object:
             if app.plugin_manager is None:
@@ -381,6 +500,20 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         pending_question_store = staticmethod(_PendingQuestionStore)
         scheduled_work_store = staticmethod(_ScheduledWorkStore)
         messaging_source_health = staticmethod(SourceHealthProjection)
+        prepare_action_intent = staticmethod(prepare_action_intent)
+        execute_action_intent = staticmethod(execute_action_intent)
+        policy_approval_timestamp = staticmethod(policy_approval_timestamp)
+        approve_action_intent = staticmethod(approve_action_intent)
+        deny_action_intent = staticmethod(deny_action_intent)
+        fail_action_intent = staticmethod(fail_action_intent)
+        expire_action_intent = staticmethod(expire_action_intent)
+        mark_action_intent_awaiting_approval = staticmethod(mark_action_intent_awaiting_approval)
+        get_conversation_control_by_thread = staticmethod(get_conversation_control_by_thread)
+        get_action_intent_by_request = staticmethod(get_action_intent_by_request)
+        get_conversation_control_binding = staticmethod(get_conversation_control_binding)
+        load_cop_inspection_context = staticmethod(_load_cop_inspection_context)
+        sweep_expired_questions = staticmethod(pending_questions.sweep_expired_questions)
+        skill_access_status = staticmethod(_skill_access_status)
         default_agent_name = staticmethod(lambda: get_settings().agent.name)
 
         async def clear_session(self, group_folder: str) -> None:
@@ -535,10 +668,20 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
     )
 
     class _StatusDeps:
+        capability_status_operations = _capability_status_operations(settings)
         repo_slugs = configured_repo_slugs
         temporal_address = settings.scheduler.temporal_address
         temporal_namespace = settings.scheduler.temporal_namespace
         temporal_task_queue = settings.scheduler.temporal_task_queue
+        git_status = GitStatusOperations(
+            get_repo_context=get_repo_context,
+            get_head_sha=get_head_sha,
+            is_repo_dirty=is_repo_dirty,
+            count_unpushed_commits=count_unpushed_commits,
+            get_head_commit_message=get_head_commit_message,
+            detect_main_branch=detect_main_branch,
+            run_git=run_git,
+        )
 
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()
@@ -571,6 +714,14 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
                 "redaction": gw.redaction_posture.value,
             }
 
+        async def get_container_state(self, name: str) -> str:
+            """Return a best-effort container state for the status endpoint."""
+            try:
+                result = await run_docker("inspect", "-f", "{{.State.Status}}", name, check=False)
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                return "not_found"
+            return result.stdout.strip() if result.returncode == 0 else "not_found"
+
         def get_active_sessions_count(self) -> int:
             active = session_manager.get_active_sessions(app.workspaces)
             return len(active)
@@ -580,6 +731,8 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 
         def get_speech_synthesizer(self) -> SpeechSynthesizer | None:
             return app.get_speech_synthesizer()
+
+        get_canary_report = staticmethod(get_canary_report)
 
     return _StatusDeps()
 

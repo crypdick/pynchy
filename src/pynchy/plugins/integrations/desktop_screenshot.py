@@ -7,6 +7,10 @@ import base64
 import platform
 import re
 import subprocess  # noqa: S404, RUF100 - uses PIPE constants with fixed screencapture argv.
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - lifecycle-supplied gateway callback is stored at runtime.
+)
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,7 +19,7 @@ import aiohttp
 import pluggy
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -29,11 +33,8 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config import get_settings
-from pynchy.host.container_manager import gateway
 
 hookimpl = pluggy.HookimplMarker("pynchy")
-type _ActionDefinition = tuple[str, str, str, HostActionHandler]
 
 _SCREENSHOT_BIN = "/usr/sbin/screencapture"
 _CONTAINER_SCREENSHOT_DIR = "/workspace/ipc/screenshots"
@@ -52,6 +53,24 @@ _SCREENSHOT_NOT_FOUND_ERROR = "Screenshot not found: {name}"
 _MAX_OUTPUT_TOKENS_ERROR = "max_output_tokens must be a positive integer"
 _VISION_RESPONSE_ERROR = "Vision response did not include text output."
 _GATEWAY_NOT_RUNNING_ERROR = "LLM gateway is not running."
+_LIFECYCLE_CONFIGURATION_ERROR = "Desktop screenshots require lifecycle configuration."
+
+
+@dataclass(frozen=True)
+class DesktopVisionGateway:
+    """Connection coordinates for the local vision gateway."""
+
+    port: int
+    api_key: str = field(repr=False)
+
+
+@dataclass(frozen=True)
+class DesktopScreenshotRuntime:
+    """Resolved host values and gateway access supplied during startup."""
+
+    data_dir: Path
+    default_model: str
+    vision_gateway: Callable[[], DesktopVisionGateway | None]
 
 
 def _timestamp() -> str:
@@ -91,13 +110,13 @@ def _display_id(data: dict[str, Any]) -> int | None:
     return raw
 
 
-def _screenshot_path(*, source_group: str, label: object) -> Path:
+def _screenshot_path(*, data_dir: Path, source_group: str, label: object) -> Path:
     filename = f"{_timestamp()}-{_slug(label)}.png"
-    return get_settings().data_dir / "ipc" / source_group / "screenshots" / filename
+    return data_dir / "ipc" / source_group / "screenshots" / filename
 
 
-def _screenshot_dir(*, settings: object, source_group: str) -> Path:
-    return Path(settings.data_dir) / "ipc" / source_group / "screenshots"
+def _screenshot_dir(*, data_dir: Path, source_group: str) -> Path:
+    return data_dir / "ipc" / source_group / "screenshots"
 
 
 def _path_is_relative_to(path: Path, base: Path) -> bool:
@@ -117,11 +136,11 @@ def _latest_screenshot(base_dir: Path) -> Path:
 
 def _resolve_screenshot_path(
     *,
-    settings: object,
+    data_dir: Path,
     source_group: str,
     image_path: object,
 ) -> Path:
-    base_dir = _screenshot_dir(settings=settings, source_group=source_group)
+    base_dir = _screenshot_dir(data_dir=data_dir, source_group=source_group)
     if not isinstance(image_path, str) or not image_path.strip():
         candidate = _latest_screenshot(base_dir)
     elif image_path.startswith(f"{_CONTAINER_SCREENSHOT_DIR}/"):
@@ -163,12 +182,11 @@ def _prompt(data: dict[str, Any]) -> str:
     return _DEFAULT_ANALYSIS_PROMPT
 
 
-def _model(data: dict[str, Any], settings: object) -> str:
+def _model(data: dict[str, Any], default_model: str) -> str:
     model = data.get("model")
     if isinstance(model, str) and model.strip():
         return model
-    configured = getattr(getattr(settings, "agent", None), "model", None)
-    return configured or "gpt-5.5"
+    return default_model
 
 
 def _max_output_tokens(data: dict[str, Any]) -> int:
@@ -225,8 +243,11 @@ def _response_text(data: dict[str, Any]) -> str:
     raise RuntimeError(_VISION_RESPONSE_ERROR)
 
 
-async def _request_vision_analysis(body: dict[str, Any]) -> str:
-    gateway_instance = gateway.get_gateway()
+async def _request_vision_analysis(
+    body: dict[str, Any],
+    runtime: DesktopScreenshotRuntime,
+) -> str:
+    gateway_instance = runtime.vision_gateway()
     if gateway_instance is None:
         raise RuntimeError(_GATEWAY_NOT_RUNNING_ERROR)
 
@@ -243,11 +264,16 @@ async def _request_vision_analysis(body: dict[str, Any]) -> str:
         return _response_text(await response.json())
 
 
-async def _handle_take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_take_screenshot(
+    data: dict[str, Any],
+    runtime: DesktopScreenshotRuntime | None,
+) -> dict[str, Any]:
     if platform.system() != "Darwin":
         return {"error": "Desktop screenshots are only supported on macOS hosts."}
+    if runtime is None:
+        return {"error": _LIFECYCLE_CONFIGURATION_ERROR}
 
-    request = _screenshot_request(data)
+    request = _screenshot_request(data, runtime.data_dir)
     if isinstance(request, dict):
         return request
     mode, output_path, command = request
@@ -276,7 +302,10 @@ async def _handle_take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _screenshot_request(data: dict[str, Any]) -> _ScreenshotRequest | dict[str, str]:
+def _screenshot_request(
+    data: dict[str, Any],
+    data_dir: Path,
+) -> _ScreenshotRequest | dict[str, str]:
     source_group = _source_group(data)
     if source_group is None:
         return {"error": "Missing or invalid source group for screenshot request."}
@@ -286,33 +315,41 @@ def _screenshot_request(data: dict[str, Any]) -> _ScreenshotRequest | dict[str, 
         return {"error": 'mode must be one of "full", "selection", or "window".'}
 
     try:
-        output_path = _screenshot_path(source_group=source_group, label=data.get("label"))
+        output_path = _screenshot_path(
+            data_dir=data_dir,
+            source_group=source_group,
+            label=data.get("label"),
+        )
         command = _command(data, output_path, mode)
     except ValueError as exc:
         return {"error": str(exc)}
     return (mode, output_path, command)
 
 
-async def _handle_analyze_screenshot(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_analyze_screenshot(
+    data: dict[str, Any],
+    runtime: DesktopScreenshotRuntime | None,
+) -> dict[str, Any]:
     source_group = _source_group(data)
     if source_group is None:
         return {"error": "Missing or invalid source group for screenshot analysis request."}
+    if runtime is None:
+        return {"error": _LIFECYCLE_CONFIGURATION_ERROR}
 
-    settings = get_settings()
     try:
         screenshot_path = _resolve_screenshot_path(
-            settings=settings,
+            data_dir=runtime.data_dir,
             source_group=source_group,
             image_path=data.get("image_path"),
         )
-        model = _model(data, settings)
+        model = _model(data, runtime.default_model)
         body = _build_vision_request(
             image_bytes=screenshot_path.read_bytes(),
             prompt=_prompt(data),
             model=model,
             max_output_tokens=_max_output_tokens(data),
         )
-        analysis = await _request_vision_analysis(body)
+        analysis = await _request_vision_analysis(body, runtime)
     except ValueError as exc:
         return {"error": str(exc)}
     except OSError as exc:
@@ -330,24 +367,12 @@ async def _handle_analyze_screenshot(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-_SCREENSHOT_ACTIONS: tuple[_ActionDefinition, ...] = (
-    (
-        "take_screenshot",
-        "desktop.screenshot.capture",
-        "Capture the host desktop into this workspace's screenshot directory.",
-        _handle_take_screenshot,
-    ),
-    (
-        "analyze_screenshot",
-        "desktop.screenshot.analyze",
-        "Analyze one workspace desktop screenshot with the configured vision model.",
-        _handle_analyze_screenshot,
-    ),
-)
-
-
-def _screenshot_action(definition: _ActionDefinition) -> HostActionDescriptor:
-    tool_name, action_id, summary, handler = definition
+def _screenshot_action(
+    tool_name: str,
+    action_id: str,
+    summary: str,
+    handler: HostActionHandler,
+) -> HostActionDescriptor:
     return HostActionDescriptor(
         capability=CapabilityDescriptor(
             id=CapabilityId(action_id),
@@ -368,14 +393,43 @@ def _screenshot_action(definition: _ActionDefinition) -> HostActionDescriptor:
     )
 
 
-DESKTOP_SCREENSHOT_HOST_ACTIONS = HostActionRegistration(
-    actions=tuple(_screenshot_action(action) for action in _SCREENSHOT_ACTIONS)
-)
+def _desktop_screenshot_actions(
+    runtime: DesktopScreenshotRuntime | None,
+) -> HostActionRegistration:
+    async def take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
+        return await _handle_take_screenshot(data, runtime)
+
+    async def analyze_screenshot(data: dict[str, Any]) -> dict[str, Any]:
+        return await _handle_analyze_screenshot(data, runtime)
+
+    return HostActionRegistration(
+        actions=(
+            _screenshot_action(
+                "take_screenshot",
+                "desktop.screenshot.capture",
+                "Capture the host desktop into this workspace's screenshot directory.",
+                take_screenshot,
+            ),
+            _screenshot_action(
+                "analyze_screenshot",
+                "desktop.screenshot.analyze",
+                "Analyze one workspace desktop screenshot with the configured vision model.",
+                analyze_screenshot,
+            ),
+        )
+    )
 
 
 class DesktopScreenshotPlugin:
     """Expose a macOS desktop screenshot service tool."""
 
+    def __init__(self, runtime: DesktopScreenshotRuntime | None = None) -> None:
+        self._runtime = runtime
+
+    def configure(self, runtime: DesktopScreenshotRuntime) -> None:
+        """Apply resolved host configuration before host-action registration."""
+        self._runtime = runtime
+
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
-        return DESKTOP_SCREENSHOT_HOST_ACTIONS
+        return _desktop_screenshot_actions(self._runtime)

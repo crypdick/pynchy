@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
-from pynchy.config.settings import validate_settings_mapping
+from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig, validate_settings_mapping
 
 if TYPE_CHECKING:
-    from pynchy.config import Settings
+    from pynchy.config.api import Settings
 
 
 def _settings(**overrides) -> Settings:

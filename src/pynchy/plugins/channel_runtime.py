@@ -6,7 +6,8 @@ Loads and validates host-side channel plugins and resolves the default channel.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
 )
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
@@ -22,13 +23,18 @@ from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this run
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
+from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    AudioTranscriptionResult,
+    Channel,
+    InboundAudioProcessingRequest,
+    InboundAudioProcessingResult,
+    NewMessage,
+)
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
-    Channel,
-    NewMessage,
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
 )
 
 _DEFAULT_CHANNEL_NOT_FOUND = (
@@ -48,6 +54,14 @@ class ChannelPluginContext:
     on_ask_user_answer_callback: Callable[[str, dict[str, Any]], None] | None = None
     on_approval_decision_callback: Callable[[str, str, str, str], None] | None = None
     speech_synthesizer: SpeechSynthesizer | None = None
+    transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None = None
+    process_inbound_audio: (
+        Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None
+    ) = None
+    find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None = None
+    get_last_group_sync: Callable[[], Awaitable[str | None]] | None = None
+    set_last_group_sync: Callable[[], Awaitable[None]] | None = None
+    update_chat_name: Callable[[str, str], Awaitable[None]] | None = None
     discord_connections: dict[str, DiscordConnectionSettings] = field(default_factory=dict)
     discord_audio_cache_dir: Path | None = None
     slack_connections: dict[str, SlackConnectionSettings] = field(default_factory=dict)

@@ -15,15 +15,14 @@ from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 from pynchy.logger import logger
-from pynchy.plugins.contracts import McpServerSpec
+from pynchy.plugins.api import McpServerConfig, McpServerSpec
 from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailClient,
     ProtonMailDelivery,
     ProtonMailError,
     create_proton_mail_client,
 )
-from pynchy.plugins.mcp_server import McpServerConfig
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

@@ -8,7 +8,6 @@ from typing import Protocol, TypeGuard, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
-import pynchy.plugins as pynchy_plugins
 from pynchy.logger import logger
 
 __all__ = [
@@ -59,16 +58,14 @@ def _is_valid_speech_synthesizer(candidate: object) -> TypeGuard[SpeechSynthesiz
     )
 
 
-def get_speech_synthesizer(
-    pm: pluggy.PluginManager | None = None,
-) -> SpeechSynthesizer | None:
+def get_speech_synthesizer(pm: pluggy.PluginManager) -> SpeechSynthesizer | None:
     """Discover the configured speech provider; the first valid provider wins."""
-    providers = pynchy_plugins.collect_hook_results(
-        "pynchy_speech_synthesizer",
-        _is_valid_speech_synthesizer,
-        "speech synthesizer",
-        pm=pm,
-    )
+    try:
+        candidates = pm.hook.pynchy_speech_synthesizer()
+    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break speech discovery.
+        logger.exception("Failed to resolve speech synthesizer plugins")
+        return None
+    providers = [candidate for candidate in candidates if _is_valid_speech_synthesizer(candidate)]
     if not providers:
         logger.info("No speech synthesis provider registered")
         return None

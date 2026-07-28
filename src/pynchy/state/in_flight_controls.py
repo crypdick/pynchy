@@ -9,12 +9,15 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves annotations a
     Connection,
 )
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.in_flight_turns import (
     _get_in_flight_turn_in_transaction,
     _timestamp,
 )
-from pynchy.types import CheckpointControlState, InFlightTurn
 
 
 async def request_in_flight_turn_control(

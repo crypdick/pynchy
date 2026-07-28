@@ -27,33 +27,31 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves session
     Callable,
     Coroutine,
 )
+from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves session path annotations at runtime.
 )
 from typing import Any
 
+from pynchy.agent_protocol.api import (
+    OnOutput,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
     write_ipc_close_sentinel,
     write_ipc_message,
 )
 from pynchy.host.container_manager.process import (
-    OnOutput,
     docker_rm_force,
     graceful_stop,
     reap_apple_runtime_orphans,
-)
-from pynchy.host.container_manager.runtime_monitor import (
-    DEFAULT_RUNTIME_MONITOR_POLICY,
-    RuntimeMonitorPolicy,
     runtime_container_running,
-    wait_for_runtime_poll_interval,
 )
 from pynchy.host.container_manager.security.gate import destroy_gate
-from pynchy.logger import logger
-from pynchy.types import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves session lookup signatures at runtime.
+from pynchy.identifiers import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
+from pynchy.logger import logger
 from pynchy.utils import ProgressTimeoutError, create_background_task, wait_for_progress
 
 
@@ -63,6 +61,28 @@ class SessionDiedError(Exception):
 
 _MISSING_STDERR_PIPE_ERROR = "Container {container_name} spawned without stderr pipe"
 _CONTAINER_DIED_DURING_QUERY_ERROR = "Container {container_name} died during query"
+
+
+@dataclass(frozen=True)
+class RuntimeMonitorPolicy:
+    """Timing policy for checking a container runtime outside its CLI process."""
+
+    poll_interval_seconds: float = 0.5
+    start_grace_seconds: float = 5.0
+    cli_kill_wait_seconds: float = 2.0
+
+
+DEFAULT_RUNTIME_MONITOR_POLICY = RuntimeMonitorPolicy()
+
+
+async def _wait_for_runtime_poll_interval(interval_seconds: float) -> None:
+    loop = asyncio.get_running_loop()
+    waiter = loop.create_future()
+    handle = loop.call_later(interval_seconds, waiter.set_result, None)
+    try:
+        await waiter
+    finally:
+        handle.cancel()
 
 
 class ContainerSession:
@@ -366,7 +386,9 @@ class ContainerSession:
                 )
                 await self._kill_stuck_runtime_cli(proc)
                 return
-            await wait_for_runtime_poll_interval(self._runtime_monitor_policy.poll_interval_seconds)
+            await _wait_for_runtime_poll_interval(
+                self._runtime_monitor_policy.poll_interval_seconds
+            )
 
     async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -381,7 +403,9 @@ class ContainerSession:
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
         while await self._runtime_probe(self.container_name):
-            await wait_for_runtime_poll_interval(self._runtime_monitor_policy.poll_interval_seconds)
+            await _wait_for_runtime_poll_interval(
+                self._runtime_monitor_policy.poll_interval_seconds
+            )
         await self._mark_container_exited(cli_exit_code)
 
     async def _mark_container_exited(self, exit_code: int) -> None:

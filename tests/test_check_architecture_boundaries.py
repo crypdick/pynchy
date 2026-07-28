@@ -30,6 +30,7 @@ def _policy(
     return f"""
         version = 2
         default_violation_guidance = "Use a configured generic boundary."
+        root_module_max_inbound_importers = 20
         source_roots = [
           {{ path = "src/acme", module = "acme", exclude = ["runner/**"] }},
           {{ path = "src/acme/runner/src/worker", module = "worker" }},
@@ -115,6 +116,40 @@ def _check(root: Path):
         root / "architecture.toml",
         root / "architecture-baseline.toml",
     )
+
+
+def _with_root_module(
+    policy: str,
+    module: str,
+    *,
+    allow_unbounded_inbound_imports: bool = False,
+) -> str:
+    override = (
+        f"""\n[file_overrides."src/acme/{module}.py"]\nallow_unbounded_inbound_imports = true\n"""
+        if allow_unbounded_inbound_imports
+        else ""
+    )
+    return (
+        policy
+        + override
+        + f'''
+        [[packages]]
+        name = "{module}"
+        root = "acme.{module}"
+        role = "domain"
+        public_modules = ["acme.{module}"]
+        '''
+    )
+
+
+def _add_root_module_importers(root: Path, module: str, count: int) -> None:
+    _write(root, f"src/acme/{module}.py")
+    for index in range(count):
+        _write(
+            root,
+            f"src/acme/app/consumer_{index}.py",
+            f"from acme import {module}",
+        )
 
 
 def test_extracts_runtime_type_checking_relative_and_dynamic_imports(tmp_path: Path) -> None:
@@ -404,3 +439,118 @@ def test_separate_source_root_uses_role_guidance_without_project_assumptions(
     direction = [item for item in diagnostics if item.code == "architecture-direction"]
     assert len(direction) == 1
     assert "Cross this runtime through its configured wire contract." in direction[0].message
+
+
+def test_root_module_inbound_importer_budget_rejects_a_new_hub(tmp_path: Path) -> None:
+    """A root module cannot acquire more direct importers than the configured budget."""
+    _initialize_repo(
+        tmp_path,
+        "",
+        policy=_with_root_module(_policy(), "shared"),
+    )
+    _add_root_module_importers(tmp_path, "shared", 21)
+
+    diagnostics, _current = _check(tmp_path)
+
+    assert [(item.path, item.code) for item in diagnostics] == [
+        ("src/acme/shared.py", "architecture-root-module-inbound-importers")
+    ]
+    assert "21 direct inbound importers; limit is 20" in diagnostics[0].message
+
+
+def test_root_module_exact_file_override_allows_unbounded_importers(tmp_path: Path) -> None:
+    """An explicit root-file override exempts only that module from the importer budget."""
+    _initialize_repo(
+        tmp_path,
+        "",
+        policy=_with_root_module(
+            _policy(),
+            "shared",
+            allow_unbounded_inbound_imports=True,
+        ),
+    )
+    _add_root_module_importers(tmp_path, "shared", 21)
+
+    diagnostics, _current = _check(tmp_path)
+
+    assert diagnostics == []
+
+
+def test_root_module_importer_baseline_rejects_growth_and_requires_shrinking(
+    tmp_path: Path,
+) -> None:
+    """A root-module importer baseline rejects growth and becomes stale after reduction."""
+    baseline = """
+        version = 2
+
+        [[root_module_inbound_imports]]
+        path = "src/acme/shared.py"
+        count = 20
+        reason = "The shared module has not been split yet."
+    """
+    _initialize_repo(
+        tmp_path,
+        "",
+        policy=_with_root_module(_policy(), "shared"),
+        baseline=baseline,
+    )
+    _add_root_module_importers(tmp_path, "shared", 21)
+
+    diagnostics, _current = _check(tmp_path)
+
+    assert [item.code for item in diagnostics] == ["architecture-root-module-inbound-importers"]
+
+    _write(
+        tmp_path,
+        "architecture-baseline.toml",
+        baseline.replace("count = 20", "count = 22"),
+    )
+    diagnostics, _current = _check(tmp_path)
+
+    assert [item.code for item in diagnostics] == ["architecture-baseline-stale"]
+    assert "records 22 importers but source now has 21" in diagnostics[0].message
+
+
+def test_logger_override_does_not_relax_outbound_dependency_direction(tmp_path: Path) -> None:
+    """A logger-style inbound override leaves the root module's outgoing role policy intact."""
+    _initialize_repo(
+        tmp_path,
+        "",
+        policy=_with_root_module(
+            _policy(),
+            "logger",
+            allow_unbounded_inbound_imports=True,
+        ),
+    )
+    _write(tmp_path, "src/acme/logger.py", "from acme.app import api")
+    for index in range(21):
+        _write(
+            tmp_path,
+            f"src/acme/app/consumer_{index}.py",
+            "from acme import logger",
+        )
+
+    diagnostics, _current = _check(tmp_path)
+
+    assert [item.code for item in diagnostics] == ["architecture-direction"]
+    assert diagnostics[0].path == "src/acme/logger.py"
+
+
+def test_file_override_requires_an_exact_root_module_path(tmp_path: Path) -> None:
+    """A file override cannot silently target a nested implementation module."""
+    _initialize_repo(
+        tmp_path,
+        "",
+        policy=(
+            _policy()
+            + """
+            [file_overrides."src/acme/app/use_case.py"]
+            allow_unbounded_inbound_imports = true
+            """
+        ),
+    )
+
+    diagnostics, _current = _check(tmp_path)
+
+    assert [item.code for item in diagnostics] == ["architecture-policy"]
+    assert "must name an importable root-level module" in diagnostics[0].message

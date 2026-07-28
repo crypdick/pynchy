@@ -7,7 +7,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     Conversation,
     ConversationClaimId,
     ConversationDelivery,
@@ -22,9 +22,12 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    SessionId,
+)
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.webhook_effect_decisions import webhook_effect_delivery_status
-from pynchy.types import GroupFolder, SessionId
 
 if TYPE_CHECKING:
     from aiosqlite import Connection, Row

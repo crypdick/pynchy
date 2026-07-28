@@ -30,8 +30,8 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
-from pynchy.types import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves git sync signatures at runtime.
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 
 # Valid git_policy values

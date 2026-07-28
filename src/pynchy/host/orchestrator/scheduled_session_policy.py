@@ -8,10 +8,12 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves policy 
 )
 from dataclasses import replace
 
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves policy annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves policy annotations at runtime.
     ScheduledTask,
     SessionPolicy,
-    WorkspaceProfile,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves policy annotations at runtime.
 )
 
 

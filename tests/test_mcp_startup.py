@@ -9,11 +9,11 @@ import pytest
 from conftest import make_settings
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
-from pynchy.config.models import McpTool, McpToolConfig, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import McpTool, McpToolConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.manager import McpManager
 from pynchy.host.container_manager.mcp.proxy import McpBackendUnavailableError, McpProxy
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig
 
 
 async def _synced_manager(

@@ -8,9 +8,6 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
 )
 from datetime import UTC, datetime
-from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
-)
 from typing import Any, cast
 
 from temporalio.client import (
@@ -21,11 +18,11 @@ from temporalio.client import (
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
-from pynchy.host.git_ops.repo import repo_host_root
+from pynchy.host.orchestrator.scheduler_deps import (
+    SchedulerRuntimeConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+)
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
-    agent_task_occurrence_due_at,
-    agent_task_occurrence_workflow_id,
     agent_task_schedule_id,
     agent_task_workflow_id,
     canary_schedule_id,
@@ -51,9 +48,11 @@ from pynchy.host.orchestrator.temporal.workflows import (
     DatabaseHostJobWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
     HostJob,
     ScheduledTask,
+    agent_task_occurrence_due_at,
+    agent_task_occurrence_workflow_id,
 )
 
 _TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED = "Temporal scheduler runtime has not been started"
@@ -66,30 +65,32 @@ _ONE_SHOT_WORKFLOW_PREFIX_BY_TYPE = {
 async def reconcile_temporal_schedules(
     runtime: object,
     *,
-    get_settings_fn: Callable[[], object],
+    scheduler_runtime: SchedulerRuntimeConfig,
     get_tasks: Callable[[], Awaitable[list[ScheduledTask]]],
     get_host_jobs: Callable[[], Awaitable[list[HostJob]]],
 ) -> None:
     """Reconcile Pynchy's desired scheduled work into Temporal schedules."""
     client = cast("Any", _require_client(runtime))
     desired_schedule_ids: set[str] = set()
-    settings = cast("Any", get_settings_fn())
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
     desired_once_workflow_ids = _desired_once_workflow_ids(tasks, host_jobs)
     deferred_once_task_ids = await _cancel_superseded_resumed_agent_workflows(client, tasks)
 
-    await _reconcile_builtin_schedules(client, settings, desired_schedule_ids)
-    await _reconcile_external_repo_sync_schedules(client, settings, desired_schedule_ids)
+    await _reconcile_builtin_schedules(client, scheduler_runtime, desired_schedule_ids)
+    await _reconcile_external_repo_sync_schedules(client, scheduler_runtime, desired_schedule_ids)
     await _reconcile_task_schedules(
         runtime,
         client,
         tasks,
         desired_schedule_ids,
+        scheduler_runtime=scheduler_runtime,
         deferred_once_task_ids=deferred_once_task_ids,
     )
-    await _reconcile_host_job_schedules(runtime, client, host_jobs, desired_schedule_ids)
-    await _reconcile_config_cron_schedules(client, settings, desired_schedule_ids)
+    await _reconcile_host_job_schedules(
+        runtime, client, host_jobs, desired_schedule_ids, scheduler_runtime
+    )
+    await _reconcile_config_cron_schedules(client, scheduler_runtime, desired_schedule_ids)
 
     await _cancel_stale_delayed_workflows(client, desired_once_workflow_ids)
     await _delete_stale_schedules(client, desired_schedule_ids)
@@ -107,52 +108,56 @@ def _desired_once_workflow_ids(tasks: list[ScheduledTask], host_jobs: list[HostJ
 
 
 async def _reconcile_builtin_schedules(
-    client: object, settings: object, desired_schedule_ids: set[str]
+    client: object, scheduler_runtime: SchedulerRuntimeConfig, desired_schedule_ids: set[str]
 ) -> None:
     client_any = cast("Any", client)
     host_sync_schedule_id = host_git_sync_schedule_id()
     desired_schedule_ids.add(host_sync_schedule_id)
-    await _upsert_schedule(client_any, host_sync_schedule_id, schedule_for_host_git_sync())
+    await _upsert_schedule(
+        client_any, host_sync_schedule_id, schedule_for_host_git_sync(scheduler_runtime)
+    )
 
     channel_schedule_id = channel_reconciliation_schedule_id()
     desired_schedule_ids.add(channel_schedule_id)
     await _upsert_schedule(
         client_any,
         channel_schedule_id,
-        schedule_for_channel_reconciliation(),
+        schedule_for_channel_reconciliation(scheduler_runtime),
     )
     work_item_schedule_id = linear_work_item_reconciliation_schedule_id()
     desired_schedule_ids.add(work_item_schedule_id)
     await _upsert_schedule(
         client_any,
         work_item_schedule_id,
-        schedule_for_linear_work_item_reconciliation(),
+        schedule_for_linear_work_item_reconciliation(scheduler_runtime),
     )
-    settings_any = cast("Any", settings)
-    if settings_any.canary.enabled:
+    if scheduler_runtime.canary_enabled:
         schedule_id = canary_schedule_id()
         desired_schedule_ids.add(schedule_id)
-        await _upsert_schedule(client_any, schedule_id, schedule_for_canaries())
+        await _upsert_schedule(client_any, schedule_id, schedule_for_canaries(scheduler_runtime))
 
 
 async def _reconcile_external_repo_sync_schedules(
     client: object,
-    settings: object,
+    scheduler_runtime: SchedulerRuntimeConfig,
     desired_schedule_ids: set[str],
 ) -> None:
     client_any = cast("Any", client)
-    for repo_slug in _external_repo_sync_slugs(settings):
+    for repo_slug in scheduler_runtime.external_repo_sync_slugs:
         schedule_id = external_git_sync_schedule_id(repo_slug)
         desired_schedule_ids.add(schedule_id)
-        await _upsert_schedule(client_any, schedule_id, schedule_for_external_git_sync(repo_slug))
+        await _upsert_schedule(
+            client_any, schedule_id, schedule_for_external_git_sync(repo_slug, scheduler_runtime)
+        )
 
 
-async def _reconcile_task_schedules(
+async def _reconcile_task_schedules(  # noqa: PLR0913, RUF100 - reconciliation needs these exact schedule inputs.
     runtime: object,
     client: object,
     tasks: list[ScheduledTask],
     desired_schedule_ids: set[str],
     *,
+    scheduler_runtime: SchedulerRuntimeConfig,
     deferred_once_task_ids: set[str],
 ) -> None:
     runtime_any = cast("Any", runtime)
@@ -167,7 +172,9 @@ async def _reconcile_task_schedules(
             continue
         schedule_id = agent_task_schedule_id(task)
         desired_schedule_ids.add(schedule_id)
-        await _upsert_schedule(client_any, schedule_id, schedule_for_agent_task(task))
+        await _upsert_schedule(
+            client_any, schedule_id, schedule_for_agent_task(task, scheduler_runtime)
+        )
 
 
 async def _reconcile_host_job_schedules(
@@ -175,6 +182,7 @@ async def _reconcile_host_job_schedules(
     client: object,
     host_jobs: list[HostJob],
     desired_schedule_ids: set[str],
+    scheduler_runtime: SchedulerRuntimeConfig,
 ) -> None:
     runtime_any = cast("Any", runtime)
     client_any = cast("Any", client)
@@ -186,27 +194,24 @@ async def _reconcile_host_job_schedules(
             continue
         schedule_id = database_host_job_schedule_id(job)
         desired_schedule_ids.add(schedule_id)
-        await _upsert_schedule(client_any, schedule_id, schedule_for_database_host_job(job))
+        await _upsert_schedule(
+            client_any, schedule_id, schedule_for_database_host_job(job, scheduler_runtime)
+        )
 
 
 async def _reconcile_config_cron_schedules(
     client: object,
-    settings: object,
+    scheduler_runtime: SchedulerRuntimeConfig,
     desired_schedule_ids: set[str],
 ) -> None:
     client_any = cast("Any", client)
-    settings_any = cast("Any", settings)
-    for job_name, job in settings_any.jobs.items():
-        if not job.is_host or not job.enabled:
-            continue
-        if job.schedule is None:
-            raise RuntimeError(f"validated host job {job_name!r} has no schedule")
+    for job_name, job in scheduler_runtime.config_host_cron_jobs.items():
         schedule_id = config_host_cron_schedule_id(job_name)
         desired_schedule_ids.add(schedule_id)
         await _upsert_schedule(
             client_any,
             schedule_id,
-            schedule_for_config_host_cron(job_name, job.schedule),
+            schedule_for_config_host_cron(job_name, job.schedule, scheduler_runtime),
         )
 
 
@@ -357,26 +362,3 @@ async def _delete_stale_schedules(client: object, desired_schedule_ids: set[str]
         except RPCError as exc:
             if exc.status != RPCStatusCode.NOT_FOUND:
                 raise
-
-
-def _repo_root_for_slug(settings: object, repo_slug: str) -> Path | None:
-    return repo_host_root(cast("Any", settings), repo_slug)
-
-
-def _external_repo_sync_slugs(settings: object) -> list[str]:
-    settings_any = cast("Any", settings)
-    slugs: set[str] = set()
-    for workspace_name in settings_any.workspaces:
-        resolved = settings_any.resolved_workspace_config(workspace_name)
-        if resolved is not None:
-            slugs.update(resolved.repo)
-
-    external: list[str] = []
-    for repo_slug in sorted(slugs):
-        repo_root = _repo_root_for_slug(settings, repo_slug)
-        if repo_root is None:
-            continue
-        if repo_root.resolve() == settings_any.project_root.resolve():
-            continue
-        external.append(repo_slug)
-    return external

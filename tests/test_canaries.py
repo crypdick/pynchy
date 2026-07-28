@@ -13,13 +13,13 @@ from pynchy.canaries import (
     register_canary_scenario,
     run_declared_canaries,
 )
-from pynchy.config import CanaryConfig, validate_settings_mapping
+from pynchy.canary_contracts import CanaryOutcome
+from pynchy.config.api import CanaryConfig, validate_settings_mapping
 from pynchy.state import (
     get_recent_canary_runs,
     get_unresolved_canary_regressions,
     init_test_database,
 )
-from pynchy.types import CanaryOutcome
 
 _SCENARIO_ID = "calendar.round.trip"
 

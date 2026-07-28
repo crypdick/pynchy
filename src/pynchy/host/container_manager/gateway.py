@@ -32,19 +32,22 @@ Implementation lives in:
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves gateway runtime annotations.
+    Callable,
+    Mapping,
+)
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves gateway runtime annotations.
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.config import get_settings
-from pynchy.config.models import McpTool
-from pynchy.plugins.mcp_server import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
     McpServerConfig,
 )
 
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
+    from pynchy.redaction import GatewayRedactionPosture
 from pynchy.host.container_manager.gateway_builtin import (
     BuiltinGateway,
     BuiltinGatewayCredentials,
@@ -54,9 +57,9 @@ from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGatewayCredentials,
 )
 from pynchy.logger import logger
-from pynchy.plugins.contracts import McpServerSpec
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
-    ServiceTrustConfig,
+from pynchy.plugins.api import McpServerSpec
+from pynchy.workspace.api import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
 )
 
 _GATEWAY_MASTER_KEY_REQUIRED_ERROR = (
@@ -76,6 +79,73 @@ __all__ = [
 
 _DEFAULT_CONTAINER_HOST = "host.docker.internal"
 _APPLE_CONTAINER_HOST = "192.168.64.1"
+_apple_container_runtime = False
+
+
+class _SecretValue(Protocol):
+    def get_secret_value(self) -> str: ...
+
+
+class _GatewayConfig(Protocol):
+    container_host: str
+    litellm_config: str | None
+    master_key: _SecretValue | None
+    port: int
+    litellm_image: str
+    postgres_image: str
+    ui_username: str | None
+    ui_password: _SecretValue | None
+    host: str
+
+
+class _AgentConfig(Protocol):
+    default_core: str
+
+
+class _SecretsConfig(Protocol):
+    anthropic_api_key: _SecretValue | None
+    openai_api_key: _SecretValue | None
+
+
+class GatewaySettings(Protocol):
+    gateway: _GatewayConfig
+    data_dir: Path
+    agent: _AgentConfig
+    secrets: _SecretsConfig
+    tools: Mapping[str, object]
+    mcp_server_instances: Mapping[str, object]
+
+    def configured_agent_models(self) -> tuple[str, ...]: ...
+
+
+_get_settings: Callable[[], GatewaySettings] | None = None
+
+
+def configure_gateway_runtime(
+    *,
+    is_apple_container: bool,
+    get_settings: Callable[[], GatewaySettings] | None = None,
+) -> None:
+    """Select container-network behavior at host composition."""
+    global _apple_container_runtime, _get_settings  # noqa: PLW0603, RUF100 - one host process owns one container-network mode.
+    _apple_container_runtime = is_apple_container
+    if get_settings is not None:
+        _get_settings = get_settings
+
+
+def _configured_settings() -> GatewaySettings:
+    if _get_settings is None:
+        raise RuntimeError("Gateway configuration has not been composed")
+    return _get_settings()
+
+
+def get_settings() -> GatewaySettings:
+    """Return the composed gateway configuration."""
+    return _configured_settings()
+
+
+def _is_mcp_tool(tool: object) -> bool:
+    return getattr(tool, "type", None) == "mcp"
 
 
 # ---------------------------------------------------------------------------
@@ -124,16 +194,7 @@ def resolve_container_host(container_host: str) -> str:
     if container_host != _DEFAULT_CONTAINER_HOST:
         return container_host
 
-    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when resolving the default host
-        get_runtime,
-    )
-
-    try:
-        runtime_name = get_runtime().name
-    except RuntimeError:
-        return container_host
-
-    if runtime_name == "apple":
+    if _apple_container_runtime:
         # Apple Container does not provide Docker's host.docker.internal DNS
         # name; the host gateway for its default VM bridge is 192.168.64.1.
         return _APPLE_CONTAINER_HOST
@@ -250,7 +311,7 @@ async def start_gateway(
     # Collect plugin-provided MCP server specs and merge with personalized settings.
     plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
     has_servers = (
-        any(isinstance(tool, McpTool) for tool in s.tools.values())
+        any(_is_mcp_tool(tool) for tool in s.tools.values())
         or getattr(s, "mcp_server_instances", {})
         or plugin_mcp_servers
     )

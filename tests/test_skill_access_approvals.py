@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import NullIpcDeps, make_settings
@@ -18,16 +18,13 @@ def test_always_choice_updates_the_workspace_profile() -> None:
         "questions": [{"skill_access": {"skill_name": "obsidian-knowledge"}}],
     }
 
-    with (
-        patch(
-            "pynchy.host.container_manager.ipc.skill_access.profile_name_for_group",
-            return_value="pynchy-dev",
-        ),
-        patch(
-            "pynchy.host.container_manager.ipc.skill_access.update_profile_skill_policy"
-        ) as update_policy,
-    ):
-        status = persist_skill_access_choice(pending, {"answer": "Grant always"})
+    update_policy = MagicMock()
+    status = persist_skill_access_choice(
+        pending,
+        {"answer": "Grant always"},
+        profile_name_for_group=MagicMock(return_value="pynchy-dev"),
+        update_profile_skill_policy=update_policy,
+    )
 
     assert status == "granted"
     update_policy.assert_called_once_with("pynchy-dev", "obsidian-knowledge", grant=True)
@@ -39,12 +36,8 @@ async def test_persistent_skill_action_requires_an_ask_user_callback(tmp_path) -
 
     with (
         patch(
-            "pynchy.host.container_manager.ipc.handlers_skills.find_personalized_skill_dir",
-            return_value=tmp_path / "obsidian-knowledge",
-        ),
-        patch(
-            "pynchy.host.container_manager.ipc.write.get_settings",
-            return_value=settings,
+            "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+            settings.data_dir / "ipc",
         ),
     ):
         await registry.dispatch(

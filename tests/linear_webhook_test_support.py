@@ -7,17 +7,23 @@ import hmac
 import json
 from functools import partial
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock
 
 from pynchy.host.orchestrator.http_control import (
     ControlPlaneRuntime,
     ControlPlaneToken,
     RequestRateLimiter,
 )
+from pynchy.plugins.api import (
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+    WebhookRoute,
+)
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRouteConfig,
     parse_linear_webhook,
 )
-from pynchy.plugins.webhooks import WebhookRoute
 from pynchy.state import (
     complete_conversation_delivery,
     conversation_control_state_matches,
@@ -30,14 +36,7 @@ from pynchy.state import (
 from pynchy.state import (
     retire_conversation_for_terminal as retire_terminal_state,
 )
-from pynchy.types import (
-    InboundFetchResult,
-    NewMessage,
-    OutboundEvent,
-    ScheduledTask,
-    SessionId,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -49,6 +48,8 @@ if TYPE_CHECKING:
         ExternalDeliveryIdentity,
         TerminalConversationRetirement,
     )
+    from pynchy.identifiers import SessionId
+    from pynchy.scheduling.api import ScheduledTask
 
 SIGNING_KEY = "linear-webhook-test-signing-key-long-enough"
 DELIVERY_ID = "234d1a4e-b617-4388-90fe-adc3633d6b72"
@@ -278,6 +279,7 @@ def public_runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=ControlPlaneToken("control-plane-token-that-is-long-enough"),
         rate_limiter=RequestRateLimiter(request_limit=100, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 

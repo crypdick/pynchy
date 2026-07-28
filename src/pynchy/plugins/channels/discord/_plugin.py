@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 from pathlib import (
@@ -16,15 +17,18 @@ from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this run
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    AudioTranscriptionResult,
     ChannelPluginContext,
+    InboundAudioProcessingRequest,
+    InboundAudioProcessingResult,
+    NewMessage,
 )
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves plugin annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    NewMessage,
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 
 from ._channel import DiscordChannel
@@ -45,6 +49,9 @@ def _channel_context(
         Callable[[str, str, str, str], None] | None,
         Callable[[], dict[str, WorkspaceProfile]] | None,
         SpeechSynthesizer | None,
+        Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
+        Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None,
+        Callable[[str], Awaitable[list[str]]] | None,
     ]
     | None
 ):
@@ -59,6 +66,9 @@ def _channel_context(
         context.on_approval_decision_callback,
         context.workspaces,
         context.speech_synthesizer,
+        context.transcribe_audio,
+        context.process_inbound_audio,
+        context.find_chat_jids_by_name,
     )
 
 
@@ -73,6 +83,11 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
     on_approval_decision: Callable[[str, str, str, str], None] | None,
     workspaces: Callable[[], dict[str, WorkspaceProfile]] | None,
     speech_synthesizer: SpeechSynthesizer | None,
+    transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
+    process_inbound_audio: (
+        Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None
+    ),
+    find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None,
     audio_cache_dir: Path,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
@@ -105,6 +120,9 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
         on_approval_decision=on_approval_decision,
         workspaces=workspaces,
         speech_synthesizer=speech_synthesizer,
+        transcribe_audio=transcribe_audio,
+        process_inbound_audio=process_inbound_audio,
+        find_chat_jids_by_name=find_chat_jids_by_name,
         audio_cache_dir=audio_cache_dir,
     )
 
@@ -134,6 +152,9 @@ class DiscordChannelPlugin:
             on_approval_decision,
             workspaces,
             speech_synthesizer,
+            transcribe_audio,
+            process_inbound_audio,
+            find_chat_jids_by_name,
         ) = callbacks
 
         channels: list[DiscordChannel] = []
@@ -151,6 +172,9 @@ class DiscordChannelPlugin:
                 on_approval_decision=on_approval_decision,
                 workspaces=workspaces,
                 speech_synthesizer=speech_synthesizer,
+                transcribe_audio=transcribe_audio,
+                process_inbound_audio=process_inbound_audio,
+                find_chat_jids_by_name=find_chat_jids_by_name,
                 audio_cache_dir=audio_cache_dir,
             )
             if channel is not None:

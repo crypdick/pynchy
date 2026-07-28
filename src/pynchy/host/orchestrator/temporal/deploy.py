@@ -8,7 +8,14 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.deploy import (
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployRevision,
+)
+from pynchy.host.orchestrator.api import (
     build_container_image,
     finalize_deploy,
     rollback_deploy_checkout,
@@ -20,7 +27,6 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
 from pynchy.state.api import clear_pending_deployment
-from pynchy.types import AgentExecutionRuntime, DeployChangeKind, DeployRevision
 
 
 @dataclass(frozen=True)

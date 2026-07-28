@@ -21,8 +21,7 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
-from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig
+from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     ConversationClaimId,
     ExternalDeliveryId,
@@ -34,6 +33,7 @@ from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.webhook_ingress import recover_webhook_conversations
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
+from pynchy.identifiers import GroupFolder
 from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
 from pynchy.state import (
     WebhookReceipt,
@@ -42,7 +42,6 @@ from pynchy.state import (
     claim_next_conversation_delivery,
     init_test_database,
 )
-from pynchy.types import GroupFolder
 
 
 @pytest.fixture(autouse=True)

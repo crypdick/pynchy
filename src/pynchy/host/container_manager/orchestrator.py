@@ -4,50 +4,57 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves container orchestration signatures at runtime.
 )
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
-from pynchy.host.container_manager.credentials import build_agent_env_vars
-from pynchy.host.container_manager.mcp.startup import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
-    McpStartupFailure,
-)
-from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
-from pynchy.host.container_manager.runtime_names import runtime_container_name
-from pynchy.host.container_manager.serialization import input_to_dict
-from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
-)
-from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
-from pynchy.logger import logger
-from pynchy.plugins.agent_hooks import collect_agent_hook_specs, container_agent_hook_configs
-from pynchy.plugins.contracts import AgentCoreSpec
-from pynchy.plugins.runtimes import system_checks
-from pynchy.plugins.runtimes.detection import get_runtime
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
     AgentExecutionRuntime,
     ContainerInput,
+    McpStartupFailure,
     VolumeMount,
-    WorkspaceProfile,
+    input_to_dict,
 )
+from pynchy.host.container_manager.contracts import RepoMount, RepoMountResolution
+from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
+from pynchy.logger import logger
+from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_configs
+from pynchy.runtime_names import runtime_container_name
 from pynchy.utils import filtered_process_environment
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+)
 
-# ---------------------------------------------------------------------------
-# Container timeout resolution
-# ---------------------------------------------------------------------------
+type EnsureAgentImage = Callable[..., None]
+type ResolveRepoMounts = Callable[[str, tuple[str, ...]], RepoMountResolution]
+
+_container_cli: str | None = None
+_ensure_agent_image: EnsureAgentImage | None = None
+_resolve_repo_mounts: ResolveRepoMounts | None = None
 
 
-def resolve_container_timeout(group: WorkspaceProfile, default_timeout: float) -> float:
-    """Return the effective container timeout in seconds.
+def configure_container_spawn_runtime(
+    *,
+    container_cli: str,
+    ensure_agent_image: EnsureAgentImage,
+    resolve_repo_mounts: ResolveRepoMounts,
+) -> None:
+    """Inject the selected container runtime at host composition."""
+    global _container_cli, _ensure_agent_image, _resolve_repo_mounts  # noqa: PLW0603, RUF100 - one host process owns one spawn runtime.
+    _container_cli = container_cli
+    _ensure_agent_image = ensure_agent_image
+    _resolve_repo_mounts = resolve_repo_mounts
 
-    Per-workspace ``container_config.timeout`` takes priority; falls back to
-    the global ``container.timeout_ms`` from Settings (converted to seconds).
-    """
-    if group.container_config and group.container_config.timeout:
-        return group.container_config.timeout
-    return default_timeout
+
+def _configured_container_runtime() -> tuple[str, EnsureAgentImage, ResolveRepoMounts]:
+    if _container_cli is None or _ensure_agent_image is None or _resolve_repo_mounts is None:
+        raise RuntimeError("container spawn runtime has not been configured")
+    return _container_cli, _ensure_agent_image, _resolve_repo_mounts
 
 
 # ---------------------------------------------------------------------------
@@ -67,39 +74,6 @@ def stable_container_name(group_folder: str) -> str:
     before spawning a fresh one for the same group.
     """
     return runtime_container_name(_sanitize_folder(group_folder))
-
-
-# ---------------------------------------------------------------------------
-# Agent core resolution
-# ---------------------------------------------------------------------------
-
-
-def resolve_agent_core(
-    plugin_manager: pluggy.PluginManager | None, default_core: str
-) -> tuple[str, str]:
-    """Look up the agent core module and class from plugins.
-
-    Returns (module_path, class_name) for the configured agent core.
-    Falls back to the defaults in ContainerInput if no plugin provides one.
-    """
-    module = "agent_runner.cores.openai"
-    class_name = "OpenAIAgentCore"
-    if plugin_manager:
-        cores = [
-            core
-            for core in plugin_manager.hook.pynchy_agent_core_info()
-            if isinstance(core, AgentCoreSpec)
-        ]
-        core_info = next(
-            (core for core in cores if core.name == default_core),
-            None,
-        )
-        if core_info is None and cores:
-            core_info = cores[0]
-        if core_info:
-            module = core_info.module
-            class_name = core_info.class_name
-    return module, class_name
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +155,9 @@ async def _spawn_container(
         raise ValueError("Agent execution runtime is required")
     # The harness deliberately defers this expensive check at host startup,
     # but an agent container must never be spawned without its image.
+    container_cli, ensure_agent_image, resolve_repo_mounts = _configured_container_runtime()
     await asyncio.to_thread(
-        system_checks.ensure_agent_image_available,
+        ensure_agent_image,
         project_root=runtime.project_root,
         image=runtime.agent_image,
     )
@@ -191,30 +166,17 @@ async def _spawn_container(
 
     # --- Resolve worktree ---
     phase_start = time.monotonic()
-    repo_mounts: list[tuple[RepoContext, Path]] = []
+    repo_mounts: list[RepoMount] = []
     if input_data.repo_accesses:
-        from pynchy.host.git_ops.repo import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
-            get_repo_context,
-        )
-        from pynchy.host.git_ops.worktree import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
-            ensure_worktree,
-        )
-
         # Preflight resolves workspace defaults or an invocation-specific override
         # into this semantic mount scope. Re-reading the workspace here would widen
         # an explicitly scoped scheduled task back to every configured repository.
-        repo_contexts = [
-            repo_ctx
-            for slug in input_data.repo_accesses
-            if (repo_ctx := get_repo_context(slug)) is not None
-        ]
-        for repo_ctx in repo_contexts:
-            wt_result = ensure_worktree(group.folder, repo_ctx)
-            repo_mounts.append((repo_ctx, wt_result.path))
-            if wt_result.notices:
-                if input_data.system_notices is None:
-                    input_data.system_notices = []
-                input_data.system_notices.extend(wt_result.notices)
+        resolution = resolve_repo_mounts(group.folder, tuple(input_data.repo_accesses))
+        repo_mounts.extend(resolution.mounts)
+        if resolution.notices:
+            if input_data.system_notices is None:
+                input_data.system_notices = []
+            input_data.system_notices.extend(resolution.notices)
     worktree_ms = (time.monotonic() - phase_start) * 1000
 
     # --- Build mounts ---
@@ -291,7 +253,7 @@ async def _spawn_container(
 
     # --- Spawn process (stdin not needed — input delivered via IPC file) ---
     proc = await asyncio.create_subprocess_exec(
-        get_runtime().cli,
+        container_cli,
         *container_args,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,

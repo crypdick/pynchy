@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationDeliveryCompletion,
     ConversationId,
     ExternalDeliveryId,

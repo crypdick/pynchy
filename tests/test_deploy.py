@@ -13,12 +13,21 @@ import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - tests construct completed process results without executing commands.
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.orchestrator.deploy import finalize_deploy, rollback_deploy_checkout
-from pynchy.types import DeployChangeKind, InFlightTurn, InFlightWorkKind
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
+from pynchy.deployments import DeployChangeKind
+from pynchy.host.orchestrator.deploy import (
+    DeployGitRuntime,
+    configure_deploy_git_runtime,
+    finalize_deploy,
+    rollback_deploy_checkout,
+)
 
 _CONFIG_HASH = "config-hash-001"
 
@@ -76,14 +85,15 @@ class TestRollbackDeployCheckout:
             stdout="",
             stderr="",
         )
-        with (
-            patch("pynchy.host.orchestrator.deploy.run_git", return_value=reset_result) as run_git,
-            patch(
-                "pynchy.host.orchestrator.deploy.get_head_sha",
-                return_value="previous-sha-full",
-            ),
-        ):
-            result = rollback_deploy_checkout("previous-sha")
+        run_git = MagicMock(return_value=reset_result)
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "previous-sha-full",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+        result = rollback_deploy_checkout("previous-sha")
 
         run_git.assert_called_once_with("reset", "--hard", "previous-sha")
         assert result.success is True
@@ -96,11 +106,14 @@ class TestRollbackDeployCheckout:
             stdout="",
             stderr="",
         )
-        with (
-            patch("pynchy.host.orchestrator.deploy.run_git", return_value=reset_result),
-            patch("pynchy.host.orchestrator.deploy.get_head_sha", return_value="unknown"),
-        ):
-            result = rollback_deploy_checkout("previous-sha")
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unknown",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=lambda *_args: reset_result,
+            )
+        )
+        result = rollback_deploy_checkout("previous-sha")
 
         assert result.success is False
         assert "could not verify" in result.error

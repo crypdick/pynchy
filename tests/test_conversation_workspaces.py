@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.config.workspace_names import static_workspace_name
+from pynchy.config.api import static_workspace_name
 from pynchy.conversation.workspaces import dynamic_thread_folder, parent_workspace_name
 
 

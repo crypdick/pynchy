@@ -14,7 +14,30 @@ from conftest import NullIpcDeps, make_settings
 
 from pynchy.action_intents import ActionIntentStatus
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.config.api import (
+    MatrixConnectionConfig,
+    MatrixEndpointConfig,
+    ResolvedWorkspaceConfig,
+)
+from pynchy.conversation.models import (
+    ControlSurface,
+    ConversationControlBinding,
+    ConversationId,
+)
+from pynchy.conversation.workspaces import routed_conversation_folder
+from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+from pynchy.host.container_manager.security.gate import SecurityGate, create_gate, destroy_gate
+from pynchy.host.container_manager.security.identity import request_payload_hash
+from pynchy.host.orchestrator.api import (
+    execute_action_intent,
+    prepare_action_intent,
+)
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
+from pynchy.plugins.api import (
     ActionIntentContract,
     ActionIntentDraft,
     ActionIntentReceipt,
@@ -24,31 +47,12 @@ from pynchy.capabilities import (
     CapabilityId,
     CapabilityKind,
     HostActionAccess,
+    HostActionCatalog,
     HostActionDescriptor,
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config.merge import ResolvedWorkspaceConfig
-from pynchy.config.models import (
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
-)
-from pynchy.conversation.models import (
-    ControlSurface,
-    ConversationControlBinding,
-    ConversationId,
-)
-from pynchy.conversation.workspaces import routed_conversation_folder
-from pynchy.host.container_manager.action_intents import (
-    execute_action_intent,
-    prepare_action_intent,
-)
-from pynchy.host.container_manager.ipc import registry
-from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
-from pynchy.host.container_manager.security.gate import SecurityGate, create_gate, destroy_gate
-from pynchy.host.container_manager.security.identity import request_payload_hash
-from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
 from pynchy.plugins.integrations.matrix_route_registry import (
@@ -68,7 +72,10 @@ from pynchy.state import (
     mark_action_intent_executing,
     recover_incomplete_action_intents,
 )
-from pynchy.types import ChatJid, GroupFolder, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -274,12 +281,22 @@ async def _process_matrix_approval(
     policy_available: bool = True,
 ) -> dict[str, object]:
     settings = make_settings(data_dir=tmp_path)
+    deps = NullIpcDeps()
+    deps.get_conversation_control_binding = AsyncMock(
+        return_value=(
+            None
+            if binding_missing
+            else binding
+            if binding is not None
+            else _matrix_control_binding()
+        )
+    )
     with (
         patch(
             "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
             return_value=settings,
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
             return_value=HostActionCatalog(actions=(action,)),
@@ -289,25 +306,17 @@ async def _process_matrix_approval(
             return_value=SecurityGate(WorkspaceSecurity()) if policy_available else None,
         ),
         patch(
-            "pynchy.host.container_manager.ipc.approval_replay."
-            "workspace_config.load_resolved_config",
+            "pynchy.config.settings.Settings.resolved_workspace_config",
             return_value=(
                 _resolved_matrix_workspace(tools=resolved_tools) if policy_available else None
             ),
         ),
-        patch(
-            "pynchy.host.container_manager.ipc.approval_replay.get_conversation_control_binding",
-            new_callable=AsyncMock,
-            return_value=(
-                None
-                if binding_missing
-                else binding
-                if binding is not None
-                else _matrix_control_binding()
-            ),
-        ),
     ):
-        await process_approval_decision(decision_path, _MATRIX_FOLDER)
+        await process_approval_decision(
+            decision_path,
+            _MATRIX_FOLDER,
+            deps=deps,
+        )
     response_path = tmp_path / "ipc" / _MATRIX_FOLDER / "responses" / decision_path.name
     return json.loads(response_path.read_text(encoding="utf-8"))
 
@@ -351,10 +360,12 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
                 "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
                 return_value=HostActionCatalog(actions=(action,)),
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=settings,
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval._approval_root",
+                settings.data_dir / "approvals",
             ),
         ):
             await registry.dispatch(request, "test-workspace", False, NullIpcDeps())
@@ -393,9 +404,15 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=HostActionCatalog(actions=(action,)),
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
-            await process_approval_decision(decision_path, "test-workspace")
+            await process_approval_decision(
+                decision_path,
+                "test-workspace",
+                deps=NullIpcDeps(),
+            )
     finally:
         destroy_gate("test-workspace", 1.0)
 

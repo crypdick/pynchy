@@ -8,7 +8,8 @@ from typing import Any
 import pluggy
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.logger import logger
+from pynchy.plugins.api import (
     ApprovalContract,
     ApprovalTrigger,
     AuditContract,
@@ -23,8 +24,7 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.logger import logger
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 from .backend import SqliteMemoryBackend
 

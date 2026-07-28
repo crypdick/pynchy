@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from pynchy.state.chat_parents import ensure_chat_parent
-from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ChannelName,
     ChatJid,
 )
+from pynchy.state.chat_parents import ensure_chat_parent
+from pynchy.state.connection import _get_db, atomic_write
 
 _OUTBOUND_LEDGER_ID_MISSING_ERROR = "INSERT INTO outbound_ledger did not return a row id"
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pluggy
 
-from pynchy.plugins.contracts import AgentCoreSpec
+from pynchy.plugins.api import AgentCoreSpec
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

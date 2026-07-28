@@ -20,18 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves approval runtime annotations.
+)
 from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    ApprovalMode,
-    HostActionDescriptor,
-)
-from pynchy.config import get_settings
-from pynchy.host.container_manager.action_intents import execute_action_intent
 from pynchy.host.container_manager.ipc.approval_decision_context import (
     ApprovalDecision as _ApprovalDecision,
 )
@@ -42,10 +39,16 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext as _ApprovalDecisionContext,
 )
 from pynchy.host.container_manager.ipc.approval_replay import (
+    ApprovalReplayPolicy as _ApprovalReplayPolicy,
+)
+from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_gate,
 )
 from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error as _approval_replay_validation_error,
+)
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves approval replay dependencies at runtime.
 )
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
@@ -53,15 +56,44 @@ from pynchy.host.container_manager.security.approval_binding import approval_bin
 from pynchy.host.container_manager.security.approved_ipc import execute_approved_ipc
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
+    ResolvedSecurityConfig,
     SecurityGate,
+    SecuritySettings,
+    build_workspace_security,
     evaluate_host_action_policy,
 )
 from pynchy.logger import logger
-from pynchy.state.api import (
-    approve_action_intent,
-    deny_action_intent,
-    fail_action_intent,
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    ApprovalMode,
+    HostActionDescriptor,
 )
+from pynchy.workspace.api import (
+    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+
+
+class ApprovalSettings(SecuritySettings, Protocol):
+    data_dir: Path
+
+    def resolved_workspace_config(self, group_folder: str) -> ResolvedSecurityConfig | None: ...
+
+
+def _unconfigured_settings() -> ApprovalSettings:
+    raise RuntimeError("Approval configuration has not been composed")
+
+
+_get_settings: Callable[[], ApprovalSettings] = _unconfigured_settings
+
+
+def configure_approval_runtime(*, get_settings: Callable[[], ApprovalSettings]) -> None:
+    """Bind the workspace policy source at host composition."""
+    global _get_settings  # noqa: PLW0603, RUF100 - one host process owns one configuration source.
+    _get_settings = get_settings
+
+
+def get_settings() -> ApprovalSettings:
+    """Return the composed configuration source for approval replay."""
+    return _get_settings()
 
 
 @dataclass(frozen=True)
@@ -73,6 +105,7 @@ class _ApprovedServiceContext:
     chat_jid: str
     action: HostActionDescriptor | None
     gate: SecurityGate
+    deps: IpcDeps
 
 
 def _read_json_file(path: Path) -> object:
@@ -97,7 +130,7 @@ def _unlink_all_missing_ok(*paths: Path) -> None:
 
 
 async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-state case has distinct cleanup semantics.
-    decision_file: Path, source_group: str, *, deps: object | None = None
+    decision_file: Path, source_group: str, *, deps: IpcDeps | None = None
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
     try:
@@ -165,9 +198,23 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
             request_id=decision.request_id,
             source_group=source_group,
             reason=binding_error,
+            deps=deps,
         )
         await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
         return
+
+    def current_workspace_tools(group_folder: str) -> tuple[str, ...] | None:
+        resolved = s.resolved_workspace_config(group_folder)
+        return tuple(resolved.tools) if resolved is not None else None
+
+    def configured_security(group_folder: str) -> WorkspaceSecurity | None:
+        resolved = s.resolved_workspace_config(group_folder)
+        return build_workspace_security(s, resolved) if resolved is not None else None
+
+    replay_policy = _ApprovalReplayPolicy(
+        configured_security=configured_security,
+        workspace_tools=current_workspace_tools,
+    )
 
     try:
 
@@ -178,8 +225,8 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
             request_secret_tainted: bool,
         ) -> SecurityGate | None:
             return approval_replay_gate(
-                s,
                 source_group,
+                policy=replay_policy,
                 require_resolved=require_resolved,
                 request_corruption_tainted=request_corruption_tainted,
                 request_secret_tainted=request_secret_tainted,
@@ -199,7 +246,7 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         )
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
-    await _dispatch_approval_decision(context, deps)
+    await _dispatch_approval_decision(context, deps, replay_policy)
     await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
 
 
@@ -209,10 +256,12 @@ async def _reject_invalid_approval_binding(
     request_id: str,
     source_group: str,
     reason: str,
+    deps: IpcDeps | None,
 ) -> None:
     if pending.get("handler_type") == "mcp_proxy":
         security_approval.resolve_mcp_proxy_approval(request_id, approved=False)
-    await fail_action_intent(request_id, reason=reason)
+    if deps is not None:
+        await deps.fail_action_intent(request_id, reason=reason)
     await asyncio.to_thread(
         write_ipc_response,
         ipc_response_path(source_group, request_id),
@@ -229,15 +278,17 @@ async def _reject_invalid_approval_binding(
 
 
 async def _dispatch_approval_decision(
-    context: _ApprovalDecisionContext, deps: object | None
+    context: _ApprovalDecisionContext,
+    deps: IpcDeps | None,
+    replay_policy: _ApprovalReplayPolicy,
 ) -> None:
     if context.handler_type == "mcp_proxy":
         await _resolve_mcp_proxy_approval(context)
         return
     if context.approved:
-        await _dispatch_approved_request(context, deps)
+        await _dispatch_approved_request(context, deps, replay_policy)
     else:
-        await _dispatch_denied_request(context)
+        await _dispatch_denied_request(context, deps)
 
 
 async def _resolve_mcp_proxy_approval(context: _ApprovalDecisionContext) -> None:
@@ -262,11 +313,22 @@ async def _resolve_mcp_proxy_approval(context: _ApprovalDecisionContext) -> None
 
 
 async def _dispatch_approved_request(
-    context: _ApprovalDecisionContext, deps: object | None
+    context: _ApprovalDecisionContext,
+    deps: IpcDeps | None,
+    replay_policy: _ApprovalReplayPolicy,
 ) -> None:
-    validation_error = await _approval_replay_validation_error(context)
+    validation_error: str | None
+    if deps is None:
+        validation_error = "Approval replay dependencies are unavailable."
+    else:
+        validation_error = await _approval_replay_validation_error(
+            context,
+            deps,
+            replay_policy,
+        )
     if validation_error is not None:
-        await fail_action_intent(context.request_id, reason=validation_error)
+        if deps is not None:
+            await deps.fail_action_intent(context.request_id, reason=validation_error)
         await asyncio.to_thread(
             write_ipc_response,
             ipc_response_path(context.source_group, context.request_id),
@@ -302,11 +364,18 @@ async def _dispatch_approved_request(
             context.tool_name,
             deps,
         )
+    elif deps is None:
+        await asyncio.to_thread(
+            write_ipc_response,
+            ipc_response_path(context.source_group, context.request_id),
+            {"error": "Approval replay dependencies are unavailable."},
+        )
+        return
     else:
         if context.gate is None:
             raise RuntimeError("Approval replay policy disappeared after validation")
         if context.action is not None and context.action.action_intent is not None:
-            await approve_action_intent(
+            await deps.approve_action_intent(
                 context.request_id,
                 approver=context.approver,
                 approved_at=context.approved_at,
@@ -321,6 +390,7 @@ async def _dispatch_approved_request(
                 chat_jid=context.chat_jid,
                 action=context.action,
                 gate=context.gate,
+                deps=deps,
             )
         )
     await record_security_event(
@@ -334,8 +404,9 @@ async def _dispatch_approved_request(
     )
 
 
-async def _dispatch_denied_request(context: _ApprovalDecisionContext) -> None:
-    await deny_action_intent(context.request_id, reason="Denied by user")
+async def _dispatch_denied_request(context: _ApprovalDecisionContext, deps: IpcDeps | None) -> None:
+    if deps is not None:
+        await deps.deny_action_intent(context.request_id, reason="Denied by user")
     await asyncio.to_thread(
         write_ipc_response,
         ipc_response_path(context.source_group, context.request_id),
@@ -358,7 +429,7 @@ async def _execute_service_approval(
     """Dispatch an approved service request through plugin handlers."""
     action = context.action
     if action is None:
-        await fail_action_intent(
+        await context.deps.fail_action_intent(
             context.request_id,
             reason="Host action descriptor is unavailable after approval.",
         )
@@ -380,7 +451,7 @@ async def _execute_service_approval(
         decision = evaluate_host_action_policy(action, context.gate, context.request_data)
         if not decision.allowed:
             if action.action_intent is not None:
-                await deny_action_intent(
+                await context.deps.deny_action_intent(
                     context.request_id,
                     reason=f"Policy denied after approval: {decision.reason}",
                 )
@@ -404,7 +475,7 @@ async def _execute_service_approval(
             context.gate.grant_session_tool_approval(str(action.tool_name))
         try:
             context.request_data["source_group"] = context.source_group
-            response = await execute_action_intent(
+            response = await context.deps.execute_action_intent(
                 action,
                 context.request_data,
                 request_id=context.request_id,

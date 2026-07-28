@@ -19,13 +19,13 @@ from typing import cast
 import aiohttp
 from aiohttp import web
 
-from pynchy.host.container_manager.security.llm_redaction import (
+from pynchy.logger import logger
+from pynchy.redaction import (
     GatewayRedactionPosture,
     RedactionRequestError,
     irreversibly_redact_llm_request_body,
     redaction_posture_for_gateway_mode,
 )
-from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
 # Constants

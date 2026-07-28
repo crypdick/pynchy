@@ -1,6 +1,10 @@
 """Tests for ServiceTrustConfig and WorkspaceSecurity types."""
 
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 # --- ServiceTrustConfig defaults ---
 
