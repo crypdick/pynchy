@@ -317,6 +317,10 @@ role = "domain"
 public_modules = ["pynchy.security_canary_ids"]
 
 [[packages]]
+# Migration target: remove this aggregate; do not create `pynchy.types.api` or
+# retain a compatibility barrel. Move one coherent contract group at a time to
+# its owning package and expose cross-package contracts through that package's
+# `api.py`. Keep only universal semantic identifiers in `pynchy.identifiers`.
 name = "types"
 root = "pynchy.types"
 role = "domain"
