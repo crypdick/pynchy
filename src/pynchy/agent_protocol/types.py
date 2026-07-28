@@ -89,6 +89,7 @@ class ContainerInput:
     query_id: str | None = None
     session_id: str | None = None
     is_scheduled_task: bool = False
+    automation_memory_dir: str | None = None
     input_source: str = "user"
     corruption_tainted: bool = False
     secret_tainted: bool = False

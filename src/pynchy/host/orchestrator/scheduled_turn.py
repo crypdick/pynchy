@@ -9,6 +9,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves request annotations.
 from typing import Any
 
 from pynchy.agent_protocol.api import (
@@ -55,6 +56,7 @@ class TaskAgentRequest:
     group: WorkspaceProfile
     idle_enabled: bool
     idle_timeout: float
+    automation_memory_dir: Path | None = None
     resume_turn: InFlightTurn | None = None
     on_started: Callable[[str], Awaitable[None]] | None = None
 
@@ -188,6 +190,13 @@ async def _run_target_agent(run: _TaskAgentRun) -> None:
             request.group.jid,
             run.input_messages,
             on_output,
+            extra_system_notices=[
+                (
+                    "Persistent task memory is the directory named by "
+                    "PYNCHY_AUTOMATION_MEMORY_DIR. Read it before acting and update it "
+                    "only with durable state needed by a future occurrence."
+                )
+            ],
             is_scheduled_task=True,
             repo_access_override=request.task.repo_access,
             input_source=(
@@ -197,6 +206,7 @@ async def _run_target_agent(run: _TaskAgentRun) -> None:
             ),
             turn_id=run.turn_id,
             resume_session_id=request.resume_turn.session_id if request.resume_turn else None,
+            automation_memory_dir=request.automation_memory_dir,
         )
         state.terminal_outcome = await requested_control_outcome(
             run.turn_id,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -35,6 +36,12 @@ class _SchedulerRuntime:
 @dataclass(frozen=True)
 class _SchedulerDeps:
     scheduler_runtime: _SchedulerRuntime
+
+    def automation_memory_dir(self, _task_id: str):
+        return nullcontext(None)
+
+    def sync_automation_memory(self, _task_id: str) -> None:
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -131,10 +138,15 @@ class TestHostJobScheduling:
         assert job.schedule_type == "once"
         assert job.next_run is None
 
+    @patch.object(_SchedulerDeps, "automation_memory_dir")
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
-    async def test_temporal_database_host_job_activity_executes_command(self, mock_shell, tmp_path):
+    async def test_temporal_database_host_job_activity_executes_command(
+        self, mock_shell, memory_context, tmp_path
+    ):
         """Temporal host-job activity executes due job commands."""
         mock_shell.return_value = ShellResult(returncode=0, stdout="Success", stderr="")
+        memory_dir = tmp_path / "automation-memory/job-exec"
+        memory_context.return_value = nullcontext(memory_dir)
 
         past_time = "2020-01-01T00:00:00"
         cwd = str(tmp_path / "cwd")
@@ -161,6 +173,7 @@ class TestHostJobScheduling:
         mock_shell.assert_awaited_once()
         call_kwargs = mock_shell.await_args.kwargs
         assert call_kwargs["cwd"] == cwd
+        assert call_kwargs["env"]["PYNCHY_AUTOMATION_MEMORY_DIR"] == str(memory_dir)
         completed_job = await get_host_job_by_id("job-exec")
         assert completed_job is not None
         assert completed_job.status == "completed"

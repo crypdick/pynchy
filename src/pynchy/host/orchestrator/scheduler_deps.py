@@ -6,6 +6,9 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Awaitable,
     Callable,
 )
+from contextlib import (
+    AbstractContextManager,  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
+)
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime config annotations.
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
@@ -135,6 +138,10 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
 
     scheduler_runtime: SchedulerRuntimeConfig
 
+    def automation_memory_dir(self, task_id: str) -> AbstractContextManager[Path | None]: ...
+
+    def sync_automation_memory(self, task_id: str) -> None: ...
+
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -178,6 +185,7 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
         input_source: str = "user",
         turn_id: str | None = None,
         resume_session_id: str | None = None,
+        automation_memory_dir: Path | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(

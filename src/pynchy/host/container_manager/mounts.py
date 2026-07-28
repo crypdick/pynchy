@@ -66,6 +66,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     worktree_path: Path | None = None,
     repo_mounts: list[RepoMount] | None = None,
     agent_hooks: tuple[AgentHookSpec, ...] = (),
+    automation_memory_dir: Path | None = None,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
@@ -94,6 +95,14 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
             VolumeMount(
                 str(agent_homes.vault_mount_root),
                 str(agent_homes.vault_mount_path),
+                readonly=False,
+            )
+        )
+    if automation_memory_dir is not None:
+        mounts.append(
+            VolumeMount(
+                str(automation_memory_dir),
+                "/workspace/automation-memory",
                 readonly=False,
             )
         )

@@ -145,6 +145,11 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
                 group_folder=group.folder,
                 operations=operations,
                 codex_home=codex_home,
+                automation_memory_dir=(
+                    Path(input_data.automation_memory_dir)
+                    if input_data.automation_memory_dir is not None
+                    else None
+                ),
             ),
             queue=deps.queue,
             target=RuntimeTarget.from_workspace(group),

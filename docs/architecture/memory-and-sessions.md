@@ -57,6 +57,20 @@ Learning packets live in a durable filesystem queue under `data/ipc/learning`. T
 
 V1 learning deliberately mounts the configured vault root as a broad namespace. Access controls and narrower subdirectory mounts belong to a later policy layer.
 
+## Automation Memory
+
+Scheduled work uses a task-owned filesystem contract instead of provider
+session history. With Obsidian learning enabled, all agent, deterministic, and
+host automation shapes resolve
+`wiki/systems/pynchy/automation-memory/<task-id>/` under the configured vault
+and receive it through `PYNCHY_AUTOMATION_MEMORY_DIR`.
+
+Container executions mount only that task directory at
+`/workspace/automation-memory`. Direct-host and shell executions receive the
+resolved absolute path. Apple-runtime executions use a task-specific mirror;
+the dirty marker survives an interrupted run, and synchronization back to the
+vault occurs before scheduler completion is persisted.
+
 ## Session Management
 
 - Each visible Discord thread owns exactly one durable runtime: workspace,

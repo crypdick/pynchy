@@ -13,6 +13,7 @@ from pynchy.config.api import LearningConfig, ObsidianLearningConfig, Settings, 
 from pynchy.host.learning.paths import (
     LearningConfigError,
     profile_name_for_group,
+    resolve_automation_memory_paths,
     resolve_learning_paths,
 )
 
@@ -54,6 +55,33 @@ def test_resolver_returns_none_when_learning_is_disabled(tmp_path):
 
     with _configured_learning_paths(settings):
         assert resolve_learning_paths("shopping") is None
+
+
+def test_automation_memory_is_task_owned_under_the_private_wiki_subtree(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    with _configured_learning_paths(settings):
+        paths = resolve_automation_memory_paths("job-weekly-security")
+
+    assert paths is not None
+    assert paths.canonical == (
+        vault.resolve() / "wiki/systems/pynchy/automation-memory/job-weekly-security"
+    )
+    assert paths.mirror == (
+        tmp_path / "data/learning/automation-memory-mirrors/job-weekly-security"
+    )
+
+
+def test_automation_memory_encodes_unsafe_task_id_characters(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    with _configured_learning_paths(settings):
+        paths = resolve_automation_memory_paths("task/with spaces")
+
+    assert paths is not None
+    assert paths.canonical.name == "task%2Fwith%20spaces"
 
 
 def test_enabled_learning_without_vault_fails_in_resolver(tmp_path):
