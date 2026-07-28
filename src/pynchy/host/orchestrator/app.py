@@ -84,6 +84,9 @@ from pynchy.host.git_ops.worktree import (
     configure_worktree_startup_runtime,
 )
 from pynchy.host.learning.api import (
+    capture as learning_capture,
+)
+from pynchy.host.learning.api import (
     profile_name_for_group,
     refresh_personalized_agent_skills,
     resolve_learning_paths,
@@ -853,6 +856,21 @@ class PynchyApp(ThreadRouting):
             is_admin=is_admin,
             repo_dirty=is_repo_dirty(cwd=cwd),
             unpushed_commits=count_unpushed_commits(cwd=cwd),
+        )
+
+    def repo_is_dirty(self) -> bool:
+        """Return the host checkout's source-control cleanliness."""
+        return is_repo_dirty()
+
+    def new_learning_run_summary(self) -> learning_capture.LearningRunSummary:
+        """Create the per-turn evidence buffer for best-effort learning."""
+        return learning_capture.LearningRunSummary()
+
+    def observe_learning_output(self, summary: object, output: ContainerOutput) -> None:
+        """Keep best-effort learning observation at the composition boundary."""
+        learning_capture.observe_learning_output(
+            cast("learning_capture.LearningRunSummary", summary),
+            output,
         )
 
     # ------------------------------------------------------------------

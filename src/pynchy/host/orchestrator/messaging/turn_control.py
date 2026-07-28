@@ -10,7 +10,6 @@ from typing import Any
 
 import pynchy.types as types
 from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     MessageHandlerDeps,
 )
@@ -156,6 +155,7 @@ async def prepare_agent_batch(
         group,
         missed_messages,
         is_admin_group=group.is_admin,
+        repo_is_dirty=deps.repo_is_dirty,
     )
     if (
         checkpoint is not None
@@ -188,7 +188,7 @@ class InteractiveAgentRun:
     had_error: bool
     missing_terminal_result: bool
     output_sent_to_user: bool
-    learning_summary: learning_capture.LearningRunSummary
+    learning_summary: object
     control_outcome: TurnOutcome | None
 
 
@@ -222,13 +222,13 @@ async def run_interactive_agent(
     missing_terminal_result = False
     terminal_result_observed = False
     output_sent_to_user = False
-    learning_summary = learning_capture.LearningRunSummary()
+    learning_summary = deps.new_learning_run_summary()
 
     async def on_output(result: types.ContainerOutput) -> None:
         nonlocal had_error, missing_terminal_result, terminal_result_observed
         nonlocal output_sent_to_user
 
-        learning_capture.observe_learning_output(learning_summary, result)
+        deps.observe_learning_output(learning_summary, result)
         missing_terminal_result = missing_terminal_result or (
             (result.result_metadata or {}).get("subtype") == "missing_terminal_turn"
         )

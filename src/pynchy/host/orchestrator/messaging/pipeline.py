@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 import pynchy.types as types
 from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
@@ -78,7 +78,7 @@ class _FinalizeCursorRetryRequest:
     had_error: bool
     missing_terminal_result: bool
     output_sent_to_user: bool
-    learning_summary: learning_capture.LearningRunSummary
+    learning_summary: object
     s: Settings
     turn_id: str
     conversation_claim_id: str | None
@@ -265,7 +265,7 @@ async def _finalize_cursor_and_retry(
         request.group,
         request.missed_messages,
         final_cursor,
-        request.learning_summary,
+        cast("learning_capture.LearningRunSummary", request.learning_summary),
         get_messages_since,
         request.deps.start_learning_review_workflow,
         enabled=request.s.learning.enabled,

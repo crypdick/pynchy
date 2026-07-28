@@ -31,6 +31,7 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
@@ -76,7 +77,6 @@ _P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_DIRTY = "pynchy.host.orchestrator.messaging.run_context.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
@@ -130,6 +130,9 @@ def _make_deps(
     deps.send_reaction_to_channels = AsyncMock()
     deps.send_reaction_to_outbound = AsyncMock()
     deps.processing_ack_emoji = MagicMock(return_value="🦞")
+    deps.repo_is_dirty = MagicMock(return_value=False)
+    deps.new_learning_run_summary = learning_capture.LearningRunSummary
+    deps.observe_learning_output = learning_capture.observe_learning_output
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
     deps.start_interactive_turn = AsyncMock()
@@ -1827,9 +1830,9 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=True),
             patch(_P_GET_RA, return_value=None),
         ):
+            deps.repo_is_dirty.return_value = True
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
@@ -2103,7 +2106,6 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=False),
             patch(_P_GET_RA, return_value=None),
         ):
             ms.return_value = _settings_mock(tmp_path)
@@ -2128,9 +2130,9 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, return_value=True),
             patch(_P_GET_RA, return_value=None),
         ):
+            deps.repo_is_dirty.return_value = True
             ms.return_value = _settings_mock(tmp_path)
             await process_group_messages(deps, "g@g.us")
 
@@ -2153,9 +2155,9 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_DIRTY, side_effect=OSError("permission denied")),
             patch(_P_GET_RA, return_value=None),
         ):
+            deps.repo_is_dirty.side_effect = OSError("permission denied")
             ms.return_value = _settings_mock(tmp_path)
             # Should not raise
             await process_group_messages(deps, "g@g.us")

@@ -12,6 +12,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.api import LearningConfig, ObsidianLearningConfig
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
 from pynchy.state import init_test_database
 from pynchy.turn_outcomes import TurnOutcome
@@ -68,6 +69,9 @@ def _make_deps(
     deps.set_typing_on_channels = AsyncMock()
     deps.catch_up_channels = AsyncMock()
     deps.emit = MagicMock()
+    deps.repo_is_dirty = MagicMock(return_value=False)
+    deps.new_learning_run_summary = learning_capture.LearningRunSummary
+    deps.observe_learning_output = learning_capture.observe_learning_output
     deps.run_agent = AsyncMock(return_value="success")
     deps.handle_streamed_output = AsyncMock(return_value=False)
 

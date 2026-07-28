@@ -379,28 +379,6 @@ imports = [
 reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.messaging.run_context"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator.messaging.run_context still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.turn_control"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.api",
-]
-reason = "pynchy.host.orchestrator.messaging.turn_control still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.session_handler"
 target_role = "git_adapter"
 rule = "direction"
