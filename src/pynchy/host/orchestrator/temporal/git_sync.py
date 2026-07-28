@@ -211,7 +211,7 @@ async def run_host_git_sync() -> str:
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
     settings = get_settings()
     state = await _load_host_state()
-    repo_ctx = _find_pynchy_repo_ctx(settings, settings.project_root)
+    repo_ctx = _find_pynchy_repo_ctx(tuple(settings.repos.overrides), settings.project_root)
     result = "idle"
 
     try:

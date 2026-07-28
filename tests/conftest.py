@@ -31,6 +31,7 @@ from pynchy.config.api import (
     repository_settings_sources,
 )
 from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
+from pynchy.host.container_manager.credentials import configure_workspace_environment
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
@@ -43,6 +44,7 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopVerdict,
 )
+from pynchy.host.git_ops.api import GitSyncRuntime, configure_git_sync_runtime
 from pynchy.host.git_ops.utils import configure_git_default_cwd
 from pynchy.host.learning.api import (
     LearningPathsRuntime,
@@ -909,6 +911,12 @@ def reset_settings(monkeypatch):
         configure_pending_questions_ipc_base_dir(safe.data_dir / "ipc")
         configure_personalized_skills_root(safe.project_root)
         configure_git_default_cwd(safe.project_root)
+        configure_git_sync_runtime(
+            GitSyncRuntime(
+                project_root=safe.project_root,
+                repo_slugs=tuple(safe.repos.overrides),
+            )
+        )
         configure_allowed_message_filter(access.filter_allowed_messages)
         configure_workspace_placement_for(safe)
         configure_learning_paths_for(safe)
@@ -939,6 +947,7 @@ def reset_settings(monkeypatch):
                 runtime_name=lambda: "docker",
             )
         )
+        configure_workspace_environment(lambda *, is_admin, group_folder: {})
         configure_container_spawn_runtime(
             container_cli="docker",
             ensure_agent_image=lambda **_kwargs: None,

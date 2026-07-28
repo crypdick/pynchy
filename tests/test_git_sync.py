@@ -83,7 +83,12 @@ def git_env(tmp_path: Path):
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.host.git_ops.utils._default_cwd", s.project_root))
-        stack.enter_context(patch("pynchy.host.git_ops.sync_poll.get_settings", return_value=s))
+        sync_poll.configure_git_sync_runtime(
+            sync_poll.GitSyncRuntime(
+                project_root=s.project_root,
+                repo_slugs=tuple(s.repos.overrides),
+            )
+        )
         yield {
             "origin": origin,
             "project": project,

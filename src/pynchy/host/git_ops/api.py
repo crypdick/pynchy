@@ -27,10 +27,12 @@ from pynchy.host.git_ops.sync import (
     resolve_git_policy,
 )
 from pynchy.host.git_ops.sync_poll import (
+    GitSyncRuntime,
     HostSyncState,
     _check_local_head_drift,
     _find_pynchy_repo_ctx,
     check_origin_drift,
+    configure_git_sync_runtime,
     get_deploy_config_hash,
     get_local_head_sha,
     host_get_origin_main_sha,
@@ -79,6 +81,7 @@ __all__ = [
     "GIT_POLICY_MERGE",
     "GIT_POLICY_PR",
     "GitSyncDeps",
+    "GitSyncRuntime",
     "HostSyncState",
     "RepoContext",
     "WorktreeError",
@@ -87,6 +90,7 @@ __all__ = [
     "check_local_head_drift",
     "check_origin_drift",
     "check_token_expiry",
+    "configure_git_sync_runtime",
     "count_commits",
     "count_unpushed_commits",
     "detect_main_branch",

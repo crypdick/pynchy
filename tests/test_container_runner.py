@@ -200,7 +200,6 @@ class _AgentRunnerDeps:
 
 
 _SETTINGS_MODULES = [
-    _CR_CREDS,
     "pynchy.host.orchestrator.workspace_config",
 ]
 

@@ -42,7 +42,11 @@ from pynchy.host.container_manager.api import (
     RepoMount,
     RepoMountResolution,
 )
-from pynchy.host.container_manager.credentials import build_agent_env_vars, has_api_credentials
+from pynchy.host.container_manager.credentials import (
+    build_agent_env_vars,
+    configure_workspace_environment,
+    has_api_credentials,
+)
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
@@ -83,6 +87,8 @@ from pynchy.host.container_manager.session import (
     get_session,
 )
 from pynchy.host.git_ops.api import (
+    GitSyncRuntime,
+    configure_git_sync_runtime,
     count_unpushed_commits,
     get_deploy_config_hash,
     get_head_sha,
@@ -169,6 +175,7 @@ from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
+    load_resolved_tool_access,
     update_profile_skill_policy,
 )
 from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
@@ -267,6 +274,73 @@ async def _wait_for_agent_query(session: object, query_timeout_seconds: float) -
     except SessionDiedError:
         return False
     return True
+
+
+def _resolve_repo_mounts(
+    group_folder: str,
+    repo_accesses: tuple[str, ...],
+) -> RepoMountResolution:
+    mounts: list[RepoMount] = []
+    notices: list[str] = []
+    for slug in repo_accesses:
+        repo_context = get_repo_context(slug)
+        if repo_context is None:
+            continue
+        worktree = ensure_worktree(group_folder, repo_context)
+        mounts.append(
+            RepoMount(
+                slug=repo_context.slug,
+                root=repo_context.root,
+                worktree_path=worktree.path,
+            )
+        )
+        notices.extend(worktree.notices)
+    return RepoMountResolution(tuple(mounts), tuple(notices))
+
+
+def _mount_agent_homes(
+    group_folder: str,
+    plugin_manager: pluggy.PluginManager | None,
+) -> AgentHomeMounts:
+    homes = prepare_agent_homes(group_folder, plugin_manager)
+    return AgentHomeMounts(
+        claude_home=homes.claude_home,
+        codex_home=homes.codex_home,
+        vault_mount_root=(
+            prepare_vault_mount_root(homes.learning_paths)
+            if homes.learning_paths is not None
+            else None
+        ),
+        vault_mount_path=(
+            homes.learning_paths.vault_mount_path if homes.learning_paths is not None else None
+        ),
+    )
+
+
+def _workspace_environment(
+    settings: Settings,
+    *,
+    is_admin: bool,
+    group_folder: str,
+) -> dict[str, str]:
+    access = load_resolved_tool_access(group_folder)
+    env_vars = dict(access.workspace_env) if access is not None else {}
+    if is_admin:
+        chrome_profiles = settings.chrome_profiles
+    else:
+        chrome_profiles_set: set[str] = set()
+        resolved = load_resolved_config(group_folder)
+        for tool_name in resolved.tools if resolved else []:
+            tool = settings.tools.get(tool_name)
+            if tool is None or tool.type != "mcp" or "." not in tool_name:
+                continue
+            _, instance_name = tool_name.split(".", 1)
+            if instance_name in settings.chrome_profiles:
+                chrome_profiles_set.add(instance_name)
+        chrome_profiles = sorted(chrome_profiles_set)
+    if chrome_profiles:
+        env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
+    return env_vars
 
 
 async def _prepare_host_direct_mcp_servers(
@@ -522,6 +596,12 @@ class PynchyApp(ThreadRouting):
         pending_questions.configure_pending_questions_ipc_base_dir(settings.data_dir / "ipc")
         configure_personalized_skills_root(settings.project_root)
         configure_git_default_cwd(settings.project_root)
+        configure_git_sync_runtime(
+            GitSyncRuntime(
+                project_root=settings.project_root,
+                repo_slugs=tuple(settings.repos.overrides),
+            )
+        )
         configure_deploy_git_runtime(
             DeployGitRuntime(
                 get_head_sha=get_head_sha,
@@ -609,58 +689,24 @@ class PynchyApp(ThreadRouting):
         configure_runtime_override(settings.container.runtime)
         runtime = get_runtime()
 
-        def resolve_repo_mounts(
-            group_folder: str,
-            repo_accesses: tuple[str, ...],
-        ) -> RepoMountResolution:
-            mounts: list[RepoMount] = []
-            notices: list[str] = []
-            for slug in repo_accesses:
-                repo_context = get_repo_context(slug)
-                if repo_context is None:
-                    continue
-                worktree = ensure_worktree(group_folder, repo_context)
-                mounts.append(
-                    RepoMount(
-                        slug=repo_context.slug,
-                        root=repo_context.root,
-                        worktree_path=worktree.path,
-                    )
-                )
-                notices.extend(worktree.notices)
-            return RepoMountResolution(tuple(mounts), tuple(notices))
-
-        def mount_agent_homes(
-            group_folder: str,
-            plugin_manager: pluggy.PluginManager | None,
-        ) -> AgentHomeMounts:
-            homes = prepare_agent_homes(group_folder, plugin_manager)
-            return AgentHomeMounts(
-                claude_home=homes.claude_home,
-                codex_home=homes.codex_home,
-                vault_mount_root=(
-                    prepare_vault_mount_root(homes.learning_paths)
-                    if homes.learning_paths is not None
-                    else None
-                ),
-                vault_mount_path=(
-                    homes.learning_paths.vault_mount_path
-                    if homes.learning_paths is not None
-                    else None
-                ),
-            )
-
         configure_mount_operations(
             MountOperations(
-                prepare_agent_homes=mount_agent_homes,
+                prepare_agent_homes=_mount_agent_homes,
                 repo_container_path=repo_container_path,
                 runtime_name=lambda: runtime.name,
+            )
+        )
+        configure_workspace_environment(
+            lambda *, is_admin, group_folder: _workspace_environment(
+                settings,
+                is_admin=is_admin,
+                group_folder=group_folder,
             )
         )
         configure_container_spawn_runtime(
             container_cli=runtime.cli,
             ensure_agent_image=ensure_agent_image_available,
-            resolve_repo_mounts=resolve_repo_mounts,
+            resolve_repo_mounts=_resolve_repo_mounts,
         )
         configure_container_process_runtime(
             container_cli=runtime.cli,
