@@ -22,6 +22,7 @@ from pynchy.config.api import (
     CommandWordsConfig,
     ContainerConfig,
     IntervalsConfig,
+    JobConfig,
     LoggingConfig,
     QueueConfig,
     SchedulerConfig,
@@ -29,10 +30,17 @@ from pynchy.config.api import (
     SecurityConfig,
     ServerConfig,
     Settings,
+    WorkspaceConfig,
     access,
     apply_tool_access,
+    mutate_config_toml,
+    parse_chat_ref,
     repository_settings_sources,
+    resolve_tool_access,
     tool_process_environment,
+)
+from pynchy.config.api import (
+    reset_settings as reset_config_settings,
 )
 from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
 from pynchy.host.container_manager.credentials import configure_workspace_environment
@@ -60,9 +68,24 @@ from pynchy.host.container_manager.security.gate import configure_security_resol
 from pynchy.host.git_ops import repo
 from pynchy.host.git_ops.api import (
     GitSyncRuntime,
+    check_local_head_drift,
+    check_origin_drift,
     configure_git_sync_runtime,
     detect_main_branch,
+    find_pynchy_repo_ctx,
+    get_deploy_config_hash,
+    get_head_commit_message,
+    get_head_sha,
+    get_local_head_sha,
+    get_repo_context,
+    git_env_with_token,
     host_create_pr_from_worktree,
+    host_get_origin_main_sha,
+    host_notify_worktree_updates,
+    host_update_main_result,
+    is_repo_dirty,
+    last_notified_sha,
+    probe_origin_main_sha,
     redact_git_diagnostic,
     run_git,
 )
@@ -89,13 +112,29 @@ from pynchy.host.orchestrator.api import (
     static_workspace_folder,
 )
 from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
+from pynchy.host.orchestrator.job_sources import (
+    PluginJobsRuntime,
+    configure_plugin_jobs_runtime,
+)
 from pynchy.host.orchestrator.messaging.deps import CommandMatcher
 from pynchy.host.orchestrator.messaging.pending_questions import (
     configure_pending_questions_ipc_base_dir,
 )
 from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
+from pynchy.host.orchestrator.startup_handler import (
+    StartupRuntime,
+    configure_startup_runtime,
+)
+from pynchy.host.orchestrator.temporal.git_sync import (
+    TemporalGitSyncRuntime,
+    configure_temporal_git_sync_runtime,
+)
 from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
-from pynchy.host.orchestrator.workspace_registration import workspace_security
+from pynchy.host.orchestrator.workspace_registration import (
+    configure_workspace_registration_runtime,
+    workspace_security,
+)
+from pynchy.host.orchestrator.workspace_threads import configure_workspace_threads_runtime
 from pynchy.plugins.api import (
     ApprovalContract,
     ApprovalMode,
@@ -993,6 +1032,50 @@ def reset_settings(monkeypatch):
         repo.configure_repo_runtime(
             get_settings=settings_source,
             resolve_workspace_config=resolve_workspace_config,
+        )
+        workspace_config.configure_workspace_config_runtime(
+            workspace_config.WorkspaceConfigRuntime(
+                get_settings=settings_source,
+                parse_workspace_config=WorkspaceConfig.model_validate,
+                apply_tool_access=apply_tool_access,
+                resolve_tool_access=resolve_tool_access,
+                mutate_config_toml=mutate_config_toml,
+                reset_settings=reset_config_settings,
+            )
+        )
+        configure_workspace_registration_runtime(parse_chat_reference=parse_chat_ref)
+        configure_workspace_threads_runtime(settings=settings_source)
+        configure_plugin_jobs_runtime(
+            PluginJobsRuntime(
+                get_settings=settings_source,
+                parse_job=JobConfig.model_validate,
+            )
+        )
+        configure_startup_runtime(
+            StartupRuntime(
+                get_settings=settings_source,
+                head_commit_message=get_head_commit_message,
+                head_sha=get_head_sha,
+                repo_dirty=is_repo_dirty,
+                git=run_git,
+            )
+        )
+        configure_temporal_git_sync_runtime(
+            TemporalGitSyncRuntime(
+                get_settings=settings_source,
+                check_local_head_drift=check_local_head_drift,
+                check_origin_drift=check_origin_drift,
+                find_pynchy_repo_ctx=find_pynchy_repo_ctx,
+                get_deploy_config_hash=get_deploy_config_hash,
+                get_local_head_sha=get_local_head_sha,
+                get_repo_context=get_repo_context,
+                git_env_with_token=git_env_with_token,
+                host_get_origin_main_sha=host_get_origin_main_sha,
+                host_notify_worktree_updates=host_notify_worktree_updates,
+                host_update_main_result=host_update_main_result,
+                last_notified_sha=last_notified_sha,
+                probe_origin_main_sha=probe_origin_main_sha,
+            )
         )
         configure_gateway_runtime(is_apple_container=False, get_settings=settings_source)
         configure_mcp_resolution_runtime(

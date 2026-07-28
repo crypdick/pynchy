@@ -33,10 +33,16 @@ from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves
     CanaryRun,
 )
 from pynchy.config.api import (
+    JobConfig,
     Settings,
+    WorkspaceConfig,
     access,
     apply_tool_access,
     get_settings,
+    mutate_config_toml,
+    parse_chat_ref,
+    reset_settings,
+    resolve_tool_access,
     tool_process_environment,
 )
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
@@ -126,19 +132,29 @@ from pynchy.host.git_ops.api import (
     GitSyncRuntime,
     RepoSettings,
     ResolvedRepoWorkspace,
+    check_local_head_drift,
+    check_origin_drift,
     configure_git_sync_runtime,
     configure_repo_runtime,
     count_unpushed_commits,
     detect_main_branch,
+    find_pynchy_repo_ctx,
     get_deploy_config_hash,
+    get_head_commit_message,
     get_head_sha,
     get_local_head_sha,
     get_repo_context,
+    git_env_with_token,
     host_create_pr_from_worktree,
+    host_get_origin_main_sha,
+    host_notify_worktree_updates,
     host_update_main,
+    host_update_main_result,
     is_repo_dirty,
+    last_notified_sha,
     needs_container_rebuild,
     needs_deploy,
+    probe_origin_main_sha,
     redact_git_diagnostic,
     repo_container_path,
     repo_host_root,
@@ -188,6 +204,10 @@ from pynchy.host.orchestrator.adapters import (
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.deploy import DeployGitRuntime, configure_deploy_git_runtime
+from pynchy.host.orchestrator.job_sources import (
+    PluginJobsRuntime,
+    configure_plugin_jobs_runtime,
+)
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.host.orchestrator.messaging import (
     ask_user_handler,
@@ -213,10 +233,21 @@ from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - b
     ScheduledExecutionLifecycle,
     SchedulerRuntimeConfig,
 )
+from pynchy.host.orchestrator.startup_handler import (
+    StartupRuntime,
+    StartupSettings,
+    configure_startup_runtime,
+)
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
+from pynchy.host.orchestrator.temporal.git_sync import (
+    TemporalGitSyncRuntime,
+    configure_temporal_git_sync_runtime,
+)
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_config import (
+    WorkspaceConfigRuntime,
+    configure_workspace_config_runtime,
     load_resolved_config,
     load_resolved_tool_access,
     static_workspace_folder,
@@ -225,9 +256,11 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
 from pynchy.host.orchestrator.workspace_registration import (
     available_workspace_groups,
+    configure_workspace_registration_runtime,
     rebind_workspace_runtime,
     workspace_security,
 )
+from pynchy.host.orchestrator.workspace_threads import configure_workspace_threads_runtime
 from pynchy.identifiers import (
     GroupFolder,
     RuntimeId,
@@ -415,6 +448,50 @@ def _resolve_mcp_workspace_config(
 
 def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     """Wire container policy readers to the current host configuration."""
+    configure_workspace_config_runtime(
+        WorkspaceConfigRuntime(
+            get_settings=get_settings,
+            parse_workspace_config=WorkspaceConfig.model_validate,
+            apply_tool_access=apply_tool_access,
+            resolve_tool_access=resolve_tool_access,
+            mutate_config_toml=mutate_config_toml,
+            reset_settings=reset_settings,
+        )
+    )
+    configure_workspace_registration_runtime(parse_chat_reference=parse_chat_ref)
+    configure_workspace_threads_runtime(settings=get_settings)
+    configure_plugin_jobs_runtime(
+        PluginJobsRuntime(
+            get_settings=get_settings,
+            parse_job=JobConfig.model_validate,
+        )
+    )
+    configure_temporal_git_sync_runtime(
+        TemporalGitSyncRuntime(
+            get_settings=get_settings,
+            check_local_head_drift=check_local_head_drift,
+            check_origin_drift=check_origin_drift,
+            find_pynchy_repo_ctx=find_pynchy_repo_ctx,
+            get_deploy_config_hash=get_deploy_config_hash,
+            get_local_head_sha=get_local_head_sha,
+            get_repo_context=get_repo_context,
+            git_env_with_token=git_env_with_token,
+            host_get_origin_main_sha=host_get_origin_main_sha,
+            host_notify_worktree_updates=host_notify_worktree_updates,
+            host_update_main_result=host_update_main_result,
+            last_notified_sha=last_notified_sha,
+            probe_origin_main_sha=probe_origin_main_sha,
+        )
+    )
+    configure_startup_runtime(
+        StartupRuntime(
+            get_settings=cast("Callable[[], StartupSettings]", get_settings),
+            head_commit_message=get_head_commit_message,
+            head_sha=get_head_sha,
+            repo_dirty=is_repo_dirty,
+            git=run_git,
+        )
+    )
     configure_repo_runtime(
         get_settings=cast("Callable[[], RepoSettings]", get_settings),
         resolve_workspace_config=cast(

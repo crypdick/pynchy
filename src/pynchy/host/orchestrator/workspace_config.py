@@ -13,23 +13,11 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
-from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-    ResolvedToolAccess,
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-    Settings,
-    WorkspaceConfig,
-    apply_tool_access,
-    get_settings,
-    mutate_config_toml,
-    reset_settings,
-    resolve_tool_access,
-)
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
@@ -54,6 +42,64 @@ from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves wo
     capability_pattern_matches,
     most_restrictive_capability_rule,
 )
+
+type JobConfig = Any
+type ResolvedToolAccess = Any
+type ResolvedWorkspaceConfig = Any
+type Settings = Any
+type WorkspaceConfig = Any
+
+
+def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
+    raise RuntimeError("Workspace configuration has not been composed")
+
+
+@dataclass(frozen=True)
+class WorkspaceConfigRuntime:
+    get_settings: Callable[[], Any]
+    parse_workspace_config: Callable[[object], Any]
+    apply_tool_access: Callable[..., tuple[Any, Any]]
+    resolve_tool_access: Callable[..., Any]
+    mutate_config_toml: Callable[..., object]
+    reset_settings: Callable[[], None]
+
+
+_runtime = WorkspaceConfigRuntime(
+    get_settings=_unconfigured_runtime,
+    parse_workspace_config=_unconfigured_runtime,
+    apply_tool_access=_unconfigured_runtime,
+    resolve_tool_access=_unconfigured_runtime,
+    mutate_config_toml=_unconfigured_runtime,
+    reset_settings=_unconfigured_runtime,
+)
+
+
+def configure_workspace_config_runtime(runtime: WorkspaceConfigRuntime) -> None:
+    """Bind configuration loading and persistence at host composition."""
+    global _runtime  # noqa: PLW0603, RUF100 - one host process owns workspace configuration.
+    _runtime = runtime
+
+
+def get_settings() -> Settings:
+    return cast("Settings", _runtime.get_settings())
+
+
+def apply_tool_access(
+    *args: object, **kwargs: object
+) -> tuple[ResolvedWorkspaceConfig, ResolvedToolAccess]:
+    return _runtime.apply_tool_access(*args, **kwargs)
+
+
+def resolve_tool_access(*args: object, **kwargs: object) -> ResolvedToolAccess:
+    return cast("ResolvedToolAccess", _runtime.resolve_tool_access(*args, **kwargs))
+
+
+def mutate_config_toml(*args: object, **kwargs: object) -> None:
+    _runtime.mutate_config_toml(*args, **kwargs)
+
+
+def reset_settings() -> None:
+    _runtime.reset_settings()
 
 
 @dataclass
@@ -154,7 +200,7 @@ def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpe
 
 def _workspace_spec_config(spec: WorkspaceSpec) -> WorkspaceConfig:
     """Validate a plugin's configuration transport at its application boundary."""
-    return WorkspaceConfig.model_validate(spec.config)
+    return cast("WorkspaceConfig", _runtime.parse_workspace_config(spec.config))
 
 
 def load_workspace_config(
