@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pluggy  # noqa: TC002 - beartype resolves agent-core annotations at runtime.
 
 from pynchy.host.orchestrator.action_intents import (
@@ -60,12 +58,12 @@ from pynchy.host.orchestrator.workspace_config import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.plugins.api import AgentCoreSpec
+from pynchy.turn_outcomes import (
+    TurnOutcome,  # noqa: TC001 - beartype resolves public API annotations at runtime.
+)
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
-
-if TYPE_CHECKING:
-    from pynchy.turn_outcomes import TurnOutcome
 
 
 async def dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:
