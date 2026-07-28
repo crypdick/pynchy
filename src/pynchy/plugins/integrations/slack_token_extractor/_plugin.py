@@ -29,7 +29,8 @@ from typing import TYPE_CHECKING, Any
 import pluggy
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.logger import logger
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -45,7 +46,6 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
     chrome_path,

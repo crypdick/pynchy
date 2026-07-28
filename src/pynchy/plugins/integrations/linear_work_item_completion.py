@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured completion callbacks at runtime.
+    Awaitable,
+    Callable,
+)
+from dataclasses import dataclass
+from typing import Any
+
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.plugins.integrations.linear_client import LinearError
@@ -10,15 +17,40 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     reconcile_work_item,
 )
-from pynchy.state.api import (
-    WorkItemTransitionRequest,
-    begin_work_item_transition,
-    begin_work_item_transition_if_lifecycle_current,
-    get_latest_unresolved_work_item_transition,
-    get_work_item_execution_for_issue,
-    get_work_item_transition_by_request,
-)
 from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
+
+
+@dataclass(frozen=True)
+class LinearWorkItemCompletionRuntime:
+    """Durable transition operations selected during Linear plugin composition."""
+
+    get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
+    get_transition_by_request: Callable[[str], Awaitable[Any]]
+    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
+    transition_request: Callable[..., Any]
+    begin_transition: Callable[[Any], Awaitable[Any]]
+    begin_transition_if_lifecycle_current: Callable[..., Awaitable[Any]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearWorkItemCompletionRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_work_item_completion_runtime(
+    runtime: LinearWorkItemCompletionRuntime,
+) -> None:
+    """Set durable work-item transition operations for Linear Done callbacks."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearWorkItemCompletionRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear work-item completion runtime has not been configured")
+    return _runtime.runtime
 
 
 async def complete_reviewed_work_item(
@@ -30,13 +62,17 @@ async def complete_reviewed_work_item(
     controller_workspace: str | None = None,
 ) -> WorkItemExecution | None:
     """Complete owner-local work against the board that reported Done."""
-    execution = await get_work_item_execution_for_issue(issue_id, workspace=execution_workspace)
+    runtime = _configured_runtime()
+    execution = await runtime.get_execution_for_issue(
+        issue_id,
+        workspace=execution_workspace,
+    )
     if execution is None:
         return None
     request_id = f"linear-review:{delivery_id}"
-    transition = await get_work_item_transition_by_request(request_id)
+    transition = await runtime.get_transition_by_request(request_id)
     if execution.status is WorkItemExecutionStatus.UNKNOWN:
-        transition = await get_latest_unresolved_work_item_transition(execution.id)
+        transition = await runtime.get_latest_unresolved_transition(execution.id)
         if transition is None or transition.target_status != "done":
             return None
     elif execution.status in {
@@ -46,7 +82,7 @@ async def complete_reviewed_work_item(
         WorkItemExecutionStatus.BLOCKED,
     }:
         if transition is None:
-            request = WorkItemTransitionRequest(
+            request = runtime.transition_request(
                 execution=execution,
                 request_id=request_id,
                 operation="complete_after_linear_done",
@@ -56,9 +92,9 @@ async def complete_reviewed_work_item(
                 evidence_refs=execution.evidence_refs,
             )
             if lifecycle_fence is None:
-                transition = await begin_work_item_transition(request)
+                transition = await runtime.begin_transition(request)
             else:
-                transition = await begin_work_item_transition_if_lifecycle_current(
+                transition = await runtime.begin_transition_if_lifecycle_current(
                     request,
                     lifecycle_fence=lifecycle_fence,
                 )

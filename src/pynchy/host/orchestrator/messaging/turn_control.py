@@ -10,10 +10,7 @@ from typing import Any
 
 import pynchy.types as types
 from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.learning import capture as learning_capture
-from pynchy.host.orchestrator.execution_outcomes import (
-    TurnOutcome,
-)
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     MessageHandlerDeps,
 )
@@ -31,13 +28,16 @@ from pynchy.host.orchestrator.messaging.turn_recovery import (
     handle_reset_handoff,
     resume_interrupted_message_if_present,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
     resume_paused_in_flight_turn,
 )
+from pynchy.turn_outcomes import (
+    TurnOutcome,
+)
+from pynchy.types import RuntimeTarget
 
 ProcessPending = Callable[[str], Awaitable[TurnOutcome]]
 GetPendingMessages = Callable[[str, str], Awaitable[list[types.NewMessage]]]

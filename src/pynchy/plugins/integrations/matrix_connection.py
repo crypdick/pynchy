@@ -13,7 +13,7 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationClaimId,
     ConversationId,
     ConversationSubject,
@@ -24,20 +24,18 @@ from pynchy.conversation.models import (
     ExternalDeliveryReceipt,
     ExternalProvider,
     ExternalRoute,
+    routed_conversation_folder,
 )
-from pynchy.conversation.workspaces import routed_conversation_folder
-from pynchy.host.orchestrator.conversation_control import (
+from pynchy.host.orchestrator.api import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
-    ensure_conversation_workspace,
-)
-from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
+    ensure_conversation_workspace,
     register_runtime_workspace_restriction,
     unregister_runtime_workspace_restriction,
 )
 from pynchy.logger import logger
-from pynchy.plugins.connections import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations.
     ConnectionRuntimeContext,
 )
 from pynchy.plugins.integrations.matrix_event_admission import eligible_matrix_event

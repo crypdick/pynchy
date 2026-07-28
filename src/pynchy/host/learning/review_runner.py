@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from pynchy.host.learning.mirror import sync_vault_mount_mirror
-from pynchy.host.learning.packet_models import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    LearningPacket,
-)
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
+from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    LearningPacket,
+)
 from pynchy.types import WorkspaceProfile
 
 RunAgent = Callable[..., Awaitable[str]]

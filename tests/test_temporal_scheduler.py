@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from conftest import make_settings
+from conftest import make_container_runtime_operations, make_settings
 from temporalio import activity
 from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
 from temporalio.exceptions import ActivityError, WorkflowAlreadyStartedError
@@ -29,26 +29,24 @@ import pynchy.host.orchestrator.temporal.linear_work_items as temporal_linear_wo
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
-from pynchy.config import (
+from pynchy.config.api import (
     CanaryConfig,
+    JobConfig,
     ProfileConfig,
     RepoConfig,
+    ReposConfig,
     SchedulerConfig,
     WorkspaceConfig,
 )
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ReposConfig
-from pynchy.host.learning.packet_codec import packet_to_payload
-from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
 from pynchy.host.orchestrator.startup_readiness import (
     StartupReadiness,
     StartupReadinessError,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
+from pynchy.learning_packets import LearningPacket, packet_to_payload
 from pynchy.state import (
     begin_in_flight_turn,
     claim_in_flight_turn,
@@ -56,6 +54,7 @@ from pynchy.state import (
     init_test_database,
     initialize_deployment_state,
 )
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import (
     CanaryOutcome,
     CanaryRun,
@@ -94,7 +93,8 @@ class NullSchedulerDeps:
 
     queue: GroupQueue = field(
         default_factory=lambda: GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            make_container_runtime_operations(),
         )
     )
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
@@ -388,9 +388,7 @@ class TestTemporalSchedulerRuntime:
         assert (
             "pynchy.host.orchestrator.temporal.workflows" in runner.restrictions.passthrough_modules
         )
-        assert (
-            "pynchy.host.orchestrator.execution_outcomes" in runner.restrictions.passthrough_modules
-        )
+        assert "pynchy.turn_outcomes" in runner.restrictions.passthrough_modules
 
     def test_agent_task_workflow_id_is_stable_and_temporal_safe(self, temporal_task):
         workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)

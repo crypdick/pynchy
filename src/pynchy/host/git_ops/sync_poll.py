@@ -8,9 +8,9 @@ import subprocess  # noqa: S404, RUF100 - used only for subprocess exception typ
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
-from pynchy.config import get_settings
-from pynchy.config.settings import (
+from pynchy.config.api import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+    get_settings,
 )
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import (

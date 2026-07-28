@@ -12,7 +12,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.turn_outcomes import TurnOutcome
 
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
 

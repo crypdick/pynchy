@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from pynchy.capabilities import CapabilityId
-from pynchy.host.container_manager.security.llm_redaction import (
+from pynchy.plugins.api import CapabilityId
+from pynchy.redaction import (
     RedactionRequestError,
     RedactionSession,
     RestorationCapability,

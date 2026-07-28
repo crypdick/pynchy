@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.workspaces import dynamic_thread_folder, parent_workspace_name
+from pynchy.conversation.api import dynamic_thread_folder, parent_workspace_name
 
 __all__ = ("dynamic_thread_folder", "parent_workspace_name", "static_workspace_name")
 

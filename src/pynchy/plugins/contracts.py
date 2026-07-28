@@ -7,12 +7,6 @@ from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves dataclass annotations at runtime.
 )
 
-from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
-    JobConfig,
-)
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
-    WorkspaceConfig,
-)
 from pynchy.plugins.mcp_server import (  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
     McpServerConfig,
 )
@@ -54,7 +48,7 @@ class WorkspaceSpec:
     """One named, validated workspace supplied by a plugin."""
 
     folder: str
-    config: WorkspaceConfig
+    config: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,4 +56,4 @@ class JobSpec:
     """One named, validated config-backed job supplied by a plugin."""
 
     name: str
-    config: JobConfig
+    config: dict[str, object]

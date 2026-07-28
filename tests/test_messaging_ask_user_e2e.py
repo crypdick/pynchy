@@ -15,13 +15,17 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
+from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.orchestrator.messaging.ask_user_handler import (
+    AskUserRuntimeOperations,
+    handle_ask_user_answer,
+)
 from pynchy.host.orchestrator.messaging.pending_questions import (
     create_pending_question,
     resolve_pending_question,
@@ -127,9 +131,19 @@ class FakeAskUserDeps:
 
     def __init__(self) -> None:
         self.enqueue_message = AsyncMock()
+        self.has_live_session = MagicMock(return_value=False)
+        self.ask_user_runtime_operations = AskUserRuntimeOperations(
+            has_live_session=self.has_live_session,
+            persist_skill_access=lambda _pending, _answer: None,
+            write_response=self._write_response,
+        )
 
     def has_active_host_process(self, _group_folder: str) -> bool:
         return False
+
+    @staticmethod
+    def _write_response(group_folder: str, request_id: str, result: dict[str, object]) -> None:
+        write_ipc_response(ipc_response_path(group_folder, request_id), {"result": result})
 
 
 # ---------------------------------------------------------------------------
@@ -160,10 +174,12 @@ class TestAskUserE2E:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
-                return_value=settings,
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await dispatch(data, "mygroup", False, deps)
 
@@ -186,19 +202,16 @@ class TestAskUserE2E:
         # Step 2: Simulate user answering via channel callback
         ask_user_deps = FakeAskUserDeps()
 
-        # Mock get_session to return an alive session
-        fake_session = type("FakeSession", (), {"is_alive": True})()
+        ask_user_deps.has_live_session.return_value = True
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
-                return_value=settings,
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=fake_session,
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(REQUEST_ID, {"answer": "JWT"}, ask_user_deps)
 
@@ -240,13 +253,12 @@ class TestAskUserE2E:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
-                return_value=settings,
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session", return_value=None
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
             await handle_ask_user_answer(request_id, {"answer": "OAuth"}, ask_user_deps)
 
@@ -282,10 +294,12 @@ class TestAskUserE2E:
 
         with (
             patch(
-                "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
-                return_value=settings,
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await dispatch(data, "mygroup", False, deps)
 

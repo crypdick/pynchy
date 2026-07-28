@@ -7,13 +7,17 @@ the canonical JID are skipped.
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves sender-policy annotations at runtime.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from pynchy.config import access
 from pynchy.logger import logger
-from pynchy.state.api import (
+from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    OutboundDeliveryOperation,
+    PendingDelivery,
     advance_cursors_atomic,
     get_channel_cursor,
     get_pending_outbound,
@@ -22,10 +26,6 @@ from pynchy.state.api import (
     mark_delivery_succeeded,
     message_exists,
     prune_stale_cursors,
-)
-from pynchy.state.outbound import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    OutboundDeliveryOperation,
-    PendingDelivery,
 )
 from pynchy.types import (
     Channel,
@@ -43,6 +43,25 @@ _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 
 # Module-level cooldown state (survives across calls within a process)
 _last_reconciled: dict[tuple[str, str], datetime] = {}
+_allowed_message_filter: (
+    Callable[[list[NewMessage], object, str | None], list[NewMessage]] | None
+) = None
+
+
+def configure_allowed_message_filter(
+    allowed_message_filter: Callable[[list[NewMessage], object, str | None], list[NewMessage]],
+) -> None:
+    """Inject routed sender policy from application composition."""
+    global _allowed_message_filter  # noqa: PLW0603, RUF100 - one host process owns one sender policy.
+    _allowed_message_filter = allowed_message_filter
+
+
+def _messages_are_allowed(
+    messages: list[NewMessage], group: WorkspaceProfile | None, channel_name: str
+) -> bool:
+    if _allowed_message_filter is None:
+        raise RuntimeError("reconciler sender policy has not been configured")
+    return bool(_allowed_message_filter(messages, group, channel_name))
 
 
 @dataclass(frozen=True)
@@ -192,7 +211,7 @@ async def _ingest_remote_message(
     if exists:
         return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
 
-    if not access.filter_allowed_messages([msg], request.group, request.ch.name):
+    if not _messages_are_allowed([msg], request.group, request.ch.name):
         logger.debug(
             "reconciler_skip_sender",
             channel=request.ch.name,

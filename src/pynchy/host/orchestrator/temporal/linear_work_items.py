@@ -10,13 +10,13 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_tracked_activity_result,
     _require_scheduler_deps,
 )
-from pynchy.plugins.integrations.linear_boot import linear_workspace_boards
-from pynchy.plugins.integrations.linear_decision_inbox import (
+from pynchy.plugins.integrations.api import (
+    linear_workspace_boards,
     reconcile_all_linear_work_items,
 )
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
+    from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
 
 _ACTIVITY_ID = "linear-work-item-reconciliation"
 

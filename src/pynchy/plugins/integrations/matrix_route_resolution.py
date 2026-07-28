@@ -5,11 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.capability_policy import (
-    capability_pattern_matches,
-    most_restrictive_capability_rule,
-)
-from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves route settings.
+from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves route settings.
     Settings,
 )
 from pynchy.types import (
@@ -17,7 +13,9 @@ from pynchy.types import (
     MatrixConnection,
     MatrixEndpoint,
     MatrixOutbound,
+    capability_pattern_matches,
     is_matrix_connection,
+    most_restrictive_capability_rule,
 )
 
 

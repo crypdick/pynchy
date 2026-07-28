@@ -14,7 +14,7 @@ from pynchy.channels import (
     SlackConnectionSettings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
-from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
     ChannelPluginContext,
 )
 from pynchy.types import (

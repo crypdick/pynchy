@@ -5,14 +5,11 @@ manages persistent sessions with IPC-based output streaming, and handles
 activity-based timeouts.
 
 This package is split into focused submodules:
-  serialization  — JSON boundary crossing (ContainerInput <-> dict, output parsing)
   credentials    — Credential discovery and env file writing
-  session_prep   — Session directory file preparation (skills, settings)
   mounts         — Volume mount list and container arg construction
   process        — Process management, graceful stop, container removal
-  snapshots      — IPC snapshot file helpers
   session        — Persistent container sessions and registry
-  orchestrator   — Container spawning and agent core resolution
+  orchestrator   — Container spawning
   mcp.resolution — MCP instance resolution (config expansion, kwargs, trust map)
 """
 
@@ -20,11 +17,6 @@ This package is split into focused submodules:
 # Private helpers should be imported from their submodules directly.
 
 from pynchy.host.container_manager.credentials import has_api_credentials
-from pynchy.host.container_manager.orchestrator import (
-    resolve_agent_core,
-    resolve_container_timeout,
-)
-from pynchy.host.container_manager.process import OnOutput
 from pynchy.host.container_manager.session import (
     ContainerSession,
     SessionDiedError,
@@ -35,7 +27,7 @@ from pynchy.host.container_manager.session import (
     get_session,
     get_session_output_handler,
 )
-from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
+from pynchy.types import OnOutput
 
 __all__ = [
     "ContainerSession",
@@ -48,8 +40,4 @@ __all__ = [
     "get_session",
     "get_session_output_handler",
     "has_api_credentials",
-    "resolve_agent_core",
-    "resolve_container_timeout",
-    "write_groups_snapshot",
-    "write_tasks_snapshot",
 ]

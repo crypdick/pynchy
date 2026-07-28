@@ -241,10 +241,6 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 return_value=image_inspect,
             ),
-            patch(
-                "pynchy.host.container_manager.cleanup.active_session_container_names",
-                return_value=set(),
-            ),
         ):
             ensure_container_system_running(
                 _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
@@ -265,10 +261,6 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 return_value=MagicMock(returncode=0),
             ),
-            patch(
-                "pynchy.host.container_manager.cleanup.active_session_container_names",
-                return_value=set(),
-            ),
         ):
             ensure_container_system_running(
                 OrphanReapAgeMs(0), project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
@@ -288,10 +280,6 @@ class TestEnsureContainerSystemRunning:
             patch(
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 return_value=MagicMock(returncode=0),
-            ),
-            patch(
-                "pynchy.host.container_manager.cleanup.active_session_container_names",
-                return_value=set(),
             ),
         ):
             ensure_container_system_running(  # Should not raise

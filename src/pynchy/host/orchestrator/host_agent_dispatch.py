@@ -2,33 +2,36 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves callback annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
 from typing import Any, Protocol, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves annotations at runtime.
 
-from pynchy.host.container_manager import destroy_session
 from pynchy.host.orchestrator._agent_runner_preflight import (
     PreContainerResult,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
 from pynchy.host.orchestrator.host_execution import (
     HostAgentTurnRequest,
     HostProcessQueue,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    HostRuntimeOperations,
     host_agent_env_vars,
     migrate_host_codex_thread,
     prepare_host_codex_home,
-    prepare_host_direct_mcp_servers,
     run_host_agent_turn,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
-from pynchy.state.runtime_session_recovery import clear_runtime_session_references
+from pynchy.plugins.api import collect_agent_hook_specs, host_agent_hook_configs
+from pynchy.state.api import clear_runtime_session_references
 from pynchy.types import (
     AgentExecutionRuntime,
     ChatJid,
     ContainerInput,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     GroupFolder,
+    RuntimeTarget,
     SessionId,
     WorkspaceProfile,
 )
@@ -63,6 +66,9 @@ class HostAgentDispatchDeps(Protocol):
     @property
     def queue(self) -> HostProcessQueue: ...
 
+    @property
+    def host_runtime_operations(self) -> HostRuntimeOperations: ...
+
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
 
@@ -77,6 +83,7 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
     runtime: AgentExecutionRuntime,
     *,
     is_scheduled_task: bool,
+    destroy_session: Callable[[str], Awaitable[None]],
 ) -> str:
     """Run one durable thread turn through the direct-host runtime."""
     codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager)
@@ -111,11 +118,11 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
         is_scheduled_task=is_scheduled_task,
     )
     input_data.plugin_hooks = host_agent_hook_configs(collect_agent_hook_specs(deps.plugin_manager))
-    await prepare_host_direct_mcp_servers(
+    await deps.host_runtime_operations.prepare_mcp(
         input_data,
-        group_folder=group.folder,
-        chat_jid=chat_jid,
-        broadcast_host_message=deps.broadcast_host_message,
+        group.folder,
+        chat_jid,
+        deps.broadcast_host_message,
     )
     return await run_host_agent_turn(
         HostAgentTurnRequest(
@@ -126,6 +133,7 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
             env=host_agent_env_vars(
                 is_admin=ctx.is_admin,
                 group_folder=group.folder,
+                build_agent_environment=deps.host_runtime_operations.build_agent_environment,
                 codex_home=codex_home,
             ),
             queue=deps.queue,

@@ -105,11 +105,9 @@ def test_host_codex_thread_inspection_error_is_not_treated_as_missing(
 def test_admin_host_execution_uses_full_learning_vault_mirror(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        host_execution,
-        "build_agent_env_vars",
-        lambda **_kwargs: {"OPENAI_BASE_URL": "http://gateway:4000"},
-    )
+    def build_agent_environment(**_kwargs: object) -> dict[str, str]:
+        return {"OPENAI_BASE_URL": "http://gateway:4000"}
+
     learning_paths = LearningPaths(
         profile="default",
         profile_slug="default",
@@ -127,7 +125,11 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
     monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: learning_paths)
     monkeypatch.setattr(host_execution, "prepare_full_vault_host_root", lambda _paths: tmp_path)
 
-    env = host_execution.host_agent_env_vars(is_admin=True, group_folder="pynchy-dev")
+    env = host_execution.host_agent_env_vars(
+        is_admin=True,
+        group_folder="pynchy-dev",
+        build_agent_environment=build_agent_environment,
+    )
 
     assert env["OPENAI_BASE_URL"] == "http://localhost:4000"
     assert env["PYNCHY_GROUP_FOLDER"] == "pynchy-dev"
@@ -145,13 +147,16 @@ def test_admin_host_execution_skips_missing_full_learning_vault_mirror(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(host_execution, "build_agent_env_vars", lambda **_kwargs: {})
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
     monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: object())
     monkeypatch.setattr(host_execution, "prepare_full_vault_host_root", lambda _paths: None)
 
-    env = host_execution.host_agent_env_vars(is_admin=True, group_folder="pynchy-dev")
+    env = host_execution.host_agent_env_vars(
+        is_admin=True,
+        group_folder="pynchy-dev",
+        build_agent_environment=lambda **_kwargs: {},
+    )
 
     assert "OBSIDIAN_VAULT_PATH" not in env
 
@@ -160,12 +165,15 @@ def test_non_admin_host_execution_propagates_hook_workspace_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(host_execution, "build_agent_env_vars", lambda **_kwargs: {})
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
     monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: None)
 
-    env = host_execution.host_agent_env_vars(is_admin=False, group_folder="review")
+    env = host_execution.host_agent_env_vars(
+        is_admin=False,
+        group_folder="review",
+        build_agent_environment=lambda **_kwargs: {},
+    )
 
     assert env["PYNCHY_GROUP_FOLDER"] == "review"
     assert env["PYNCHY_IS_ADMIN"] == "0"

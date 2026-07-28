@@ -12,13 +12,8 @@ from uuid import uuid4
 
 from temporalio import activity
 
-from pynchy.host.learning.packet_codec import packet_from_payload
-from pynchy.host.learning.packet_models import (
-    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
-)
-from pynchy.host.learning.review_runner import run_learning_review as _run_learning_review_agent
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.host.orchestrator.task_scheduler import (
+from pynchy.host.learning.api import run_learning_review as _run_learning_review_agent
+from pynchy.host.orchestrator.scheduler_deps import (
     SchedulerDependencies,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
@@ -26,9 +21,14 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
+from pynchy.learning_packets import (
+    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    packet_from_payload,
+)
 from pynchy.logger import logger
 from pynchy.types import (
     ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    RuntimeTarget,
     WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
 )
 

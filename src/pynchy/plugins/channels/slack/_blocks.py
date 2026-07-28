@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from pynchy.host.orchestrator.messaging.formatter import (
+from pynchy.host.orchestrator.api import (
+    RenderedMessage,
     format_internal_tags,
     format_tool_preview,
 )
-from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
 from pynchy.types import OutboundEvent, OutboundEventType
 
 # Slack limits messages to 50 blocks.

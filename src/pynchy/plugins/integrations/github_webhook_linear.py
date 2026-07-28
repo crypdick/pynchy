@@ -6,6 +6,11 @@ from collections.abc import Mapping
 
 import aiohttp
 
+from pynchy.plugins.api import (
+    WebhookConversation,
+    WebhookEvent,
+    WebhookProcessingError,
+)
 from pynchy.plugins.integrations.github_webhook_models import (  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
     GitHubWebhookRouteConfig,
 )
@@ -19,11 +24,6 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
     linear_client,
     workspace_issue,
-)
-from pynchy.plugins.webhooks import (
-    WebhookConversation,
-    WebhookEvent,
-    WebhookProcessingError,
 )
 
 

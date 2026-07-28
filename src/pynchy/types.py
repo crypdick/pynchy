@@ -2,39 +2,163 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+# allow: file-length - shared model re-exports avoid circular semantic-type dependencies.
+import hashlib
+import json
+import re
+from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass, field, fields
 from enum import Enum, StrEnum
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime value annotations.
-from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypeGuard, runtime_checkable
+from typing import Any, Literal, Protocol, TypeGuard, runtime_checkable
 
-from pynchy.deployment_types import (  # noqa: TC001, RUF100 - public runtime re-export
-    DeployChangeKind,
-    DeployRevision,
+from pynchy.identifiers import (  # noqa: F401, TC001, RUF100 - public runtime re-exports preserve the established type surface.
+    ChannelName,
+    ChatJid,
+    GroupFolder,
+    OrphanReapAgeMs,
+    RuntimeId,
+    SessionId,
 )
-from pynchy.session_policy import SessionPolicy  # noqa: TC001, RUF100 - public runtime re-export
-
-if TYPE_CHECKING:
-    from pynchy.host.orchestrator.messaging.formatters.base import Formatter
 
 _CONTAINER_TIMEOUT_ERROR = "container_config.timeout: expected number, got {type_name}"
 _CONTAINER_MOUNTS_ERROR = "container_config.additional_mounts: expected list, got {type_name}"
 
+# One human-decision window shared by approval state and interactive channel controls.
+APPROVAL_TIMEOUT_SECONDS = 300
+SUPPORTED_AUDIO_SUFFIXES = frozenset(
+    {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm", ".ogg", ".aac", ".flac"}
+)
 
-# --- Domain identity types ---
-#
-# Distinct types for the string-shaped identities that thread through the state
-# layer and the plugin Protocols (see CONVENTIONS.md "Semantic types for domain
-# concepts"). Each is a zero-cost NewType over str: assignable wherever a plain
-# str is expected, but passing e.g. a SessionId where a GroupFolder is wanted is
-# a mypy error rather than the silent state corruption it is today. Applied at
-# boundaries — state-layer signatures and Protocol methods — where a positional
-# swap between same-shaped arguments is most costly.
-GroupFolder = NewType("GroupFolder", str)  # workspace identity (folder under groups/)
-RuntimeId = NewType("RuntimeId", str)  # stable execution identity across control rebinding
-SessionId = NewType("SessionId", str)  # agent session handle
-ChatJid = NewType("ChatJid", str)  # canonical chat identifier
-ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
-OrphanReapAgeMs = NewType("OrphanReapAgeMs", int)  # unowned container retention
+
+@dataclass(frozen=True)
+class AudioTranscriptionResult:
+    """Outcome of transcribing one audio file through a host provider."""
+
+    success: bool
+    transcript: str = ""
+    provider: str = "none"
+    model: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class InboundAudioAttachment:
+    """Channel-neutral audio payload prepared by an inbound channel adapter."""
+
+    id: str
+    filename: str
+    content_type: str | None
+    size: int | None
+    data: bytes | None
+
+
+@dataclass(frozen=True)
+class AudioMetadataPatch:
+    """Metadata update for one attachment in an inbound request."""
+
+    index: int
+    cached_path: str | None
+    transcription: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class InboundAudioProcessingResult:
+    """Host audio processing result for one inbound message."""
+
+    content: str
+    metadata_patches: tuple[AudioMetadataPatch, ...] = ()
+
+
+@dataclass(frozen=True)
+class InboundAudioProcessingRequest:
+    """Channel-neutral input to the host audio processing capability."""
+
+    attachments: tuple[InboundAudioAttachment, ...]
+    content: str
+    fallback_content: str
+    cache_dir: Path
+    message_id: str
+
+
+def is_supported_audio_filename(filename: str) -> bool:
+    """Return whether a filename denotes a supported audio payload."""
+    return Path(filename).suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTarget:
+    """One execution runtime and its current human-facing control address."""
+
+    folder: GroupFolder
+    chat_jid: ChatJid
+
+    @property
+    def id(self) -> RuntimeId:
+        """Return the stable queue identity derived from the runtime folder."""
+        return RuntimeId(self.folder)
+
+    @classmethod
+    def from_workspace(cls, workspace: WorkspaceProfile) -> RuntimeTarget:
+        """Build a target from the runtime currently represented by a workspace."""
+        return cls.from_binding(workspace.folder, workspace.jid)
+
+    @classmethod
+    def from_binding(cls, folder: str, chat_jid: str) -> RuntimeTarget:
+        """Build a target from independently resolved runtime and control concerns."""
+        return cls(folder=GroupFolder(folder), chat_jid=ChatJid(chat_jid))
+
+
+@runtime_checkable
+class RuntimeProvider(Protocol):
+    """Container runtime capability supplied by a plugin adapter."""
+
+    name: str
+    cli: str
+
+    def is_available(self) -> bool: ...
+    def ensure_running(self) -> None: ...
+    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]: ...
+
+
+class SecurityContextRole(StrEnum):
+    """Message roles exposed to the Cop context boundary."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class SecurityExecutionAuthorityKind(StrEnum):
+    """Host-derived execution contracts exposed to the Cop."""
+
+    LINEAR_WORK_ITEM_LEASE = "linear_work_item_lease"
+
+
+@dataclass(frozen=True)
+class SecurityContextMessage:
+    """One bounded recent message without sender identifiers."""
+
+    role: SecurityContextRole
+    content: str
+
+
+@dataclass(frozen=True)
+class SecurityExecutionAuthority:
+    """One active durable execution contract for the inspected chat."""
+
+    kind: SecurityExecutionAuthorityKind
+    work_item_identifier: str
+
+
+@dataclass(frozen=True)
+class RecentSecurityContext:
+    """The available intent and action chain for one chat."""
+
+    current_user_intent: str | None
+    recent_messages: tuple[SecurityContextMessage, ...]
+    recent_agent_updates: tuple[str, ...]
+    completed_tool_actions: tuple[str, ...]
+    execution_authority: SecurityExecutionAuthority | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +177,49 @@ class AgentExecutionRuntime:
     idle_timeout: float
     model: str | None
     model_reasoning_effort: str | None
+
+
+@dataclass(frozen=True)
+class DeployRevision:
+    """Effective host revision whose equality makes deploys idempotent."""
+
+    commit_sha: str
+    config_hash: str
+
+
+class DeployChangeKind(StrEnum):
+    """User-facing reason that an effective host revision changed."""
+
+    CODE = "code change"
+    CONFIG = "config change"
+    CODE_AND_CONFIG = "code and config changes"
+    RESTART = "restart request"
+
+    @classmethod
+    def between(
+        cls,
+        applied: DeployRevision | None,
+        target: DeployRevision,
+    ) -> DeployChangeKind:
+        """Describe the semantic difference between two deploy revisions."""
+        if applied is None:
+            return cls.CODE_AND_CONFIG
+        code_changed = applied.commit_sha != target.commit_sha
+        config_changed = applied.config_hash != target.config_hash
+        if code_changed and config_changed:
+            return cls.CODE_AND_CONFIG
+        if code_changed:
+            return cls.CODE
+        if config_changed:
+            return cls.CONFIG
+        return cls.RESTART
+
+
+class SessionPolicy(StrEnum):
+    """How a scheduled occurrence treats its thread-owned durable session."""
+
+    CONTINUE = "continue"
+    RESET_BEFORE_RUN = "reset_before_run"
 
 
 @dataclass(frozen=True)
@@ -190,6 +357,26 @@ class CapabilityRule:
     """Explicit policy for a semantic capability such as an MCP tool call."""
 
     decision: CapabilityDecision
+
+
+_CAPABILITY_DECISION_RANK = {"allow": 0, "needs_human": 1, "deny": 2}
+
+
+def capability_pattern_matches(pattern: str, capability: str) -> bool:
+    """Return whether an exact capability is covered by a trailing wildcard."""
+    if pattern == capability:
+        return True
+    if not pattern.endswith(".*"):
+        return False
+    prefix = pattern[:-2]
+    return bool(prefix) and capability.startswith(f"{prefix}.")
+
+
+def most_restrictive_capability_rule(
+    rules: Iterable[CapabilityRule],
+) -> CapabilityRule | None:
+    """Intersect matching rules by selecting the most restrictive decision."""
+    return max(rules, key=lambda rule: _CAPABILITY_DECISION_RANK[rule.decision], default=None)
 
 
 # NOTE: Update docs/architecture/security.md § 5 (Service Trust Policy) and
@@ -365,6 +552,16 @@ class WorkItemTransitionStatus(StrEnum):
     CONFLICT = "conflict"
 
 
+class WorkItemClaimConflictError(RuntimeError):
+    """Raised when an active execution already owns a Linear issue."""
+
+    def __init__(self, execution: WorkItemExecution) -> None:
+        self.execution = execution
+        super().__init__(
+            f"{execution.linear_issue_identifier} is already claimed by execution {execution.id}"
+        )
+
+
 @dataclass(frozen=True)
 class WorkItemTransition:
     """Intended Linear state change and its provider receipt or uncertainty."""
@@ -384,6 +581,22 @@ class WorkItemTransition:
     error: str | None
     created_at: str
     resolved_at: str | None
+
+
+@dataclass(frozen=True)
+class WorkItemTransitionRequest:
+    """A lifecycle operation that requires an external provider receipt."""
+
+    execution: WorkItemExecution
+    request_id: str
+    operation: str
+    target_status: str
+    result_execution_status: WorkItemExecutionStatus
+    evidence_refs: tuple[str, ...] | None = None
+    summary: str | None = None
+    blocker: str | None = None
+    handoff_to: str | None = None
+    requester_delivery_turn_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -474,6 +687,44 @@ class ScheduledTask:
             "status": self.status,
             "next_run": None,
         }
+
+
+_SAFE_WORKFLOW_FRAGMENT = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def safe_workflow_fragment(value: str) -> str:
+    """Return a value safe for durable workflow and schedule IDs."""
+    return _SAFE_WORKFLOW_FRAGMENT.sub("-", value).strip("-").replace("+", "-")
+
+
+def agent_task_occurrence_due_at(task: ScheduledTask) -> str:
+    """Return the effective due time for the task's current occurrence."""
+    return task.occurrence_due_at or task.schedule_value
+
+
+def agent_task_occurrence_workflow_id(
+    task_id: str,
+    due_at: str,
+    generation: int,
+) -> str:
+    """Return the exact durable identity for one scheduled-task occurrence."""
+    base = f"pynchy-agent-task-{safe_workflow_fragment(task_id)}-{safe_workflow_fragment(due_at)}"
+    if generation == 0:
+        return base
+    task_digest = hashlib.sha256(task_id.encode()).hexdigest()[:16]
+    return (
+        f"pynchy-agent-task-{safe_workflow_fragment(task_id)}-{task_digest}-"
+        f"{safe_workflow_fragment(due_at)}-resume-{generation}"
+    )
+
+
+def agent_task_workflow_id(task: ScheduledTask) -> str:
+    """Return the idempotency key for a one-time scheduled agent task."""
+    return agent_task_occurrence_workflow_id(
+        task.id,
+        agent_task_occurrence_due_at(task),
+        task.occurrence_generation,
+    )
 
 
 @dataclass
@@ -614,6 +865,25 @@ class ContainerOutput:
     query_id: str | None = None
 
 
+def input_to_dict(input_data: ContainerInput) -> dict[str, Any]:
+    """Convert container input to its compact JSON-ready wire representation."""
+    return {
+        item.name: value
+        for item in fields(input_data)
+        if (value := getattr(input_data, item.name)) is not None and value != []
+    }
+
+
+def parse_container_output(json_str: str) -> ContainerOutput:
+    """Parse agent-runner JSON while ignoring unrecognized extra fields."""
+    data = json.loads(json_str)
+    known = {item.name for item in fields(ContainerOutput)}
+    return ContainerOutput(**{key: value for key, value in data.items() if key in known})
+
+
+OnOutput = Callable[[ContainerOutput], Awaitable[None]]
+
+
 class OutboundEventType(Enum):
     """Types of events flowing from the agent to the channel."""
 
@@ -663,9 +933,16 @@ class VolumeMount:
 
 
 @runtime_checkable
+class ChannelFormatter(Protocol):
+    """Minimal rendering capability required by a host communication channel."""
+
+    def render(self, event: OutboundEvent) -> object: ...
+
+
+@runtime_checkable
 class Channel(Protocol):
     name: str
-    formatter: Formatter
+    formatter: ChannelFormatter
 
     async def connect(self) -> None: ...
 

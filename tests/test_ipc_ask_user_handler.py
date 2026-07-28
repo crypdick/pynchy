@@ -177,7 +177,9 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await dispatch(data, "my-group", False, deps)
 
@@ -224,7 +226,9 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await dispatch(data, "my-group", False, deps)
 
@@ -253,7 +257,9 @@ class TestHandleAskUserRequest:
         }
 
         with (
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
+            ),
         ):
             await dispatch(data, "my-group", False, deps)
 

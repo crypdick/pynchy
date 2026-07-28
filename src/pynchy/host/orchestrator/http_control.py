@@ -9,13 +9,16 @@ import secrets
 import socket
 import stat
 import time
+from collections.abc import (  # noqa: TC003, RUF100 - control-plane audit callback is stored at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, NewType
 
 from aiohttp import web
 
-from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -29,6 +32,7 @@ else:
 
 ControlPlaneToken = NewType("ControlPlaneToken", str)
 ClientAddress = NewType("ClientAddress", str)
+SecurityAuditEvent = Callable[..., Awaitable[None]]
 
 MINIMUM_TOKEN_LENGTH = 32
 READINESS_PATH = "/health"
@@ -100,6 +104,7 @@ class ControlPlaneRuntime:
     allow_remote_deploy: bool
     auth_token: ControlPlaneToken | None = field(repr=False)
     rate_limiter: RequestRateLimiter = field(repr=False, compare=False)
+    audit_security_event: SecurityAuditEvent = field(repr=False, compare=False)
     unix_socket_bind: str | None = None
 
 
@@ -174,6 +179,7 @@ def resolve_control_plane_runtime(  # noqa: PLR0913, RUF100 - composition passes
     rate_limit_requests: int,
     rate_limit_window_seconds: int,
     project_root: Path,
+    audit_security_event: SecurityAuditEvent,
 ) -> ControlPlaneRuntime:
     """Parse settings into a safe runtime posture or refuse startup."""
     public_bind = not is_loopback_bind_host(bind_host)
@@ -216,6 +222,7 @@ def resolve_control_plane_runtime(  # noqa: PLR0913, RUF100 - composition passes
             request_limit=rate_limit_requests,
             window_seconds=rate_limit_window_seconds,
         ),
+        audit_security_event=audit_security_event,
         unix_socket_bind=unix_socket_bind,
     )
 
@@ -287,6 +294,7 @@ async def _audit_request(
     client: ClientAddress,
     decision: str,
     reason: str,
+    audit_security_event: SecurityAuditEvent,
 ) -> None:
     request_id = f"http-{secrets.token_urlsafe(12)}"
     logger.info(
@@ -298,7 +306,7 @@ async def _audit_request(
         decision=decision,
         reason=reason,
     )
-    await record_security_event(
+    await audit_security_event(
         chat_jid=_AUDIT_CHAT_JID,
         workspace=_AUDIT_WORKSPACE,
         tool_name=f"http:{request.method}:{request.path}",
@@ -332,6 +340,7 @@ def build_control_plane_middleware(
                     client=client,
                     decision="rate_limited",
                     reason="remote request rate limit exceeded",
+                    audit_security_event=runtime.audit_security_event,
                 )
                 return web.json_response(
                     {"error": "rate limit exceeded"},
@@ -348,6 +357,7 @@ def build_control_plane_middleware(
                     client=client,
                     decision="denied",
                     reason="missing or invalid bearer token",
+                    audit_security_event=runtime.audit_security_event,
                 )
                 return web.json_response(
                     {"error": "authentication required"},
@@ -361,6 +371,7 @@ def build_control_plane_middleware(
                 client=client,
                 decision="denied",
                 reason="remote deploy is disabled",
+                audit_security_event=runtime.audit_security_event,
             )
             return web.json_response({"error": "remote deploy is disabled"}, status=403)
 
@@ -370,6 +381,7 @@ def build_control_plane_middleware(
                 client=client,
                 decision="allowed",
                 reason="bearer authentication accepted",
+                audit_security_event=runtime.audit_security_event,
             )
         return await handler(request)
 

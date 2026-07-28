@@ -9,11 +9,6 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.host.container_manager.session_prep import is_skill_selected, parse_skill_tier
-from pynchy.host.learning.skills import find_personalized_skill_dir
-from pynchy.host.orchestrator.workspace_config import (
-    load_resolved_config,
-)
 from pynchy.logger import logger
 
 
@@ -21,26 +16,11 @@ def _write_result(source_group: str, request_id: str, result: dict[str, object])
     write_ipc_response(ipc_response_path(source_group, request_id), {"result": result})
 
 
-def _skill_status(group_folder: str, skill_name: str) -> str:
-    resolved = load_resolved_config(group_folder)
-    if resolved is None:
-        return "unavailable"
-    if skill_name in resolved.denied_skills:
-        return "denied"
-    skill_dir = find_personalized_skill_dir(skill_name)
-    if skill_dir is None:
-        return "unavailable"
-    name, tier = parse_skill_tier(skill_dir)
-    if is_skill_selected(name, tier, resolved.skills):
-        return "granted"
-    return "available"
-
-
 async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC handler contract.
     data: dict[str, Any],
     source_group: str,
     _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    _deps: IpcDeps,
+    deps: IpcDeps,
 ) -> None:
     request_id = data.get("request_id")
     action = data.get("action")
@@ -52,7 +32,8 @@ async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC h
     action = cast("str", action)
     skill_name = cast("str", skill_name)
 
-    if find_personalized_skill_dir(skill_name) is None:
+    status = deps.skill_access_status(source_group, skill_name)
+    if status == "unknown":
         _write_result(source_group, request_id, {"status": "unknown", "skill_name": skill_name})
         return
 
@@ -60,7 +41,7 @@ async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC h
         _write_result(
             source_group,
             request_id,
-            {"status": _skill_status(source_group, skill_name), "skill_name": skill_name},
+            {"status": status, "skill_name": skill_name},
         )
         return
 

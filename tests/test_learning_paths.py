@@ -9,8 +9,7 @@ import pytest
 from conftest import make_settings
 from pydantic import ValidationError
 
-from pynchy.config import Settings
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+from pynchy.config.api import LearningConfig, ObsidianLearningConfig, Settings, WorkspaceConfig
 from pynchy.host.learning.paths import (
     LearningConfigError,
     profile_name_for_group,

@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
-from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves rendering annotations at runtime.
+from pynchy.content_fencing import fence_untrusted_content
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves rendering annotations at runtime.
     WebhookEvent,
     WebhookRoute,
 )

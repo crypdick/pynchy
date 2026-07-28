@@ -10,13 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pynchy.config.jobs import (
+from pynchy.config.api import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
-)
-from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
-)
-from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement

@@ -16,7 +16,7 @@ from pynchy.host.container_manager.mcp.manager import (
     build_direct_server_configs,
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig
 
 
 def _make_instance(

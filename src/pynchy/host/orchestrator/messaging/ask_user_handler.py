@@ -18,17 +18,27 @@ See docs/plans/2026-02-22-ask-user-blocking-design.md
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves callback annotations.
+)
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
-from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-from pynchy.host.container_manager.session import get_session
 from pynchy.host.orchestrator.messaging.pending_questions import (
     find_pending_question,
     resolve_pending_question,
 )
 from pynchy.logger import logger
 from pynchy.types import GroupFolder
+
+
+@dataclass
+class AskUserRuntimeOperations:
+    """Container effects selected by the application composition root."""
+
+    has_live_session: Callable[[GroupFolder], bool]
+    persist_skill_access: Callable[[dict[str, Any], dict[str, Any]], str | None]
+    write_response: Callable[[str, str, dict[str, object]], None]
 
 
 @runtime_checkable
@@ -43,6 +53,9 @@ class AskUserDeps(Protocol):
 
     def has_active_host_process(self, group_folder: str) -> bool: ...
 
+    @property
+    def ask_user_runtime_operations(self) -> AskUserRuntimeOperations: ...
+
 
 async def handle_ask_user_answer(
     request_id: str,
@@ -56,21 +69,22 @@ async def handle_ask_user_answer(
         return
 
     source_group = pending["source_group"]
-    session = get_session(GroupFolder(source_group))
+    operations = deps.ask_user_runtime_operations
     try:
-        skill_access_status = persist_skill_access_choice(pending, answer)
+        skill_access_status = operations.persist_skill_access(pending, answer)
     except (OSError, ValueError) as exc:
         logger.warning("Could not persist skill access choice", request_id=request_id, err=str(exc))
         skill_access_status = "error"
 
-    if (session is not None and session.is_alive) or deps.has_active_host_process(source_group):
+    if operations.has_live_session(GroupFolder(source_group)) or deps.has_active_host_process(
+        source_group
+    ):
         # Path A: container or direct host process alive -- write IPC response file.
-        path = ipc_response_path(source_group, request_id)
         try:
             result: dict[str, object] = {"answers": answer}
             if skill_access_status is not None:
                 result["skill_access_status"] = skill_access_status
-            write_ipc_response(path, {"result": result})
+            operations.write_response(source_group, request_id, result)
             logger.info(
                 "ask_user answer delivered via IPC",
                 request_id=request_id,

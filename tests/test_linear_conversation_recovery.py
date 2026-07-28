@@ -21,8 +21,7 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
-from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig
+from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     ConversationClaimId,
     ExternalDeliveryId,

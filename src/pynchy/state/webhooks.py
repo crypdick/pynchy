@@ -9,7 +9,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundar
     Row,
 )
 
-from pynchy.conversation.models import ConversationDeliveryStatus
+from pynchy.conversation.api import ConversationDeliveryStatus
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.conversation_controls import (
     _apply_conversation_control_state,

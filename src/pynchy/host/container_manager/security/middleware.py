@@ -14,19 +14,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.capability_policy import (
+from pynchy.secrets_scanner import scan_payload_for_secrets
+from pynchy.types import (
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
     capability_pattern_matches,
     most_restrictive_capability_rule,
 )
-from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
-from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 # Default trust for unknown services — maximally cautious
 _UNKNOWN_SERVICE = ServiceTrustConfig()
-
-
-class PolicyDeniedError(Exception):
-    """Raised when policy denies a request. Non-retryable."""
 
 
 @dataclass

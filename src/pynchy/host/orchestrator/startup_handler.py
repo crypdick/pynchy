@@ -10,9 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from pynchy.config import get_settings
-from pynchy.host.container_manager import credentials
-from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
+from pynchy.config.api import get_settings
+from pynchy.host.git_ops.api import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
 from pynchy.host.orchestrator.startup_rollback import (
@@ -77,6 +76,10 @@ class StartupDeps(Protocol):
 
     async def prepare_context_reset(self, group: WorkspaceProfile) -> None: ...
 
+    async def destroy_runtime_session(self, group_folder: str) -> None: ...
+
+    def has_api_credentials(self) -> bool: ...
+
 
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""
@@ -97,7 +100,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
     # Check for API credentials and warn if missing
 
-    if not credentials.has_api_credentials():
+    if not deps.has_api_credentials():
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
             "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env."

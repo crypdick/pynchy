@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.config.api import LearningConfig, ObsidianLearningConfig
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
 from pynchy.state import init_test_database
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -260,7 +260,6 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
         patch(_P_MSGS_SINCE, new_callable=AsyncMock) as mock_messages_since,
         _patch_intercept(),
         _patch_fmt_sdk(),
-        patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
     ):
         mock_messages_since.side_effect = [[initial, initial_tail], [follow_up]]
 
@@ -272,8 +271,8 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
         call("g@g.us", previous_cursor),
         call("g@g.us", initial_tail.timestamp),
     ]
-    temporal_start.assert_awaited_once()
-    packet = temporal_start.await_args.args[0]
+    deps.start_learning_review_workflow.assert_awaited_once()
+    packet = deps.start_learning_review_workflow.await_args.args[0]
     assert packet.provenance["final_cursor"] == follow_up.timestamp
     assert json.loads(packet.provenance["source_message_ids"]) == [
         "msg-initial",

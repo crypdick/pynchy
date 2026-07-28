@@ -7,8 +7,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves registr
 )
 
 from pynchy.host.orchestrator.queue_state import GroupState
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
-from pynchy.types import RuntimeId  # noqa: TC001, RUF100
+from pynchy.types import (
+    RuntimeId,  # noqa: TC001, RUF100
+    RuntimeTarget,  # noqa: TC001, RUF100
+)
 
 
 class RuntimeRegistry:

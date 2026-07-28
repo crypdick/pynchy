@@ -35,16 +35,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.config import get_settings
-from pynchy.config.models import McpTool
-from pynchy.plugins.mcp_server import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+from pynchy.config.api import McpTool, get_settings
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
     McpServerConfig,
 )
 
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
+    from pynchy.redaction import GatewayRedactionPosture
 from pynchy.host.container_manager.gateway_builtin import (
     BuiltinGateway,
     BuiltinGatewayCredentials,
@@ -54,7 +53,7 @@ from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGatewayCredentials,
 )
 from pynchy.logger import logger
-from pynchy.plugins.contracts import McpServerSpec
+from pynchy.plugins.api import McpServerSpec
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
     ServiceTrustConfig,
 )
@@ -76,6 +75,13 @@ __all__ = [
 
 _DEFAULT_CONTAINER_HOST = "host.docker.internal"
 _APPLE_CONTAINER_HOST = "192.168.64.1"
+_apple_container_runtime = False
+
+
+def configure_gateway_runtime(*, is_apple_container: bool) -> None:
+    """Select container-network behavior at host composition."""
+    global _apple_container_runtime  # noqa: PLW0603, RUF100 - one host process owns one container-network mode.
+    _apple_container_runtime = is_apple_container
 
 
 # ---------------------------------------------------------------------------
@@ -124,16 +130,7 @@ def resolve_container_host(container_host: str) -> str:
     if container_host != _DEFAULT_CONTAINER_HOST:
         return container_host
 
-    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when resolving the default host
-        get_runtime,
-    )
-
-    try:
-        runtime_name = get_runtime().name
-    except RuntimeError:
-        return container_host
-
-    if runtime_name == "apple":
+    if _apple_container_runtime:
         # Apple Container does not provide Docker's host.docker.internal DNS
         # name; the host gateway for its default VM bridge is 192.168.64.1.
         return _APPLE_CONTAINER_HOST

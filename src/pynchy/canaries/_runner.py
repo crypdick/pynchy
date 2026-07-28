@@ -5,25 +5,25 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves canary runtime annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves canary runtime annotations at runtime.
     Collection,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
     Mapping,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from pynchy.actions import ACTION_SPECS
-from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.canary_contracts import (
+    CanaryExercise,
+    CanaryRunContext,
+    CanaryScenario,
+    CanarySkippedError,
+)
 from pynchy.logger import logger
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
-from pynchy.state.api import (
-    get_latest_canary_runs,
-    get_recent_canary_runs,
-    get_unresolved_canary_regressions,
-    record_canary_run,
-)
 from pynchy.types import CanaryOutcome, CanaryRun
 
 _CLEANUP_ATTEMPTS = 3
@@ -31,39 +31,29 @@ _SCENARIO_EXECUTORS: dict[str, CanaryScenario] = {}
 
 
 @dataclass(frozen=True)
-class CanaryRunContext:
-    """Context supplied to a scenario's exercise, verifier, and cleanup steps."""
+class CanaryRuntime:
+    """Durable evidence and revision capabilities selected at host composition."""
 
-    run_id: str
-    scenario_id: str
-    target_profile: str
-    scheduler_deps: object | None
-
-
-@dataclass(frozen=True)
-class CanaryExercise:
-    """Opaque exercise artifact and safe evidence references for a scenario."""
-
-    artifact: object
-    evidence_refs: tuple[str, ...] = ()
+    record_run: Callable[[CanaryRun], Awaitable[CanaryRun]]
+    latest_runs: Callable[[], Awaitable[list[CanaryRun]]]
+    recent_runs: Callable[[int], Awaitable[list[CanaryRun]]]
+    unresolved_regressions: Callable[[], Awaitable[list[CanaryRun]]]
+    code_revision: Callable[[], str]
 
 
-@runtime_checkable
-class CanaryScenario(Protocol):
-    """A real-service scenario with independent verification and cleanup."""
-
-    async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
-        """Perform the scenario action against the dedicated test target."""
-
-    async def verify(self, context: CanaryRunContext, exercise: CanaryExercise) -> tuple[str, ...]:
-        """Verify remote state without relying on the agent's completion text."""
-
-    async def cleanup(self, context: CanaryRunContext, exercise: CanaryExercise) -> tuple[str, ...]:
-        """Remove the scenario artifact; implementations must be idempotent."""
+_runtime: CanaryRuntime | None = None
 
 
-class CanarySkippedError(RuntimeError):
-    """Signal that a configured scenario cannot run at this time without failing it."""
+def configure_canary_runtime(runtime: CanaryRuntime) -> None:
+    """Inject canary persistence and source revision capabilities."""
+    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one canary runtime.
+    _runtime = runtime
+
+
+def _configured_runtime() -> CanaryRuntime:
+    if _runtime is None:
+        raise RuntimeError("canary runtime has not been configured")
+    return _runtime
 
 
 def declared_canary_actions() -> dict[str, tuple[str, ...]]:
@@ -130,7 +120,7 @@ async def run_declared_canaries(  # noqa: PLR0913, RUF100 - optional revisions a
     scenario_actions = _selected_canary_actions(scenario_ids)
     active_executors = _SCENARIO_EXECUTORS if executors is None else executors
     revisions = (
-        code_revision or _code_revision(),
+        code_revision or _configured_runtime().code_revision(),
         config_revision or _config_revision(),
     )
     results: list[CanaryRun] = []
@@ -146,7 +136,7 @@ async def run_declared_canaries(  # noqa: PLR0913, RUF100 - optional revisions a
                 config_revision=revisions[1],
             )
         )
-        results.append(await record_canary_run(result))
+        results.append(await _configured_runtime().record_run(result))
     return results
 
 
@@ -164,10 +154,11 @@ def _selected_canary_actions(
 
 async def get_canary_report(*, history_limit: int = 50) -> dict[str, object]:
     """Return declared coverage, recent history, and unresolved regressions."""
+    runtime = _configured_runtime()
     latest, recent_runs, unresolved = await asyncio.gather(
-        get_latest_canary_runs(),
-        get_recent_canary_runs(limit=history_limit),
-        get_unresolved_canary_regressions(),
+        runtime.latest_runs(),
+        runtime.recent_runs(history_limit),
+        runtime.unresolved_regressions(),
     )
     latest_by_scenario: dict[str, list[dict[str, object]]] = {}
     for run in latest:
@@ -302,10 +293,6 @@ def _deduplicated_refs(refs: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(ref for ref in refs if ref))
 
 
-def _code_revision() -> str:
-    return get_head_sha() or "unknown"
-
-
 def _config_revision() -> str:
     config_path = Path.cwd() / "data" / "personalization" / "pynchy.toml"
     try:
@@ -331,20 +318,3 @@ def _canary_run_dict(run: CanaryRun) -> dict[str, object]:
         "starts_regression": run.starts_regression,
         "is_recovery": run.is_recovery,
     }
-
-
-def _register_builtin_canary_scenarios() -> None:
-    """Install built-in service checks after the runner contract is available."""
-    from pynchy.operational_canaries import (  # noqa: PLC0415, RUF100 - avoids importing a module that depends on this contract too early.
-        register_operational_canary_scenarios,
-    )
-
-    register_operational_canary_scenarios(register_canary_scenario)
-    from pynchy.security_canaries import (  # noqa: PLC0415, RUF100 - same late registration boundary as service canaries.
-        register_security_canary_scenarios,
-    )
-
-    register_security_canary_scenarios(register_security_canary_scenario)
-
-
-_register_builtin_canary_scenarios()

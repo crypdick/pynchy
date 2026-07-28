@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+)
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any
 
 import aiohttp
 
-from pynchy.config import get_settings
-from pynchy.conversation.workspaces import parent_workspace_name
-from pynchy.plugins.integrations.linear_accounts import linear_account
+from pynchy.conversation.api import parent_workspace_name
+from pynchy.plugins.api import (
+    WebhookEvent,
+    WebhookLifecycle,
+    WebhookProcessingError,
+    WebhookRoute,
+)
+from pynchy.plugins.integrations.linear_accounts import (
+    LinearAccount,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+)
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves workspace evidence.
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_boot import (
-    configured_linear_workspace_names,
     linear_workspace_enabled,
     workspace_for_linear_project,
 )
@@ -26,8 +35,8 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
 )
 from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
 from pynchy.plugins.integrations.linear_webhook_config import (
-    LinearPluginOptions,
-    LinearWebhookRouteConfig,
+    LinearPluginOptions,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+    LinearWebhookRouteConfig,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
 )
 from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
@@ -40,15 +49,38 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     state_id,
     workspace_issue,
 )
-from pynchy.plugins.webhooks import (
-    WebhookEvent,
-    WebhookLifecycle,
-    WebhookProcessingError,
-    WebhookRoute,
-)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route validation annotations at runtime.
     WorkspaceProfile,
 )
+
+
+@dataclass(frozen=True)
+class LinearWebhookRuntime:
+    """Resolved route configuration selected during Linear plugin composition."""
+
+    options: LinearPluginOptions
+    account_for_name: Callable[[str], LinearAccount]
+    workspace_tools: Callable[[str], tuple[str, ...] | None]
+    workspace_names_for_account: Callable[[str], tuple[str, ...]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearWebhookRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_webhook_runtime(runtime: LinearWebhookRuntime) -> None:
+    """Set resolved Linear webhook configuration before routes are collected."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearWebhookRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear webhook runtime has not been configured")
+    return _runtime.runtime
 
 
 async def _event_workspace(
@@ -211,10 +243,10 @@ def _validate_linear_workspace(
         return "requires a Discord guild-channel workspace for issue controls"
     if parent_workspace_name(workspace.folder) is not None:
         return "requires a registered workspace root instead of a child conversation"
-    settings = get_settings()
-    account = linear_account(config.tool, settings)
-    resolved = settings.resolved_workspace_config(workspace.folder)
-    if resolved is None or account.name not in resolved.tools:
+    runtime = _configured_runtime()
+    account = runtime.account_for_name(config.tool)
+    tools = runtime.workspace_tools(workspace.folder)
+    if tools is None or account.name not in tools:
         return f"requires its workspace to select Linear account tool '{account.name}'"
     if account.config.public_source == "forbidden":
         return "requires its Linear account tool to permit source content"
@@ -223,12 +255,10 @@ def _validate_linear_workspace(
 
 def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
     """Parse plugin options and return configured Linear webhook routes."""
-    settings = get_settings()
-    plugin = settings.plugins.get("linear")
-    options = LinearPluginOptions.model_validate(plugin.options if plugin is not None else {})
+    runtime = _configured_runtime()
     routes: list[WebhookRoute] = []
-    for config in options.webhook_routes:
-        account = linear_account(config.tool, settings)
+    for config in runtime.options.webhook_routes:
+        account = runtime.account_for_name(config.tool)
         routes.append(
             WebhookRoute(
                 provider="linear",
@@ -249,7 +279,7 @@ def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
                 process_event=process_linear_webhook_event,
                 routes_conversations=True,
                 candidate_workspaces=(
-                    configured_linear_workspace_names(config.tool)
+                    runtime.workspace_names_for_account(config.tool)
                     if config.workspace is None
                     else ()
                 ),

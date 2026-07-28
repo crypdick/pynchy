@@ -227,7 +227,6 @@ def patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
         ):

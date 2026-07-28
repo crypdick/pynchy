@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
     Conversation,
     ConversationId,
 )

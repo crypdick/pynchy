@@ -6,14 +6,22 @@ import json
 
 import aiohttp
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager import gateway as gateway_manager
 
 _DEFAULT_COP_MODEL = "claude-haiku-4-5-20251001"
+_cop_model = _DEFAULT_COP_MODEL
+_cop_wire_api = "messages"
 
 
 class CopGatewayUnavailableError(RuntimeError):
     """The configured LLM gateway cannot serve a Cop request."""
+
+
+def configure_cop_gateway(*, model: str | None, wire_api: str) -> None:
+    """Apply the resolved Cop transport selection at application composition."""
+    global _cop_model, _cop_wire_api  # noqa: PLW0603, RUF100 - one host process owns one Cop transport selection.
+    _cop_model = model or _DEFAULT_COP_MODEL
+    _cop_wire_api = wire_api
 
 
 def _strip_json_fence(text: str) -> str:
@@ -145,15 +153,13 @@ async def request_inspection(*, system_prompt: str, user_content: str) -> dict[s
     if gateway is None:
         raise CopGatewayUnavailableError("No gateway available")
 
-    settings = get_settings()
-    model = settings.security.cop_model or settings.agent.model or _DEFAULT_COP_MODEL
     url = f"http://localhost:{gateway.port}"
     headers = {"x-api-key": gateway.key, "content-type": "application/json"}
-    if settings.security.cop_wire_api == "responses":
+    if _cop_wire_api == "responses":
         text = await _request_responses(
             url=url,
             headers=headers,
-            model=model,
+            model=_cop_model,
             system_prompt=system_prompt,
             user_content=user_content,
         )
@@ -161,7 +167,7 @@ async def request_inspection(*, system_prompt: str, user_content: str) -> dict[s
         text = await _request_messages(
             url=url,
             headers=headers,
-            model=model,
+            model=_cop_model,
             system_prompt=system_prompt,
             user_content=user_content,
         )

@@ -10,7 +10,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves dispatch inputs at runtime.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves dispatch inputs at runtime.
     ConversationId,
 )
 from pynchy.host.orchestrator.http_control import ClientAddress, RequestRateLimiter
@@ -26,7 +26,7 @@ from pynchy.host.orchestrator.webhook_delivery_admission import (
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.plugins.webhooks import (
+from pynchy.plugins.api import (
     WebhookAuthenticationError,
     WebhookConfigurationError,
     WebhookEvent,

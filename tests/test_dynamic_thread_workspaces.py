@@ -5,9 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from conftest import NullChannel, init_test_database, make_settings
+from conftest import (
+    NullChannel,
+    init_test_database,
+    make_container_runtime_operations,
+    make_settings,
+)
 
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder, load_resolved_config
@@ -27,7 +32,8 @@ class _Deps:
         self.session_cleared = set()
         self.last_agent_timestamp = {}
         self.queue = GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            make_container_runtime_operations(),
         )
         self.channels = [_DiscordChannel()]
         self.workspaces = {

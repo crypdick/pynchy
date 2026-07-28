@@ -10,15 +10,18 @@ import pytest
 from conftest import make_settings
 
 from pynchy.actions import ACTION_SPECS
-from pynchy.capabilities import HostActionAccess, validate_host_action_descriptors
-from pynchy.config import McpTool, McpToolConfig, PluginConfig
+from pynchy.config.api import McpTool, McpToolConfig, PluginConfig, tool_process_environment
+from pynchy.plugins.api import HostActionAccess, validate_host_action_descriptors
 from pynchy.plugins.integrations.marketplace_health import (
     MARKETPLACE_HEALTH_HOST_ACTIONS,
     MarketplaceHealthOptions,
+    MarketplaceHealthRuntime,
     build_marketplace_health_snapshot,
+    configure_marketplace_health_runtime,
 )
 from pynchy.plugins.integrations.proton_bridge import ProtonMailbox, ProtonMailboxList
 from pynchy.plugins.integrations.proton_bridge_config import ProtonMailError
+from pynchy.utils import filtered_process_environment
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -65,6 +68,23 @@ def _settings(state_file: Path):
     )
 
 
+def _configure_runtime(settings) -> None:
+    plugin = settings.plugins["marketplace-health"]
+
+    def reader_environment(name: str) -> dict[str, str] | None:
+        tool = settings.tools.get(name)
+        if not isinstance(tool, McpTool):
+            return None
+        return filtered_process_environment({**tool.mcp.env, **tool_process_environment(tool)})
+
+    configure_marketplace_health_runtime(
+        MarketplaceHealthRuntime(
+            options=MarketplaceHealthOptions.model_validate(plugin.options),
+            reader_environment=reader_environment,
+        )
+    )
+
+
 @pytest.mark.action("marketplace.health.read")
 def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path, monkeypatch) -> None:
     state_file = tmp_path / "pending_actions.json"
@@ -77,11 +97,8 @@ def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path, monkeypa
     monkeypatch.setenv("PYNCHY_PROTON_BRIDGE_IMAP_PORT", "2143")
     monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
 
+    _configure_runtime(_settings(state_file))
     with (
-        patch(
-            "pynchy.plugins.integrations.marketplace_health.get_settings",
-            return_value=_settings(state_file),
-        ),
         patch(
             "pynchy.plugins.integrations.marketplace_health.create_proton_mail_client",
             create_client,
@@ -121,11 +138,8 @@ def test_snapshot_sanitizes_reader_failures(
     client = MagicMock()
     client.list_mailboxes.side_effect = ProtonMailError(error)
 
+    _configure_runtime(_settings(state_file))
     with (
-        patch(
-            "pynchy.plugins.integrations.marketplace_health.get_settings",
-            return_value=_settings(state_file),
-        ),
         patch(
             "pynchy.plugins.integrations.marketplace_health.create_proton_mail_client",
             return_value=client,

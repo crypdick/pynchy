@@ -9,8 +9,7 @@ import pluggy
 
 from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
-from pynchy.plugins.contracts import McpServerSpec
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig, McpServerSpec
 from pynchy.types import ServiceTrustConfig
 
 

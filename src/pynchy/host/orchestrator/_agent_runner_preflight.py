@@ -8,18 +8,12 @@ from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot ann
 from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.conversation.events import new_turn_id
-from pynchy.host.container_manager import (
-    OnOutput,
-    resolve_agent_core,
-    write_groups_snapshot,
-    write_tasks_snapshot,
-)
-from pynchy.host.container_manager.orchestrator import resolve_container_timeout
-from pynchy.host.git_ops.repo import get_repo_context
-from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
+from pynchy.conversation.api import new_turn_id
+from pynchy.host.git_ops.api import count_unpushed_commits, get_repo_context, is_repo_dirty
+from pynchy.host.orchestrator.api import resolve_agent_core, resolve_container_timeout
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.prompt_loading import read_prompts
+from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
@@ -37,6 +31,7 @@ from pynchy.types import (
     ContainerInput,
     ContainerOutput,
     GroupFolder,
+    OnOutput,
     SessionId,
     WorkspaceProfile,
 )

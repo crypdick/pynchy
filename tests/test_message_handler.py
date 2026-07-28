@@ -18,8 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from conftest import make_command_matcher, make_settings
 
-from pynchy.config import AgentConfig, IntervalsConfig
-from pynchy.config.models import LearningConfig
+from pynchy.config.api import AgentConfig, IntervalsConfig, LearningConfig
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDeliveryStatus,
@@ -33,7 +32,6 @@ from pynchy.conversation.models import (
     ExternalRoute,
 )
 from pynchy.host.orchestrator import session_handler
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
 )
@@ -44,7 +42,6 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     intercept_special_command,
     process_group_messages,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -59,6 +56,7 @@ from pynchy.state import (
     store_message,
 )
 from pynchy.state import get_messages_since as get_stored_messages_since
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import (
     CheckpointControlState,
     ContainerOutput,
@@ -67,6 +65,7 @@ from pynchy.types import (
     InFlightWorkKind,
     NewMessage,
     RuntimeId,
+    RuntimeTarget,
     WorkspaceProfile,
 )
 from pynchy.utils import ShellResult
@@ -150,6 +149,7 @@ def _make_deps(
     deps.queue.enqueue_message_check = MagicMock()
     deps.queue.clear_pending_tasks = MagicMock()
     deps.queue.stop_active_process = AsyncMock()
+    deps.queue.destroy_runtime_session = AsyncMock()
     deps.queue.stop_active_process_for_control = AsyncMock()
     deps.queue.has_active_run = MagicMock(return_value=False)
     deps.queue.interrupt_after_tool_result = AsyncMock(return_value=False)
@@ -365,11 +365,7 @@ class TestInterceptSpecialCommand:
         )
         await store_message(msg)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
-        ) as destroy:
-            assert await intercept_special_command(deps, jid, group, msg) is True
+        assert await intercept_special_command(deps, jid, group, msg) is True
 
         checkpoint = await get_in_flight_turn("turn-pause")
         assert checkpoint is not None
@@ -379,7 +375,7 @@ class TestInterceptSpecialCommand:
         assert next(message for message in history if message.id == msg.id).message_type == "host"
         assert deps.last_agent_timestamp[jid] == msg.timestamp
         deps.queue.stop_active_process_for_control.assert_awaited_once_with(RuntimeId(group.folder))
-        destroy.assert_awaited_once_with(group.folder)
+        deps.queue.destroy_runtime_session.assert_awaited_once_with(RuntimeId(group.folder))
         deps.broadcast_host_message.assert_awaited_once_with(jid, "⏸️")
 
     @pytest.mark.asyncio
@@ -417,12 +413,8 @@ class TestInterceptSpecialCommand:
         for command in commands:
             await store_message(command)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
-        ):
-            for command in commands:
-                assert await intercept_special_command(deps, jid, group, command) is True
+        for command in commands:
+            assert await intercept_special_command(deps, jid, group, command) is True
 
         checkpoint = await get_in_flight_turn("turn-paused")
         assert checkpoint is not None
@@ -1574,13 +1566,7 @@ class TestProcessGroupMessages:
         deps.run_agent.side_effect = interrupted_run
         deps.queue.stop_active_process_for_control.side_effect = stop_for_control
 
-        with (
-            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
-            patch(
-                "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-                new_callable=AsyncMock,
-            ),
-        ):
+        with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
             processing = asyncio.create_task(process_group_messages(deps, jid))
             await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
             pause = _make_message(
@@ -2024,7 +2010,13 @@ class TestProcessGroupMessages:
         deps.send_reaction_to_outbound = AsyncMock()
 
         fake_ids = {"slack": "1234567890.000001"}
-        mock_session = MagicMock()
+        registered_idle_callback: object | None = None
+
+        def register_idle_callback(_group_folder, callback) -> None:
+            nonlocal registered_idle_callback
+            registered_idle_callback = callback
+
+        deps.register_idle_callback = MagicMock(side_effect=register_idle_callback)
 
         with (
             patch(_P_SETTINGS) as ms,
@@ -2035,10 +2027,6 @@ class TestProcessGroupMessages:
                 "pynchy.host.orchestrator.messaging.pipeline.pop_last_result_ids",
                 return_value=fake_ids,
             ),
-            patch(
-                "pynchy.host.container_manager.session.get_session",
-                return_value=mock_session,
-            ),
         ):
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
@@ -2046,11 +2034,12 @@ class TestProcessGroupMessages:
         assert result is TurnOutcome.COMPLETED
         # The reaction should NOT be sent immediately
         deps.send_reaction_to_outbound.assert_not_awaited()
-        # Instead, set_idle_callback should be called on the session
-        mock_session.set_idle_callback.assert_called_once()
+        # Instead, the runtime operation should register an idle callback.
+        deps.register_idle_callback.assert_called_once()
 
         # Calling the stored callback should send the zzz reaction
-        callback = mock_session.set_idle_callback.call_args[0][0]
+        assert registered_idle_callback is not None
+        callback = registered_idle_callback
         await callback()
         deps.send_reaction_to_outbound.assert_awaited_once_with(jid, fake_ids, "zzz")
 
@@ -2464,10 +2453,6 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
         patch(
             "pynchy.config.access.filter_allowed_messages",
             side_effect=lambda messages, *_args: messages,
-        ),
-        patch(
-            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
-            new_callable=AsyncMock,
         ),
     ):
         await _run_loop_once(deps)

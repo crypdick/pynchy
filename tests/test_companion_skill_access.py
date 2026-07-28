@@ -8,15 +8,14 @@ from unittest.mock import patch
 
 import pluggy
 import pytest
-from conftest import make_settings
+from conftest import configure_skill_activation_for, make_settings
 
-from pynchy.config.models import LearningConfig, WorkspaceConfig, WorkspaceTool
-from pynchy.config.profiles import ProfileConfig
-from pynchy.host.container_manager.session_prep import (
+from pynchy.agent_home import (
     CompanionSkillAccess,
     is_skill_selected,
     sync_skills,
 )
+from pynchy.config.api import LearningConfig, ProfileConfig, WorkspaceConfig, WorkspaceTool
 from pynchy.host.learning.skill_activation import prepare_agent_homes
 
 if TYPE_CHECKING:
@@ -127,11 +126,11 @@ def test_workspace_tool_policy_applies_to_claude_and_codex_plugin_skills(
             "granted": WorkspaceConfig(profiles=["granted"]),
         },
     )
+    configure_skill_activation_for(settings)
 
     with ExitStack() as stack:
         for module in (
             "pynchy.host.learning.paths",
-            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.workspace_config",
         ):
             stack.enter_context(patch(f"{module}.get_settings", return_value=settings))

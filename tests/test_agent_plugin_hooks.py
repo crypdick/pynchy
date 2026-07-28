@@ -9,14 +9,14 @@ import pluggy
 if TYPE_CHECKING:
     from pathlib import Path
 
-from pynchy.plugins.agent_hooks import (
+from pynchy.plugins.api import (
+    AgentHookSpec,
+    PynchySpec,
     agent_hook_mounts,
     collect_agent_hook_specs,
     container_agent_hook_configs,
     host_agent_hook_configs,
 )
-from pynchy.plugins.contracts import AgentHookSpec
-from pynchy.plugins.hookspecs import PynchySpec
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

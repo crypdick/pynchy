@@ -9,12 +9,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.canaries import CanaryExercise, CanaryRunContext
-from pynchy.host.container_manager.mcp.canary_client import (
+from pynchy.canary_contracts import CanaryExercise, CanaryRunContext, CanaryScenario
+from pynchy.host.container_manager.api import (
     McpCanaryClient,
     McpCanaryToolError,
+    get_mcp_manager,
 )
-from pynchy.host.container_manager.mcp.manager import get_mcp_manager
+
+type CanaryRegistration = Callable[[str, CanaryScenario], None]
 
 _CANARY_EVENT_DURATION = timedelta(minutes=1)
 _CANARY_EVENT_LEAD_TIME = timedelta(minutes=10)
@@ -35,6 +37,17 @@ class _GoogleCalendarArtifact:
 class _GoogleDriveArtifact:
     server_name: str
     file_id: str
+
+
+@dataclass(frozen=True)
+class GoogleCanaryConfig:
+    """Google assurance targets resolved by application composition."""
+
+    calendar_server: str
+    calendar_id: str
+    drive_server: str
+    drive_probe_query: str
+    drive_file_id: str
 
 
 @runtime_checkable
@@ -179,6 +192,26 @@ class GoogleDriveRoundTripCanary:
     ) -> tuple[str, ...]:
         """Drive is intentionally read-only, so a successful probe creates nothing."""
         return ()
+
+
+def register_google_canary_scenarios(
+    register: CanaryRegistration,
+    *,
+    config: GoogleCanaryConfig,
+) -> None:
+    """Register Google canaries with configuration already resolved at composition."""
+    register(
+        "calendar.google.round.trip",
+        GoogleCalendarRoundTripCanary(config.calendar_server, config.calendar_id),
+    )
+    register(
+        "drive.google.round.trip",
+        GoogleDriveRoundTripCanary(
+            config.drive_server,
+            config.drive_probe_query,
+            config.drive_file_id,
+        ),
+    )
 
 
 @asynccontextmanager

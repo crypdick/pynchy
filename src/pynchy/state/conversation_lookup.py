@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     Conversation,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.
     ConversationId,
     ConversationSubjectKey,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.

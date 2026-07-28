@@ -7,7 +7,7 @@ import pluggy
 import pytest
 
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.contracts import AgentCoreSpec
+from pynchy.plugins.api import AgentCoreSpec
 from pynchy.types import ContainerInput
 
 # Add container agent_runner to path for testing

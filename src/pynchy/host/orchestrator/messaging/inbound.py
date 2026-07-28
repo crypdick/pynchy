@@ -16,10 +16,8 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 
-import pynchy.config.access as config_access
 import pynchy.host.orchestrator.todos as todos
-import pynchy.plugins.integrations.linear_boot as linear_boot
-from pynchy.config import get_settings
+from pynchy.config.api import filter_allowed_messages, get_settings
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves routing annotations.
     MessageHandlerDeps,
@@ -32,8 +30,11 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     reclassify_batch_host_controls,
     turn_boundary_lock,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
+from pynchy.plugins.integrations.api import (
+    create_linear_workspace_todo,
+    linear_workspace_enabled,
+)
 from pynchy.state.api import (
     get_messages_since,
     get_new_messages,
@@ -45,6 +46,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound ro
     OutboundEvent,
     OutboundEventType,
     RuntimeId,
+    RuntimeTarget,
     WorkspaceProfile,
 )
 
@@ -97,9 +99,7 @@ def _allowed_group_messages(
     ]
     allowed_channel_ids = {
         message.id
-        for message in config_access.filter_allowed_messages(
-            channel_messages, group, channel_plugin_name
-        )
+        for message in filter_allowed_messages(channel_messages, group, channel_plugin_name)
     }
     # The marker bypasses only the control channel's sender allowlist. The
     # provider body remains untrusted and taints the agent invocation.
@@ -414,12 +414,8 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # Linear workspace writes only its canonical board. Both use a system
         # notice so the agent treats this as informational rather than a request.
         item = request.last_content[5:]  # strip "todo " prefix
-        linear_enabled = linear_boot.linear_workspace_enabled(request.group)
-        issue = (
-            await linear_boot.create_linear_workspace_todo(request.group, item)
-            if linear_enabled
-            else None
-        )
+        linear_enabled = linear_workspace_enabled(request.group)
+        issue = await create_linear_workspace_todo(request.group, item) if linear_enabled else None
         if not linear_enabled:
             todos.add_todo(get_settings().data_dir, request.group.folder, item)
         elif issue is None:

@@ -8,7 +8,6 @@ status dict rather than importing the private per-section collectors.
 from __future__ import annotations
 
 import contextlib
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 import time
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -17,7 +16,7 @@ import pytest
 from aiohttp.test_utils import AioHTTPTestCase
 
 from pynchy.canaries import declared_canary_scenarios
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.api import RepoContext
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
@@ -57,6 +56,7 @@ def _runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=None,
         rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 
@@ -126,7 +126,6 @@ def _inert_status():
             new_callable=AsyncMock,
             side_effect=_inert_orchestration_states,
         )
-        p("run_docker", new_callable=AsyncMock, return_value=Mock(returncode=1, stdout=""))
         p(
             "get_temporal_scheduler_status",
             create=True,
@@ -182,6 +181,8 @@ class MockStatusDeps:
             "per_group": {},
         }
         self._gateway = gateway or {"mode": "litellm", "port": 4000, "key": "sk-test"}
+        self.capability_status_operations = Mock()
+        self.get_container_state = AsyncMock(return_value="not_found")
         self._active_sessions = active_sessions
         self._workspace_count = workspace_count
         self._speech_synthesizer = speech_synthesizer
@@ -220,6 +221,7 @@ class MockHttpDeps:
 
     data_dir = None
     project_root = None
+    capability_status_operations = Mock()
 
     async def broadcast_host_message(self, _jid: str, _text: str) -> None:
         return None
@@ -844,18 +846,8 @@ class TestCollectGateway:
         mock_session.__aenter__.return_value = mock_session
         mock_session.__aexit__.return_value = None
 
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="running\n"),
-                ],
-            ),
-            patch("aiohttp.ClientSession", return_value=mock_session),
-        ):
+        deps.get_container_state.side_effect = ["running", "running"]
+        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -875,14 +867,11 @@ class TestCollectGateway:
         monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-feature-test")
         deps = MockStatusDeps(gateway={"mode": "litellm"})
 
-        with (
-            _inert_status(),
-            patch(f"{_S}.run_docker", new_callable=AsyncMock) as run_docker,
-        ):
-            run_docker.return_value = Mock(returncode=0, stdout="running\n")
+        deps.get_container_state.return_value = "running"
+        with _inert_status():
             await collect_status(deps, time.monotonic())
 
-        inspected = [call.args[3] for call in run_docker.await_args_list]
+        inspected = [call.args[0] for call in deps.get_container_state.await_args_list]
         assert inspected == [
             "pynchy-feature-test-litellm",
             "pynchy-feature-test-litellm-db",
@@ -900,18 +889,8 @@ class TestCollectGateway:
         mock_session.__aenter__.return_value = mock_session
         mock_session.__aexit__.return_value = None
 
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="running\n"),
-                ],
-            ),
-            patch("aiohttp.ClientSession", return_value=mock_session),
-        ):
+        deps.get_container_state.side_effect = ["running", "running"]
+        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
             result = await collect_status(deps, time.monotonic())
 
         assert result["gateway"]["ready"] is True
@@ -921,15 +900,8 @@ class TestCollectGateway:
     async def test_gateway_health_failure_returns_none(self):
         """When gateway HTTP check fails, model counts are None."""
         deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="running\n"),
-            ),
-            # aiohttp.ClientSession stays inert (raises) → health check fails.
-        ):
+        deps.get_container_state.return_value = "running"
+        with _inert_status():  # aiohttp.ClientSession stays inert (raises) → health check fails.
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -940,17 +912,8 @@ class TestCollectGateway:
     async def test_missing_port_skips_health_check(self):
         """When port or key is missing, health check is skipped."""
         deps = MockStatusDeps(gateway={"mode": "litellm"})
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=[
-                    Mock(returncode=0, stdout="running\n"),
-                    Mock(returncode=0, stdout="stopped\n"),
-                ],
-            ),
-        ):
+        deps.get_container_state.side_effect = ["running", "stopped"]
+        with _inert_status():
             result = await collect_status(deps, time.monotonic())
 
         gateway = result["gateway"]
@@ -973,63 +936,25 @@ class TestContainerState:
 
     @pytest.mark.asyncio
     async def test_running_container(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="running\n"),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        deps.get_container_state.return_value = "running"
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "running"
 
     @pytest.mark.asyncio
     async def test_stopped_container(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=0, stdout="exited\n"),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        deps.get_container_state.return_value = "exited"
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "exited"
 
     @pytest.mark.asyncio
     async def test_not_found(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                return_value=Mock(returncode=1, stdout=""),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
-        assert result["gateway"]["litellm_container"] == "not_found"
-
-    @pytest.mark.asyncio
-    async def test_docker_not_installed(self):
-        with (
-            _inert_status(),
-            patch(f"{_S}.run_docker", new_callable=AsyncMock, side_effect=FileNotFoundError),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
-        assert result["gateway"]["litellm_container"] == "not_found"
-
-    @pytest.mark.asyncio
-    async def test_docker_timeout(self):
-        with (
-            _inert_status(),
-            patch(
-                f"{_S}.run_docker",
-                new_callable=AsyncMock,
-                side_effect=subprocess.TimeoutExpired("docker", 5),
-            ),
-        ):
-            result = await collect_status(self._litellm_deps(), time.monotonic())
+        deps = self._litellm_deps()
+        with _inert_status():
+            result = await collect_status(deps, time.monotonic())
         assert result["gateway"]["litellm_container"] == "not_found"
 
 

@@ -16,18 +16,16 @@ from pathlib import (
 )
 from typing import Any
 
-from pynchy.config import (
+from pynchy.config.api import (
+    McpTool,
+    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
     Settings,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
     apply_tool_access,
     tool_process_environment,
 )
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
-)
-from pynchy.config.models import McpTool
-from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.logger import logger
-from pynchy.plugins.mcp_server import McpServerConfig
+from pynchy.plugins.api import McpServerConfig
+from pynchy.runtime_names import runtime_container_name
 from pynchy.types import (
     ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution models at runtime.
 )

@@ -10,8 +10,11 @@ from typing import TYPE_CHECKING
 import pytest
 from conftest import NullChannel, NullIpcDeps, make_settings
 
-from pynchy.config.models import MatrixConnectionConfig, WhatsAppConnectionConfig
-from pynchy.config.source_health import MessagingSourceHealthConfig
+from pynchy.config.api import (
+    MatrixConnectionConfig,
+    MessagingSourceHealthConfig,
+    WhatsAppConnectionConfig,
+)
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
@@ -21,7 +24,7 @@ from pynchy.types import WorkspaceProfile
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pynchy.config import Settings
+    from pynchy.config.api import Settings
 
 
 class _WhatsAppChannel(NullChannel):

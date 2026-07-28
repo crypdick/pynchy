@@ -14,8 +14,7 @@ from typing import Annotated, Any
 import pluggy
 from pydantic import BaseModel, Field
 
-from pynchy.config import get_settings
-from pynchy.plugins.computer_use import (
+from pynchy.plugins.api import (
     ComputerUseAction,
     ComputerUseBackend,
     ComputerUseBackendAvailability,
@@ -58,11 +57,6 @@ class CuaDriverConfig(BaseModel):
     # if these defaults change.
     binary: Annotated[str, Field(min_length=1)] = "cua-driver"
     timeout_seconds: PositiveTimeout = 30.0
-
-
-def _plugin_config() -> CuaDriverConfig:
-    plugin = get_settings().plugins.get("cua-driver")
-    return CuaDriverConfig.model_validate(plugin.options if plugin is not None else {})
 
 
 @dataclass(frozen=True)
@@ -128,11 +122,15 @@ class CuaDriverComputerUsePlugin:
     """Contribute Cua Driver as an optional macOS provider."""
 
     def __init__(self, config: CuaDriverConfig | None = None) -> None:
+        self._config = config or CuaDriverConfig()
+
+    def configure(self, config: CuaDriverConfig) -> None:
+        """Apply the provider's resolved service configuration before registration."""
         self._config = config
 
     @hookimpl
     def pynchy_computer_use_backend(self) -> ComputerUseBackend:
-        return CuaDriverBackend(self._config or _plugin_config())
+        return CuaDriverBackend(self._config)
 
 
 def _action_and_payload(request: ComputerUseRequest) -> tuple[str, dict[str, Any]]:

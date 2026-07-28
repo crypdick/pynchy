@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy._action_contract import (
+from pynchy.actions._contract import (
     ActionId,
     ActionSpec,
     ActionSurface,

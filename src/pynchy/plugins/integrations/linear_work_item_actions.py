@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ActionIntentContract,
     ApprovalContract,
     AuditContract,

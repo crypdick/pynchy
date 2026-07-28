@@ -3,55 +3,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from enum import StrEnum
 
 from pynchy.state.connection import _get_db
+from pynchy.types import (
+    RecentSecurityContext,
+    SecurityContextMessage,
+    SecurityContextRole,
+    SecurityExecutionAuthority,
+    SecurityExecutionAuthorityKind,
+)
 
 _MESSAGE_LIMIT = 4
 _MESSAGE_CHAR_LIMIT = 500
 _TOOL_LIMIT = 8
 _AGENT_UPDATE_LIMIT = 2
-
-
-class SecurityContextRole(StrEnum):
-    """Message roles exposed to the Cop context boundary."""
-
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class SecurityExecutionAuthorityKind(StrEnum):
-    """Host-derived execution contracts exposed to the Cop."""
-
-    LINEAR_WORK_ITEM_LEASE = "linear_work_item_lease"
-
-
-@dataclass(frozen=True)
-class SecurityContextMessage:
-    """One bounded recent message without sender identifiers."""
-
-    role: SecurityContextRole
-    content: str
-
-
-@dataclass(frozen=True)
-class SecurityExecutionAuthority:
-    """One active durable execution contract for the inspected chat."""
-
-    kind: SecurityExecutionAuthorityKind
-    work_item_identifier: str
-
-
-@dataclass(frozen=True)
-class RecentSecurityContext:
-    """The available intent and action chain for one chat."""
-
-    current_user_intent: str | None
-    recent_messages: tuple[SecurityContextMessage, ...]
-    recent_agent_updates: tuple[str, ...]
-    completed_tool_actions: tuple[str, ...]
-    execution_authority: SecurityExecutionAuthority | None
 
 
 async def _load_execution_authority(chat_jid: str) -> SecurityExecutionAuthority | None:

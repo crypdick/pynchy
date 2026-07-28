@@ -7,19 +7,19 @@ import subprocess  # noqa: S404 - tests construct completed local process fixtur
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import make_settings
 
-from pynchy.capabilities import ApprovalTrigger, HostActionAccess
-from pynchy.config.models import (
+from pynchy.config.api import (
     MatrixConnectionConfig,
     MatrixEndpointConfig,
+    validate_settings_mapping,
 )
-from pynchy.config.settings import validate_settings_mapping
 from pynchy.conversation.models import ConversationId
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.api import ApprovalTrigger, HostActionAccess
 from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayClient,
@@ -118,6 +118,25 @@ def _handlers():
     return {str(action.tool_name): action.handler for action in registration.actions}
 
 
+def _configure_matrix_gateway_runtime(settings) -> None:
+    routes = resolve_matrix_routes(settings)
+    matrix_gateway.configure_matrix_gateway_runtime(
+        matrix_gateway.MatrixGatewayRuntime(
+            data_dir=settings.data_dir,
+            routes=routes,
+            connections=tuple(
+                matrix_gateway.MatrixConnectionRuntimeOptions(
+                    name=name,
+                    poll_interval_seconds=connection.poll_interval_seconds,
+                )
+                for name, connection in settings.connections.items()
+                if isinstance(connection, MatrixConnectionConfig)
+            ),
+            get_control_thread_jid=AsyncMock(return_value=ChatJid(_CONTROL)),
+        )
+    )
+
+
 def _canonical_config() -> dict[str, object]:
     return {
         "workspaces": {"support": {}},
@@ -141,13 +160,14 @@ def _canonical_config() -> dict[str, object]:
 @pytest.fixture(autouse=True)
 def _route_registry() -> None:
     clear_active_matrix_routes()
+    _configure_matrix_gateway_runtime(make_settings())
 
 
 def test_canonical_connections_and_routes_config_resolves_matrix_runtime() -> None:
     settings = validate_settings_mapping(_canonical_config())
 
-    with patch.object(matrix_gateway, "get_settings", return_value=settings):
-        runtimes = matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
+    _configure_matrix_gateway_runtime(settings)
+    runtimes = matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
 
     assert settings.connections["personal-chats"].type == "matrix"
     assert settings.routes["family"].workspace == "support"
@@ -268,8 +288,8 @@ def test_unused_matrix_connection_does_not_create_a_false_ready_runtime() -> Non
     raw["routes"] = {}
     settings = validate_settings_mapping(raw)
 
-    with patch.object(matrix_gateway, "get_settings", return_value=settings):
-        runtimes = matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
+    _configure_matrix_gateway_runtime(settings)
+    runtimes = matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
 
     assert runtimes == ()
 
@@ -294,17 +314,12 @@ def test_plugin_exposes_only_route_scoped_tools_and_write_is_mandatory_approval(
 @pytest.mark.action("chat.matrix.route.read")
 async def test_route_read_ignores_caller_destination_and_uses_bound_room(tmp_path: Path) -> None:
     _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
     stub = StubMatrixGatewayClient(_portal())
     handler = _handlers()["matrix_route_read"]
 
     with (
         patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
-        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
-        patch.object(
-            matrix_gateway,
-            "get_conversation_control_binding",
-            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
-        ),
     ):
         result = await handler(
             {"source_group": _FOLDER, "room_id": "!attacker:example.com", "limit": 3}
@@ -321,17 +336,12 @@ async def test_route_read_ignores_caller_destination_and_uses_bound_room(tmp_pat
 @pytest.mark.action("chat.matrix.route.read")
 async def test_route_read_rechecks_live_portal_and_denies_stale_binding(tmp_path: Path) -> None:
     _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
     stub = StubMatrixGatewayClient(_portal(room_id="!replacement:matrix.example.com"))
     handler = _handlers()["matrix_route_read"]
 
     with (
         patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
-        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
-        patch.object(
-            matrix_gateway,
-            "get_conversation_control_binding",
-            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
-        ),
     ):
         result = await handler({"source_group": _FOLDER, "limit": 3})
 
@@ -342,17 +352,12 @@ async def test_route_read_rechecks_live_portal_and_denies_stale_binding(tmp_path
 @pytest.mark.action("chat.matrix.route.send")
 async def test_route_send_rechecks_exact_portal_before_provider_write(tmp_path: Path) -> None:
     _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
     stub = StubMatrixGatewayClient(_portal(room_id="!replacement:matrix.example.com"))
     handler = _handlers()["matrix_route_send"]
 
     with (
         patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
-        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
-        patch.object(
-            matrix_gateway,
-            "get_conversation_control_binding",
-            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
-        ),
     ):
         result = await handler({"source_group": _FOLDER, "body": "Private reply"})
 
@@ -363,17 +368,12 @@ async def test_route_send_rechecks_exact_portal_before_provider_write(tmp_path: 
 @pytest.mark.action("chat.matrix.route.send")
 async def test_route_send_returns_only_agent_safe_event_receipt(tmp_path: Path) -> None:
     _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
     stub = StubMatrixGatewayClient(_portal())
     handler = _handlers()["matrix_route_send"]
 
     with (
         patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
-        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
-        patch.object(
-            matrix_gateway,
-            "get_conversation_control_binding",
-            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
-        ),
     ):
         result = await handler({"source_group": _FOLDER, "body": "Private reply"})
 

@@ -10,14 +10,15 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
-from pynchy.conversation.dispatch import conversation_runtime_lock
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ControlSurface,
     ConversationControlBinding,
     ConversationId,
     ConversationSubject,
+    conversation_runtime_lock,
+    parent_workspace_name,
+    routed_conversation_folder,
 )
-from pynchy.conversation.workspaces import parent_workspace_name, routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.state.api import (

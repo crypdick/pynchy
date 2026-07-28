@@ -16,20 +16,22 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
 from dataclasses import dataclass
 from typing import TypeVar
 
-from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-from pynchy.host.container_manager.security.middleware import PolicyDeniedError
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.queue_serialization import (
     await_message_turn,
     await_queued_task,
 )
-from pynchy.host.orchestrator.queue_shutdown import shutdown_queue_processes
 from pynchy.host.orchestrator.queue_state import GroupState, HostProcessLease, QueuedTask
-from pynchy.host.orchestrator.runtime_process_control import RuntimeProcessControl
+from pynchy.host.orchestrator.runtime_process_control import (
+    ContainerRuntimeOperations,
+    RuntimeProcessControl,
+)
 from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
-from pynchy.types import RuntimeId  # noqa: TC001, RUF100
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.types import (
+    RuntimeId,  # noqa: TC001, RUF100
+    RuntimeTarget,  # noqa: TC001, RUF100
+)
 from pynchy.utils import create_background_task
 
 _ResultT = TypeVar("_ResultT")
@@ -51,10 +53,10 @@ class GroupQueue:
     priority over scheduled tasks when draining, since a human is waiting.
     """
 
-    def __init__(self, policy: QueuePolicy) -> None:
+    def __init__(self, policy: QueuePolicy, container_runtime: ContainerRuntimeOperations) -> None:
         self._policy = policy
         self._registry = RuntimeRegistry()
-        self._processes = RuntimeProcessControl(self._registry)
+        self._processes = RuntimeProcessControl(self._registry, container_runtime)
         self._active_count = 0
         self._waiting_groups: deque[RuntimeId] = deque()
         self._process_messages_fn: Callable[[str], Awaitable[TurnOutcome]] | None = None
@@ -301,6 +303,9 @@ class GroupQueue:
     async def stop_active_process(self, runtime_id: RuntimeId) -> None:
         await self._processes.stop_active_process(runtime_id)
 
+    async def destroy_runtime_session(self, runtime_id: RuntimeId) -> None:
+        await self._processes.destroy_runtime_session(runtime_id)
+
     async def stop_active_process_for_control(self, runtime_id: RuntimeId) -> None:
         await self._processes.stop_active_process_for_control(runtime_id)
 
@@ -364,14 +369,6 @@ class GroupQueue:
         error: BaseException | None = None
         try:
             result = await self._process_group_messages(state)
-        except PolicyDeniedError as exc:
-            # Deterministic failure — retrying won't change the outcome
-            result = TurnOutcome.COMPLETED
-            logger.warning(
-                "Policy denial for runtime, not retrying",
-                runtime_id=runtime_id,
-                err=str(exc),
-            )
         except Exception:  # noqa: BLE001, RUF100 - message-processing is a task boundary; retry happens on drain.
             error = RuntimeError(f"Error processing messages for runtime {runtime_id}")
             logger.exception(
@@ -419,7 +416,7 @@ class GroupQueue:
             # container — prevents the next container from seeing
             # duplicates of "btw " messages that were best-effort
             # forwarded but never read by the now-dead task container.
-            clean_ipc_input_dir(state.target.folder)
+            self._processes.clean_runtime_input(runtime_id)
             state.release()
             self._active_count -= 1
             self._drain_runtime(runtime_id)
@@ -508,7 +505,4 @@ class GroupQueue:
         for state in self._registry.values():
             self._cancel_pending_tasks(state)
             state.cancel_message_waiters()
-        await shutdown_queue_processes(
-            self._registry.states,
-            active_count=self._active_count,
-        )
+        await self._processes.shutdown(active_count=self._active_count)

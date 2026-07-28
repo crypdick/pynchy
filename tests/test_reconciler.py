@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from freezegun import freeze_time
 
-from pynchy.config.models import OwnerConfig, WorkspaceConfig
+from pynchy.config.api import OwnerConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.state import (
     get_channel_cursor,

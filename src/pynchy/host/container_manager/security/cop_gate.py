@@ -30,7 +30,6 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopVerdict,
     inspect_outbound,
-    load_cop_inspection_context,
 )
 from pynchy.host.container_manager.security.gate import get_gate_for_group
 from pynchy.host.container_manager.security.identity import (
@@ -122,7 +121,7 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
         )
         return True
 
-    inspection_context = await load_cop_inspection_context(chat_jid)
+    inspection_context = await deps.load_cop_inspection_context(chat_jid)
     verdict = (
         CopVerdict(
             flagged=False,

@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock
 
 from conftest import make_host_action_catalog
 
-from pynchy.capabilities import ApprovalMode, HostActionDescriptor
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     evaluate_host_action_policy,
 )
+from pynchy.plugins.api import ApprovalMode, HostActionDescriptor
 from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 

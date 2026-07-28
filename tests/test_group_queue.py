@@ -4,20 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import make_container_runtime_operations, make_settings
 
-from pynchy.config import ContainerConfig, QueueConfig
+from pynchy.config.api import ContainerConfig, QueueConfig
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-from pynchy.host.container_manager.security.middleware import PolicyDeniedError
+from pynchy.host.orchestrator.api import ContainerRuntimeOperations
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.types import RuntimeId
+from pynchy.turn_outcomes import TurnOutcome
+from pynchy.types import RuntimeId, RuntimeTarget
 
 TASK_EXPLODED_MESSAGE = "task exploded"
 
@@ -60,14 +58,27 @@ def _patch_settings(
     if data_dir is not None:
         overrides["data_dir"] = data_dir
     s = make_settings(**overrides)
-    with patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=s):
+    with patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", s.data_dir / "ipc"):
         yield
 
 
 @pytest.fixture
-def queue():
+def container_runtime() -> ContainerRuntimeOperations:
+    return ContainerRuntimeOperations(
+        write_message=MagicMock(),
+        write_close_sentinel=MagicMock(),
+        clean_input_dir=MagicMock(),
+        destroy_gate=MagicMock(),
+        destroy_session=AsyncMock(),
+        destroy_all_sessions=AsyncMock(),
+        graceful_stop=AsyncMock(),
+    )
+
+
+@pytest.fixture
+def queue(container_runtime: ContainerRuntimeOperations):
     with _patch_settings(max_concurrent=2):
-        yield GroupQueue(_queue_policy())
+        yield GroupQueue(_queue_policy(), container_runtime)
 
 
 class TestGroupQueue:
@@ -306,31 +317,23 @@ class TestGroupQueue:
         task_complete.set()
         await asyncio.sleep(0.05)
 
-    async def test_shutdown_stops_host_runner_process_group(self, queue: GroupQueue) -> None:
+    async def test_shutdown_stops_host_runner_process_group(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ) -> None:
         """Shutdown must stop a host runner through its process group, not Docker."""
         lease = queue.acquire_host_process(_target("group1@g.us", "pynchy-dev"))
         proc = AsyncMock(spec=asyncio.subprocess.Process)
         proc.returncode = None
         assert queue.register_host_process(lease, proc, "host-agent-runner")
 
-        with (
-            patch(
-                "pynchy.host.container_manager.session.destroy_all_sessions",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "pynchy.host.orchestrator.queue_shutdown.stop_host_process",
-                new_callable=AsyncMock,
-            ) as stop_host,
-            patch(
-                "pynchy.host.container_manager.process.graceful_stop",
-                new_callable=AsyncMock,
-            ) as stop_container,
-        ):
+        with patch(
+            "pynchy.host.orchestrator.runtime_process_control.stop_host_process",
+            new_callable=AsyncMock,
+        ) as stop_host:
             await queue.shutdown()
 
         stop_host.assert_awaited_once_with(proc)
-        stop_container.assert_not_awaited()
+        container_runtime.graceful_stop.assert_not_awaited()
 
     async def test_shutdown_cancels_interactive_turn_waiter(self, queue: GroupQueue) -> None:
         started = asyncio.Event()
@@ -347,11 +350,7 @@ class TestGroupQueue:
         )
         await started.wait()
 
-        with patch(
-            "pynchy.host.container_manager.session.destroy_all_sessions",
-            new_callable=AsyncMock,
-        ):
-            await queue.shutdown()
+        await queue.shutdown()
 
         with pytest.raises(asyncio.CancelledError):
             await waiting_owner
@@ -616,8 +615,10 @@ class TestSendMessage:
     def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         assert queue.send_message(_runtime("group1@g.us"), "hello") is False
 
-    async def test_writes_ipc_file_when_active_with_folder(self, queue: GroupQueue, tmp_path):
-        """Successful send_message writes an atomic JSON file to the IPC dir."""
+    async def test_writes_ipc_file_when_active_with_folder(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ):
+        """Successful send_message delegates to the bound runtime operation."""
         completions: list[asyncio.Event] = []
 
         async def process_messages(group_jid: str) -> TurnOutcome:
@@ -632,18 +633,10 @@ class TestSendMessage:
 
         queue.register_process(_runtime("test-group"), None, "container-1")
 
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            result = queue.send_message(_runtime("test-group"), "hello world")
+        result = queue.send_message(_runtime("test-group"), "hello world")
 
         assert result is True
-
-        # Verify the IPC file was written
-        input_dir = tmp_path / "ipc" / "test-group" / "input"
-        files = list(input_dir.glob("*.json"))
-        assert len(files) == 1
-
-        content = json.loads(files[0].read_text())
-        assert content == {"type": "message", "text": "hello world"}
+        container_runtime.write_message.assert_called_once_with("test-group", "hello world")
 
         completions[0].set()
         await asyncio.sleep(0.05)
@@ -654,7 +647,9 @@ class TestGroupQueueRetry:
 
     async def test_retries_with_backoff(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.1):
-            queue = GroupQueue(_queue_policy(base_retry_seconds=0.1))
+            queue = GroupQueue(
+                _queue_policy(base_retry_seconds=0.1), make_container_runtime_operations()
+            )
             call_count = 0
 
             def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
@@ -679,7 +674,9 @@ class TestGroupQueueRetry:
 
     async def test_paused_turn_is_terminal_without_retry(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
+            queue = GroupQueue(
+                _queue_policy(base_retry_seconds=0.01), make_container_runtime_operations()
+            )
             process_messages = AsyncMock(return_value=TurnOutcome.PAUSED)
             queue.set_process_messages_fn(process_messages)
 
@@ -689,23 +686,11 @@ class TestGroupQueueRetry:
             process_messages.assert_awaited_once_with("group1@g.us")
             assert queue.snapshot()["group1@g.us"]["active"] is False
 
-    async def test_policy_denial_settles_waiter_without_retry(self):
-        """A deterministic denial completes its waiter instead of retrying forever."""
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
-            process_messages = AsyncMock(side_effect=PolicyDeniedError("outbound operation denied"))
-            queue.set_process_messages_fn(process_messages)
-
-            result = await queue.run_message_turn(_target("group1@g.us"))
-            await asyncio.sleep(0.05)
-
-            assert result is TurnOutcome.COMPLETED
-            process_messages.assert_awaited_once_with("group1@g.us")
-            assert queue.snapshot()["group1@g.us"]["active"] is False
-
     async def test_stops_retrying_after_max_retries(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
-            queue = GroupQueue(_queue_policy(base_retry_seconds=0.01))
+            queue = GroupQueue(
+                _queue_policy(base_retry_seconds=0.01), make_container_runtime_operations()
+            )
             call_count = 0
             final_attempt = asyncio.Event()
 
@@ -824,8 +809,10 @@ class TestSnapshot:
 class TestCloseStdin:
     """Tests for close_stdin: writing _close sentinel to active containers."""
 
-    async def test_writes_close_sentinel_when_active(self, queue: GroupQueue, tmp_path):
-        """close_stdin writes _close file to IPC input dir for active containers."""
+    async def test_writes_close_sentinel_when_active(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ):
+        """close_stdin delegates the close sentinel to the bound runtime."""
         completions: list[asyncio.Event] = []
 
         async def process_messages(group_jid: str) -> TurnOutcome:
@@ -840,12 +827,9 @@ class TestCloseStdin:
 
         queue.register_process(_runtime("test-group"), None, "container-1")
 
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
-            queue.close_stdin(_runtime("test-group"))
+        queue.close_stdin(_runtime("test-group"))
 
-        close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
-        assert close_file.exists()
-        assert not close_file.read_text()
+        container_runtime.write_close_sentinel.assert_called_once_with("test-group")
 
         completions[0].set()
         await asyncio.sleep(0.05)
@@ -944,7 +928,9 @@ class TestTaskExceptionHandling:
             return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
-            queue = GroupQueue(_queue_policy(base_retry_seconds=0.05))
+            queue = GroupQueue(
+                _queue_policy(base_retry_seconds=0.05), make_container_runtime_operations()
+            )
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check(_target("group1@g.us"))
 
@@ -966,7 +952,9 @@ class TestStopActiveProcess:
         await queue.stop_active_process(_runtime("group1@g.us"))
         # Should not raise
 
-    async def test_calls_graceful_stop_on_active_process(self, queue: GroupQueue, tmp_path):
+    async def test_calls_graceful_stop_on_active_process(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ):
         """stop_active_process writes _close sentinel and calls graceful_stop."""
         completions: list[asyncio.Event] = []
 
@@ -983,19 +971,10 @@ class TestStopActiveProcess:
         mock_proc.returncode = None
         queue.register_process(_runtime("test-group"), mock_proc, "my-container")
 
-        with (
-            _patch_settings(max_concurrent=2, data_dir=tmp_path),
-            patch(
-                "pynchy.host.container_manager.process.graceful_stop",
-                new_callable=AsyncMock,
-            ) as mock_stop,
-        ):
-            await queue.stop_active_process(_runtime("test-group"))
-            mock_stop.assert_called_once_with(mock_proc, "my-container")
+        await queue.stop_active_process(_runtime("test-group"))
 
-        # Close sentinel should have been written
-        close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
-        assert close_file.exists()
+        container_runtime.write_close_sentinel.assert_called_once_with("test-group")
+        container_runtime.graceful_stop.assert_awaited_once_with(mock_proc, "my-container")
 
         completions[0].set()
         await asyncio.sleep(0.05)
@@ -1041,7 +1020,9 @@ class TestDeferredToolBoundaryInterrupt:
         stop.assert_awaited_once_with(proc)
         assert queue.release_host_process(lease) is False
 
-    async def test_skips_graceful_stop_when_already_exited(self, queue: GroupQueue, tmp_path):
+    async def test_skips_graceful_stop_when_already_exited(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ):
         """stop_active_process skips graceful_stop if process already exited."""
         completions: list[asyncio.Event] = []
 
@@ -1057,15 +1038,8 @@ class TestDeferredToolBoundaryInterrupt:
         mock_proc.returncode = 0  # already exited
         queue.register_process(_runtime("test-group"), mock_proc, "my-container")
 
-        with (
-            _patch_settings(max_concurrent=2, data_dir=tmp_path),
-            patch(
-                "pynchy.host.container_manager.process.graceful_stop",
-                new_callable=AsyncMock,
-            ) as mock_stop,
-        ):
-            await queue.stop_active_process(_runtime("test-group"))
-            mock_stop.assert_not_called()
+        await queue.stop_active_process(_runtime("test-group"))
+        container_runtime.graceful_stop.assert_not_awaited()
 
         completions[0].set()
         await asyncio.sleep(0.05)
@@ -1114,7 +1088,7 @@ class TestDrainGroupTaskOrdering:
     async def test_tasks_queued_at_concurrency_limit_drain_correctly(self):
         """Tasks queued when at concurrency limit drain when slots free up."""
         with _patch_settings(max_concurrent=1):
-            queue = GroupQueue(_queue_policy(max_concurrent=1))
+            queue = GroupQueue(_queue_policy(max_concurrent=1), make_container_runtime_operations())
             execution: list[str] = []
             completions: list[asyncio.Event] = []
 

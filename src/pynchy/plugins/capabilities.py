@@ -14,11 +14,13 @@ from enum import StrEnum
 from typing import Any, NewType
 
 from pynchy.actions import ActionId, ActionSpec, ActionTransport
+from pynchy.identifiers import (
+    CapabilityId,  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
     ServiceTrustConfig,
 )
 
-CapabilityId = NewType("CapabilityId", str)
 HostToolName = NewType("HostToolName", str)
 HostActionHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 

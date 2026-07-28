@@ -21,11 +21,9 @@ from temporalio.client import (
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
-from pynchy.host.git_ops.repo import repo_host_root
+from pynchy.host.git_ops.api import repo_host_root
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
-    agent_task_occurrence_due_at,
-    agent_task_occurrence_workflow_id,
     agent_task_schedule_id,
     agent_task_workflow_id,
     canary_schedule_id,
@@ -54,6 +52,8 @@ from pynchy.host.orchestrator.temporal.workflows import (
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
     HostJob,
     ScheduledTask,
+    agent_task_occurrence_due_at,
+    agent_task_occurrence_workflow_id,
 )
 
 _TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED = "Temporal scheduler runtime has not been started"

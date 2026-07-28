@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy._action_contract import (
+from pynchy.actions._contract import (
     ActionId,
     ActionSpec,
     ActionSurface,
@@ -12,7 +12,7 @@ from pynchy._action_contract import (
     assess_hermetic_coverage,
     validate_action_specs,
 )
-from pynchy._action_specs import ACTION_SPECS
+from pynchy.actions._specs import ACTION_SPECS
 
 __all__ = [
     "ACTION_SPECS",
@@ -25,7 +25,3 @@ __all__ = [
     "assess_hermetic_coverage",
     "validate_action_specs",
 ]
-
-_CATALOG_ERRORS = validate_action_specs(ACTION_SPECS)
-if _CATALOG_ERRORS:
-    raise RuntimeError(f"Invalid built-in action catalog: {'; '.join(_CATALOG_ERRORS)}")

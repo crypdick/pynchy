@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.canaries import canary_run_to_dict, get_canary_report
-from pynchy.conversation.dispatch import notify_conversation_delivery_completed
-from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
-from pynchy.host.git_ops.utils import (
+from pynchy.canaries.api import canary_run_to_dict, get_canary_report
+from pynchy.conversation.api import notify_conversation_delivery_completed
+from pynchy.host.git_ops.api import (
     files_changed_between,
+    get_deploy_config_hash,
     get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
@@ -27,6 +27,7 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.host.orchestrator.capability_status import (
+    CapabilityStatusOperations,
     canary_outcomes_from_report,
     collect_capability_status,
     resolve_workspace_capabilities,
@@ -43,8 +44,7 @@ from pynchy.host.orchestrator.http_readiness import (
     readiness_middleware,
 )
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.host.orchestrator.webhook_ingress import (
     WebhookIngressDeps,
     build_webhook_ingress,
@@ -52,16 +52,16 @@ from pynchy.host.orchestrator.webhook_ingress import (
     recover_webhook_conversations,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
-from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes, validate_webhook_routes
+from pynchy.plugins.api import WebhookRoute, collect_webhook_routes, validate_webhook_routes
+from pynchy.plugins.integrations.api import work_item_execution_to_dict
 from pynchy.state.api import (
     action_intent_to_dict,
     get_recent_canary_runs,
     list_action_intents,
+    list_webhook_effects,
     list_work_item_executions,
     reconcile_webhook_effect_absent,
 )
-from pynchy.state.webhook_effects import list_webhook_effects
 from pynchy.types import DeployClaimStatus
 from pynchy.webhook_effects import WebhookEffect, WebhookEffectId, WebhookEffectStatus
 
@@ -105,6 +105,8 @@ def _write_boot_warning(data_dir: Path, message: str) -> None:
 @runtime_checkable
 class HttpDeps(Protocol):
     """Dependencies injected by app.py."""
+
+    capability_status_operations: CapabilityStatusOperations
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
@@ -323,15 +325,22 @@ async def _handle_webhook_effect_absent(request: web.Request) -> web.Response:
 
 async def _handle_capabilities(request: web.Request) -> web.Response:
     """Return effective host-action capabilities for one or every workspace."""
+    deps: HttpDeps = request.app[deps_key]
     report = await get_canary_report(history_limit=10)
     workspace = request.query.get("workspace")
     if workspace:
         snapshot = await resolve_workspace_capabilities(
             workspace,
+            operations=deps.capability_status_operations,
             canary_outcomes=canary_outcomes_from_report(report),
         )
         return web.json_response(snapshot.to_dict())
-    return web.json_response(await collect_capability_status(report))
+    return web.json_response(
+        await collect_capability_status(
+            report,
+            operations=deps.capability_status_operations,
+        )
+    )
 
 
 def _canary_history_limit(request: web.Request) -> int | None:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pynchy.config.personalization import PersonalizationPaths
+from pynchy.config.api import PersonalizationPaths
 from pynchy.host.orchestrator.prompt_loading import read_prompts as _read_prompts
 
 

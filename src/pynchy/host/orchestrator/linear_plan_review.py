@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
     register_runtime_workspace_restriction,
@@ -25,6 +24,7 @@ from pynchy.logger import logger
 from pynchy.types import (
     CapabilityRule,
     ContainerOutput,
+    RuntimeTarget,
     WorkspaceProfile,
 )
 

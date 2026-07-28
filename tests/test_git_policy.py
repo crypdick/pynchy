@@ -17,13 +17,13 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.sync import (
+from pynchy.host.git_ops.api import (
     GIT_POLICY_MERGE,
+    RepoContext,
+    ensure_worktree,
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
-from pynchy.host.git_ops.worktree import ensure_worktree
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -81,7 +81,7 @@ def git_env(tmp_path: Path):
     repo_ctx = RepoContext(slug="owner/repo", root=project, worktrees_dir=worktrees_dir)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.git_ops.utils._default_cwd", s.project_root))
         yield {
             "origin": origin,
             "project": project,

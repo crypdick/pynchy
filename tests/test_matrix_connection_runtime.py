@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from conftest import init_test_database, make_settings
 
-from pynchy.config.models import (
+from pynchy.config.api import (
     MatrixConnectionConfig,
     MatrixEndpointConfig,
 )
@@ -28,7 +28,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
-from pynchy.plugins.connections import ConnectionRuntimeContext
+from pynchy.plugins.api import ConnectionRuntimeContext
 from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayError,

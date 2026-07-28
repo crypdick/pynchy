@@ -18,30 +18,20 @@ from typing import Any, cast
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
-from pynchy.capability_policy import (
-    capability_pattern_matches,
-    most_restrictive_capability_rule,
-)
-from pynchy.config import (
+from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
     ResolvedToolAccess,
+    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
     Settings,
+    WorkspaceConfig,
     apply_tool_access,
     get_settings,
+    mutate_config_toml,
     reset_settings,
     resolve_tool_access,
 )
-from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-)
-from pynchy.config.merge import (
-    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-)
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
-    WorkspaceConfig,
-)
-from pynchy.config.toml_io import mutate_config_toml
-from pynchy.conversation.workspaces import conversation_id_from_folder, parent_workspace_name
-from pynchy.conversation.workspaces import dynamic_thread_folder as _dynamic_thread_folder
+from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
+from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
@@ -50,7 +40,7 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
-from pynchy.plugins.contracts import WorkspaceSpec
+from pynchy.plugins.api import WorkspaceSpec
 from pynchy.state.api import (
     get_all_tasks,
     update_task,
@@ -59,6 +49,8 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace 
     CapabilityRule,
     Channel,
     WorkspaceProfile,
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
 )
 
 
@@ -154,8 +146,13 @@ def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpe
     s = settings or get_settings()
     merged = dict(_state.plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
-        merged[folder] = WorkspaceSpec(folder=folder, config=cfg)
+        merged[folder] = WorkspaceSpec(folder=folder, config=cfg.model_dump())
     return merged
+
+
+def _workspace_spec_config(spec: WorkspaceSpec) -> WorkspaceConfig:
+    """Validate a plugin's configuration transport at its application boundary."""
+    return WorkspaceConfig.model_validate(spec.config)
 
 
 def load_workspace_config(
@@ -189,7 +186,7 @@ def load_workspace_config(
                 return semantic
     if spec is None:
         return None
-    config = spec.config
+    config = _workspace_spec_config(spec)
 
     logger.debug(
         "Loaded workspace config",
@@ -418,7 +415,7 @@ async def reconcile_workspaces(
 
     reconciled = 0
     for folder, spec in specs.items():
-        config = spec.config
+        config = _workspace_spec_config(spec)
         resolved = load_resolved_config(folder)
         if resolved is None:
             continue
@@ -447,7 +444,7 @@ async def reconcile_workspaces(
 
     thread_actions = await reconcile_workspace_threads(
         workspaces,
-        {folder: spec.config for folder, spec in specs.items()},
+        {folder: _workspace_spec_config(spec) for folder, spec in specs.items()},
         channels,
         register_fn,
     )

@@ -8,18 +8,29 @@ end-to-end output routing (which is tested via the IPC watcher tests).
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import (
+    make_container_agent_operations,
+    make_container_runtime_operations,
+    make_host_runtime_operations,
+)
 
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.types import AgentExecutionRuntime, ContainerInput, RuntimeId, WorkspaceProfile
+from pynchy.types import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    RuntimeId,
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -44,9 +55,12 @@ class _FakeDeps:
         self.session_cleared: set[str] = set()
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            make_container_runtime_operations(),
         )
         self.plugin_manager = None
+        self.container_agent_operations = make_container_agent_operations()
+        self.host_runtime_operations = make_host_runtime_operations()
         self.agent_execution_runtime = AgentExecutionRuntime(
             project_root=Path("test-project"),
             groups_dir=Path("test-project/groups"),
@@ -123,9 +137,6 @@ def _make_container_input() -> MagicMock:
 
 # Patch targets — at the call site (pynchy.host.orchestrator.agent_runner).
 _P_BUILD = "pynchy.host.orchestrator.agent_runner.build_container_input"
-_P_SPAWN = "pynchy.host.orchestrator.agent_runner._spawn_container"
-_P_CREATE = "pynchy.host.orchestrator.agent_runner.create_session"
-_P_DESTROY = "pynchy.host.orchestrator.agent_runner.destroy_session"
 _P_CLEAR_SESSION = "pynchy.host.orchestrator.agent_runner.clear_session"
 _P_PREFLIGHT = "pynchy.host.orchestrator.agent_runner.pre_container_setup"
 
@@ -145,6 +156,25 @@ class TestScheduledTaskUsesSession:
         self.ctx = _make_pre_container_result()
         self.fake_proc = _make_fake_proc()
         self.fake_session = _make_fake_session()
+        self.spawn = AsyncMock(return_value=(self.fake_proc, "c-123", [], ()))
+        self.create_session = AsyncMock(return_value=self.fake_session)
+        self.destroy_session = AsyncMock()
+
+        async def wait_for_query(session: ContainerSession, query_timeout_seconds: float) -> bool:
+            try:
+                await session.wait_for_query_done(query_timeout_seconds=query_timeout_seconds)
+            except SessionDiedError:
+                return False
+            return True
+
+        self.deps.container_agent_operations = replace(
+            self.deps.container_agent_operations,
+            fresh_container_name=AsyncMock(return_value="c-123"),
+            spawn=self.spawn,
+            create_session=self.create_session,
+            destroy_session=self.destroy_session,
+            wait_for_query=wait_for_query,
+        )
 
     async def _call(self):
         """Drive the public agent entry point through its scheduled-task path."""
@@ -167,15 +197,12 @@ class TestScheduledTaskUsesSession:
         """One-shot tasks use the same idle termination policy as other containers."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session) as mock_cs,
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
-        mock_cs.assert_awaited_once()
-        _, kwargs = mock_cs.call_args
+        self.create_session.assert_awaited_once()
+        _, kwargs = self.create_session.call_args
         assert kwargs["idle_timeout"] > 0
         assert kwargs["data_dir"] == self.deps.agent_execution_runtime.data_dir
 
@@ -187,9 +214,6 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, build_input),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
@@ -202,9 +226,6 @@ class TestScheduledTaskUsesSession:
         real-time streaming through the IPC watcher."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
@@ -219,9 +240,6 @@ class TestScheduledTaskUsesSession:
         """Should wait for session query completion, not process exit."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
@@ -248,18 +266,16 @@ class TestScheduledTaskUsesSession:
             await asyncio.sleep(0)
             return session
 
+        self.create_session.side_effect = create_progressing_session
         with (
             patch(_P_BUILD, return_value=input_data),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, side_effect=create_progressing_session),
-            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
 
         await asyncio.gather(*driver_tasks)
         assert result == "success"
-        mock_destroy.assert_not_awaited()
+        self.destroy_session.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_timeout_destroys_session_and_returns_error(self):
@@ -268,15 +284,12 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
 
         assert result == "error"
-        mock_destroy.assert_awaited_once_with("test-group")
+        self.destroy_session.assert_awaited_once_with("test-group")
 
     @pytest.mark.asyncio
     async def test_session_died_returns_error(self):
@@ -285,9 +298,6 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
@@ -301,15 +311,12 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
 
         assert self.deps.sessions["test-group"] == "some-session-id"
-        mock_destroy.assert_not_awaited()
+        self.destroy_session.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_registers_process_on_queue(self):
@@ -323,9 +330,6 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             await self._call()
@@ -336,10 +340,9 @@ class TestScheduledTaskUsesSession:
     @pytest.mark.asyncio
     async def test_spawn_failure_returns_error(self):
         """If _spawn_container raises OSError, should return 'error' gracefully."""
+        self.spawn.side_effect = OSError("docker not found")
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, side_effect=OSError("docker not found")),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
         ):
             result = await self._call()
@@ -358,14 +361,11 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             pytest.raises(asyncio.CancelledError),
         ):
             await self._call()
 
-        mock_destroy.assert_not_awaited()
+        self.destroy_session.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancelled_error_preserves_deps_sessions(self):
@@ -376,9 +376,6 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             pytest.raises(asyncio.CancelledError),
         ):
             await self._call()
@@ -390,9 +387,6 @@ class TestScheduledTaskUsesSession:
         """Normal completion leaves the provider session resumable."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
-            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
-            patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock) as mock_clear,
         ):
             await self._call()

@@ -12,22 +12,23 @@ from typing import TYPE_CHECKING, NoReturn, cast
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from pynchy.config import get_settings
-from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
-from pynchy.host.git_ops.repo import get_repo_context
-from pynchy.host.git_ops.sync_poll import (
+from pynchy.config.api import get_settings
+from pynchy.host.git_ops.api import (
     HostSyncState,
-    _check_local_head_drift,
-    _find_pynchy_repo_ctx,
+    check_local_head_drift,
     check_origin_drift,
+    find_pynchy_repo_ctx,
     get_deploy_config_hash,
     get_local_head_sha,
+    get_repo_context,
+    git_env_with_token,
     host_get_origin_main_sha,
+    host_notify_worktree_updates,
     host_update_main_result,
+    last_notified_sha,
     probe_origin_main_sha,
 )
-from pynchy.host.git_ops.utils import git_env_with_token
-from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
+from pynchy.host.orchestrator.api import SessionManager, resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.deploy import (
     DeployFailureDeps,
     DeployRequest,
@@ -57,6 +58,8 @@ HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
+_check_local_head_drift = check_local_head_drift
+_find_pynchy_repo_ctx = find_pynchy_repo_ctx
 
 
 def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:

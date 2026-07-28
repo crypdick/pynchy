@@ -42,12 +42,19 @@ class PackageFamily:
 
 
 @dataclass(frozen=True)
+class FileOverride:
+    allow_unbounded_inbound_imports: bool
+
+
+@dataclass(frozen=True)
 class Policy:
     source_roots: tuple[SourceRoot, ...]
     composition_roots: frozenset[str]
     roles: tuple[Role, ...]
     packages: tuple[Package, ...]
     package_families: tuple[PackageFamily, ...]
+    root_module_max_inbound_importers: int
+    file_overrides: tuple[tuple[str, FileOverride], ...]
     default_violation_guidance: str
 
 
@@ -79,6 +86,27 @@ def load_policy(root: Path, path: Path) -> Policy:
     raw = _load_toml(path)
     if raw.get("version") != 2:
         raise ValueError("architecture policy version must be 2")
+    root_module_max_inbound_importers = raw.get("root_module_max_inbound_importers")
+    if (
+        not isinstance(root_module_max_inbound_importers, int)
+        or isinstance(root_module_max_inbound_importers, bool)
+        or root_module_max_inbound_importers < 1
+    ):
+        raise ValueError("root_module_max_inbound_importers must be a positive integer")
+    raw_file_overrides = raw.get("file_overrides", {})
+    if not isinstance(raw_file_overrides, dict):
+        raise TypeError("file_overrides must be a table of exact source-relative paths")
+    file_overrides: list[tuple[str, FileOverride]] = []
+    for source_path, item in raw_file_overrides.items():
+        if not isinstance(item, dict) or set(item) != {"allow_unbounded_inbound_imports"}:
+            raise ValueError(
+                f"file override {source_path!r} must declare only allow_unbounded_inbound_imports"
+            )
+        if item["allow_unbounded_inbound_imports"] is not True:
+            raise ValueError(
+                f"file override {source_path!r} must set allow_unbounded_inbound_imports = true"
+            )
+        file_overrides.append((source_path, FileOverride(allow_unbounded_inbound_imports=True)))
     source_roots = tuple(
         SourceRoot(
             path=root / item["path"],
@@ -120,6 +148,8 @@ def load_policy(root: Path, path: Path) -> Policy:
         roles=roles,
         packages=packages,
         package_families=package_families,
+        root_module_max_inbound_importers=root_module_max_inbound_importers,
+        file_overrides=tuple(file_overrides),
         default_violation_guidance=raw["default_violation_guidance"].strip(),
     )
 

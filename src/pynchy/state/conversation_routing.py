@@ -7,7 +7,7 @@ import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     Conversation,
     ConversationClaimId,
     ConversationDelivery,

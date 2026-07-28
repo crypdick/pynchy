@@ -13,19 +13,14 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any
 
-import pynchy.host.container_manager.session as session_module
 import pynchy.types as types
-from pynchy.config import get_settings
-from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
+from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
     Settings,
+    get_settings,
 )
-from pynchy.conversation.events import new_turn_id
-from pynchy.conversation.models import ConversationClaimId
+from pynchy.conversation.api import ConversationClaimId, new_turn_id
 from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.learning import capture as learning_capture
-from pynchy.host.orchestrator.execution_outcomes import (
-    TurnOutcome,
-)
+from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor, complete_turn_with_cursor
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
@@ -51,13 +46,17 @@ from pynchy.host.orchestrator.messaging.turn_control import (
     prepare_agent_batch,
     run_interactive_agent,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_messages_since,
     release_in_flight_turn_claim,
 )
+from pynchy.turn_outcomes import (
+    TurnOutcome,
+)
+from pynchy.types import RuntimeTarget
 
 __all__ = [
     "MessageHandlerDeps",
@@ -175,17 +174,13 @@ def _register_idle_zzz_callback(
     if not (outbound_ids and output_sent_to_user):
         return
 
-    session = session_module.get_session(types.GroupFolder(group.folder))
-    if session is None:
-        return
-
     # Capture ids by value — the session may outlive these locals.
     ids = dict(outbound_ids)
 
     async def _send_zzz() -> None:
         await deps.send_reaction_to_outbound(chat_jid, ids, "zzz")
 
-    session.set_idle_callback(_send_zzz)
+    deps.register_idle_callback(GroupFolder(group.folder), _send_zzz)
 
 
 async def _finalize_cursor_and_retry(
@@ -272,6 +267,7 @@ async def _finalize_cursor_and_retry(
         final_cursor,
         request.learning_summary,
         get_messages_since,
+        request.deps.start_learning_review_workflow,
         enabled=request.s.learning.enabled,
         review_after_turn=request.s.learning.review_after_turn,
         packet_max_chars=request.s.learning.packet_max_chars,

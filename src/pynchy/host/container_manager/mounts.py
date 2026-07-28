@@ -8,18 +8,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.plugins.contracts import AgentHookSpec
+    from pynchy.plugins.api import AgentHookSpec
 
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
-from pynchy.host.git_ops.repo import RepoContext, repo_container_path
-from pynchy.host.learning.mirror import prepare_vault_mount_root
-from pynchy.host.learning.skill_activation import prepare_agent_homes
+from pynchy.host.git_ops.api import RepoContext, repo_container_path
+from pynchy.host.learning.api import prepare_agent_homes, prepare_vault_mount_root
 from pynchy.host.paths import (
     PERSONALIZATION_RELATIVE_DIR,
     PERSONALIZATION_SKILLS_CONTAINER_PATH,
     SKILLS_DIRNAME,
 )
-from pynchy.plugins.agent_hooks import agent_hook_mounts
+from pynchy.plugins.api import agent_hook_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
 
 
@@ -210,14 +209,14 @@ def build_container_args(
     env_names: tuple[str, ...] = (),
 ) -> list[str]:
     """Build CLI args for `container run`."""
-    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
-        get_gateway,
-    )
-    from pynchy.host.container_manager.labels import (  # noqa: PLC0415, RUF100 - labels are only needed when building container argv.
+    from pynchy.container_labels import (  # noqa: PLC0415, RUF100 - labels are only needed when building container argv.
         AGENT_CONTAINER_LABEL,
         AGENT_CONTAINER_LABEL_VALUE,
     )
-    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when building container argv.
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
+        get_gateway,
+    )
+    from pynchy.plugins.runtimes.api import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when building container argv.
         get_runtime,
     )
 

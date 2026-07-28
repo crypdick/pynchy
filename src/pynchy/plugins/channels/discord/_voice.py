@@ -7,6 +7,10 @@ import contextlib
 import os
 import tempfile
 import wave
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+)
 from ctypes.util import find_library
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -18,9 +22,8 @@ import discord
 from discord import opus
 
 from pynchy.discord import DiscordChatTarget
-from pynchy.host.audio import transcribe_audio_file
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.types import AudioTranscriptionResult, NewMessage
 from pynchy.utils import create_background_task
 
 from ._access import InboundContext
@@ -103,9 +106,11 @@ class DiscordVoiceManager:
         self,
         channel: DiscordChannel,
         speech_synthesizer: SpeechSynthesizer | None = None,
+        transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None = None,
     ) -> None:
         self._channel = channel
         self._speech_synthesizer = speech_synthesizer
+        self._transcribe_audio = transcribe_audio
         self._session: _VoiceSession | None = None
         self._refresh_lock = asyncio.Lock()
 
@@ -321,10 +326,14 @@ class _VoiceSession:
             )
 
     async def _transcribe_turn(self, speaker_id: str, pcm: bytes) -> None:
+        transcribe_audio = self._transcribe_audio
+        if transcribe_audio is None:
+            logger.warning("Skipped Discord voice transcription; no host transcriber is configured")
+            return
         with tempfile.TemporaryDirectory(prefix="pynchy-discord-stt-") as temp_dir:
             audio_path = Path(temp_dir) / "turn.wav"
             _write_wave(audio_path, pcm)
-            result = await transcribe_audio_file(audio_path)
+            result = await transcribe_audio(audio_path)
         transcript = result.transcript.strip()
         if not result.success or not transcript:
             logger.warning("Discord voice transcription failed", jid=self.jid, error=result.error)

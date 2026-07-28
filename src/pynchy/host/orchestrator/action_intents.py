@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.action_intents import ActionIntent, ActionIntentStatus
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     HostActionDescriptor,
 )
-from pynchy.logger import logger
 from pynchy.state.api import (
     ActionIntentCreateRequest,
     claim_action_intent,

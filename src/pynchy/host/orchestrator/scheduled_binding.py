@@ -6,12 +6,10 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.dispatch import conversation_runtime_lock
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves binding port annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves binding port annotations.
     Conversation,
     ConversationId,
-)
-from pynchy.conversation.workspaces import (
+    conversation_runtime_lock,
     dynamic_thread_folder,
     parent_workspace_name,
     routed_conversation_folder,

@@ -5,14 +5,12 @@ from __future__ import annotations
 import asyncio
 
 import pynchy.types as types  # noqa: TC001, RUF100 - beartype resolves control annotations.
-from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves control annotations.
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.state.api import (
     clear_in_flight_turn,
@@ -23,6 +21,7 @@ from pynchy.state.api import (
     message_exists,
     request_in_flight_turn_control,
 )
+from pynchy.types import RuntimeTarget
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 
@@ -91,7 +90,7 @@ async def _handle_pause(
         types.CheckpointControlState.PAUSE_REQUESTED,
     )
     await deps.queue.stop_active_process_for_control(runtime_id)
-    await destroy_session(group.folder)
+    await deps.queue.destroy_runtime_session(runtime_id)
     if turn is not None and not had_active_run:
         await finalize_in_flight_pause(turn.turn_id)
     await _send_pause_confirmation(deps, chat_jid, message)

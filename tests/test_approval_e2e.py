@@ -17,12 +17,19 @@ import pytest
 from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 from pynchy import state
-from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc import handlers_approval, registry
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
+from pynchy.host.container_manager.security.approval import (
+    approval_state_root,
+    find_pending_by_short_id,
+    list_pending_approvals,
+)
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
+from pynchy.host.orchestrator.messaging.deps import ApprovalRuntimeOperations
 from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,6 +64,20 @@ class FakeDeps(NullIpcDeps):
         self._groups = groups or {}
         self.broadcast_messages: list[tuple[str, str]] = []
         self.broadcast_events: list[object] = []
+        self.approval_runtime_operations = ApprovalRuntimeOperations(
+            find_pending_by_short_id=find_pending_by_short_id,
+            list_pending_approvals=list_pending_approvals,
+            persist_and_process=self._persist_and_process_approval,
+        )
+
+    async def _persist_and_process_approval(
+        self, source_group: str, decision_data: dict[str, object], deps: object
+    ) -> None:
+        decisions_dir = approval_state_root() / source_group / "approval_decisions"
+        decisions_dir.mkdir(parents=True, exist_ok=True)
+        decision_file = decisions_dir / f"{decision_data['request_id']}.json"
+        write_json_atomic(decision_file, decision_data, indent=2)
+        await handlers_approval.process_approval_decision(decision_file, source_group, deps=deps)
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
@@ -173,8 +194,8 @@ class TestApprovalE2E:
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                approval_settings.data_dir / "approvals",
             ),
         ):
             await registry.dispatch(data, "mygroup", False, deps)
@@ -188,8 +209,8 @@ class TestApprovalE2E:
     ) -> None:
         with (
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                approval_settings.data_dir / "approvals",
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
@@ -204,6 +225,7 @@ class TestApprovalE2E:
         decision_file: Path,
         approval_settings,
         mock_handler: AsyncMock,
+        deps: FakeDeps,
     ) -> None:
         clear_plugin_handler_cache()
         with (
@@ -212,15 +234,15 @@ class TestApprovalE2E:
                 return_value=approval_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.write.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                approval_settings.data_dir / "ipc",
             ),
             patch(
                 "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog("x_post", handler=mock_handler),
             ),
         ):
-            await process_approval_decision(decision_file, "mygroup")
+            await process_approval_decision(decision_file, "mygroup", deps=deps)
 
     @pytest.mark.asyncio
     async def test_approve_happy_path(self, tmp_path: Path):
@@ -295,6 +317,7 @@ class TestApprovalE2E:
             decision_file=decision_file,
             approval_settings=approval_settings,
             mock_handler=mock_handler,
+            deps=deps,
         )
 
         self._assert_approved_response(
@@ -330,8 +353,8 @@ class TestApprovalE2E:
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                approval_settings.data_dir / "approvals",
             ),
         ):
             data = {
@@ -351,8 +374,8 @@ class TestApprovalE2E:
         # Step 2: User denies
         with (
             patch(
-                "pynchy.host.container_manager.security.approval.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.security.approval._approval_root",
+                approval_settings.data_dir / "approvals",
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
@@ -371,8 +394,8 @@ class TestApprovalE2E:
                 return_value=approval_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.write.get_settings",
-                return_value=approval_settings,
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                approval_settings.data_dir / "ipc",
             ),
         ):
             await process_approval_decision(decision_files[0], "mygroup")
@@ -409,7 +432,10 @@ class TestApprovalE2E:
                 "pynchy.host.container_manager.ipc.handlers_service.get_settings",
                 return_value=ws_settings,
             ),
-            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=ws_settings),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                ws_settings.data_dir / "ipc",
+            ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
                 return_value=catalog,

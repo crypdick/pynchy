@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.host.git_ops import build_rebase_notice
-from pynchy.host.git_ops.sync_poll import (
+from pynchy.host.git_ops.api import (
+    build_rebase_notice,
     get_local_head_sha,
     host_source_files_changed,
     host_update_main,
@@ -133,7 +133,7 @@ class TestGetLocalHeadSha:
         expected = _git(repo, "rev-parse", "HEAD").stdout.strip()
 
         s = make_settings(project_root=repo)
-        with patch("pynchy.host.git_ops.utils.get_settings", return_value=s):
+        with patch("pynchy.host.git_ops.utils._default_cwd", s.project_root):
             result = get_local_head_sha()
             assert result == expected
 

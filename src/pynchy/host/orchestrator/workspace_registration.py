@@ -10,15 +10,11 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast, runtime_checkable
 
-from pynchy.config.merge import (
+from pynchy.config.api import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-)
-from pynchy.config.models import (
-    WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-)
-from pynchy.config.refs import parse_chat_ref
-from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+    WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+    parse_chat_ref,
 )
 from pynchy.logger import logger
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile

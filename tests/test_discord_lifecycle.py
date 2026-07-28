@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pynchy.config.models import DiscordConnectionConfig
+from pynchy.config.api import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel
 
 DISCORD_BOT_ENV = "X"

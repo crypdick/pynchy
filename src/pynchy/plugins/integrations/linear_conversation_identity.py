@@ -2,18 +2,49 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.models import (
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured state callbacks at runtime.
+    Awaitable,
+    Callable,
+)
+from dataclasses import dataclass
+
+from pynchy.conversation.api import (
     Conversation,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.state.api import (
-    get_conversation_for_subject_key,
-    get_unfinished_work_item_execution,
-    resolve_conversation,
-)
-from pynchy.types import GroupFolder
+from pynchy.types import GroupFolder, WorkItemExecution
+
+
+@dataclass(frozen=True)
+class LinearConversationRuntime:
+    """Durable conversation operations selected during plugin composition."""
+
+    get_unfinished_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    get_for_subject_key: Callable[
+        [ConversationSubjectKey, GroupFolder, str], Awaitable[Conversation | None]
+    ]
+    resolve: Callable[[ConversationSubject, GroupFolder], Awaitable[Conversation]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearConversationRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_conversation_runtime(runtime: LinearConversationRuntime) -> None:
+    """Set the durable conversation operations used by Linear routes."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearConversationRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear conversation runtime has not been configured")
+    return _runtime.runtime
 
 
 async def resolve_linear_issue_conversation(
@@ -22,17 +53,18 @@ async def resolve_linear_issue_conversation(
     account_name: str,
 ) -> Conversation:
     """Return one issue runtime, pinned to any unfinished execution's workspace."""
-    execution = await get_unfinished_work_item_execution(issue_id)
+    runtime = _configured_runtime()
+    execution = await runtime.get_unfinished_execution(issue_id)
     owner_workspace = execution.workspace if execution is not None else workspace
     group_folder = GroupFolder(owner_workspace)
-    existing = await get_conversation_for_subject_key(
+    existing = await runtime.get_for_subject_key(
         ConversationSubjectKey(issue_id),
-        workspace=group_folder,
-        namespace_suffix=":issue",
+        group_folder,
+        ":issue",
     )
     if existing is not None:
         return existing
-    return await resolve_conversation(
+    return await runtime.resolve(
         ConversationSubject(
             namespace=ConversationSubjectNamespace(f"linear:{account_name}:issue"),
             key=ConversationSubjectKey(issue_id),

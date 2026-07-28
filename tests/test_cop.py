@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
@@ -23,6 +23,7 @@ from pynchy.host.container_manager.security.cop import (
     inspect_secret_taint,
     load_cop_inspection_context,
 )
+from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
 
 API_DOWN_MESSAGE = "API down"
 
@@ -189,12 +190,8 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
 @pytest.mark.asyncio
 async def test_context_load_failure_is_explicitly_unavailable():
     """SQLite errors become typed degraded context instead of invented values."""
-    with patch(
-        "pynchy.host.container_manager.security.cop.load_recent_security_context",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("database offline"),
-    ):
-        context = await load_cop_inspection_context("chat@test")
+    loader = AsyncMock(side_effect=RuntimeError("database offline"))
+    context = await load_cop_inspection_context("chat@test", loader)
 
     assert context.availability is CopContextAvailability.UNAVAILABLE
     assert context.current_user_intent is None
@@ -428,18 +425,11 @@ async def test_bash_sends_taint_facts_and_uses_configured_cop_model():
         corruption_tainted=True,
         secret_tainted=True,
     )
-    settings = MagicMock()
-    settings.security.cop_model = "configured-cop-model"
-    settings.security.cop_wire_api = "messages"
-    settings.agent.model = "configured-agent-model"
+    configure_cop_gateway(model="configured-cop-model", wire_api="messages")
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
             return_value=_fake_gateway(),
-        ),
-        patch(
-            "pynchy.host.container_manager.security.cop_client.get_settings",
-            return_value=settings,
         ),
         _mock_aiohttp_session(
             '{"decision": "escalate", "reason": "Sensitive network operation"}',
@@ -494,18 +484,11 @@ async def test_bash_prompt_treats_local_validation_as_authorized_workflow_suppor
 async def test_cop_model_falls_back_to_configured_agent_model():
     """Existing installations keep using the agent route without a Cop override."""
     bodies: list[dict[str, object]] = []
-    settings = MagicMock()
-    settings.security.cop_model = None
-    settings.security.cop_wire_api = "messages"
-    settings.agent.model = "configured-agent-model"
+    configure_cop_gateway(model="configured-agent-model", wire_api="messages")
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
             return_value=_fake_gateway(),
-        ),
-        patch(
-            "pynchy.host.container_manager.security.cop_client.get_settings",
-            return_value=settings,
         ),
         _mock_aiohttp_session(
             '{"decision": "approve", "reason": "Routine local action"}',
@@ -522,18 +505,11 @@ async def test_cop_uses_responses_wire_api_for_codex_model():
     """Responses routes receive typed input and their SSE output is parsed."""
     bodies: list[dict[str, object]] = []
     urls: list[str] = []
-    settings = MagicMock()
-    settings.security.cop_model = "gpt-5.3-codex-spark"
-    settings.security.cop_wire_api = "responses"
-    settings.agent.model = "configured-agent-model"
+    configure_cop_gateway(model="gpt-5.3-codex-spark", wire_api="responses")
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
             return_value=_fake_gateway(),
-        ),
-        patch(
-            "pynchy.host.container_manager.security.cop_client.get_settings",
-            return_value=settings,
         ),
         _mock_aiohttp_responses_session(
             '{"decision": "approve", "reason": "Routine inspection"}',

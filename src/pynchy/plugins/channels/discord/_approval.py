@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
-from pynchy.host.container_manager.security.approval import APPROVAL_TIMEOUT_SECONDS
+from pynchy.types import APPROVAL_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from ._channel import DiscordChannel

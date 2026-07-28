@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves IPC callback annotations at runtime.
+)
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.action_intents import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    ActionIntent,
+)
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    ConversationControlBinding,
+    ConversationId,
+)
 from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
     CreatePeriodicAgentRequest,
 )
+from pynchy.host.container_manager.security.cop import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    CopInspectionContext,
+)
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    HostActionDescriptor,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
     Channel,
+    ChatJid,
     HostJob,
     OutboundEvent,
     ScheduledTask,
@@ -74,6 +91,65 @@ class IpcDeps(Protocol):
         source_group: str,
         is_admin: bool,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]: ...
+
+    async def prepare_action_intent(
+        self,
+        action: HostActionDescriptor,
+        data: dict[str, Any],
+        *,
+        workspace: str,
+        chat_jid: str,
+        request_id: str,
+    ) -> tuple[ActionIntent | None, dict[str, Any] | None]: ...
+
+    async def execute_action_intent(
+        self,
+        action: HostActionDescriptor,
+        data: dict[str, Any],
+        *,
+        request_id: str,
+    ) -> dict[str, Any]: ...
+
+    def policy_approval_timestamp(self) -> str: ...
+
+    async def approve_action_intent(
+        self,
+        request_id: str,
+        *,
+        approver: str,
+        approved_at: str,
+        policy_decision: str,
+    ) -> ActionIntent: ...
+
+    async def deny_action_intent(self, request_id: str, *, reason: str) -> ActionIntent | None: ...
+
+    async def fail_action_intent(self, request_id: str, *, reason: str) -> ActionIntent | None: ...
+
+    async def expire_action_intent(
+        self, request_id: str, *, reason: str
+    ) -> ActionIntent | None: ...
+
+    async def mark_action_intent_awaiting_approval(
+        self, request_id: str, *, policy_decision: str
+    ) -> ActionIntent: ...
+
+    async def get_conversation_control_by_thread(
+        self, thread_jid: ChatJid
+    ) -> ConversationControlBinding | None: ...
+
+    async def load_cop_inspection_context(self, chat_jid: str) -> CopInspectionContext: ...
+
+    async def get_action_intent_by_request(self, request_id: str) -> ActionIntent | None: ...
+
+    async def get_conversation_control_binding(
+        self, conversation_id: ConversationId
+    ) -> ConversationControlBinding | None: ...
+
+    async def sweep_expired_questions(
+        self, write_expiration_response: Callable[[str, str, str], None]
+    ) -> list[dict[str, Any]]: ...
+
+    def skill_access_status(self, group_folder: str, skill_name: str) -> str: ...
 
 
 @runtime_checkable

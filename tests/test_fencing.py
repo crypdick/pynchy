@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content, sanitize_markers
+from pynchy.content_fencing import fence_untrusted_content, sanitize_markers
 
 
 class TestMarkerSanitization:

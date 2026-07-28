@@ -9,12 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.event_bus import AgentActivityEvent, Event
-from pynchy.host.container_manager import OnOutput  # noqa: TC001 - beartype resolves Protocols.
-from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    TurnOutcome,
-)
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
 from pynchy.state.api import (
     begin_in_flight_turn,
@@ -26,12 +21,17 @@ from pynchy.state.api import (
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
+from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
+)
 from pynchy.types import (
     CheckpointControlState,
     ContainerOutput,
     GroupFolder,
     InFlightTurn,
     InFlightWorkKind,
+    OnOutput,  # noqa: TC001, RUF100 - beartype resolves Protocols.
+    RuntimeTarget,  # noqa: TC001, RUF100
     WorkspaceProfile,
 )
 

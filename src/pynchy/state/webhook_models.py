@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
     ConversationDeliveryAdmission,
     ConversationSubject,
     ExternalDeliveryIdentity,

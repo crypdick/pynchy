@@ -15,20 +15,24 @@ from __future__ import annotations
 
 import inspect
 import time
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+)
 from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
 )
 from typing import TYPE_CHECKING, Any
 
-from pynchy.host.audio import is_supported_audio_filename
-from pynchy.host.inbound_audio import (
+from pynchy.logger import logger
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     InboundAudioAttachment,
     InboundAudioProcessingRequest,
-    process_inbound_audio_attachments,
+    InboundAudioProcessingResult,
+    NewMessage,
+    is_supported_audio_filename,
 )
-from pynchy.logger import logger
-from pynchy.types import NewMessage
 
 from ._access import InboundContext
 from ._ids import channel_jid, dm_jid
@@ -221,6 +225,10 @@ async def _transcribe_audio_attachments(
     content: str,
     *,
     cache_dir: Path,
+    process_inbound_audio: Callable[
+        [InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]
+    ]
+    | None,
 ) -> str:
     attachments = list(message.attachments)
     metadata_attachments = metadata.get("attachments", [])
@@ -250,7 +258,9 @@ async def _transcribe_audio_attachments(
             )
         )
 
-    result = await process_inbound_audio_attachments(
+    if process_inbound_audio is None:
+        return content or _attachment_fallback_content(message)
+    result = await process_inbound_audio(
         InboundAudioProcessingRequest(
             attachments=tuple(inbound_attachments),
             content=content,
@@ -274,9 +284,18 @@ async def _transcribe_audio_attachments(
 class DiscordEvents:
     """Registers inbound handlers on the channel's client and fires callbacks."""
 
-    def __init__(self, channel: DiscordChannel, audio_cache_dir: Path) -> None:
+    def __init__(
+        self,
+        channel: DiscordChannel,
+        audio_cache_dir: Path,
+        process_inbound_audio: (
+            Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]]
+            | None
+        ),
+    ) -> None:
         self._channel = channel
         self._audio_cache_dir = audio_cache_dir
+        self._process_inbound_audio = process_inbound_audio
         self._seen: dict[str, float] = {}
         self._seen_max = 500
 
@@ -336,6 +355,7 @@ class DiscordEvents:
             metadata,
             normalized_message_content(message),
             cache_dir=self._audio_cache_dir,
+            process_inbound_audio=self._process_inbound_audio,
         )
         msg = NewMessage(
             id=f"discord-{message.id}",

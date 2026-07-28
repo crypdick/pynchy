@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.conversation.events import (
+from pynchy.conversation.api import (
     ConversationEvent,  # noqa: TC001 - beartype resolves annotations.
 )
 from pynchy.state.connection import _get_db

@@ -11,7 +11,6 @@ from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
 )
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
@@ -22,6 +21,19 @@ _DEFAULT_GIT_SSH_COMMAND = (
 )
 _URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@")
 _MAX_GIT_DIAGNOSTIC_LENGTH = 1000
+_default_cwd: Path | None = None
+
+
+def configure_git_default_cwd(project_root: Path) -> None:
+    """Set the host checkout used only when a Git caller omits ``cwd``."""
+    global _default_cwd  # noqa: PLW0603, RUF100 - one host process owns one default Git checkout.
+    _default_cwd = project_root
+
+
+def _configured_default_cwd() -> Path:
+    if _default_cwd is None:
+        raise RuntimeError("Git default working directory has not been configured")
+    return _default_cwd
 
 
 def _git_subprocess_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -50,7 +62,7 @@ def run_git(
     command = ["git", *args]
     return _run_git_process(
         command,
-        cwd=str(cwd or get_settings().project_root),
+        cwd=str(cwd or _configured_default_cwd()),
         env=_git_subprocess_env(env),
         timeout=timeout,
     )

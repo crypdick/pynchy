@@ -8,11 +8,10 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import configure_workspace_placement_for, make_settings
 from linear_webhook_test_support import DiscordThreadChannel
 
-from pynchy.config import WorkspaceConfig
-from pynchy.config.models import BuiltinTool, ProfileConfig
+from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     Conversation,
     ConversationId,
@@ -25,7 +24,7 @@ from pynchy.conversation.models import (
     ExternalRoute,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
-from pynchy.host.git_ops.repo import resolve_repos_for_group
+from pynchy.host.git_ops.api import resolve_repos_for_group
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -45,8 +44,8 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
     register_runtime_workspace_restriction,
 )
+from pynchy.plugins.api import WebhookConversation, WebhookEvent
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
-from pynchy.plugins.webhooks import WebhookConversation, WebhookEvent
 from pynchy.state import (
     apply_conversation_control_state,
     begin_in_flight_turn,
@@ -188,12 +187,9 @@ async def test_unnamed_task_gets_persistent_child_thread_binding(tmp_path) -> No
     task = _task()
     await create_task(task)
 
-    with patch(
-        "pynchy.host.orchestrator.workspace_placement.get_settings",
-        return_value=make_settings(groups_dir=tmp_path),
-    ):
-        bound = await ensure_scheduled_task_binding(task, deps)
-        rebound = await ensure_scheduled_task_binding(bound, deps)
+    configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
+    bound = await ensure_scheduled_task_binding(task, deps)
+    rebound = await ensure_scheduled_task_binding(bound, deps)
 
     assert bound.bound_chat_jid == deps.ensured_jid
     assert bound.bound_chat_jid != owner.jid
@@ -233,13 +229,8 @@ async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> 
     task = _task()
     deps = _BindingDeps({})
 
-    with (
-        patch(
-            "pynchy.host.orchestrator.workspace_placement.get_settings",
-            return_value=make_settings(groups_dir=tmp_path),
-        ),
-        pytest.raises(ScheduledTaskOwnershipError, match="owner workspace is unavailable"),
-    ):
+    configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
+    with pytest.raises(ScheduledTaskOwnershipError, match="owner workspace is unavailable"):
         await ensure_scheduled_task_binding(task, deps)
 
 

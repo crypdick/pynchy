@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves admission results at runtime.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves admission results at runtime.
     ConversationId,
 )
 from pynchy.host.orchestrator.conversation_control import sync_existing_open_conversation_control
@@ -12,7 +12,7 @@ from pynchy.host.orchestrator.webhook_conversations import (  # noqa: TC001, RUF
     WebhookConversationDispatcher,
 )
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
-from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves admission inputs at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves admission inputs at runtime.
     WebhookEvent,
     WebhookRoute,
 )
@@ -20,8 +20,8 @@ from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     admit_webhook_receipt,
+    classify_webhook_effect_callback,
 )
-from pynchy.state.webhook_effect_admission import classify_webhook_effect_callback
 from pynchy.types import ScheduledTask  # noqa: TC001, RUF100 - beartype resolves requests.
 from pynchy.webhook_effects import WebhookEffectCallbackDecision
 

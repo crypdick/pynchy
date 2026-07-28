@@ -7,22 +7,20 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.access import (
+from pynchy.config.api import (
+    ChannelOverrideConfig,
+    ConnectionChatConfig,
+    OwnerConfig,
+    ProfileConfig,
+    Settings,
+    SlackConnectionConfig,
+    WhatsAppConnectionConfig,
+    WorkspaceConfig,
     filter_allowed_messages,
     is_user_allowed,
     resolve_allowed_users,
     resolve_channel_config,
 )
-from pynchy.config.models import (
-    ChannelOverrideConfig,
-    ConnectionChatConfig,
-    OwnerConfig,
-    ProfileConfig,
-    SlackConnectionConfig,
-    WhatsAppConnectionConfig,
-    WorkspaceConfig,
-)
-from pynchy.config.settings import Settings
 from pynchy.types import NewMessage, WorkspaceProfile
 
 SLACK_BOT_ENV = "BOT"

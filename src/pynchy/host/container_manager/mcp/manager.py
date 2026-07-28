@@ -24,8 +24,7 @@ from collections.abc import (
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config import (
+from pynchy.config.api import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.host.container_manager.docker import (
@@ -55,8 +54,9 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_all_instances,
 )
 from pynchy.host.container_manager.mcp.startup import McpStartupFailure, McpWorkspaceStartup
+from pynchy.host.orchestrator import api as workspace_config
 from pynchy.logger import logger
-from pynchy.plugins.mcp_server import (
+from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.types import (

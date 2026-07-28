@@ -15,25 +15,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullChannel, make_settings
 
+import pynchy.types as serialization
 from pynchy import state
-from pynchy.config.models import NotificationsConfig
-from pynchy.host.container_manager import serialization
+from pynchy.config.api import NotificationsConfig
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
-from pynchy.plugins.channel_runtime import ChannelPluginContext
+from pynchy.plugins.api import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import (
     AgentExecutionRuntime,
     DeployRevision,
     InFlightTurn,
     InFlightWorkKind,
     NewMessage,
+    RuntimeId,
+    RuntimeTarget,
     WorkspaceProfile,
 )
 
@@ -119,7 +120,6 @@ def _patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
@@ -133,7 +133,9 @@ def _patch_test_settings(tmp_path: Path):
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        yield stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
+        yield stack.enter_context(
+            patch("pynchy.host.orchestrator.app.ensure_agent_image_available")
+        )
 
 
 class FakeChannel(NullChannel):
@@ -395,10 +397,7 @@ async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> Non
 
     with (
         patch.object(app, "prepare_context_reset", new_callable=AsyncMock) as prepare,
-        patch(
-            "pynchy.host.orchestrator.session_handler.destroy_session",
-            new_callable=AsyncMock,
-        ) as destroy,
+        patch.object(app.queue, "destroy_runtime_session", new_callable=AsyncMock) as destroy,
         patch(
             "pynchy.host.orchestrator.session_handler.clear_session",
             new_callable=AsyncMock,
@@ -407,7 +406,7 @@ async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> Non
         await make_ipc_deps(app).clear_session("test-group")
 
     prepare.assert_awaited_once_with(app.workspaces["group@g.us"])
-    destroy.assert_awaited_once_with("test-group")
+    destroy.assert_awaited_once_with(RuntimeId("test-group"))
     clear.assert_awaited_once_with("test-group")
     assert "test-group" not in app.sessions
     assert "test-group" in app.session_cleared

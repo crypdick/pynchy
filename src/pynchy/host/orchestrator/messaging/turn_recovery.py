@@ -8,10 +8,7 @@ from collections.abc import Awaitable, Callable  # noqa: TC003 - beartype resolv
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 
-from pynchy.conversation.events import new_turn_id
-from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    TurnOutcome,
-)
+from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator.messaging.in_flight import (
     InFlightMessageDeps,
     MessageTurnStart,
@@ -19,7 +16,6 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     note_output_sent,
     resume_interrupted_message_turn,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.state.api import (
     claim_in_flight_turn,
@@ -27,7 +23,16 @@ from pynchy.state.api import (
     get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
 )
-from pynchy.types import CheckpointControlState, ContainerOutput, InFlightWorkKind, WorkspaceProfile
+from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
+)
+from pynchy.types import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightWorkKind,
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 
 async def handle_reset_handoff(

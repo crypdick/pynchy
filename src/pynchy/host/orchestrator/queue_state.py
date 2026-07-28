@@ -10,10 +10,11 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype validates datacl
 )
 from dataclasses import dataclass, field
 
-import pynchy.host.container_manager.security.gate as security_gate
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
-from pynchy.types import RuntimeId  # noqa: TC001, RUF100
+from pynchy.types import (
+    RuntimeId,  # noqa: TC001, RUF100
+    RuntimeTarget,  # noqa: TC001, RUF100
+)
 
 
 @dataclass(eq=False)
@@ -138,7 +139,6 @@ class GroupState:
             return False
         has_pending_messages = self.pending_messages
         if not lease.owns_slot:
-            self._destroy_host_security_gate()
             self.host_process_lease = None
             self.process = None
             self.container_name = None
@@ -152,7 +152,6 @@ class GroupState:
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
-        self._destroy_host_security_gate()
         self.active = False
         self.active_is_task = False
         self.active_task = None
@@ -164,12 +163,3 @@ class GroupState:
         self.is_external_run = False
         self.host_process_lease = None
         self.boundary_interrupt_requested = False
-
-    def _destroy_host_security_gate(self) -> None:
-        """Retire the gate owned by a disposable direct-host process.
-
-        Container gates belong to their durable ``ContainerSession`` and must
-        survive queue release so warm turns retain the same security state.
-        """
-        if self.is_host_process and self.invocation_ts:
-            security_gate.destroy_gate(self.target.folder, self.invocation_ts)

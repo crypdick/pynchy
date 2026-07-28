@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     Conversation,
     ConversationClaimId,
     ConversationControlBinding,
@@ -25,7 +25,7 @@ from pynchy.host.orchestrator.conversation_control import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.plugins.webhooks import WebhookLifecycleDelivery, WebhookRoute
+from pynchy.plugins.api import WebhookLifecycleDelivery, WebhookRoute
 from pynchy.types import Channel, ChatJid, GroupFolder, NewMessage, SessionId, WorkspaceProfile
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]

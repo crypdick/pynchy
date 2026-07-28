@@ -10,7 +10,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves transactional
     Connection,
 )
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationDeliveryCompletion,
     ConversationId,
     ExternalDeliveryId,

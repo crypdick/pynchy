@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves persistence callbacks at runtime.
+)
 from typing import Any
-
-from pynchy.host.learning.paths import profile_name_for_group
-from pynchy.host.orchestrator.workspace_config import update_profile_skill_policy
 
 _CHOICE_GRANTS = {
     "Grant always": True,
@@ -13,7 +13,13 @@ _CHOICE_GRANTS = {
 }
 
 
-def persist_skill_access_choice(pending: dict[str, Any], answer: dict[str, Any]) -> str | None:
+def persist_skill_access_choice(
+    pending: dict[str, Any],
+    answer: dict[str, Any],
+    *,
+    profile_name_for_group: Callable[[str], str],
+    update_profile_skill_policy: Callable[..., None],
+) -> str | None:
     """Persist a user's always-choice before the waiting agent receives it."""
     skill_name = _requested_skill_name(pending)
     choice = answer.get("answer")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -11,20 +12,8 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
-from pynchy.capabilities import (
-    ApprovalContract,
-    ApprovalMode,
-    AuditContract,
-    CapabilityDescriptor,
-    CapabilityId,
-    CapabilityKind,
-    HostActionAccess,
-    HostActionDescriptor,
-    HostToolName,
-    IdempotencyContract,
-    IdempotencyMode,
-)
-from pynchy.config import (
+from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
+from pynchy.config.api import (
     AgentConfig,
     CanaryConfig,
     CommandCenterConfig,
@@ -38,29 +27,414 @@ from pynchy.config import (
     SecurityConfig,
     ServerConfig,
     Settings,
+    access,
+    repository_settings_sources,
 )
-from pynchy.config.settings_sources import repository_settings_sources
+from pynchy.host.container_manager.gateway import configure_gateway_runtime
+from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
+from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
+from pynchy.host.container_manager.process import configure_container_process_runtime
+from pynchy.host.container_manager.security.approval import configure_approval_state_root
+from pynchy.host.container_manager.security.audit import configure_security_audit_storage
 from pynchy.host.container_manager.security.cop import (
     CopContextAvailability,
     CopInspectionContext,
     CopVerdict,
 )
+from pynchy.host.git_ops.utils import configure_git_default_cwd
+from pynchy.host.learning.api import resolve_learning_paths
+from pynchy.host.learning.mirror import configure_vault_mount_mirror
+from pynchy.host.learning.skill_activation import (
+    SkillActivationRuntime,
+    configure_skill_activation_runtime,
+)
+from pynchy.host.learning.skills import configure_personalized_skills_root
+from pynchy.host.orchestrator.agent_runner import ContainerAgentOperations
+from pynchy.host.orchestrator.api import (
+    ContainerRuntimeOperations,
+    execute_action_intent,
+    policy_approval_timestamp,
+    prepare_action_intent,
+    static_workspace_folder,
+)
+from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
 from pynchy.host.orchestrator.messaging.deps import CommandMatcher
-from pynchy.plugins.host_actions import HostActionCatalog
+from pynchy.host.orchestrator.messaging.pending_questions import (
+    configure_pending_questions_ipc_base_dir,
+)
+from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
+from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
+from pynchy.host.orchestrator.workspace_registration import workspace_security
+from pynchy.plugins.api import (
+    ApprovalContract,
+    ApprovalMode,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    HostActionAccess,
+    HostActionCatalog,
+    HostActionDescriptor,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
+from pynchy.plugins.integrations.linear_accounts import (
+    LinearAccountRuntime,
+    configure_linear_account_runtime,
+    linear_account,
+    linear_account_for_workspace,
+)
+from pynchy.plugins.integrations.linear_boot import (
+    LinearBootRuntime,
+    configure_linear_boot_runtime,
+    configured_linear_workspace_names,
+)
+from pynchy.plugins.integrations.linear_conversation_identity import (
+    LinearConversationRuntime,
+    configure_linear_conversation_runtime,
+)
+from pynchy.plugins.integrations.linear_legacy_work_items import (
+    LinearLegacyWorkItemRuntime,
+    configure_linear_legacy_work_item_runtime,
+)
+from pynchy.plugins.integrations.linear_planning_tasks import (
+    LinearPlanningTaskRuntime,
+    configure_linear_planning_task_runtime,
+)
+from pynchy.plugins.integrations.linear_self_echoes import (
+    LinearSelfEchoRuntime,
+    configure_linear_self_echo_runtime,
+)
+from pynchy.plugins.integrations.linear_webhook_config import LinearPluginOptions
+from pynchy.plugins.integrations.linear_webhook_effects import (
+    LinearWebhookEffectsRuntime,
+    configure_linear_webhook_effects_runtime,
+)
+from pynchy.plugins.integrations.linear_webhooks import (
+    LinearWebhookRuntime,
+    configure_linear_webhook_runtime,
+)
+from pynchy.plugins.integrations.linear_work_item_completion import (
+    LinearWorkItemCompletionRuntime,
+    configure_linear_work_item_completion_runtime,
+)
+from pynchy.plugins.integrations.linear_work_item_provider import (
+    LinearWorkItemRuntime,
+    configure_linear_work_item_runtime,
+)
+from pynchy.plugins.integrations.linear_work_item_tasks import (
+    LinearWorkItemTaskRuntime,
+    configure_linear_work_item_task_runtime,
+)
+from pynchy.plugins.integrations.linear_work_items import (
+    LinearWorkItemsRuntime,
+    configure_linear_work_items_runtime,
+)
 from pynchy.state import (
+    WorkItemClaimRequest,
+    WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
+    apply_conversation_control_state,
+    approve_action_intent,
+    begin_webhook_effect,
+    begin_work_item_transition,
+    begin_work_item_transition_if_lifecycle_current,
+    bind_work_item_execution_to_task,
+    bind_work_item_execution_to_turn,
+    cancel_work_item_execution,
+    cancel_work_item_execution_if_lifecycle_current,
     close_test_database,
+    confirm_webhook_effect,
+    conversation_control_state_matches,
     create_host_job,
     create_task,
+    create_task_if_absent,
+    create_work_item_claim,
     delete_host_job,
     delete_task,
+    deny_action_intent,
+    expire_action_intent,
+    fail_action_intent,
+    fail_webhook_effect,
+    get_action_intent_by_request,
+    get_active_work_item_execution,
+    get_all_tasks,
+    get_conversation_control_binding,
+    get_conversation_control_by_thread,
+    get_conversation_for_subject_key,
     get_host_job_by_id,
+    get_in_flight_turn_for_group,
+    get_latest_canary_runs,
+    get_latest_unresolved_work_item_transition,
+    get_recent_canary_runs,
     get_task_by_id,
+    get_task_run_logs,
+    get_unfinished_work_item_execution,
+    get_unresolved_canary_regressions,
+    get_work_item_execution,
+    get_work_item_execution_for_issue,
+    get_work_item_transition_by_request,
     init_test_database,
+    list_work_item_executions,
+    mark_action_intent_awaiting_approval,
+    mark_webhook_effect_executing,
+    mark_webhook_effect_outcome_unknown,
+    prune_messages_by_sender,
+    record_canary_run,
+    resolve_conversation,
+    resolve_work_item_transition,
+    resolve_work_item_transition_if_lifecycle_current,
+    resume_once_task_after_unclaimed_scheduled_turn,
     resume_task,
+    store_message_direct,
     update_host_job,
     update_task,
 )
-from pynchy.types import InboundFetchResult, NewMessage
+from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
+
+
+def configure_workspace_placement_for(settings: Settings) -> None:
+    """Wire workspace placement to one test's resolved settings."""
+
+    def missing_workspace_profile(folder, control_parent):
+        config = settings.workspace_config(folder)
+        resolved = settings.resolved_workspace_config(folder)
+        if config is None or resolved is None:
+            return None
+        return WorkspaceProfile(
+            jid=control_parent.jid,
+            name=folder.replace("-", " ").title(),
+            folder=folder,
+            trigger=control_parent.trigger,
+            container_config=control_parent.container_config,
+            security=workspace_security(config, resolved),
+            is_admin=resolved.is_admin,
+            added_at=datetime.now(UTC).isoformat(),
+        )
+
+    configure_workspace_placement(
+        workspace_parent=settings.workspace_parent,
+        missing_workspace_profile=missing_workspace_profile,
+    )
+
+
+def configure_skill_activation_for(settings: Settings) -> None:
+    """Wire skill activation to one test's resolved settings."""
+
+    def workspace_skill_selection(folder: str):
+        resolved = settings.resolved_workspace_config(folder)
+        if resolved is None:
+            return None
+        return (
+            tuple(resolved.skills),
+            tuple(resolved.denied_skills),
+            tuple(resolved.tools),
+        )
+
+    configure_skill_activation_runtime(
+        SkillActivationRuntime(
+            project_root=settings.project_root,
+            sessions_root=settings.data_dir / "sessions",
+            tool_skills={
+                name: tuple(getattr(tool, "skills", ())) for name, tool in settings.tools.items()
+            },
+            resolve_workspace_skill_selection=workspace_skill_selection,
+            resolve_learning_paths=lambda folder, profile: resolve_learning_paths(
+                folder, profile_override=profile
+            ),
+        )
+    )
+
+
+def configure_linear_accounts_for(settings: Settings) -> None:
+    """Wire Linear account lookups to one test's resolved settings."""
+
+    def workspace_tool_names(workspace: str) -> tuple[str, ...] | None:
+        resolved = settings.resolved_workspace_config(workspace)
+        return tuple(resolved.tools) if resolved is not None else None
+
+    configure_linear_boot_runtime(
+        LinearBootRuntime(
+            workspace_names=tuple(settings.workspace_names()),
+            account_for_name=lambda name: linear_account(name, settings.tools),
+            account_for_workspace=lambda workspace: linear_account_for_workspace(
+                workspace,
+                tools=settings.tools,
+                workspace_tool_names=workspace_tool_names,
+            ),
+            workspace_parent=settings.workspace_parent,
+            canonical_workspace_folder=static_workspace_folder,
+            additional_workspaces=lambda _registered: (),
+        )
+    )
+
+    plugin = settings.plugins.get("linear")
+    configure_linear_webhook_runtime(
+        LinearWebhookRuntime(
+            options=LinearPluginOptions.model_validate(
+                plugin.options if plugin is not None else {}
+            ),
+            account_for_name=lambda name: linear_account(name, settings.tools),
+            workspace_tools=workspace_tool_names,
+            workspace_names_for_account=configured_linear_workspace_names,
+        )
+    )
+
+    configure_linear_account_runtime(
+        LinearAccountRuntime(
+            tools=settings.tools,
+            workspace_tool_names=workspace_tool_names,
+        )
+    )
+    configure_linear_conversation_runtime(
+        LinearConversationRuntime(
+            get_unfinished_execution=get_unfinished_work_item_execution,
+            get_for_subject_key=lambda key, workspace, suffix: get_conversation_for_subject_key(
+                key,
+                workspace=workspace,
+                namespace_suffix=suffix,
+            ),
+            resolve=resolve_conversation,
+        )
+    )
+    configure_linear_webhook_effects_runtime(
+        LinearWebhookEffectsRuntime(
+            resolve_conversation=resolve_conversation,
+            control_state_matches=conversation_control_state_matches,
+            apply_control_state=apply_conversation_control_state,
+            get_execution_for_issue=get_work_item_execution_for_issue,
+            cancel_execution=cancel_work_item_execution,
+            cancel_execution_if_lifecycle_current=cancel_work_item_execution_if_lifecycle_current,
+            get_active_execution=get_active_work_item_execution,
+        )
+    )
+    configure_linear_work_item_task_runtime(
+        LinearWorkItemTaskRuntime(
+            get_control_binding=get_conversation_control_binding,
+            get_task=get_task_by_id,
+            create_task=create_task_if_absent,
+            update_task=update_task,
+            get_task_logs=get_task_run_logs,
+            bind_execution_to_task=bind_work_item_execution_to_task,
+            get_active_execution=get_active_work_item_execution,
+            resume_once_task=resume_once_task_after_unclaimed_scheduled_turn,
+            get_execution_for_issue=get_work_item_execution_for_issue,
+        )
+    )
+    configure_linear_work_items_runtime(
+        LinearWorkItemsRuntime(
+            list_executions=list_work_item_executions,
+            get_active_execution=get_active_work_item_execution,
+            get_execution_for_issue=get_work_item_execution_for_issue,
+            get_in_flight_turn=get_in_flight_turn_for_group,
+            bind_execution_to_turn=bind_work_item_execution_to_turn,
+            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
+        )
+    )
+    configure_linear_work_item_runtime(
+        LinearWorkItemRuntime(
+            get_transition_by_request=get_work_item_transition_by_request,
+            get_execution=get_work_item_execution,
+            get_active_execution=get_active_work_item_execution,
+            create_claim=create_work_item_claim,
+            claim_request=WorkItemClaimRequest,
+            begin_transition=begin_work_item_transition,
+            transition_resolution=WorkItemTransitionResolution,
+            resolve_transition=resolve_work_item_transition,
+            resolve_transition_if_lifecycle_current=resolve_work_item_transition_if_lifecycle_current,
+        )
+    )
+    configure_linear_work_item_completion_runtime(
+        LinearWorkItemCompletionRuntime(
+            get_execution_for_issue=get_work_item_execution_for_issue,
+            get_transition_by_request=get_work_item_transition_by_request,
+            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
+            transition_request=WorkItemTransitionRequest,
+            begin_transition=begin_work_item_transition,
+            begin_transition_if_lifecycle_current=begin_work_item_transition_if_lifecycle_current,
+        )
+    )
+    configure_linear_legacy_work_item_runtime(
+        LinearLegacyWorkItemRuntime(
+            get_all_tasks=get_all_tasks,
+            get_transition_by_request=get_work_item_transition_by_request,
+            create_claim=create_work_item_claim,
+            claim_request=WorkItemClaimRequest,
+            get_active_execution=get_active_work_item_execution,
+            get_execution=get_work_item_execution,
+            resolve_transition=resolve_work_item_transition,
+        )
+    )
+    configure_linear_planning_task_runtime(LinearPlanningTaskRuntime(get_all_tasks=get_all_tasks))
+    configure_linear_self_echo_runtime(
+        LinearSelfEchoRuntime(
+            begin=begin_webhook_effect,
+            mark_executing=mark_webhook_effect_executing,
+            confirm=confirm_webhook_effect,
+            fail=fail_webhook_effect,
+            mark_outcome_unknown=mark_webhook_effect_outcome_unknown,
+        )
+    )
+
+
+def make_container_runtime_operations() -> ContainerRuntimeOperations:
+    """Return inert container operations for queue tests without a runtime."""
+
+    def ignore_message(_folder: str, _text: str) -> None: ...
+
+    def ignore_close(_folder: str) -> None: ...
+
+    def ignore_gate(_folder: str, _invocation_ts: float) -> None: ...
+
+    async def ignore_session(_folder: str) -> None: ...
+
+    async def ignore_sessions() -> None: ...
+
+    async def ignore_process(_process: object, _name: str) -> None: ...
+
+    return ContainerRuntimeOperations(
+        write_message=ignore_message,
+        write_close_sentinel=ignore_close,
+        clean_input_dir=ignore_close,
+        destroy_gate=ignore_gate,
+        destroy_session=ignore_session,
+        destroy_all_sessions=ignore_sessions,
+        graceful_stop=ignore_process,
+    )
+
+
+def make_container_agent_operations() -> ContainerAgentOperations:
+    """Return inert container-agent operations for orchestration tests."""
+
+    def no_session(_group_folder: object) -> None:
+        return None
+
+    return ContainerAgentOperations(
+        get_session=no_session,
+        fresh_container_name=AsyncMock(
+            side_effect=AssertionError("test must provide a container name")
+        ),
+        spawn=AsyncMock(side_effect=AssertionError("test must provide a container spawn")),
+        create_session=AsyncMock(
+            side_effect=AssertionError("test must provide a container session")
+        ),
+        destroy_session=AsyncMock(),
+        ensure_workspace_mcp=AsyncMock(return_value=()),
+        wait_for_query=AsyncMock(return_value=True),
+    )
+
+
+def make_host_runtime_operations() -> HostRuntimeOperations:
+    """Return inert direct-host runtime operations for orchestration tests."""
+
+    def empty_environment(**_kwargs: object) -> dict[str, str]:
+        return {}
+
+    return HostRuntimeOperations(
+        build_agent_environment=empty_environment,
+        prepare_mcp=AsyncMock(),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -71,11 +445,6 @@ def _clean_host_mutation_cop():
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
             new_callable=AsyncMock,
             return_value=CopVerdict(flagged=False),
-        ),
-        patch(
-            "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
-            new_callable=AsyncMock,
-            return_value=CopInspectionContext(availability=CopContextAvailability.AVAILABLE),
         ),
     ):
         yield
@@ -336,6 +705,27 @@ class NullIpcDeps:
     async def get_scheduled_work_status(self, *, source_group, is_admin) -> tuple[list, list]:
         return [], []
 
+    prepare_action_intent = staticmethod(prepare_action_intent)
+    execute_action_intent = staticmethod(execute_action_intent)
+    policy_approval_timestamp = staticmethod(policy_approval_timestamp)
+    approve_action_intent = staticmethod(approve_action_intent)
+    deny_action_intent = staticmethod(deny_action_intent)
+    fail_action_intent = staticmethod(fail_action_intent)
+    expire_action_intent = staticmethod(expire_action_intent)
+    mark_action_intent_awaiting_approval = staticmethod(mark_action_intent_awaiting_approval)
+    get_conversation_control_by_thread = staticmethod(get_conversation_control_by_thread)
+    get_action_intent_by_request = staticmethod(get_action_intent_by_request)
+    get_conversation_control_binding = staticmethod(get_conversation_control_binding)
+
+    async def sweep_expired_questions(self, _write_expiration_response) -> list[dict]:
+        return []
+
+    def skill_access_status(self, _group_folder, _skill_name) -> str:
+        return "unavailable"
+
+    async def load_cop_inspection_context(self, _chat_jid):
+        return CopInspectionContext(availability=CopContextAvailability.AVAILABLE)
+
 
 class _NullPendingQuestionStore:
     def create(self, **kwargs) -> None:
@@ -466,6 +856,39 @@ def reset_settings(monkeypatch):
     with repository_settings_sources(enabled=False):
         safe = make_settings()
         monkeypatch.setattr("pynchy.config.settings._state.settings", safe)
+        configure_ipc_base_dir(safe.data_dir / "ipc")
+        configure_approval_state_root(safe.data_dir / "approvals")
+        configure_security_audit_storage(
+            store_security_audit=store_message_direct,
+            prune_security_audit=prune_messages_by_sender,
+        )
+        configure_canary_runtime(
+            CanaryRuntime(
+                record_run=record_canary_run,
+                latest_runs=get_latest_canary_runs,
+                recent_runs=lambda limit: get_recent_canary_runs(limit=limit),
+                unresolved_regressions=get_unresolved_canary_regressions,
+                code_revision=lambda: "test-revision",
+            )
+        )
+        configure_pending_questions_ipc_base_dir(safe.data_dir / "ipc")
+        configure_personalized_skills_root(safe.project_root)
+        configure_git_default_cwd(safe.project_root)
+        configure_allowed_message_filter(access.filter_allowed_messages)
+        configure_workspace_placement_for(safe)
+        configure_skill_activation_for(safe)
+        configure_linear_accounts_for(safe)
+        configure_container_spawn_runtime(
+            container_cli="docker",
+            ensure_agent_image=lambda **_kwargs: None,
+        )
+        configure_container_process_runtime(
+            container_cli="docker",
+            is_apple_runtime=False,
+            container_is_running=lambda _name: False,
+        )
+        configure_gateway_runtime(is_apple_container=False)
+        configure_vault_mount_mirror(enabled=False)
         yield
 
 

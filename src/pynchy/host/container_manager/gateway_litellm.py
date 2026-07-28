@@ -47,17 +47,17 @@ from pynchy.host.container_manager.litellm_config import (
     PLACEHOLDER_RE,
     LiteLLMConfigPreparer,
 )
-from pynchy.host.container_manager.runtime_names import (
+from pynchy.logger import logger
+from pynchy.redaction import (
+    GatewayRedactionPosture,
+    redaction_posture_for_gateway_mode,
+)
+from pynchy.runtime_names import (
     runtime_container_name,
     runtime_namespace,
     runtime_network_name,
     runtime_volume_name,
 )
-from pynchy.host.container_manager.security.llm_redaction import (
-    GatewayRedactionPosture,
-    redaction_posture_for_gateway_mode,
-)
-from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
 # Constants

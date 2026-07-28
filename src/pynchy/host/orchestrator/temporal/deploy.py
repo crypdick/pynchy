@@ -8,7 +8,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
 
-from pynchy.host.orchestrator.deploy import (
+from pynchy.host.orchestrator.api import (
     build_container_image,
     finalize_deploy,
     rollback_deploy_checkout,

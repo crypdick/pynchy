@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from pynchy.config.settings import validate_settings_mapping
-from pynchy.config.tool_access import (
+from pynchy.config.api import (
     apply_tool_access,
     resolve_tool_access,
     tool_process_environment,
+    validate_settings_mapping,
 )
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.orchestrator.workspace_config import (

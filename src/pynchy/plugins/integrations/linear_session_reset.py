@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-import aiohttp
-from temporalio.service import RPCError
-
-from pynchy.host.orchestrator.temporal.workflow_control import (
-    TemporalRuntimeUnavailableError,
-    cancel_scheduled_agent_workflow,
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves cancellation annotations at runtime.
+    Awaitable,
+    Callable,
 )
+from dataclasses import dataclass
+from typing import Any
+
+import aiohttp
+
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     transition_linked_work_item,
-)
-from pynchy.state.api import (
-    WorkItemTransitionRequest,
-    cancel_task_and_checkpoint,
-    cancel_work_item_execution,
-    get_active_work_item_execution,
-    get_conversation,
-    get_conversation_control_by_thread,
 )
 from pynchy.types import (
     ChatJid,
@@ -37,11 +31,26 @@ _RESET_BLOCKER = (
 )
 
 
-async def _block_linear_issue(execution: WorkItemExecution) -> None:
+@dataclass(frozen=True)
+class LinearSessionResetState:
+    """Durable operations needed to settle a Linear-owned execution."""
+
+    get_control_by_thread: Callable[[ChatJid], Awaitable[Any]]
+    get_conversation: Callable[[Any], Awaitable[Any]]
+    get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
+    cancel_task: Callable[[str], Awaitable[None]]
+    cancel_execution: Callable[..., Awaitable[object]]
+    transition_request: Callable[..., Any]
+
+
+async def _block_linear_issue(
+    execution: WorkItemExecution,
+    state: LinearSessionResetState,
+) -> None:
     """Best-effort provider transition after the local attempt is stopped."""
     try:
         async with linear_client(workspace=execution.workspace) as client:
-            await _apply_blocked_transition(client, execution)
+            await _apply_blocked_transition(client, execution, state)
     except (aiohttp.ClientError, LinearError, TimeoutError, ValueError) as exc:
         logger.warning(
             "Linear provider update failed during context reset",
@@ -53,13 +62,14 @@ async def _block_linear_issue(execution: WorkItemExecution) -> None:
 async def _apply_blocked_transition(
     client: LinearClient,
     execution: WorkItemExecution,
+    state: LinearSessionResetState,
 ) -> None:
     """Apply the provider transition and retain a human-readable explanation."""
     updated = await transition_linked_work_item(
         client,
         execution.workspace,
         execution.linear_issue_id,
-        WorkItemTransitionRequest(
+        state.transition_request(
             execution=execution,
             request_id=f"context-reset:{execution.id}",
             operation="context_reset_cancel",
@@ -79,30 +89,33 @@ async def _apply_blocked_transition(
     )
 
 
-async def cancel_linear_execution_for_reset(group: WorkspaceProfile) -> bool:
+async def cancel_linear_execution_for_reset(
+    group: WorkspaceProfile,
+    *,
+    cancel_scheduled_workflow: Callable[[str], Awaitable[bool]],
+    state: LinearSessionResetState,
+) -> bool:
     """Cancel the active execution owned by a routed Linear issue conversation."""
-    binding = await get_conversation_control_by_thread(ChatJid(group.jid))
+    binding = await state.get_control_by_thread(ChatJid(group.jid))
     if binding is None:
         return False
-    conversation = await get_conversation(binding.conversation_id)
+    conversation = await state.get_conversation(binding.conversation_id)
     if conversation is None or not str(conversation.subject.namespace).startswith("linear:"):
         return False
-    execution = await get_active_work_item_execution(str(conversation.subject.key))
+    execution = await state.get_active_execution(str(conversation.subject.key))
     if execution is None:
         return False
 
-    if execution.temporal_workflow_id is not None:
-        try:
-            await cancel_scheduled_agent_workflow(execution.temporal_workflow_id)
-        except (RPCError, TemporalRuntimeUnavailableError) as exc:
-            logger.warning(
-                "Could not confirm Linear execution workflow cancellation",
-                execution_id=execution.id,
-                err=str(exc),
-            )
+    if execution.temporal_workflow_id is not None and not await cancel_scheduled_workflow(
+        execution.temporal_workflow_id
+    ):
+        logger.warning(
+            "Could not confirm Linear execution workflow cancellation",
+            execution_id=execution.id,
+        )
     if execution.task_id is not None:
-        await cancel_task_and_checkpoint(execution.task_id)
+        await state.cancel_task(execution.task_id)
 
-    await _block_linear_issue(execution)
-    await cancel_work_item_execution(execution.id, blocker=_RESET_BLOCKER)
+    await _block_linear_issue(execution, state)
+    await state.cancel_execution(execution.id, blocker=_RESET_BLOCKER)
     return True

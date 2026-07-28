@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from conftest import make_settings
 
-from pynchy.config.models import AgentConfig
+from pynchy.config.api import AgentConfig
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,

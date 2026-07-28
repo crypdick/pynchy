@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
-    OnOutput,
-)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
+    OnOutput,
     RuntimeId,
     WorkspaceProfile,
 )

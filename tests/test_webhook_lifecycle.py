@@ -39,7 +39,7 @@ from pynchy.host.orchestrator.webhook_delivery_admission import (
     admit_prepared_event,
 )
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
-from pynchy.plugins.webhooks import (
+from pynchy.plugins.api import (
     WebhookConversation,
     WebhookEvent,
     WebhookLifecycle,

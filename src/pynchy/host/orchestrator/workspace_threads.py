@@ -10,17 +10,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from pynchy.config import get_settings
-from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves child policy annotations.
+from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves child policy annotations.  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
     ResolvedWorkspaceConfig,
-)
-from pynchy.config.models import (
     WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations at runtime.
-)
-from pynchy.config.workspace_layout import (  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
     WorkspaceThreadConfig,
+    get_settings,
 )
-from pynchy.conversation.workspaces import dynamic_thread_folder
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from aiosqlite import Connection  # noqa: TC002, RUF100 - beartype resolves annotations.
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.state.connection import atomic_write

@@ -28,9 +28,9 @@ from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import TemporalRuntimeUnavailableError
 from pynchy.host.orchestrator.webhook_conversations import ConversationWebhookDeps
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
+from pynchy.plugins.api import WebhookLifecycleDelivery
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_lifecycle
 from pynchy.plugins.integrations.linear_work_item_completion import complete_reviewed_work_item
-from pynchy.plugins.webhooks import WebhookLifecycleDelivery
 from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionResolution,

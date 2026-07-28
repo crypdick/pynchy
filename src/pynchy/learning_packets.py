@@ -1,14 +1,28 @@
-"""Payload codec and validation helpers for Obsidian learning reviews."""
+"""Shared models for Obsidian learning review payloads."""
 
 from __future__ import annotations
 
 from collections.abc import (
     Mapping,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
-from pynchy.host.learning.packet_models import LearningPacket
+
+@dataclass(frozen=True)
+class LearningPacket:
+    job_id: str
+    chat_jid: str
+    group_folder: str
+    profile: str
+    created_at: str
+    messages: list[dict[str, str]]
+    final_answer: str | None
+    tool_counts: dict[str, int]
+    error_snippets: list[str]
+    loaded_skills: list[str]
+    provenance: dict[str, str]
+
 
 _UNSAFE_JOB_ID = "job_id must be a non-empty safe filename component"
 _FIELD_STRING_REQUIRED = "{key} must be a string"

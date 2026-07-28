@@ -15,7 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
+from pynchy.host.orchestrator.messaging.ask_user_handler import (
+    AskUserRuntimeOperations,
+    handle_ask_user_answer,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,6 +34,14 @@ class _FakeAskUserDeps:
     def __init__(self, *, host_process_alive: bool = False) -> None:
         self.enqueue_message = AsyncMock()
         self._host_process_alive = host_process_alive
+        self.has_live_session = MagicMock(return_value=False)
+        self.persist_skill_access = MagicMock(return_value=None)
+        self.write_response = MagicMock()
+        self.ask_user_runtime_operations = AskUserRuntimeOperations(
+            has_live_session=self.has_live_session,
+            persist_skill_access=self.persist_skill_access,
+            write_response=self.write_response,
+        )
 
     def has_active_host_process(self, _group_folder: str) -> bool:
         return self._host_process_alive
@@ -69,62 +80,37 @@ def pending_question():
 
 class TestPathAContainerAlive:
     @pytest.mark.asyncio
-    async def test_writes_ipc_response_when_alive(self, settings, pending_question, tmp_path):
+    async def test_writes_ipc_response_when_alive(self, settings, pending_question):
         """When the container is alive, write the answer as an IPC response file."""
-        alive_session = MagicMock()
-        alive_session.is_alive = True
-
         deps = _FakeAskUserDeps()
+        deps.has_live_session.return_value = True
         answer = {"auth_strategy": "JWT tokens"}
-        response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
         with (
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=alive_session,
-            ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"
-            ) as mock_write,
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
-                return_value=response_path,
-            ) as mock_path,
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", answer, deps)
 
-        mock_path.assert_called_once_with("test-group", "req-abc123")
-        mock_write.assert_called_once_with(
-            response_path, {"result": {"answers": {"auth_strategy": "JWT tokens"}}}
+        deps.write_response.assert_called_once_with(
+            "test-group", "req-abc123", {"answers": {"auth_strategy": "JWT tokens"}}
         )
         # Should NOT enqueue a message (container is alive)
         deps.enqueue_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_resolves_pending_question_when_alive(self, settings, pending_question, tmp_path):
+    async def test_resolves_pending_question_when_alive(self, settings, pending_question):
         """After writing IPC response, the pending question file should be resolved."""
-        alive_session = MagicMock()
-        alive_session.is_alive = True
         deps = _FakeAskUserDeps()
+        deps.has_live_session.return_value = True
 
         with (
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
-            ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=alive_session,
-            ),
-            patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
-                return_value=tmp_path / "x",
             ),
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"
@@ -135,35 +121,21 @@ class TestPathAContainerAlive:
         mock_resolve.assert_called_once_with("req-abc123", "test-group")
 
     @pytest.mark.asyncio
-    async def test_writes_ipc_response_when_host_process_is_alive(
-        self, settings, pending_question, tmp_path
-    ):
+    async def test_writes_ipc_response_when_host_process_is_alive(self, settings, pending_question):
         """A direct host runner must receive the answer through its IPC response."""
         deps = _FakeAskUserDeps(host_process_alive=True)
-        response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
         with (
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=None,
-            ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"
-            ) as mock_write,
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
-                return_value=response_path,
-            ),
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", {"answer": "Grant once"}, deps)
 
-        mock_write.assert_called_once_with(
-            response_path, {"result": {"answers": {"answer": "Grant once"}}}
+        deps.write_response.assert_called_once_with(
+            "test-group", "req-abc123", {"answers": {"answer": "Grant once"}}
         )
         deps.enqueue_message.assert_not_called()
 
@@ -184,10 +156,6 @@ class TestPathBContainerDead:
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
             ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=None,  # container dead
-            ),
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
             await handle_ask_user_answer("req-abc123", {"auth_strategy": "JWT tokens"}, deps)
@@ -204,18 +172,12 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_session_not_alive(self, settings, pending_question):
         """A session that exists but is_alive=False should trigger cold-start path."""
-        dead_session = MagicMock()
-        dead_session.is_alive = False
         deps = _FakeAskUserDeps()
 
         with (
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
-            ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=dead_session,
             ),
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
@@ -232,10 +194,6 @@ class TestPathBContainerDead:
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
                 return_value=pending_question,
-            ),
-            patch(
-                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-                return_value=None,
             ),
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"
@@ -291,10 +249,6 @@ async def _cold_start_text(pending: dict, answer: dict) -> str:
         patch(
             "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
             return_value=pending,
-        ),
-        patch(
-            "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
-            return_value=None,
         ),
         patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
     ):

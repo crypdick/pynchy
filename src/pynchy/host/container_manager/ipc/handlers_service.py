@@ -12,18 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype resolves dataclass.
-from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
-    ApprovalMode,
-    HostActionDescriptor,
-    missing_workspace_tool,
-)
-from pynchy.config import get_settings
-from pynchy.config.models import McpTool
-from pynchy.host.container_manager.action_intents import (
-    execute_action_intent,
-    policy_approval_timestamp,
-    prepare_action_intent,
-)
+from pynchy.config.api import McpTool, get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -36,20 +25,17 @@ from pynchy.host.container_manager.security.gate import (
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.host.orchestrator import workspace_config
+from pynchy.host.orchestrator import api as workspace_config
 from pynchy.logger import logger
-from pynchy.plugins.host_actions import (
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ApprovalMode,
     HostActionCatalog,
+    HostActionDescriptor,
     clear_host_action_catalog_cache,
     get_host_action_catalog,
+    missing_workspace_tool,
 )
-from pynchy.plugins.integrations.matrix_route_registry import get_active_matrix_route
-from pynchy.state.api import (
-    approve_action_intent,
-    deny_action_intent,
-    get_conversation_control_by_thread,
-    mark_action_intent_awaiting_approval,
-)
+from pynchy.plugins.integrations.api import get_active_matrix_route
 from pynchy.types import ChatJid
 
 
@@ -208,7 +194,7 @@ async def _request_human_approval(
         create_pending_approval,
     )
 
-    control = await get_conversation_control_by_thread(ChatJid(context.chat_jid))
+    control = await context.deps.get_conversation_control_by_thread(ChatJid(context.chat_jid))
     short_id = create_pending_approval(
         request_id=context.request.request_id,
         tool_name=context.request.tool_name,
@@ -223,7 +209,7 @@ async def _request_human_approval(
         secret_tainted=context.gate.policy.secret_tainted,
     )
     if context.action.action_intent is not None:
-        await mark_action_intent_awaiting_approval(
+        await context.deps.mark_action_intent_awaiting_approval(
             context.request.request_id,
             policy_decision=context.reason or "human approval required",
         )
@@ -331,7 +317,7 @@ async def _handle_service_request(
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
-    intent, replay_response = await prepare_action_intent(
+    intent, replay_response = await deps.prepare_action_intent(
         action,
         data,
         workspace=source_group,
@@ -349,7 +335,7 @@ async def _handle_service_request(
 
     if not decision.allowed:
         if intent is not None:
-            await deny_action_intent(
+            await deps.deny_action_intent(
                 request.request_id,
                 reason=f"Policy denied: {decision.reason}",
             )
@@ -404,10 +390,10 @@ async def _handle_service_request(
         return
 
     if intent is not None:
-        await approve_action_intent(
+        await deps.approve_action_intent(
             request.request_id,
             approver="policy",
-            approved_at=policy_approval_timestamp(),
+            approved_at=deps.policy_approval_timestamp(),
             policy_decision=decision.reason or "allowed by current policy",
         )
 
@@ -432,7 +418,7 @@ async def _handle_service_request(
     )
 
     try:
-        response = await execute_action_intent(action, data, request_id=request.request_id)
+        response = await deps.execute_action_intent(action, data, request_id=request.request_id)
     except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.
         await record_security_event(
             chat_jid=chat_jid,

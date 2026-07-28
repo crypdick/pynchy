@@ -12,22 +12,15 @@ from __future__ import annotations
 
 from typing import Any
 
-import pynchy.config as pynchy_config
-import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.capabilities import (
+import pynchy.config.api as pynchy_config
+from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
+from pynchy.host.orchestrator import api as workspace_config
+from pynchy.plugins.api import (
     ApprovalMode,
     ApprovalTrigger,
     HostActionAccess,
     HostActionDescriptor,
 )
-from pynchy.config import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    Settings,
-    WorkspaceTool,
-)
-from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    ResolvedWorkspaceConfig,
-)
-from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
 # ---------------------------------------------------------------------------
@@ -220,8 +213,8 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
 
 def build_workspace_security(
-    settings: Settings,
-    resolved: ResolvedWorkspaceConfig,
+    settings: pynchy_config.Settings,
+    resolved: pynchy_config.ResolvedWorkspaceConfig,
 ) -> WorkspaceSecurity:
     """Build dispatch-equivalent security from an already resolved workspace."""
 
@@ -230,7 +223,7 @@ def build_workspace_security(
     tools = settings.tools
     for tool_name in resolved.tools:
         tool = tools.get(tool_name)
-        if tool is None or isinstance(tool, WorkspaceTool):
+        if tool is None or isinstance(tool, pynchy_config.WorkspaceTool):
             continue
         trust = ServiceTrustConfig(
             public_source=tool.public_source,

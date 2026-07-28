@@ -7,13 +7,18 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
+from typing import TYPE_CHECKING, cast
 
-from pynchy.canaries import CanaryExercise, CanaryRunContext
-from pynchy.host.container_manager.ipc.handlers_artifact_security import (
+from pynchy.canary_contracts import CanaryExercise, CanaryRunContext
+from pynchy.host.container_manager.api import (
+    create_gate,
+    destroy_gate,
     handle_artifact_security_check,
 )
-from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.types import Channel, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager.ipc import IpcDeps
 
 
 @dataclass(frozen=True)
@@ -123,7 +128,7 @@ class FileSecretTaintCanary:
                     },
                     source_group,
                     is_admin=False,
-                    deps=_SecurityCanaryDeps(workspace),
+                    deps=cast("IpcDeps", _SecurityCanaryDeps(workspace)),
                     response_path_override=response_path,
                 )
                 response = json.loads(response_path.read_text(encoding="utf-8"))

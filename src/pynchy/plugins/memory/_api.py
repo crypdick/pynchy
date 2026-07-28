@@ -9,7 +9,8 @@ from __future__ import annotations
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Protocol, TypeGuard, runtime_checkable
 
-import pynchy.plugins as pynchy_plugins
+import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+
 from pynchy.logger import logger
 from pynchy.types import (
     GroupFolder,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
@@ -68,14 +69,17 @@ def _is_valid_provider(candidate: object) -> TypeGuard[MemoryProvider]:
     )
 
 
-def get_memory_provider(database_path: Path) -> MemoryProvider | None:
+def get_memory_provider(
+    plugin_manager: pluggy.PluginManager,
+    database_path: Path,
+) -> MemoryProvider | None:
     """Discover memory plugin and return provider (first valid one wins)."""
-    providers = pynchy_plugins.collect_hook_results(
-        "pynchy_memory",
-        _is_valid_provider,
-        "memory",
-        database_path=database_path,
-    )
+    try:
+        candidates = plugin_manager.hook.pynchy_memory(database_path=database_path)
+    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break memory discovery.
+        logger.exception("Failed to resolve memory plugins")
+        return None
+    providers = [candidate for candidate in candidates if _is_valid_provider(candidate)]
     if providers:
         logger.info("Memory provider discovered", name=providers[0].name)
         return providers[0]

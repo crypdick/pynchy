@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from aiosqlite import Connection  # noqa: TC002, RUF100 - beartype resolves annotations.
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 

@@ -18,15 +18,17 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
+    Mapping,  # noqa: TC003, RUF100 - beartype resolves CalDAV runtime annotations at runtime.
     Sequence,  # noqa: TC003, RUF100 - beartype resolves CalDAV protocol annotations at runtime.
 )
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pluggy
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -42,9 +44,6 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config import get_settings
-from pynchy.config.caldav import CalDAVConfig, CalDAVServerConfig
-from pynchy.config.models import CalDAVTool
 from pynchy.plugins.integrations._service import service_tool
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -58,7 +57,40 @@ type _ActionDefinition = tuple[str, str, str, HostActionAccess, HostActionHandle
 _caldav_client_cache: dict[str, object] = {}  # keyed by server name
 
 
-def get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> object:
+@dataclass(frozen=True)
+class CalDAVServerOptions:
+    """Connection and visibility settings for one CalDAV server."""
+
+    url: str
+    username: str
+    password_env: str | None
+    default_calendar: str | None
+    allow: tuple[str, ...] | None
+    ignore: tuple[str, ...] | None
+
+
+@dataclass(frozen=True)
+class CalDAVRuntime:
+    """Resolved CalDAV configuration supplied by the host composition root."""
+
+    default_server: str
+    servers: Mapping[str, CalDAVServerOptions]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: CalDAVRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_caldav_runtime(runtime: CalDAVRuntime) -> None:
+    """Set CalDAV settings before service actions run."""
+    _runtime.runtime = runtime
+
+
+def get_caldav_client(name: str, server_cfg: CalDAVServerOptions) -> object:
     """Get or create a cached DAVClient for a named server."""
     import caldav  # noqa: PLC0415, RUF100 - optional integration dependency loaded only when CalDAV is used.
 
@@ -77,21 +109,20 @@ def clear_caldav_client_cache() -> None:
     _caldav_client_cache.clear()
 
 
-def _check_configured(cfg: CalDAVConfig) -> str | None:
+def _check_configured(cfg: CalDAVRuntime) -> str | None:
     """Return an error string if no servers are configured, else None."""
     if not cfg.servers:
         return "CalDAV not configured (no servers defined in [tools.caldav.servers.*])"
     return None
 
 
-def _caldav_config() -> CalDAVConfig:
-    tool = get_settings().tools.get("caldav")
-    if isinstance(tool, CalDAVTool):
-        return CalDAVConfig(default_server=tool.default_server, servers=tool.servers)
-    return CalDAVConfig()
+def _caldav_config() -> CalDAVRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("CalDAV runtime has not been configured")
+    return _runtime.runtime
 
 
-def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerConfig) -> bool:
+def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerOptions) -> bool:
     """Check whether a calendar passes allow/ignore filtering."""
     lower = cal_name.lower()
     if server_cfg.allow is not None:
@@ -101,14 +132,14 @@ def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerConfig) -> bool:
     return True
 
 
-def _filter_calendars(calendars: Sequence[object], server_cfg: CalDAVServerConfig) -> list[object]:
+def _filter_calendars(calendars: Sequence[object], server_cfg: CalDAVServerOptions) -> list[object]:
     """Filter a list of CalDAV calendar objects by allow/ignore rules."""
     return [c for c in calendars if c.name and _is_calendar_visible(c.name, server_cfg)]
 
 
 def _resolve_server(
-    cfg: CalDAVConfig, calendar_str: str | None
-) -> tuple[str, CalDAVServerConfig, str | None]:
+    cfg: CalDAVRuntime, calendar_str: str | None
+) -> tuple[str, CalDAVServerOptions, str | None]:
     """Parse a calendar string and resolve the server.
 
     Accepts:
@@ -144,7 +175,7 @@ def _resolve_server(
 
 def _resolve_calendar(
     server_name: str,
-    server_cfg: CalDAVServerConfig,
+    server_cfg: CalDAVServerOptions,
     calendar_name: str | None,
 ) -> object:
     """Resolve a calendar object from a specific server.

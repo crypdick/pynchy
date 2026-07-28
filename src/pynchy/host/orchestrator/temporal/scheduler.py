@@ -24,27 +24,19 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
-from pynchy.canaries import run_declared_canaries
-from pynchy.config import get_settings
-from pynchy.config.scheduler_models import (
+from pynchy.canaries.api import run_declared_canaries
+from pynchy.config.api import (
     SchedulerConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    get_settings,
 )
-from pynchy.host.learning.packet_codec import packet_to_payload
-from pynchy.host.learning.packet_models import (
-    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
-)
-from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves nested activity annotations.
-    TurnOutcome,
-)
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.host.orchestrator.scheduled_binding import (
+from pynchy.host.orchestrator.api import (
     ScheduledTaskTerminalError,
     ensure_scheduled_task_binding,
     ensure_scheduled_task_conversation_open,
-)
-from pynchy.host.orchestrator.task_scheduler import (
-    SchedulerDependencies,
     run_scheduled_agent,
+)
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.channel_reconciliation import (
     run_channel_reconciliation,
@@ -123,6 +115,10 @@ from pynchy.host.orchestrator.temporal.workflows import (
     LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
+from pynchy.learning_packets import (
+    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
+    packet_to_payload,
+)
 from pynchy.logger import logger
 from pynchy.state.api import (
     claim_deployment,
@@ -132,10 +128,14 @@ from pynchy.state.api import (
     get_all_tasks,
     get_task_by_id,
 )
+from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves nested activity annotations.
+    TurnOutcome,
+)
 from pynchy.types import (
     CanaryRun,  # noqa: TC001, RUF100 - beartype resolves canary notification annotations.
     DeployClaim,
     DeployClaimStatus,
+    RuntimeTarget,
     ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
 
@@ -147,7 +147,7 @@ class _ActiveRuntimeState:
 
 _state = _ActiveRuntimeState()
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
-_TURN_OUTCOMES_MODULE = "pynchy.host.orchestrator.execution_outcomes"
+_TURN_OUTCOMES_MODULE = "pynchy.turn_outcomes"
 _TEMPORAL_SCHEDULER_NOT_STARTED_ERROR = "Temporal scheduler runtime has not been started"
 __all__ = [
     "TemporalRuntimeUnavailableError",

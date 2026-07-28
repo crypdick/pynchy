@@ -9,9 +9,9 @@ from __future__ import annotations
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
 from urllib.parse import urlparse
 
-from pynchy.config import get_settings
-from pynchy.config.settings import (
+from pynchy.config.api import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves credential helper annotations.
+    get_settings,
 )
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
@@ -22,23 +22,6 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 # Host-side discovery helpers
 # ---------------------------------------------------------------------------
-
-
-def _read_gh_token() -> str | None:
-    """Read GitHub token from the host's gh CLI."""
-    try:
-        result = subprocess.run(
-            ["gh", "auth", "token"],  # noqa: S607, RUF100 - gh is a trusted host CLI and argv is fixed.
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Failed to read GitHub token from gh CLI", err=str(exc))
-    return None
 
 
 def _read_git_config_value(key: str) -> str | None:
@@ -152,7 +135,7 @@ def _workspace_config_env_vars(s: Settings, *, is_admin: bool, group_folder: str
     Admin gets every configured chrome profile; non-admin workspaces get the
     chrome profile suffixes from selected MCP tools such as ``gdrive.personal``.
     """
-    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100
+    from pynchy.host.orchestrator.api import (  # noqa: PLC0415, RUF100
         load_resolved_config,
         load_resolved_tool_access,
     )

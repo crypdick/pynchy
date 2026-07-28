@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workflow callback annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves workflow callback annotations at runtime.
+)
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from pynchy.host.learning.packet_codec import packet_to_payload as _packet_to_payload
-from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import (
     LearningConfigError,
     resolve_learning_paths,
 )
+from pynchy.learning_packets import LearningPacket
+from pynchy.learning_packets import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ContainerOutput,
@@ -138,6 +142,7 @@ async def start_learning_review_workflow(  # noqa: PLR0913, RUF100 - workflow la
     summary: LearningRunSummary,
     enabled: bool,
     packet_max_chars: int,
+    start_review_workflow: Callable[[LearningPacket], Awaitable[None]],
 ) -> str | None:
     try:
         packet = build_learning_packet(
@@ -151,11 +156,7 @@ async def start_learning_review_workflow(  # noqa: PLR0913, RUF100 - workflow la
         )
         if packet is None:
             return None
-        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - lazy import keeps packet building light.
-            start_learning_review_workflow as _start_temporal_learning_review,
-        )
-
-        await _start_temporal_learning_review(packet)
+        await start_review_workflow(packet)
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
             "Failed to start learning review workflow",

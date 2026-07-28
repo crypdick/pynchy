@@ -9,13 +9,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.host.container_manager.security.approval import (
-    _approval_decisions_dir,
-    find_pending_by_short_id,
-    list_pending_approvals,
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+    ApprovalRuntimeOperations,
 )
 from pynchy.logger import logger
-from pynchy.utils import write_json_atomic
 
 
 @runtime_checkable
@@ -23,6 +20,9 @@ class ApprovalDeps(Protocol):
     """Minimal deps needed by approval handlers."""
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    @property
+    def approval_runtime_operations(self) -> ApprovalRuntimeOperations: ...
 
 
 async def handle_approval_command(
@@ -33,7 +33,8 @@ async def handle_approval_command(
     sender: str,
 ) -> None:
     """Persist and immediately process an approve/deny command."""
-    pending = find_pending_by_short_id(short_id)
+    operations = deps.approval_runtime_operations
+    pending = operations.find_pending_by_short_id(short_id)
 
     if pending is None or pending.get("approval_chat_jid") != chat_jid:
         await deps.broadcast_host_message(
@@ -46,7 +47,6 @@ async def handle_approval_command(
     source_group = pending["source_group"]
     approved = action == "approve"
 
-    decisions_dir = _approval_decisions_dir(source_group)
     decision_data = {
         "request_id": request_id,
         "guarded_action_id": pending["guarded_action_id"],
@@ -57,14 +57,7 @@ async def handle_approval_command(
         "decided_at": datetime.now(UTC).isoformat(),
     }
 
-    decision_file = decisions_dir / f"{request_id}.json"
-    write_json_atomic(decision_file, decision_data, indent=2)
-
-    from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - lazy import avoids loading service dispatch until a human decides.
-        process_approval_decision,
-    )
-
-    await process_approval_decision(decision_file, source_group, deps=deps)
+    await operations.persist_and_process(source_group, decision_data, deps)
 
     verb = "Approved" if approved else "Denied"
     await deps.broadcast_host_message(
@@ -82,7 +75,7 @@ async def handle_approval_command(
 
 async def handle_pending_query(deps: ApprovalDeps, chat_jid: str) -> None:
     """List all pending approval requests."""
-    pending = list_pending_approvals()
+    pending = deps.approval_runtime_operations.list_pending_approvals()
 
     if not pending:
         await deps.broadcast_host_message(chat_jid, "No pending approvals.")

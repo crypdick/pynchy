@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from pynchy.config import get_settings
-from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves function annotations at runtime.
+from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves function annotations at runtime.
     JobConfig,
+    get_settings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.contracts import JobSpec
+from pynchy.plugins.api import JobSpec
 
 
 @dataclass
@@ -48,7 +48,7 @@ def _install_plugin_spec(spec: object, configured_names: set[str]) -> None:
     if name in configured_names:
         return
     try:
-        job = spec.config
+        job = JobConfig.model_validate(spec.config)
         _validate_workspace_references(name, job)
     except (TypeError, ValueError) as exc:
         logger.warning("Ignoring invalid plugin job spec", job=name, err=str(exc))

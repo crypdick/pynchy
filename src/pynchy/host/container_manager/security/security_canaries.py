@@ -7,40 +7,32 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from pynchy.canaries import CanaryExercise, CanaryRunContext, CanaryScenario
-from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
-from pynchy.host.container_manager.ipc.handlers_artifact_security import (
-    evaluate_package_coordinates,
-)
-from pynchy.host.container_manager.security.cop import (
+from pynchy.canary_contracts import CanaryExercise, CanaryRunContext, CanaryScenario
+from pynchy.host.container_manager.api import (
+    BuiltinGateway,
     CopContextAvailability,
     CopInspectionContext,
     CopVerdict,
-)
-from pynchy.host.container_manager.security.cop_gate import cop_requires_human
-from pynchy.host.container_manager.security.identity import (
-    ReceiptVerification,
-    clear_approval_receipts,
-    consume_approval_receipt,
-    guarded_action_id,
-    issue_approval_receipt,
-)
-from pynchy.host.container_manager.security.llm_redaction import (
     GatewayRedactionPosture,
-    redaction_posture_for_gateway_mode,
-)
-from pynchy.host.container_manager.security.package_metadata import (
     PackageCoordinate,
     PackageEcosystem,
     PackageIntent,
     PackageMetadataAssessment,
     PackageMetadataState,
     PackageSource,
+    ReceiptVerification,
     RegistryMetadataError,
     assess_package_metadata,
+    clear_approval_receipts,
     clear_package_metadata_cache,
+    consume_approval_receipt,
+    cop_requires_human,
+    evaluate_package_coordinates,
+    guarded_action_id,
+    issue_approval_receipt,
+    redaction_posture_for_gateway_mode,
 )
-from pynchy.security_canaries_artifact import FileSecretTaintCanary
+from pynchy.host.container_manager.security.artifact_canaries import FileSecretTaintCanary
 
 
 class SecurityCanaryError(RuntimeError):

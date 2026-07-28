@@ -8,7 +8,7 @@ asyncio.gather() for fast response times (~200ms budget).
 from __future__ import annotations
 
 import asyncio
-import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in status collection.
+import subprocess  # noqa: S404, RUF100 - used for git subprocess exception types in status collection.
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,26 +17,29 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio.client import Client
 
-from pynchy.canaries import get_canary_report
-from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.runtime_names import runtime_container_name
-from pynchy.host.git_ops.repo import RepoContext, get_repo_context
-from pynchy.host.git_ops.utils import (
+from pynchy.canaries.api import get_canary_report
+from pynchy.host.git_ops.api import (
+    RepoContext,
     count_unpushed_commits,
     detect_main_branch,
     get_head_commit_message,
     get_head_sha,
+    get_repo_context,
     is_repo_dirty,
     run_git,
 )
-from pynchy.host.orchestrator.capability_status import collect_capability_status
+from pynchy.host.orchestrator.capability_status import (
+    CapabilityStatusOperations,
+    collect_capability_status,
+)
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.speech_status import collect_speech_status
-from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
+from pynchy.host.orchestrator.temporal.api import get_temporal_orchestration_states
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
 )
+from pynchy.runtime_names import runtime_container_name
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
@@ -65,7 +68,7 @@ def record_start_time() -> None:
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return worker status lazily so status imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
+    from pynchy.host.orchestrator.temporal.api import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
         get_temporal_scheduler_status as _get_temporal_scheduler_status,
     )
 
@@ -85,12 +88,14 @@ class StatusDeps(Protocol):
     temporal_address: str
     temporal_namespace: str
     temporal_task_queue: str
+    capability_status_operations: CapabilityStatusOperations
 
     def is_shutting_down(self) -> bool: ...
     def get_channel_status(self) -> dict[str, bool]: ...
     def get_connection_status(self) -> dict[str, bool]: ...
     def get_queue_snapshot(self) -> dict[str, Any]: ...
     def get_gateway_info(self) -> dict[str, Any]: ...
+    async def get_container_state(self, name: str) -> str: ...
     def get_active_sessions_count(self) -> int: ...
     def get_workspace_count(self) -> int: ...
     def get_speech_synthesizer(self) -> SpeechSynthesizer | None: ...
@@ -135,7 +140,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         asyncio.to_thread(_collect_repos, deps.repo_slugs),
         _collect_messages(),
         _collect_scheduled_work(deps.temporal_address, deps.temporal_namespace),
-        _collect_gateway(deps.get_gateway_info()),
+        _collect_gateway(deps),
         _collect_temporal(
             deps.temporal_address,
             deps.temporal_namespace,
@@ -146,7 +151,10 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
     )
     tasks, host_jobs = scheduled_work
     canary_report = cast("dict[str, object]", canaries)
-    capabilities = await collect_capability_status(canary_report)
+    capabilities = await collect_capability_status(
+        canary_report,
+        operations=deps.capability_status_operations,
+    )
 
     return {
         "service": service,
@@ -346,12 +354,13 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
     return {"healthy": healthy, "error": None}
 
 
-async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
+async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
     """Gateway health — Docker inspect + HTTP health check.
 
     Args:
-        info: Dict from deps.get_gateway_info() with mode, port, key.
+        deps: Runtime state and container-status operation.
     """
+    info = deps.get_gateway_info()
     result: dict[str, Any] = {
         "mode": info.get("mode", "unknown"),
         "redaction": info.get("redaction", "unknown"),
@@ -361,8 +370,8 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
         return result
 
     litellm_state, pg_state = await asyncio.gather(
-        _container_state(runtime_container_name("litellm")),
-        _container_state(runtime_container_name("litellm-db")),
+        deps.get_container_state(runtime_container_name("litellm")),
+        deps.get_container_state(runtime_container_name("litellm-db")),
     )
     result["litellm_container"] = litellm_state
     result["postgres_container"] = pg_state
@@ -407,16 +416,3 @@ async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
     if "litellm_version" in data:
         result["litellm_version"] = data["litellm_version"]
     return result
-
-
-async def _container_state(name: str) -> str:
-    """Return 'running', 'stopped', or 'not_found' for a Docker container."""
-    try:
-        result = await run_docker("inspect", "-f", "{{.State.Status}}", name, check=False)
-        if result.returncode != 0:
-            return "not_found"
-        return result.stdout.strip()  # "running", "exited", "created", etc.
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        # TimeoutExpired: docker CLI hung; FileNotFoundError: docker not installed.
-        # Both are expected in degraded environments — return not_found.
-        return "not_found"

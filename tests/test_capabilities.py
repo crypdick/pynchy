@@ -9,7 +9,11 @@ import pluggy
 import pytest
 
 from pynchy.actions import ACTION_SPECS, ActionId, ActionSpec, ActionSurface, ActionTransport
-from pynchy.capabilities import (
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    evaluate_host_action_policy,
+)
+from pynchy.plugins.api import (
     ApprovalContract,
     ApprovalTrigger,
     AuditContract,
@@ -23,14 +27,10 @@ from pynchy.capabilities import (
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
+    PynchySpec,
+    get_host_action_catalog,
     validate_host_action_descriptors,
 )
-from pynchy.host.container_manager.security.gate import (
-    SecurityGate,
-    evaluate_host_action_policy,
-)
-from pynchy.plugins.hookspecs import PynchySpec
-from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
 from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin

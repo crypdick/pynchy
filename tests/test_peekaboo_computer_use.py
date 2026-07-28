@@ -8,14 +8,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.plugins.computer_use import ComputerUseRouterConfig
+from pynchy.plugins.api import ComputerUseRouterConfig
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
-from pynchy.plugins.integrations.peekaboo import PeekabooBackend, PeekabooConfig
+from pynchy.plugins.integrations.peekaboo import (
+    PeekabooBackend,
+    PeekabooComputerUsePlugin,
+    PeekabooConfig,
+)
 
 if TYPE_CHECKING:
-    from pynchy.capabilities import HostActionHandler
+    from pynchy.plugins.api import HostActionHandler
 
 
 class _FakeProcess:
@@ -38,11 +41,20 @@ class _FakeProcess:
         self.killed = True
 
 
-def _handler() -> HostActionHandler:
+def _handler(data_dir: Path | None = None) -> HostActionHandler:
     backend = PeekabooBackend(PeekabooConfig(binary="peekaboo", timeout_seconds=5))
     config = ComputerUseRouterConfig(providers=("peekaboo",))
-    registration = ComputerUsePlugin(config).pynchy_service_handler((backend,))
+    registration = ComputerUsePlugin(config, data_dir=data_dir).pynchy_service_handler((backend,))
     return registration.actions[0].handler
+
+
+def test_plugin_uses_lifecycle_configuration() -> None:
+    plugin = PeekabooComputerUsePlugin()
+    config = PeekabooConfig(binary="configured-peekaboo", timeout_seconds=5)
+
+    plugin.configure(config)
+
+    assert plugin.pynchy_computer_use_backend().config is config
 
 
 _CASES = [
@@ -418,15 +430,11 @@ async def test_each_semantic_action_maps_to_closed_peekaboo_argv(
             new=AsyncMock(side_effect=fake_exec),
         ),
         patch(
-            "pynchy.plugins.integrations.computer_use._plugin.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
             "pynchy.plugins.integrations.computer_use._plugin._timestamp",
             return_value="20260718T120000Z",
         ),
     ):
-        result = await _handler()({"source_group": "admin", "action": action, **arguments})
+        result = await _handler(tmp_path)({"source_group": "admin", "action": action, **arguments})
 
     artifact = tmp_path / "ipc" / "admin" / "computer-use" / "20260718T120000Z-calculator.png"
     expected = tuple(str(artifact) if item == "$ARTIFACT" else item for item in expected_command)

@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configured webhook callbacks at runtime.
+    Awaitable,
+    Callable,
+)
+from dataclasses import dataclass, replace
+from typing import Any
 
 import aiohttp
 
-from pynchy.conversation.dispatch import conversation_runtime_lock
+from pynchy.conversation.api import conversation_runtime_lock
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    WebhookConversation,
+    WebhookEvent,
+    WebhookLifecycleDelivery,
+    WebhookProcessingError,
+)
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import (
@@ -25,23 +36,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     state_id,
     workspace_issue,
 )
-from pynchy.plugins.webhooks import (
-    WebhookConversation,
-    WebhookEvent,
-    WebhookLifecycleDelivery,
-    WebhookProcessingError,
-)
-from pynchy.state.api import (
-    WorkItemClaimConflictError,
-    apply_conversation_control_state,
-    cancel_work_item_execution,
-    cancel_work_item_execution_if_lifecycle_current,
-    conversation_control_state_matches,
-    get_active_work_item_execution,
-    get_work_item_execution_for_issue,
-    resolve_conversation,
-)
-from pynchy.types import GroupFolder, WorkItemExecutionStatus
+from pynchy.types import GroupFolder, WorkItemClaimConflictError, WorkItemExecutionStatus
 
 _TERMINAL_STATE_BLOCKER = (
     "Linear reported a terminal state before this managed execution finished. "
@@ -58,6 +53,38 @@ _CANCELLABLE_TERMINAL_EXECUTION_STATUSES = frozenset(
     }
 )
 _PROJECT_ASSIGNMENT_UPDATE_FIELDS = frozenset({"addedtoprojectat", "projectid", "updatedat"})
+
+
+@dataclass(frozen=True)
+class LinearWebhookEffectsRuntime:
+    """Durable control and execution operations selected during composition."""
+
+    resolve_conversation: Callable[..., Awaitable[Any]]
+    control_state_matches: Callable[..., Awaitable[bool]]
+    apply_control_state: Callable[..., Awaitable[bool]]
+    get_execution_for_issue: Callable[..., Awaitable[Any]]
+    cancel_execution: Callable[..., Awaitable[object]]
+    cancel_execution_if_lifecycle_current: Callable[..., Awaitable[object]]
+    get_active_execution: Callable[[str], Awaitable[Any]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearWebhookEffectsRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_webhook_effects_runtime(runtime: LinearWebhookEffectsRuntime) -> None:
+    """Set durable effects used after authenticated Linear webhook admission."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearWebhookEffectsRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear webhook effects runtime has not been configured")
+    return _runtime.runtime
 
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
@@ -115,9 +142,13 @@ async def _process_linear_issue_update(
     controller_workspace: str,
 ) -> WebhookEvent:
     """Fence controller work after durable provider-state admission."""
-    resolved = await resolve_conversation(conversation.subject, GroupFolder(runtime_workspace))
+    runtime = _configured_runtime()
+    resolved = await runtime.resolve_conversation(
+        conversation.subject,
+        GroupFolder(runtime_workspace),
+    )
     async with conversation_runtime_lock(resolved.id):
-        if not await conversation_control_state_matches(
+        if not await runtime.control_state_matches(
             resolved.id,
             closed=False,
             control_state_revision=conversation.control_state_revision,
@@ -162,8 +193,9 @@ async def _reopen_verified_conversation_control(
         return True
     if conversation.control_state_revision is None:
         raise WebhookProcessingError("Linear nonterminal control state lacks updatedAt")
-    resolved = await resolve_conversation(conversation.subject, GroupFolder(workspace))
-    return await apply_conversation_control_state(
+    runtime = _configured_runtime()
+    resolved = await runtime.resolve_conversation(conversation.subject, GroupFolder(workspace))
+    return await runtime.apply_control_state(
         resolved.id,
         closed=False,
         control_state_revision=conversation.control_state_revision,
@@ -212,12 +244,13 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
                 controller_workspace=controller_workspace,
             )
         return
-    execution = await get_work_item_execution_for_issue(delivery.subject_id, workspace=workspace)
+    runtime = _configured_runtime()
+    execution = await runtime.get_execution_for_issue(delivery.subject_id, workspace=workspace)
     if execution is not None and execution.status in _CANCELLABLE_TERMINAL_EXECUTION_STATUSES:
         if delivery.lifecycle_fence is None:
-            await cancel_work_item_execution(execution.id, blocker=_TERMINAL_STATE_BLOCKER)
+            await runtime.cancel_execution(execution.id, blocker=_TERMINAL_STATE_BLOCKER)
         else:
-            await cancel_work_item_execution_if_lifecycle_current(
+            await runtime.cancel_execution_if_lifecycle_current(
                 execution.id,
                 blocker=_TERMINAL_STATE_BLOCKER,
                 lifecycle_fence=delivery.lifecycle_fence,
@@ -237,10 +270,11 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
             return True
         approved_state_id = state_id(board.states[HUMAN_APPROVED_STATUS])
         in_progress_state_id = state_id(board.states["in_progress"])
-        existing = await get_active_work_item_execution(event.subject_id)
+        runtime = _configured_runtime()
+        existing = await runtime.get_active_execution(event.subject_id)
         if existing is not None:
             return current_state_id in {approved_state_id, in_progress_state_id}
-        latest = await get_work_item_execution_for_issue(event.subject_id, workspace=workspace)
+        latest = await runtime.get_execution_for_issue(event.subject_id, workspace=workspace)
         if (
             latest is not None
             and latest.status is WorkItemExecutionStatus.CANCELLED

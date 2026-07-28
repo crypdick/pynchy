@@ -11,9 +11,8 @@ from conftest import make_settings
 from temporalio.exceptions import ApplicationError
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-from pynchy.config.models import NotificationsConfig
-from pynchy.host.git_ops import sync_poll
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.config.api import NotificationsConfig
+from pynchy.host.git_ops.api import RepoContext, sync_poll
 from pynchy.host.orchestrator.temporal import git_sync
 from pynchy.host.orchestrator.temporal.runtime_state import get_temporal_scheduler_status
 from pynchy.state import (

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import signal
 from asyncio.subprocess import PIPE, Process
@@ -27,12 +28,11 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
-from pynchy.logger import logger
-
 _INTERVAL_POSITIVE_ERROR = "Interval must be positive"
 _SHELL_TERMINATION_GRACE_SECONDS = 10
 _PROGRESS_HARD_TIMEOUT_MULTIPLIER = 4.0
 _SAFE_HOST_ENVIRONMENT = ("HOME", "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL")
+_LOGGER = logging.getLogger(__name__)
 
 
 def filtered_process_environment(
@@ -229,11 +229,11 @@ def _log_task_exception(task: asyncio.Future[Any]) -> None:
     exc = task.exception()
     if exc is not None:
         # Pass the exception to exc_info so structlog renders the full
-        # traceback.  logger.exception() won't work here because we're
+        # traceback. ``logger.exception()`` won't work here because we're
         # in a done-callback, not an except handler.
-        logger.error(
-            "Background task failed",
-            task_name=task.get_name() if isinstance(task, asyncio.Task) else None,
+        _LOGGER.error(
+            "Background task failed: task_name=%s",
+            task.get_name() if isinstance(task, asyncio.Task) else None,
             exc_info=exc,
         )
 
@@ -331,26 +331,32 @@ def log_shell_result(
     **extra: object,
 ) -> None:
     """Log the outcome of a shell command execution."""
+    context = " ".join(f"{key}={value!r}" for key, value in sorted(extra.items()))
     if result.start_error:
-        logger.error("failed to start command", label=label, err=result.start_error, **extra)
+        _LOGGER.error(
+            "failed to start command: label=%s err=%s %s",
+            label,
+            result.start_error,
+            context,
+        )
     elif result.timed_out:
-        logger.error("command timed out", label=label, **extra)
+        _LOGGER.error("command timed out: label=%s %s", label, context)
     elif result.returncode == 0:
-        logger.info(
-            "command completed",
-            label=label,
-            exit_code=result.returncode,
-            stdout_tail=result.stdout[-500:] if result.stdout else "",
-            **extra,
+        _LOGGER.info(
+            "command completed: label=%s exit_code=%s stdout_tail=%r %s",
+            label,
+            result.returncode,
+            result.stdout[-500:] if result.stdout else "",
+            context,
         )
     else:
-        logger.error(
-            "command failed",
-            label=label,
-            exit_code=result.returncode,
-            stdout_tail=result.stdout[-500:] if result.stdout else "",
-            stderr_tail=result.stderr[-500:] if result.stderr else "",
-            **extra,
+        _LOGGER.error(
+            "command failed: label=%s exit_code=%s stdout_tail=%r stderr_tail=%r %s",
+            label,
+            result.returncode,
+            result.stdout[-500:] if result.stdout else "",
+            result.stderr[-500:] if result.stderr else "",
+            context,
         )
 
 

@@ -9,17 +9,17 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
 )
 from typing import cast
 
-from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
-    TurnOutcome,
-)
 from pynchy.host.orchestrator.queue_state import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
     GroupState,
     QueuedTask,
 )
-from pynchy.host.orchestrator.runtime_target import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+    TurnOutcome,
+)
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves callback annotations.
     RuntimeTarget,
 )
-from pynchy.types import RuntimeId  # noqa: TC001, RUF100 - beartype resolves callback annotations.
 
 
 async def await_queued_task[ResultT](  # noqa: PLR0913, RUF100 - queue adapters keep individual lifecycle controls explicit.

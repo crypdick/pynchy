@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pynchy._action_contract import ActionSpec, ActionSurface, ActionTransport
-from pynchy._action_spec_helpers import agent_action, build_action
+from pynchy.actions._contract import ActionSpec, ActionSurface, ActionTransport
+from pynchy.actions._spec_helpers import agent_action, build_action
 
 CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(

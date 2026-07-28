@@ -14,8 +14,7 @@ import subprocess  # noqa: S404 - this module constructs allowlisted Gog argv wi
 from dataclasses import dataclass
 from pathlib import Path
 
-from pynchy.config import get_settings
-from pynchy.plugins.integrations.gog._config import GogConfig, gog_config
+from pynchy.plugins.integrations.gog._config import GogConfig, gog_runtime
 from pynchy.utils import filtered_process_environment
 
 _MAX_OUTPUT_CHARS = 2_000_000
@@ -282,13 +281,12 @@ class GogClient:
 
 
 def create_gog_client() -> GogClient:
-    """Build the production client from plugin configuration and host settings."""
-    settings = get_settings()
-    config = gog_config()
+    """Build the production client from resolved host configuration."""
+    runtime = gog_runtime()
     return GogClient(
-        config=config,
-        home=config.resolved_home(settings),
-        oauth_client_path=config.resolved_oauth_client_path(settings),
+        config=runtime.config,
+        home=runtime.home,
+        oauth_client_path=runtime.oauth_client_path,
     )
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 try:
     import pluggy
 
-    from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation on the host.
+    from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation on the host.
         McpServerSpec,
     )
 
@@ -22,7 +22,7 @@ class NotebookServerPlugin:
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         # Keep host-only imports inside the hook. The notebook image copies this
         # package without Pynchy so it can run the MCP server independently.
-        from pynchy.plugins.mcp_server import McpServerConfig  # noqa: PLC0415, RUF100
+        from pynchy.plugins.api import McpServerConfig  # noqa: PLC0415, RUF100
 
         return (
             McpServerSpec(

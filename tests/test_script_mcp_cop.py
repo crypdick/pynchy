@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullIpcDeps, make_host_action_catalog
 
-from pynchy.config.models import McpTool, McpToolConfig
+from pynchy.config.api import McpTool, McpToolConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -137,7 +137,7 @@ async def test_host_mcp_triggers_cop_gate(tmp_path, mcp_type):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -170,7 +170,7 @@ async def test_non_script_mcp_skips_cop_gate(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -203,7 +203,7 @@ async def test_script_mcp_blocked_by_cop(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -238,7 +238,7 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,
@@ -269,7 +269,7 @@ async def test_caller_asserted_cop_approval_is_ignored(tmp_path):
         patch(
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
-        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
         patch(
             "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
             return_value=catalog,

@@ -6,7 +6,7 @@ import subprocess  # noqa: S404, RUF100 - synthetic runtime timeout below.
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from pynchy.host.container_manager.cleanup import (
+from pynchy.plugins.runtimes.cleanup import (
     cleanup_runtime_images,
     reap_orphaned_agent_containers,
 )

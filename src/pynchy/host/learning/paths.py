@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from pynchy.config.settings import Settings, get_settings
+from pynchy.config.api import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
 _DYNAMIC_THREAD_DELIMITER = "__thread_"

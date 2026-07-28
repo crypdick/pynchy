@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
-import pynchy.config as pynchy_config
 from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     chrome_path,
@@ -37,6 +36,7 @@ from pynchy.plugins.integrations.google_setup._paths import (
     compute_scopes_for_profile,
     credentials_path,
     download_dir,
+    google_setup_runtime,
     keys_path,
     workspace_chrome_profiles,
 )
@@ -82,9 +82,7 @@ def _check_workspace_access(
     if not source_group:
         return None
 
-    ws = pynchy_config.get_settings().workspaces.get(source_group)
-    is_admin = bool(ws.is_admin) if ws else False
-    if is_admin:
+    if google_setup_runtime().workspace_is_admin(source_group):
         return None
 
     allowed = workspace_chrome_profiles(source_group)

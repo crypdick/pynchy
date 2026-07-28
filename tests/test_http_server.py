@@ -6,12 +6,12 @@ import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
-from pynchy.host.git_ops.utils import (
+from pynchy.host.git_ops.api import (
     get_head_commit_message,
     get_head_sha,
     is_repo_dirty,
@@ -48,6 +48,7 @@ def _runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=None,
         rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 
@@ -284,6 +285,7 @@ async def test_failed_deploy_records_operator_boot_warning(
             allow_remote_deploy=True,
             auth_token=None,
             rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+            audit_security_event=AsyncMock(),
         )
         deps = MockHttpDeps()
         deps.data_dir = tmp_path
@@ -314,6 +316,7 @@ class MockHttpDeps:
 
     def __init__(self):
         self.broadcasts: list[tuple[str, str]] = []
+        self.capability_status_operations = Mock()
         self.runtime_messages: list[tuple[str, str]] = []
         self._admin_jid = "admin-1@g.us"
         self.data_dir = Path.cwd() / "data"

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,13 +10,12 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config import get_settings
-from pynchy.host.container_manager.credentials import build_agent_env_vars
-from pynchy.host.container_manager.mcp import manager as mcp_manager
-from pynchy.host.container_manager.security.gate import create_gate, resolve_security
-from pynchy.host.learning.mirror import prepare_full_vault_host_root
-from pynchy.host.learning.paths import resolve_learning_paths
-from pynchy.host.learning.skill_activation import prepare_agent_homes
+from pynchy.config.api import get_settings
+from pynchy.host.learning.api import (
+    prepare_agent_homes,
+    prepare_full_vault_host_root,
+    resolve_learning_paths,
+)
 from pynchy.host.orchestrator.codex_rollouts import (
     CodexRolloutInspectionError as _CodexRolloutInspectionError,
 )
@@ -26,10 +24,13 @@ from pynchy.host.orchestrator.codex_rollouts import (
     rollout_exists,
 )
 from pynchy.host.orchestrator.host_runner import run_host_input
-from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
-from pynchy.types import ContainerInput, ContainerOutput, RuntimeId  # noqa: TC001, RUF100
+from pynchy.types import (  # noqa: TC001, RUF100
+    ContainerInput,
+    ContainerOutput,
+    RuntimeId,
+    RuntimeTarget,  # noqa: TC001, RUF100
+)
 
 if TYPE_CHECKING:
     import asyncio
@@ -40,6 +41,14 @@ if TYPE_CHECKING:
 _CODEX_SESSION_PREFIX = "codex:"
 CodexRolloutInspectionError = _CodexRolloutInspectionError
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
+
+
+@dataclass
+class HostRuntimeOperations:
+    """Host-runtime capabilities selected by the application composition root."""
+
+    build_agent_environment: Callable[..., dict[str, str]]
+    prepare_mcp: Callable[..., Awaitable[None]]
 
 
 @runtime_checkable
@@ -139,9 +148,13 @@ def migrate_host_codex_thread(
 
 
 def host_agent_env_vars(
-    *, is_admin: bool, group_folder: str, codex_home: Path | None = None
+    *,
+    is_admin: bool,
+    group_folder: str,
+    build_agent_environment: Callable[..., dict[str, str]],
+    codex_home: Path | None = None,
 ) -> dict[str, str]:
-    env = build_agent_env_vars(
+    env = build_agent_environment(
         is_admin=is_admin,
         group_folder=group_folder,
     )
@@ -173,43 +186,6 @@ def host_agent_env_vars(
     ):
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
     return env
-
-
-async def prepare_host_direct_mcp_servers(
-    input_data: ContainerInput,
-    *,
-    group_folder: str,
-    chat_jid: str,
-    broadcast_host_message: Callable[[str, str], Awaitable[None]],
-) -> None:
-    """Register host security context, then attach selected MCP proxy routes."""
-    invocation_ts = time.monotonic()
-    security = resolve_security(group_folder, is_admin=input_data.is_admin)
-    create_gate(
-        group_folder,
-        invocation_ts,
-        security,
-        public_source_input=input_data.corruption_tainted,
-        secret_source_input=input_data.secret_tainted,
-    )
-    input_data.invocation_ts = invocation_ts
-
-    mcp_mgr = mcp_manager.get_mcp_manager()
-    if mcp_mgr is None:
-        return
-
-    mcp_startup = await mcp_mgr.ensure_workspace_running(group_folder)
-    if mcp_startup.failures:
-        await notify_mcp_startup_failures(
-            broadcast_host_message,
-            chat_jid,
-            mcp_startup.failures,
-        )
-    input_data.mcp_direct_servers = mcp_mgr.get_direct_server_configs(
-        group_folder,
-        invocation_ts=input_data.invocation_ts,
-        instance_ids=mcp_startup.ready_instance_ids,
-    )
 
 
 async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiosqlite import Connection  # noqa: TC002 - beartype resolves state annotations at runtime.
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ControlSurface,
     ConversationClaimId,
     ConversationControlBinding,

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.conversation.events import new_turn_id
+from pynchy.conversation.api import new_turn_id
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,

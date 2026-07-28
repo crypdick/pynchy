@@ -22,15 +22,18 @@ from typing import Any
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
-from pynchy.config import get_settings
+from pynchy.config.api import get_settings
+from pynchy.host.audio import process_inbound_audio_attachments, transcribe_audio_file
 from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.host.container_manager import ipc as ipc_manager
-from pynchy.host.git_ops import worktree as worktree_ops
+from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.host.git_ops.api import reconcile_worktrees_at_startup
 from pynchy.host.orchestrator import adapters as orchestrator_adapters
 from pynchy.host.orchestrator import (
     dep_factory,
     http_server,
     job_sources,
+    plugin_configuration,
     service_installer,
     startup_handler,
     status,
@@ -46,18 +49,19 @@ from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.logger import logger
-from pynchy.plugins import get_plugin_manager
-from pynchy.plugins import memory as memory_plugins
-from pynchy.plugins import observers as observer_plugins
 from pynchy.plugins import speech as speech_plugins
 from pynchy.plugins import tunnels as tunnel_plugins
-from pynchy.plugins.channel_runtime import (
+from pynchy.plugins.api import (
     ChannelPluginContext,
+    ConnectionRuntimeContext,
+    attach_observers,
+    get_memory_provider,
+    get_plugin_manager,
+    initialize_host_action_catalog,
     load_channels,
+    load_connection_runtimes,
     resolve_default_channel,
 )
-from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
-from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
@@ -66,12 +70,16 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
 )
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state.api import (
+    get_chat_jids_by_name,
+    get_last_group_sync,
     init_database,
     initialize_deployment_state,
     prepare_conversation_runtime_ownership_recovery,
     recover_incomplete_action_intents,
     recover_incomplete_webhook_effects,
+    set_last_group_sync,
     store_chat_metadata,
+    update_chat_name,
 )
 from pynchy.state.connection import StateRuntimeConfig
 from pynchy.types import NewMessage, OrphanReapAgeMs, OutboundEvent, OutboundEventType
@@ -178,6 +186,16 @@ async def _initialize_core(app: PynchyApp) -> None:
     app.plugin_manager = get_plugin_manager(
         {name: plugin.enabled for name, plugin in settings.plugins.items()}
     )
+    plugin_configuration.configure_computer_use_plugins(app.plugin_manager, settings)
+    plugin_configuration.configure_caldav_plugin(settings)
+    plugin_configuration.configure_gog_plugin(settings)
+    plugin_configuration.configure_desktop_screenshot_plugin(app.plugin_manager, settings)
+    plugin_configuration.configure_linear_plugin(app.plugin_manager, settings)
+    plugin_configuration.configure_observer_plugins(app.plugin_manager)
+    plugin_configuration.configure_marketplace_health_plugin(app.plugin_manager, settings)
+    plugin_configuration.configure_matrix_gateway_plugin(settings)
+    plugin_configuration.configure_google_setup_plugin(app.plugin_manager, settings)
+    plugin_configuration.configure_builtin_canaries(settings)
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
@@ -199,10 +217,10 @@ async def _initialize_core(app: PynchyApp) -> None:
     await initialize_deployment_state(current_deploy_revision())
     logger.info("Database initialized")
 
-    app.attach_observers(observer_plugins.attach_observers(app.event_bus))
+    app.attach_observers(attach_observers(app.plugin_manager, app.event_bus))
 
     await app.set_memory_provider(
-        memory_plugins.get_memory_provider(settings.data_dir / "memories.db")
+        get_memory_provider(app.plugin_manager, settings.data_dir / "memories.db")
     )
     await app.load_state()
 
@@ -267,6 +285,12 @@ async def _setup_channels(app: PynchyApp) -> None:
         on_ask_user_answer_callback=dispatch_ask_user_answer,
         on_approval_decision_callback=dispatch_approval_decision,
         speech_synthesizer=app.get_speech_synthesizer(),
+        transcribe_audio=transcribe_audio_file,
+        process_inbound_audio=process_inbound_audio_attachments,
+        find_chat_jids_by_name=get_chat_jids_by_name,
+        get_last_group_sync=get_last_group_sync,
+        set_last_group_sync=set_last_group_sync,
+        update_chat_name=update_chat_name,
         discord_connections={
             name: config.to_runtime_settings()
             for name, config in settings.connections.items()
@@ -314,7 +338,7 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     repo_groups = workspace_config.get_repo_access_groups(s.workspace_names())
 
     await asyncio.to_thread(
-        worktree_ops.reconcile_worktrees_at_startup,
+        reconcile_worktrees_at_startup,
         repo_groups=repo_groups,
     )
 
@@ -384,6 +408,7 @@ async def _prepare_and_bind_control_plane(
         rate_limit_requests=server.rate_limit_requests,
         rate_limit_window_seconds=server.rate_limit_window_seconds,
         project_root=settings.project_root,
+        audit_security_event=record_security_event,
     )
     prepared_http = await http_server.prepare_http_server(
         dep_factory.make_http_deps(app),
@@ -400,7 +425,10 @@ def _start_ipc_watcher(app: PynchyApp) -> None:
     """Start IPC only after the deploy continuation is finalized."""
     app.subsystem_tasks.add(
         create_background_task(
-            ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),
+            ipc_manager.start_ipc_watcher(
+                dep_factory.make_ipc_deps(app),
+                ipc_base_dir=get_settings().data_dir / "ipc",
+            ),
             name="ipc-watcher",
         )
     )

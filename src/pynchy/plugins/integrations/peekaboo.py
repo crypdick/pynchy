@@ -14,8 +14,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import pluggy
 from pydantic import BaseModel, Field
 
-from pynchy.config import get_settings
-from pynchy.plugins.computer_use import (
+from pynchy.plugins.api import (
     ComputerUseAction,
     ComputerUseBackend,
     ComputerUseBackendAvailability,
@@ -46,11 +45,6 @@ class PeekabooConfig(BaseModel):
     # if these defaults change.
     binary: Annotated[str, Field(min_length=1)] = "peekaboo"
     timeout_seconds: PositiveTimeout = 30.0
-
-
-def _plugin_config() -> PeekabooConfig:
-    plugin = get_settings().plugins.get("peekaboo")
-    return PeekabooConfig.model_validate(plugin.options if plugin is not None else {})
 
 
 @dataclass(frozen=True)
@@ -101,11 +95,15 @@ class PeekabooComputerUsePlugin:
     """Contribute Peekaboo as an optional macOS computer-use provider."""
 
     def __init__(self, config: PeekabooConfig | None = None) -> None:
+        self._config = config or PeekabooConfig()
+
+    def configure(self, config: PeekabooConfig) -> None:
+        """Apply the provider's resolved service configuration before registration."""
         self._config = config
 
     @hookimpl
     def pynchy_computer_use_backend(self) -> ComputerUseBackend:
-        return PeekabooBackend(self._config or _plugin_config())
+        return PeekabooBackend(self._config)
 
 
 def _peekaboo_command(request: ComputerUseRequest, *, screenshot_path: Path | None) -> list[str]:

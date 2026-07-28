@@ -9,13 +9,13 @@ import pytest
 from conftest import init_test_database, make_settings
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config.models import (
+from pynchy.config.api import (
     ProfileConfig,
     WorkspaceConfig,
+    WorkspaceMigrationConfig,
     WorkspaceThreadConfig,
+    dynamic_thread_folder,
 )
-from pynchy.config.workspace_layout import WorkspaceMigrationConfig
-from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
 from pynchy.host.orchestrator.workspace_threads import (
     WorkspaceThreadAction,

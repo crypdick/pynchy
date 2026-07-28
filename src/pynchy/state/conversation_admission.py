@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves public state annotations at runtime.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves public state annotations at runtime.
     ConversationDeliveryAdmission,
     ConversationSubject,
     ExternalDeliveryIdentity,

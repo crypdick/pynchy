@@ -11,13 +11,11 @@ circular imports.
 from pynchy.host.container_manager.security.audit import prune_security_audit, record_security_event
 from pynchy.host.container_manager.security.middleware import (
     PolicyDecision,
-    PolicyDeniedError,
     SecurityPolicy,
 )
 
 __all__ = [
     "PolicyDecision",
-    "PolicyDeniedError",
     "SecurityPolicy",
     "prune_security_audit",
     "record_security_event",

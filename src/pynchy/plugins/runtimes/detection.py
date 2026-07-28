@@ -9,28 +9,19 @@ from __future__ import annotations
 
 import sys
 from functools import cache
-from typing import Protocol, TypeGuard, runtime_checkable
+from typing import TypeGuard
 
-import pynchy.config as pynchy_config
-import pynchy.plugins as pynchy_plugins
 from pynchy.logger import logger
+from pynchy.plugins.api import collect_hook_results
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves runtime-provider annotations.
+    RuntimeProvider,
+)
 
 _NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE = (
     "No container runtime plugins available. "
     "Ensure the Docker or Apple runtime plugin is enabled in pynchy.toml."
 )
-
-
-@runtime_checkable
-class RuntimeProvider(Protocol):
-    """Runtime provider contract implemented by plugins."""
-
-    name: str
-    cli: str
-
-    def is_available(self) -> bool: ...
-    def ensure_running(self) -> None: ...
-    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]: ...
+_runtime_override = ""
 
 
 def _is_valid_plugin_runtime(candidate: object) -> TypeGuard[RuntimeProvider]:
@@ -46,9 +37,7 @@ def _is_valid_plugin_runtime(candidate: object) -> TypeGuard[RuntimeProvider]:
 
 
 def _iter_plugin_runtimes() -> list[RuntimeProvider]:
-    return pynchy_plugins.collect_hook_results(
-        "pynchy_container_runtime", _is_valid_plugin_runtime, "runtime"
-    )
+    return collect_hook_results("pynchy_container_runtime", _is_valid_plugin_runtime, "runtime")
 
 
 def _runtime_candidates() -> dict[str, RuntimeProvider]:
@@ -106,7 +95,14 @@ def _fallback_runtime(candidates: dict[str, RuntimeProvider]) -> RuntimeProvider
     return next(iter(candidates.values()))
 
 
-def detect_runtime() -> RuntimeProvider:
+def configure_runtime_override(override: str | None) -> None:
+    """Set the application-selected runtime before the singleton is first read."""
+    global _runtime_override  # noqa: PLW0603, RUF100 - one host process owns one runtime selection.
+    _runtime_override = (override or "").lower()
+    get_runtime.cache_clear()
+
+
+def detect_runtime(override: str | None = None) -> RuntimeProvider:
     """Detect the container runtime to use.
 
     Priority:
@@ -114,7 +110,7 @@ def detect_runtime() -> RuntimeProvider:
     2) platform-aware auto-detect (darwin prefers apple plugin, then docker)
     3) first available plugin runtime, else docker
     """
-    override = (pynchy_config.get_settings().container.runtime or "").lower()
+    override = _runtime_override if override is None else override.lower()
     candidates = _runtime_candidates()
     if not candidates:
         raise RuntimeError(_NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE)

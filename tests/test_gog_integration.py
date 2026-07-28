@@ -5,31 +5,15 @@ from __future__ import annotations
 import json
 import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures.
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from pynchy.capabilities import CapabilityProbeContext, ProbeStatus
-from pynchy.config.settings import validate_settings_mapping
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.api import CapabilityProbeContext, ProbeStatus
 from pynchy.plugins.integrations import gog
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-
-@dataclass(frozen=True)
-class StubResolvedWorkspace:
-    tools: list[str]
-
-
-@dataclass(frozen=True)
-class StubSettings:
-    tools: list[str]
-
-    def resolved_workspace_config(self, workspace_name: str) -> StubResolvedWorkspace | None:
-        return StubResolvedWorkspace(self.tools) if workspace_name == "workspace" else None
 
 
 @dataclass
@@ -85,19 +69,39 @@ def _handler(tool_name: str):
     return action.handler
 
 
-def _enabled_settings() -> StubSettings:
-    return StubSettings(["gog"])
-
-
-def test_gog_config_resolves_paths_with_runtime_type_checking() -> None:
-    """Gog setup reaches these methods through beartype in the host process."""
-    settings = validate_settings_mapping({})
-    config = gog.GogConfig(home="data/gog", oauth_client_path="data/gog-client.json")
-
-    assert config.resolved_home(settings) == settings.project_root / "data/gog"
-    assert config.resolved_oauth_client_path(settings) == (
-        settings.project_root / "data/gog-client.json"
+def _configure_gog_runtime(*, enabled: bool = True, config: gog.GogConfig | None = None) -> None:
+    gog.configure_gog_runtime(
+        gog.GogRuntime(
+            config=config or gog.GogConfig(account="you@example.com"),
+            home=Path.cwd() / "pynchy-gog-test",
+            oauth_client_path=None,
+            workspace_enables_gog=lambda workspace: enabled and workspace == "workspace",
+        )
     )
+
+
+@pytest.fixture(autouse=True)
+def _configure_runtime() -> None:
+    _configure_gog_runtime()
+
+
+def test_gog_client_uses_resolved_runtime_paths(tmp_path: Path) -> None:
+    """Gog actions receive host-resolved paths rather than settings access."""
+    config = gog.GogConfig(home="data/gog", oauth_client_path="data/gog-client.json")
+    home = tmp_path / "data/gog"
+    oauth_client_path = tmp_path / "data/gog-client.json"
+    gog.configure_gog_runtime(
+        gog.GogRuntime(
+            config=config,
+            home=home,
+            oauth_client_path=oauth_client_path,
+            workspace_enables_gog=lambda _workspace: True,
+        )
+    )
+
+    client = gog.create_gog_client()
+    assert client.home == home
+    assert client.oauth_client_path == oauth_client_path
 
 
 class TestGogPlugin:
@@ -127,15 +131,9 @@ class TestGogPlugin:
         probe = action.capability.probe
         assert probe is not None
 
-        with (
-            patch(
-                "pynchy.plugins.integrations.gog._plugin.gog_config",
-                return_value=gog.GogConfig(account="you@example.com"),
-            ),
-            patch(
-                "pynchy.plugins.integrations.gog._plugin.gog_executable_exists",
-                return_value=False,
-            ),
+        with patch(
+            "pynchy.plugins.integrations.gog._plugin.gog_executable_exists",
+            return_value=False,
         ):
             result = await probe(CapabilityProbeContext("workspace"))
 
@@ -218,10 +216,6 @@ async def test_read_actions_are_fenced_after_host_only_gog_call(
 
     with (
         patch("pynchy.plugins.integrations.gog._handlers.create_gog_client", return_value=client),
-        patch(
-            "pynchy.plugins.integrations.gog._plugin.get_settings",
-            return_value=_enabled_settings(),
-        ),
     ):
         result = await handler({"source_group": "workspace", **arguments})
 
@@ -271,10 +265,6 @@ async def test_write_actions_use_reviewed_host_operation_and_action_intent(
 
     with (
         patch("pynchy.plugins.integrations.gog._handlers.create_gog_client", return_value=client),
-        patch(
-            "pynchy.plugins.integrations.gog._plugin.get_settings",
-            return_value=_enabled_settings(),
-        ),
     ):
         result = await action.handler({"source_group": "workspace", **arguments})
 
@@ -313,10 +303,6 @@ async def test_oauth_actions_stay_in_the_host_handler(
 
     with (
         patch("pynchy.plugins.integrations.gog._handlers.create_gog_client", return_value=client),
-        patch(
-            "pynchy.plugins.integrations.gog._plugin.get_settings",
-            return_value=_enabled_settings(),
-        ),
     ):
         result = await handler({"source_group": "workspace", **arguments})
 
@@ -329,12 +315,9 @@ async def test_gog_action_is_denied_when_the_workspace_does_not_select_gog() -> 
     client = StubGogClient()
     handler = _handler("gog_gmail_search")
 
+    _configure_gog_runtime(enabled=False)
     with (
         patch("pynchy.plugins.integrations.gog._handlers.create_gog_client", return_value=client),
-        patch(
-            "pynchy.plugins.integrations.gog._plugin.get_settings",
-            return_value=StubSettings([]),
-        ),
     ):
         result = await handler({"source_group": "workspace", "query": "from:friend@example.com"})
 

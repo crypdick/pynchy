@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue annotations.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pynchy.host.orchestrator.concurrency import GroupQueue
+    from pynchy.turn_outcomes import TurnOutcome
 
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
-    OnOutput,
-)
 from pynchy.linear_plan_types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
+    OnOutput,
     OutboundEvent,
+    RuntimeTarget,
     ScheduledTask,
     WorkspaceProfile,
 )
@@ -50,6 +53,23 @@ class ScheduledCompletionDeps(Protocol):
     ) -> ScheduledExecutionLifecycle | None: ...
 
 
+_QueueResultT = TypeVar("_QueueResultT")
+
+
+@runtime_checkable
+class ScheduledQueue(Protocol):
+    """Queue operations used by scheduled and interactive Temporal activities."""
+
+    async def run_message_turn(self, target: RuntimeTarget) -> TurnOutcome: ...
+
+    async def run_serialized_task(
+        self,
+        target: RuntimeTarget,
+        task_id: str,
+        run: Callable[[], Awaitable[_QueueResultT]],
+    ) -> _QueueResultT: ...
+
+
 @runtime_checkable
 class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     """Dependencies shared by the task scheduler and Temporal activities."""
@@ -61,7 +81,7 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     def last_agent_timestamp(self) -> dict[str, str]: ...
 
     @property
-    def queue(self) -> GroupQueue: ...
+    def queue(self) -> ScheduledQueue: ...
 
     @property
     def startup_readiness(self) -> StartupReadinessGate: ...

@@ -8,20 +8,16 @@ avoid a plugin -> webhook -> boot import cycle.
 from __future__ import annotations
 
 from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves Linear boot callbacks at runtime.
     Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 from dataclasses import dataclass, field
 
 import aiohttp
 
-from pynchy.config import get_settings
-from pynchy.host.orchestrator.workspace_config import static_workspace_folder
-from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccount,
-    linear_account,
-    linear_account_for_workspace,
+    LinearAccount,  # noqa: TC001, RUF100 - beartype resolves Linear boot runtime callbacks at runtime.
 )
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
@@ -48,6 +44,37 @@ _registry = _LinearBoardRegistry()
 
 
 @dataclass(frozen=True)
+class LinearBootRuntime:
+    """Resolved workspace and account policy required for Linear board boot."""
+
+    workspace_names: tuple[str, ...]
+    account_for_name: Callable[[str], LinearAccount]
+    account_for_workspace: Callable[[str], LinearAccount | None]
+    workspace_parent: Callable[[str], str | None]
+    canonical_workspace_folder: Callable[[str], str]
+    additional_workspaces: Callable[[list[WorkspaceProfile]], tuple[WorkspaceProfile, ...]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: LinearBootRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_linear_boot_runtime(runtime: LinearBootRuntime) -> None:
+    """Set resolved Linear boot dependencies before reconciliation."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> LinearBootRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Linear boot runtime has not been configured")
+    return _runtime.runtime
+
+
+@dataclass(frozen=True)
 class _LinearWorkspaceContext:
     """Canonical workspace identity used for durable Linear boards."""
 
@@ -62,7 +89,7 @@ async def reconcile_linear_workspace_boards(
 ) -> dict[str, LinearWorkspaceBoard]:
     """Create missing Linear projects/states for registered Pynchy workspaces."""
     selected_workspaces = _linear_workspaces(workspaces)
-    _registry.configured_workspaces = frozenset(get_settings().workspace_names())
+    _registry.configured_workspaces = frozenset(_configured_runtime().workspace_names)
     _registry.routable_workspaces = frozenset(
         workspace.folder
         for workspace in selected_workspaces
@@ -104,20 +131,20 @@ async def reconcile_linear_workspace_boards(
 
 def configured_linear_workspace_names(account_name: str) -> tuple[str, ...]:
     """Return thread-capable policy owners for one exact Linear account."""
-    settings = get_settings()
-    account = linear_account(account_name, settings)
+    runtime = _configured_runtime()
+    account = runtime.account_for_name(account_name)
     result: list[str] = []
-    for workspace in settings.workspace_names():
-        resolved = settings.resolved_workspace_config(workspace)
-        if resolved is not None and account.name in resolved.tools:
+    for workspace in runtime.workspace_names:
+        workspace_account = runtime.account_for_workspace(workspace)
+        if workspace_account is not None and workspace_account.name == account.name:
             result.append(workspace)
-    configured = frozenset(settings.workspace_names())
+    configured = frozenset(runtime.workspace_names)
     if configured == _registry.configured_workspaces:
         return tuple(
             workspace for workspace in result if workspace in _registry.routable_workspaces
         )
     return tuple(
-        workspace for workspace in result if settings.workspace_parent(workspace) is not None
+        workspace for workspace in result if runtime.workspace_parent(workspace) is not None
     )
 
 
@@ -136,11 +163,7 @@ def linear_workspace_boards() -> dict[str, LinearWorkspaceBoard]:
 
 def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[_LinearWorkspaceContext]:
     registered = list(workspaces)
-    candidates = list(registered)
-    for folder in get_settings().workspace_names():
-        placement = resolve_workspace_placement(registered, folder)
-        if placement is not None:
-            candidates.append(placement.owner)
+    candidates = [*registered, *_configured_runtime().additional_workspaces(registered)]
     result: list[_LinearWorkspaceContext] = []
     seen_folders: set[str] = set()
     for workspace in candidates:
@@ -153,12 +176,9 @@ def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[_LinearWo
 
 
 def _linear_workspace_context(workspace: WorkspaceProfile) -> _LinearWorkspaceContext | None:
-    settings = get_settings()
-    folder = static_workspace_folder(workspace.folder)
-    resolved = settings.resolved_workspace_config(folder)
-    if resolved is None:
-        return None
-    account = linear_account_for_workspace(folder, settings)
+    runtime = _configured_runtime()
+    folder = runtime.canonical_workspace_folder(workspace.folder)
+    account = runtime.account_for_workspace(folder)
     if account is None:
         return None
 

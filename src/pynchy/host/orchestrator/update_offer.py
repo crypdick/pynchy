@@ -13,18 +13,13 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these a
     Awaitable,
     Callable,
 )
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves update-offer dependencies at runtime.
+)
 from typing import Any, Protocol, cast, runtime_checkable
 
-from pynchy.host.git_ops.sync_poll import (
-    get_deploy_config_hash,
-    get_local_head_sha,
-    host_update_main,
-    needs_container_rebuild,
-    needs_deploy,
-)
 from pynchy.host.orchestrator.adapters import resolve_admin_notification_jid
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.logger import logger
 from pynchy.state.api import advance_deployment_baseline, get_deployment_state
 from pynchy.types import (
@@ -50,6 +45,16 @@ class UpdateOfferDeps(Protocol):
     def admin_workspace(self) -> str | None: ...
 
     workspaces: dict[str, WorkspaceProfile]
+
+    def get_local_head_sha(self, project_root: Path) -> str: ...
+
+    def get_deploy_config_hash(self) -> str: ...
+
+    def host_update_main(self, project_root: Path) -> bool: ...
+
+    def needs_deploy(self, old_sha: str, new_sha: str) -> bool: ...
+
+    def needs_container_rebuild(self, old_sha: str, new_sha: str) -> bool: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
@@ -180,11 +185,13 @@ async def _handle_accepted_update_offer(
     previous_sha = (
         applied.commit_sha
         if applied is not None
-        else get_local_head_sha(deps.agent_execution_runtime.project_root)
+        else deps.get_local_head_sha(deps.agent_execution_runtime.project_root)
     )
     previous_config_hash = applied.config_hash if applied is not None else ""
 
-    updated = await asyncio.to_thread(host_update_main, deps.agent_execution_runtime.project_root)
+    updated = await asyncio.to_thread(
+        deps.host_update_main, deps.agent_execution_runtime.project_root
+    )
     if not updated:
         await deps.broadcast_host_message(
             admin_jid,
@@ -192,11 +199,11 @@ async def _handle_accepted_update_offer(
         )
         return True
 
-    current_sha = get_local_head_sha(deps.agent_execution_runtime.project_root)
-    config_hash = get_deploy_config_hash()
+    current_sha = deps.get_local_head_sha(deps.agent_execution_runtime.project_root)
+    config_hash = deps.get_deploy_config_hash()
     restart_required = (
         applied is None
-        or needs_deploy(previous_sha, current_sha)
+        or deps.needs_deploy(previous_sha, current_sha)
         or config_hash != previous_config_hash
     )
     if not restart_required:
@@ -207,7 +214,7 @@ async def _handle_accepted_update_offer(
         )
         return True
 
-    rebuild = applied is None or needs_container_rebuild(previous_sha, current_sha)
+    rebuild = applied is None or deps.needs_container_rebuild(previous_sha, current_sha)
     claim = await start_deploy_workflow(
         DeployRequest(
             chat_jid=admin_jid,

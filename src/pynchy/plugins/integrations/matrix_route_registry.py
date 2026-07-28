@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.
     ConversationId,
 )
 from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001, RUF100 - beartype resolves binding annotations.

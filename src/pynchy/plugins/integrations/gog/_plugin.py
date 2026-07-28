@@ -12,7 +12,7 @@ import pluggy
 from pydantic import ValidationError
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ActionIntentContract,
     ActionIntentDraft,
     ActionIntentReceipt,
@@ -33,9 +33,8 @@ from pynchy.capabilities import (
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.config import get_settings
 from pynchy.plugins.integrations.gog._client import gog_executable_exists
-from pynchy.plugins.integrations.gog._config import gog_config
+from pynchy.plugins.integrations.gog._config import gog_runtime
 from pynchy.plugins.integrations.gog._handlers import (
     handle_contacts_search,
     handle_docs_export,
@@ -67,11 +66,7 @@ def _workspace_enables_gog(data: dict[str, Any]) -> bool:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return False
-    try:
-        resolved = get_settings().resolved_workspace_config(source_group)
-    except ValueError:
-        return False
-    return resolved is not None and "gog" in resolved.tools
+    return gog_runtime().workspace_enables_gog(source_group)
 
 
 def _only_in_enabled_workspace(tool_name: str, handler: GogHandler) -> GogHandler:
@@ -86,7 +81,7 @@ def _only_in_enabled_workspace(tool_name: str, handler: GogHandler) -> GogHandle
 async def _probe_gog(_context: CapabilityProbeContext) -> CapabilityProbeResult:
     """Check local configuration and executable presence without contacting Google."""
     try:
-        config = gog_config()
+        config = gog_runtime().config
     except (ValidationError, ValueError):
         return CapabilityProbeResult(
             ProbeStatus.UNAVAILABLE,

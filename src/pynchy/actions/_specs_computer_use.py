@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pynchy._action_contract import ActionSpec, ActionSurface, ActionTransport
-from pynchy._action_spec_helpers import build_action
+from pynchy.actions._contract import ActionSpec, ActionSurface, ActionTransport
+from pynchy.actions._spec_helpers import build_action
 
 _COMPUTER_USE_ACTIONS = (
     ("desktop.computer.capture", "capture", "Capture a semantic desktop snapshot."),

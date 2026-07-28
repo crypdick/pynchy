@@ -11,8 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
-from pynchy.config.models import DiscordConnectionConfig, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import DiscordConnectionConfig, ProfileConfig, Settings, WorkspaceConfig
 
 DISCORD_BOT_ENV = "DISCORD_BOT_ENV"
 

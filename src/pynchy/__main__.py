@@ -42,13 +42,11 @@ def _run() -> None:
 
     load_dotenv()  # Materialize host credentials for explicitly declared tool access.
 
-    from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - startup validates deployment-owned configuration before app imports.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - startup validates deployment-owned configuration before app imports.  # noqa: PLC0415, RUF100 - startup validates the composed settings before app construction.
         LITELLM_FILENAME,
         PersonalizationError,
         validate_litellm_model_names,
         validate_personalization_tree,
-    )
-    from pynchy.config.settings import (  # noqa: PLC0415, RUF100 - startup validates the composed settings before app construction.
         validate_settings_mapping,
     )
 
@@ -79,7 +77,7 @@ def _run() -> None:
 
 def whatsapp_auth() -> None:
     """Run the WhatsApp QR login with the configured credential database."""
-    from pynchy.config import (  # noqa: PLC0415, RUF100 - CLI composition resolves the auth database path.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - CLI composition resolves the auth database path.
         get_settings,
     )
     from pynchy.plugins.channels.whatsapp.auth import (  # noqa: PLC0415, RUF100 - QR support is only needed for this command.
@@ -115,17 +113,19 @@ def _control_client_token(token_file: Path | None) -> str | None:
 
 
 def _build() -> None:
-    from pynchy.config import (  # noqa: PLC0415, RUF100 - build command loads settings only when invoked.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - build command loads settings only when invoked.
         get_settings,
     )
-    from pynchy.host.container_manager.cleanup import (  # noqa: PLC0415, RUF100 - runtime cleanup is build-command specific.
+    from pynchy.plugins.runtimes.cleanup import (  # noqa: PLC0415, RUF100 - runtime cleanup is build-command specific.
         cleanup_runtime_build_state,
     )
     from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime probing is build-command specific.
+        configure_runtime_override,
         get_runtime,
     )
 
     s = get_settings()
+    configure_runtime_override(s.container.runtime)
     runtime = get_runtime()
     container_dir = s.project_root / "src" / "pynchy" / "agent"
 
@@ -154,13 +154,11 @@ def _build() -> None:
 
 
 def _validate_personalization(path: Path) -> int:
-    from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - validation command keeps service imports lazy.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - validation command keeps service imports lazy.  # noqa: PLC0415, RUF100 - validation command explicitly validates the composed mapping.
         LITELLM_FILENAME,
         PersonalizationError,
         validate_litellm_model_names,
         validate_personalization_tree,
-    )
-    from pynchy.config.settings import (  # noqa: PLC0415, RUF100 - validation command explicitly validates the composed mapping.
         validate_settings_mapping,
     )
 
@@ -183,7 +181,7 @@ def _validate_personalization(path: Path) -> int:
 
 
 def _bootstrap_control_plane_token(*, rotate: bool) -> int:
-    from pynchy.config import (  # noqa: PLC0415, RUF100 - bootstrap reads settings only for this subcommand.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - bootstrap reads settings only for this subcommand.
         get_settings,
     )
     from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415, RUF100 - token creation is isolated to the control-plane command.
@@ -207,7 +205,7 @@ def _bootstrap_control_plane_token(*, rotate: bool) -> int:
 
 
 def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
-    from pynchy.config import (  # noqa: PLC0415, RUF100 - prune command loads settings only when invoked.
+    from pynchy.config.api import (  # noqa: PLC0415, RUF100 - prune command loads settings only when invoked.
         get_settings,
     )
     from pynchy.host.migration_backups import (  # noqa: PLC0415, RUF100 - prune implementation is command specific.

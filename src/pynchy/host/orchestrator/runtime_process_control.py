@@ -3,28 +3,47 @@
 from __future__ import annotations
 
 import asyncio  # noqa: TC003, RUF100 - beartype resolves process annotations.
-
-import pynchy.host.container_manager.process as container_process
-import pynchy.host.container_manager.session as container_session
-from pynchy.host.container_manager.ipc.write import (
-    write_ipc_close_sentinel,
-    write_ipc_message,
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves operation annotations.
+    Awaitable,
+    Callable,
 )
+from dataclasses import dataclass
+
 from pynchy.host.orchestrator.host_runner import stop_host_process
 from pynchy.host.orchestrator.queue_state import HostProcessLease  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.runtime_registry import (  # noqa: TC001, RUF100 - beartype resolves controller annotations.
     RuntimeRegistry,
 )
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
-from pynchy.types import RuntimeId  # noqa: TC001, RUF100
+from pynchy.types import (
+    RuntimeId,  # noqa: TC001, RUF100
+    RuntimeTarget,  # noqa: TC001, RUF100
+)
+
+
+@dataclass(frozen=True)
+class ContainerRuntimeOperations:
+    """Container operations selected by the application composition root."""
+
+    write_message: Callable[[str, str], None]
+    write_close_sentinel: Callable[[str], None]
+    clean_input_dir: Callable[[str], None]
+    destroy_gate: Callable[[str, float], None]
+    destroy_session: Callable[[str], Awaitable[None]]
+    destroy_all_sessions: Callable[[], Awaitable[None]]
+    graceful_stop: Callable[[asyncio.subprocess.Process, str], Awaitable[None]]
 
 
 class RuntimeProcessControl:
     """Attach, observe, interrupt, and release runtime worker processes."""
 
-    def __init__(self, registry: RuntimeRegistry) -> None:
+    def __init__(
+        self,
+        registry: RuntimeRegistry,
+        container_runtime: ContainerRuntimeOperations,
+    ) -> None:
         self._registry = registry
+        self._container_runtime = container_runtime
         self._next_host_process_generation = 0
 
     def register_process(
@@ -62,7 +81,10 @@ class RuntimeProcessControl:
         )
 
     def release_host_process(self, lease: HostProcessLease) -> bool:
-        return self._registry.require(lease.runtime_id).release_host_process(lease)
+        state = self._registry.require(lease.runtime_id)
+        if state.host_process_lease == lease and state.is_host_process and state.invocation_ts:
+            self._container_runtime.destroy_gate(state.target.folder, state.invocation_ts)
+        return state.release_host_process(lease)
 
     def defer_interrupt_until_tool_result(self, runtime_id: RuntimeId) -> None:
         state = self._registry.get(runtime_id)
@@ -101,7 +123,7 @@ class RuntimeProcessControl:
         if state is None or not state.active or state.is_host_process:
             return False
         try:
-            write_ipc_message(state.target.folder, text)
+            self._container_runtime.write_message(state.target.folder, text)
         except OSError as exc:
             logger.warning(
                 "Failed to write IPC message to container",
@@ -117,13 +139,25 @@ class RuntimeProcessControl:
         if state is None or not state.active:
             return
         try:
-            write_ipc_close_sentinel(state.target.folder)
+            self._container_runtime.write_close_sentinel(state.target.folder)
         except OSError as exc:
             logger.warning(
                 "Failed to write close sentinel to container",
                 runtime_id=runtime_id,
                 err=str(exc),
             )
+
+    def clean_runtime_input(self, runtime_id: RuntimeId) -> None:
+        """Discard IPC input that a completed runtime did not consume."""
+        state = self._registry.get(runtime_id)
+        if state is not None:
+            self._container_runtime.clean_input_dir(state.target.folder)
+
+    async def destroy_runtime_session(self, runtime_id: RuntimeId) -> None:
+        """Remove the container session for a runtime, even after its process exits."""
+        state = self._registry.get(runtime_id)
+        group_folder = state.target.folder if state is not None else str(runtime_id)
+        await self._container_runtime.destroy_session(group_folder)
 
     async def stop_active_process(self, runtime_id: RuntimeId) -> None:
         """Stop the disposable worker attached to a runtime."""
@@ -137,14 +171,14 @@ class RuntimeProcessControl:
                 await stop_host_process(proc)
             return
 
-        await container_session.destroy_session(state.target.folder)
+        await self.destroy_runtime_session(runtime_id)
         if not state.active:
             return
 
         self.close_stdin(runtime_id)
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
-            await container_process.graceful_stop(proc, container_name)
+            await self._container_runtime.graceful_stop(proc, container_name)
 
     async def stop_active_process_for_control(self, runtime_id: RuntimeId) -> None:
         """Mark and stop a turn controlled by a human command."""
@@ -153,3 +187,35 @@ class RuntimeProcessControl:
             return
         state.boundary_interrupt_requested = True
         await self.stop_active_process(runtime_id)
+
+    async def shutdown(self, *, active_count: int) -> None:
+        """Destroy durable workers and stop any remaining runner processes."""
+        logger.info(
+            "GroupQueue shutdown starting",
+            active_groups=len(self._registry.states),
+            active_count=active_count,
+        )
+        await self._container_runtime.destroy_all_sessions()
+        active: list[tuple[asyncio.subprocess.Process, str, bool]] = []
+        for state in self._registry.values():
+            proc_alive = getattr(state.process, "returncode", None) is None
+            if state.process and state.container_name and proc_alive:
+                active.append((state.process, state.container_name, state.is_host_process))
+        if not active:
+            logger.info("GroupQueue shutdown complete (no active containers)")
+            return
+        logger.info(
+            "GroupQueue shutting down, stopping containers",
+            active_count=len(active),
+            containers=[name for _, name, _ in active],
+        )
+        await asyncio.gather(
+            *(
+                stop_host_process(proc)
+                if is_host_process
+                else self._container_runtime.graceful_stop(proc, name)
+                for proc, name, is_host_process in active
+            ),
+            return_exceptions=True,
+        )
+        logger.info("GroupQueue shutdown complete", stopped_count=len(active))

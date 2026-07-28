@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pynchy.conversation.models import (
+from pynchy.conversation.api import (
     ConversationId,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationLifecycleFence,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationSubject,  # noqa: TC001, RUF100 - beartype resolves webhook targets.

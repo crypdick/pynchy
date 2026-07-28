@@ -6,6 +6,11 @@ import asyncio
 import json
 import os
 import shutil
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
+)
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +18,10 @@ import pluggy
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
+    ConversationId,
+)
+from pynchy.plugins.api import (
     ActionIntentContract,
     ActionIntentDraft,
     ActionIntentReceipt,
@@ -36,7 +44,6 @@ from pynchy.capabilities import (
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.config import get_settings
 from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime, _validate_portal
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayError,
@@ -50,12 +57,52 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     ActiveMatrixRoute,
     get_active_matrix_route,
 )
-from pynchy.plugins.integrations.matrix_route_resolution import resolve_matrix_routes
-from pynchy.state.api import get_conversation_control_binding
-from pynchy.types import is_matrix_connection
+from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime annotations.
+    ResolvedMatrixRoute,
+)
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
+    ChatJid,
+)
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 _MAX_LIST_LIMIT = 250
+
+
+@dataclass(frozen=True)
+class MatrixConnectionRuntimeOptions:
+    """Connection values needed to construct one Matrix poller."""
+
+    name: str
+    poll_interval_seconds: float
+
+
+@dataclass(frozen=True)
+class MatrixGatewayRuntime:
+    """Resolved Matrix routing and state-root configuration."""
+
+    data_dir: Path
+    routes: tuple[ResolvedMatrixRoute, ...]
+    connections: tuple[MatrixConnectionRuntimeOptions, ...]
+    get_control_thread_jid: Callable[[ConversationId], Awaitable[ChatJid | None]]
+
+
+@dataclass
+class _RuntimeState:
+    runtime: MatrixGatewayRuntime | None = None
+
+
+_runtime = _RuntimeState()
+
+
+def configure_matrix_gateway_runtime(runtime: MatrixGatewayRuntime) -> None:
+    """Set Matrix connection configuration before plugin runtime loading."""
+    _runtime.runtime = runtime
+
+
+def _configured_runtime() -> MatrixGatewayRuntime:
+    if _runtime.runtime is None:
+        raise RuntimeError("Matrix gateway runtime has not been configured")
+    return _runtime.runtime
 
 
 class _StrictModel(BaseModel):
@@ -95,7 +142,9 @@ def _active_route(data: dict[str, Any]) -> ActiveMatrixRoute:
 
 def _gateway_for(active: ActiveMatrixRoute) -> MatrixRouteGateway:
     command = os.environ.get(active.route.connection.gateway_command_env)
-    state_dir = matrix_connection_state_dir(get_settings().data_dir, active.route.connection_name)
+    state_dir = matrix_connection_state_dir(
+        _configured_runtime().data_dir, active.route.connection_name
+    )
     return create_matrix_gateway_client(command, state_dir=state_dir)
 
 
@@ -141,8 +190,8 @@ def _send_message_receipt(response: dict[str, Any]) -> ActionIntentReceipt:
 
 async def _current_active_route(data: dict[str, Any]) -> ActiveMatrixRoute:
     active = _active_route(data)
-    binding = await get_conversation_control_binding(active.conversation_id)
-    if binding is None or binding.thread_jid != active.control_thread_jid:
+    thread_jid = await _configured_runtime().get_control_thread_jid(active.conversation_id)
+    if thread_jid != active.control_thread_jid:
         raise ValueError("Matrix conversation control binding changed")
     return active
 
@@ -313,18 +362,19 @@ class MatrixGatewayPlugin:
 
     @hookimpl
     def pynchy_connection_runtime(self) -> tuple[MatrixConnectionRuntime, ...]:
-        settings = get_settings()
-        routes = resolve_matrix_routes(settings)
+        runtime = _configured_runtime()
         return tuple(
             MatrixConnectionRuntime(
                 connection_name,
-                tuple(route for route in routes if route.connection_name == connection_name),
+                tuple(
+                    route for route in runtime.routes if route.connection_name == connection_name
+                ),
                 poll_interval_seconds=connection.poll_interval_seconds,
-                state_dir=matrix_connection_state_dir(settings.data_dir, connection_name),
+                state_dir=matrix_connection_state_dir(runtime.data_dir, connection_name),
             )
-            for connection_name, connection in settings.connections.items()
-            if is_matrix_connection(connection)
-            and any(route.connection_name == connection_name for route in routes)
+            for connection in runtime.connections
+            if any(route.connection_name == connection.name for route in runtime.routes)
+            for connection_name in (connection.name,)
         )
 
     @hookimpl

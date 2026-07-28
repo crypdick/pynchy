@@ -7,17 +7,16 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from pynchy.config.scheduler_models import SchedulerConfig
+    from pynchy.config.api import SchedulerConfig
 
 from temporalio import activity
 
-from pynchy.config import get_settings
+from pynchy.config.api import get_settings
 from pynchy.host.orchestrator.config_job_execution import (
     ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
     prepare_config_job,
     run_deterministic_config_job,
 )
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
@@ -37,8 +36,9 @@ from pynchy.host.orchestrator.scheduled_turn import (
 from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - public runtime re-export.
     SchedulerDependencies,
 )
-from pynchy.host.orchestrator.temporal.runtime_state import (
+from pynchy.host.orchestrator.temporal.api import (
     TemporalActivityInfo,
+    get_temporal_scheduler_runtime,
     parse_temporal_activity_info,
 )
 from pynchy.logger import logger
@@ -51,6 +51,7 @@ from pynchy.state.api import (
     record_task_completion,
     update_task,
 )
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import (
     CheckpointControlState,
     InFlightTurn,
@@ -77,11 +78,7 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:
-        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - importing the Temporal scheduler at module load creates a cycle.
-            TemporalSchedulerRuntime as _TemporalSchedulerRuntime,
-        )
-
-        runtime_cls = _TemporalSchedulerRuntime
+        runtime_cls = cast("Any", get_temporal_scheduler_runtime())
     return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
 
 

@@ -13,8 +13,7 @@ from conftest import make_settings
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.startup_readiness import StartupReadinessError
-from pynchy.plugins.connections import load_connection_runtimes
-from pynchy.plugins.hookspecs import PynchySpec
+from pynchy.plugins.api import PynchySpec, load_connection_runtimes
 from pynchy.state import (
     claim_deployment,
     get_chat_history,

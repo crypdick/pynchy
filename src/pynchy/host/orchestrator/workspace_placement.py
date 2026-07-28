@@ -3,16 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves placement annotations.
+    Callable,
     Iterable,
 )
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
-from pynchy.config import get_settings
-from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves placement annotations.
     WorkspaceProfile,
 )
+
+type WorkspaceParentResolver = Callable[[str], str | None]
+type MissingWorkspaceProfileResolver = Callable[[str, WorkspaceProfile], WorkspaceProfile | None]
+
+_workspace_parent: WorkspaceParentResolver | None = None
+_missing_workspace_profile: MissingWorkspaceProfileResolver | None = None
+
+
+def configure_workspace_placement(
+    *,
+    workspace_parent: WorkspaceParentResolver,
+    missing_workspace_profile: MissingWorkspaceProfileResolver,
+) -> None:
+    """Inject configured workspace ownership resolution at composition."""
+    global _workspace_parent, _missing_workspace_profile  # noqa: PLW0603, RUF100 - one host process owns one workspace placement policy.
+    _workspace_parent = workspace_parent
+    _missing_workspace_profile = missing_workspace_profile
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +50,9 @@ def resolve_workspace_placement(
     workspace would silently grant the wrong tools and execution mode.
     """
     by_folder = {workspace.folder: workspace for workspace in workspaces}
-    settings = get_settings()
-    parent_folder = settings.workspace_parent(owner_folder)
+    if _workspace_parent is None or _missing_workspace_profile is None:
+        raise RuntimeError("workspace placement has not been configured")
+    parent_folder = _workspace_parent(owner_folder)
     if parent_folder is None:
         owner = by_folder.get(owner_folder)
         if owner is None:
@@ -47,18 +63,7 @@ def resolve_workspace_placement(
         return None
     owner = by_folder.get(owner_folder)
     if owner is None:
-        config = settings.workspace_config(owner_folder)
-        resolved = settings.resolved_workspace_config(owner_folder)
-        if config is None or resolved is None:
+        owner = _missing_workspace_profile(owner_folder, control_parent)
+        if owner is None:
             return None
-        owner = WorkspaceProfile(
-            jid=control_parent.jid,
-            name=owner_folder.replace("-", " ").title(),
-            folder=owner_folder,
-            trigger=control_parent.trigger,
-            container_config=control_parent.container_config,
-            security=workspace_security(config, resolved),
-            is_admin=resolved.is_admin,
-            added_at=datetime.now(UTC).isoformat(),
-        )
     return WorkspacePlacement(owner=owner, control_parent=control_parent)

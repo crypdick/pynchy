@@ -6,9 +6,9 @@ from pathlib import Path
 
 from temporalio import activity
 
-from pynchy.config import get_settings
-from pynchy.config.jobs import (
+from pynchy.config.api import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
+    get_settings,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,

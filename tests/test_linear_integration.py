@@ -13,9 +13,10 @@ from conftest import make_settings
 from rich.console import Console
 from rich.traceback import Traceback
 
-from pynchy.config.models import LinearTool
+from pynchy.config.api import LinearTool
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.linear import LinearClient, LinearError, LinearMcpPlugin, build_app
+from pynchy.plugins.integrations.linear_accounts import configured_linear_accounts
 
 
 class FakePostContext:
@@ -37,7 +38,6 @@ async def start_mcp_client() -> TestClient:
 
 class TestLinearMcpPlugin:
     def test_plugin_provides_script_mcp_server(self):
-        plugin = LinearMcpPlugin()
         settings = make_settings(
             tools={
                 "linear": LinearTool(
@@ -50,8 +50,8 @@ class TestLinearMcpPlugin:
             }
         )
 
-        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
-            spec = plugin.pynchy_mcp_server_spec()[0]
+        plugin = LinearMcpPlugin(configured_linear_accounts(settings.tools))
+        spec = plugin.pynchy_mcp_server_spec()[0]
 
         assert spec.name == "linear"
         assert spec.config.type == "script"
@@ -71,7 +71,6 @@ class TestLinearMcpPlugin:
         assert spec.config.env == {}
 
     def test_plugin_trust_defaults_allow_linear_task_writes(self):
-        plugin = LinearMcpPlugin()
         settings = make_settings(
             tools={
                 "linear": LinearTool(
@@ -84,8 +83,8 @@ class TestLinearMcpPlugin:
             }
         )
 
-        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
-            trust = plugin.pynchy_mcp_server_spec()[0].trust
+        plugin = LinearMcpPlugin(configured_linear_accounts(settings.tools))
+        trust = plugin.pynchy_mcp_server_spec()[0].trust
 
         assert trust is not None
         assert trust.public_source is False
@@ -94,7 +93,6 @@ class TestLinearMcpPlugin:
         assert trust.dangerous_writes is False
 
     def test_plugin_isolates_named_accounts_and_their_trust(self):
-        plugin = LinearMcpPlugin()
         settings = make_settings(
             tools={
                 "linear_public": LinearTool(
@@ -116,8 +114,8 @@ class TestLinearMcpPlugin:
             }
         )
 
-        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
-            specs = plugin.pynchy_mcp_server_spec()
+        plugin = LinearMcpPlugin(configured_linear_accounts(settings.tools))
+        specs = plugin.pynchy_mcp_server_spec()
 
         assert [spec.name for spec in specs] == ["linear_public", "linear_synapse"]
         assert specs[0].config.env == {}

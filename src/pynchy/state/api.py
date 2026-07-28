@@ -161,6 +161,9 @@ from pynchy.state.messages import (
     store_message_direct,
 )
 from pynchy.state.outbound import (
+    OutboundDelivery,
+    OutboundDeliveryOperation,
+    PendingDelivery,
     gc_delivered,
     get_pending_outbound,
     mark_delivered,
@@ -169,14 +172,8 @@ from pynchy.state.outbound import (
     record_outbound,
     record_outbound_deliveries,
 )
-from pynchy.state.security_context import (
-    RecentSecurityContext,
-    SecurityContextMessage,
-    SecurityContextRole,
-    SecurityExecutionAuthority,
-    SecurityExecutionAuthorityKind,
-    load_recent_security_context,
-)
+from pynchy.state.runtime_session_recovery import clear_runtime_session_references
+from pynchy.state.security_context import load_recent_security_context
 from pynchy.state.sessions import (
     SessionSecurityTaint,
     clear_session,
@@ -208,10 +205,12 @@ from pynchy.state.tasks import (
     resume_task_if_no_in_flight_turn,
     update_task,
 )
+from pynchy.state.webhook_effect_admission import classify_webhook_effect_callback
 from pynchy.state.webhook_effects import (
     begin_webhook_effect,
     confirm_webhook_effect,
     fail_webhook_effect,
+    list_webhook_effects,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
     reconcile_webhook_effect_absent,
@@ -254,6 +253,13 @@ from pynchy.state.work_items import (
     get_work_item_execution_for_task,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
+)
+from pynchy.types import (
+    RecentSecurityContext,
+    SecurityContextMessage,
+    SecurityContextRole,
+    SecurityExecutionAuthority,
+    SecurityExecutionAuthorityKind,
 )
 
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
@@ -325,12 +331,16 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "set_channel_cursor",
     # outbound
     "gc_delivered",
+    "OutboundDelivery",
+    "OutboundDeliveryOperation",
+    "PendingDelivery",
     "get_pending_outbound",
     "mark_delivered",
     "mark_delivery_error",
     "mark_delivery_succeeded",
     "record_outbound",
     "record_outbound_deliveries",
+    "clear_runtime_session_references",
     # events
     "store_event",
     "RecentSecurityContext",
@@ -396,6 +406,8 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "mark_webhook_effect_outcome_unknown",
     "reconcile_webhook_effect_absent",
     "recover_incomplete_webhook_effects",
+    "list_webhook_effects",
+    "classify_webhook_effect_callback",
     # host_jobs
     "create_host_job",
     "delete_host_job",

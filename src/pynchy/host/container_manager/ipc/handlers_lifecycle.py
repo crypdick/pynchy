@@ -6,21 +6,19 @@ import asyncio
 import json
 from typing import Any
 
-from pynchy.config import get_settings
+from pynchy.config.api import get_settings
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
-from pynchy.host.git_ops import repo
-from pynchy.host.git_ops.sync import (
+from pynchy.host.git_ops.api import (
     GIT_POLICY_PR,
-    host_create_pr_from_worktree,
-)
-from pynchy.host.git_ops.utils import (
     detect_main_branch,
+    host_create_pr_from_worktree,
     redact_git_diagnostic,
+    repo,
     run_git,
 )
 from pynchy.logger import logger

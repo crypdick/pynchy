@@ -3,236 +3,17 @@ version = 2
 # Exact, shrinking exceptions to the independent visibility and direction gates.
 # Regeneration is not an approved fix: remove entries only when source stops matching.
 
-[[violations]]
-importer = "pynchy"
-target_role = "foundation"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy._runtime_typing",
-]
-reason = "pynchy still has runtime-import dependencies on the foundation role; Foundation code must not depend outward; move the required stable contract into foundation or domain."
+# Temporary exact-path exceptions to the root-module inbound-importer budget.
+# Each count must shrink with the module split; a new or larger count fails CI.
+[[root_module_inbound_imports]]
+path = "src/pynchy/types.py"
+count = 194
+reason = "Mixed-domain contracts are being moved into their owning packages."
 
-[[violations]]
-importer = "pynchy._action_spec_helpers"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy._action_contract",
-]
-reason = "pynchy._action_spec_helpers still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy._action_specs"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy._action_spec_helpers",
-  "pynchy._action_specs_computer_use",
-  "pynchy._action_specs_core",
-  "pynchy._action_specs_gog",
-]
-reason = "pynchy._action_specs still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy._action_specs"
-target_role = "extension_api"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy._action_contract",
-]
-reason = "pynchy._action_specs still has type-checking-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy._action_specs_computer_use"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy._action_contract",
-  "pynchy._action_spec_helpers",
-]
-reason = "pynchy._action_specs_computer_use still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy._action_specs_core"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy._action_contract",
-  "pynchy._action_spec_helpers",
-]
-reason = "pynchy._action_specs_core still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy._action_specs_gog"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy._action_contract",
-  "pynchy._action_spec_helpers",
-]
-reason = "pynchy._action_specs_gog still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.actions"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy._action_contract",
-  "pynchy._action_specs",
-]
-reason = "pynchy.actions still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.canaries"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.operational_canaries",
-  "pynchy.security_canaries",
-]
-reason = "pynchy.canaries still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.canaries"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.operational_canaries",
-  "pynchy.security_canaries",
-]
-reason = "pynchy.canaries still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.canaries"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.canaries still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.canaries"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.canaries still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.canaries"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.canaries still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.capabilities"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.actions",
-]
-reason = "pynchy.capabilities still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.conversation.models"
-target_role = "domain"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.types",
-]
-reason = "pynchy.conversation.models still has runtime-import dependencies on the domain role; Move the shared semantic type or invariant into the domain role without importing outward behavior."
-
-[[violations]]
-importer = "pynchy.google_mcp_canaries"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.google_mcp_canaries still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.google_mcp_canaries"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.google_mcp_canaries still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.google_mcp_canaries"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.mcp.canary_client",
-  "pynchy.host.container_manager.mcp.manager",
-]
-reason = "pynchy.google_mcp_canaries still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.google_mcp_canaries"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.mcp.canary_client",
-  "pynchy.host.container_manager.mcp.manager",
-]
-reason = "pynchy.google_mcp_canaries still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.action_intents"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.action_intents still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
+[[root_module_inbound_imports]]
+path = "src/pynchy/utils.py"
+count = 30
+reason = "Shared helpers must be narrowed or moved to their owning packages."
 
 [[violations]]
 importer = "pynchy.host.container_manager.credentials"
@@ -241,154 +22,42 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.host.container_manager.credentials still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
 importer = "pynchy.host.container_manager.credentials"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.credentials still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.credentials"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.credentials still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.credentials"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.container_manager.credentials still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.container_manager.gateway"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.gateway still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.container_manager.gateway"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.models",
-]
-reason = "pynchy.host.container_manager.gateway still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.gateway"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.gateway still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.gateway"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.gateway still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.approval_replay"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.approval_replay still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.approval_replay"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.approval_replay still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.approval_replay"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.container_manager.ipc.approval_replay still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.approval_replay"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.ipc.approval_replay still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_approval"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_approval still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_approval"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_approval still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
 
 [[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
@@ -397,7 +66,7 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_lifecycle still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
@@ -406,26 +75,11 @@ importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.sync",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_lifecycle still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.sync",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_lifecycle still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_service"
@@ -434,208 +88,31 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.models",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
 target_role = "integration_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.plugins.integrations.matrix_route_registry",
+  "pynchy.plugins.integrations.api",
 ]
 reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "integration_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.matrix_route_registry",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still imports private modules owned by integration_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_skills"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_skills still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_skills"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_skills still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_skills"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.skills",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_skills still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_skills"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.skills",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_skills still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.skill_access"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.skill_access still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.skill_access"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.ipc.skill_access still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.skill_access"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.paths",
-]
-reason = "pynchy.host.container_manager.ipc.skill_access still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.skill_access"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.paths",
-]
-reason = "pynchy.host.container_manager.ipc.skill_access still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.watcher"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.pending_questions",
-]
-reason = "pynchy.host.container_manager.ipc.watcher still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.watcher"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.pending_questions",
-]
-reason = "pynchy.host.container_manager.ipc.watcher still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.watcher"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.container_manager.ipc.watcher still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.write"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.container_manager.ipc.write still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mcp.manager"
@@ -644,29 +121,18 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.host.container_manager.mcp.manager still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mcp.manager"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.mcp.manager still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mcp.manager"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.mcp.manager still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
@@ -675,25 +141,11 @@ importer = "pynchy.host.container_manager.mcp.resolution"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.merge",
-  "pynchy.config.models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.mcp.resolution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mcp.resolution"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config.merge",
-  "pynchy.config.models",
-]
-reason = "pynchy.host.container_manager.mcp.resolution still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mounts"
@@ -702,215 +154,42 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.git_ops.repo",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mounts"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.repo",
-]
-reason = "pynchy.host.container_manager.mounts still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mounts"
 target_role = "learning_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.host.learning.mirror",
-  "pynchy.host.learning.skill_activation",
+  "pynchy.host.learning.api",
 ]
 reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
 importer = "pynchy.host.container_manager.mounts"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.learning.mirror",
-  "pynchy.host.learning.skill_activation",
-]
-reason = "pynchy.host.container_manager.mounts still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.mounts"
 target_role = "runtime_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.plugins.runtimes.detection",
+  "pynchy.plugins.runtimes.api",
 ]
 reason = "pynchy.host.container_manager.mounts still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.container_manager.mounts"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.mounts still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.container_manager.orchestrator"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.worktree",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.container_manager.orchestrator still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.orchestrator"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.worktree",
-]
-reason = "pynchy.host.container_manager.orchestrator still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.orchestrator"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.plugins.runtimes.detection",
-  "pynchy.plugins.runtimes.system_checks",
-]
-reason = "pynchy.host.container_manager.orchestrator still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.orchestrator"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.plugins.runtimes.detection",
-  "pynchy.plugins.runtimes.system_checks",
-]
-reason = "pynchy.host.container_manager.orchestrator still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.process"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.process still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.process"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.process still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.runtime_monitor"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.runtime_monitor still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.runtime_monitor"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.container_manager.runtime_monitor still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.approval"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.container_manager.security.approval still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.approval"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.security.approval still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.audit"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.security.audit still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.cop"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.container_manager.security.cop still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.cop_client"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.container_manager.security.cop_client still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.container_manager.security.gate"
@@ -919,66 +198,20 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.host.container_manager.security.gate still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
 importer = "pynchy.host.container_manager.security.gate"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.container_manager.security.gate still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.gate"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config",
-  "pynchy.config.merge",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.security.gate still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.gate"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.merge",
-]
-reason = "pynchy.host.container_manager.security.gate still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.middleware"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.host.container_manager.security.middleware still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.middleware"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.host.container_manager.security.middleware still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.git_ops.repo"
@@ -987,514 +220,64 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.host.git_ops.repo still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
 importer = "pynchy.host.git_ops.repo"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.git_ops.repo still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.git_ops.repo"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.git_ops.repo still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.git_ops.repo"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.models",
-]
-reason = "pynchy.host.git_ops.repo still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.git_ops.repo"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.credentials",
-]
-reason = "pynchy.host.git_ops.repo still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.git_ops.repo"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.credentials",
-]
-reason = "pynchy.host.git_ops.repo still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.git_ops.sync_poll"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.git_ops.sync_poll still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.git_ops.sync_poll"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.git_ops.sync_poll still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.git_ops.utils"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.git_ops.utils still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.git_ops.worktree"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config",
-  "pynchy.config",
-]
-reason = "pynchy.host.git_ops.worktree still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.inbound_audio"
-target_role = "host_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.audio",
-]
-reason = "pynchy.host.inbound_audio still has runtime-import dependencies on the host_adapter role; Use a use-case-owned host capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.inbound_audio"
-target_role = "host_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.audio",
-]
-reason = "pynchy.host.inbound_audio still imports private modules owned by host_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.learning.mirror"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.learning.mirror still has runtime-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.learning.mirror"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.host.learning.mirror still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.learning.packets"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.learning.packets still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.learning.packets"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.learning.packets still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.learning.paths"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.learning.paths still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.learning.paths"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.learning.paths still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.learning.skill_activation"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.learning.skill_activation still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.learning.skill_activation"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.host.learning.skill_activation still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.learning.skill_activation"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.learning.skill_activation still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.learning.skill_activation"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session_prep",
-]
-reason = "pynchy.host.learning.skill_activation still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.learning.skill_activation"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session_prep",
-]
-reason = "pynchy.host.learning.skill_activation still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.learning.skills"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.learning.skills still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator._agent_runner_preflight"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager",
-  "pynchy.host.container_manager.orchestrator",
-]
-reason = "pynchy.host.orchestrator._agent_runner_preflight still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator._agent_runner_preflight"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager",
-  "pynchy.host.container_manager.orchestrator",
-]
-reason = "pynchy.host.orchestrator._agent_runner_preflight still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator._agent_runner_preflight"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator._agent_runner_preflight still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator._agent_runner_preflight"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator._agent_runner_preflight still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.agent_runner"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.host.container_manager",
-  "pynchy.host.container_manager.mcp.manager",
-  "pynchy.host.container_manager.orchestrator",
-  "pynchy.host.container_manager.process",
-]
-reason = "pynchy.host.orchestrator.agent_runner still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.agent_runner"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.host.container_manager",
-  "pynchy.host.container_manager.mcp.manager",
-  "pynchy.host.container_manager.orchestrator",
-  "pynchy.host.container_manager.process",
-]
-reason = "pynchy.host.orchestrator.agent_runner still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.agent_runner"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.skill_activation",
-]
-reason = "pynchy.host.orchestrator.agent_runner still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.agent_runner"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.skill_activation",
-]
-reason = "pynchy.host.orchestrator.agent_runner still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.capability_status"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.orchestrator.capability_status still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.capability_status"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.capability_status still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.capability_status"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.capability_status still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.concurrency"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.security.middleware",
-]
-reason = "pynchy.host.orchestrator.concurrency still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.concurrency"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.security.middleware",
-]
-reason = "pynchy.host.orchestrator.concurrency still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.config_jobs"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.config.jobs",
-  "pynchy.config.merge",
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.config_jobs still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.config_jobs"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.config.jobs",
-  "pynchy.config.merge",
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.orchestrator.config_jobs still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.conversation_control"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.conversation_control still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.deploy"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.deploy still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.deploy"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.deploy still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_agent_dispatch"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.host_agent_dispatch still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_agent_dispatch"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.host_agent_dispatch still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_agent_dispatch"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.runtime_session_recovery",
-]
-reason = "pynchy.host.orchestrator.host_agent_dispatch still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.host_execution"
@@ -1503,105 +286,20 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.host_execution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.host_execution"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.credentials",
-  "pynchy.host.container_manager.mcp.manager",
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.host_execution still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_execution"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.credentials",
-  "pynchy.host.container_manager.mcp.manager",
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.host_execution still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_execution"
 target_role = "learning_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.host.learning.mirror",
-  "pynchy.host.learning.paths",
-  "pynchy.host.learning.skill_activation",
+  "pynchy.host.learning.api",
 ]
 reason = "pynchy.host.orchestrator.host_execution still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_execution"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.learning.mirror",
-  "pynchy.host.learning.paths",
-  "pynchy.host.learning.skill_activation",
-]
-reason = "pynchy.host.orchestrator.host_execution still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_runner"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.serialization",
-]
-reason = "pynchy.host.orchestrator.host_runner still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_runner"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.serialization",
-]
-reason = "pynchy.host.orchestrator.host_runner still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_control"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.audit",
-]
-reason = "pynchy.host.orchestrator.http_control still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_control"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.audit",
-]
-reason = "pynchy.host.orchestrator.http_control still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_server"
@@ -1610,769 +308,119 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.canaries",
+  "pynchy.canaries.api",
 ]
 reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_server"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_server"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
 target_role = "integration_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.plugins.integrations.linear_work_items",
+  "pynchy.plugins.integrations.api",
 ]
 reason = "pynchy.host.orchestrator.http_server still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "integration_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.linear_work_items",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by integration_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.webhook_effects",
-]
-reason = "pynchy.host.orchestrator.http_server still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.job_sources"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.jobs",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.job_sources still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.job_sources"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.jobs",
-]
-reason = "pynchy.host.orchestrator.job_sources still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.approval_handler"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.handlers_approval",
-  "pynchy.host.container_manager.security.approval",
-]
-reason = "pynchy.host.orchestrator.messaging.approval_handler still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.approval_handler"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.handlers_approval",
-  "pynchy.host.container_manager.security.approval",
-]
-reason = "pynchy.host.orchestrator.messaging.approval_handler still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.ask_user_handler"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.ipc.skill_access",
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.ask_user_handler still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.ask_user_handler"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.ipc.skill_access",
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.ask_user_handler still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.cursor"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.messaging.cursor still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.deps"
-target_role = "application"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.concurrency",
-]
-reason = "pynchy.host.orchestrator.messaging.deps still has type-checking-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.deps"
-target_role = "application"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.concurrency",
-]
-reason = "pynchy.host.orchestrator.messaging.deps still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.deps"
-target_role = "container_adapter"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.messaging.deps still has type-checking-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.deps"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.messaging.deps still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.host_controls"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.host_controls still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.host_controls"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.host_controls still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.in_flight"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.messaging.in_flight still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.in_flight"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.messaging.in_flight still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.inbound"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.access",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.inbound still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.inbound"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.access",
-]
-reason = "pynchy.host.orchestrator.messaging.inbound still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.inbound"
 target_role = "integration_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.plugins.integrations.linear_boot",
+  "pynchy.plugins.integrations.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.inbound still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.inbound"
-target_role = "integration_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.linear_boot",
-]
-reason = "pynchy.host.orchestrator.messaging.inbound still imports private modules owned by integration_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pending_questions"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.orchestrator.messaging.pending_questions still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pending_questions"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-]
-reason = "pynchy.host.orchestrator.messaging.pending_questions still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pending_questions"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-]
-reason = "pynchy.host.orchestrator.messaging.pending_questions still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.pipeline"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
 target_role = "learning_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.learning.capture",
+  "pynchy.host.learning.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.capture",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.reconciler"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.access",
-]
-reason = "pynchy.host.orchestrator.messaging.reconciler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.reconciler"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.access",
-]
-reason = "pynchy.host.orchestrator.messaging.reconciler still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.reconciler"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.outbound",
-]
-reason = "pynchy.host.orchestrator.messaging.reconciler still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.messaging.run_context"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.run_context still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.messaging.run_context"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.messaging.run_context still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.messaging.turn_control"
 target_role = "learning_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.learning.capture",
+  "pynchy.host.learning.api",
 ]
 reason = "pynchy.host.orchestrator.messaging.turn_control still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.messaging.turn_control"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.capture",
-]
-reason = "pynchy.host.orchestrator.messaging.turn_control still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.updating"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.outbound",
-]
-reason = "pynchy.host.orchestrator.messaging.updating still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.queue_shutdown"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.process",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.queue_shutdown still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.queue_shutdown"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.process",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.queue_shutdown still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.queue_state"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.queue_state still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.queue_state"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.host.orchestrator.queue_state still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.runtime_process_control"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.process",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.runtime_process_control still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.runtime_process_control"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.container_manager.ipc.write",
-  "pynchy.host.container_manager.process",
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.runtime_process_control still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduled_binding"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.scheduled_binding still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduled_turn"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduled_turn still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduled_turn"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduled_turn still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduled_turn_deps"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduled_turn_deps still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduled_turn_deps"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduled_turn_deps still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduler_deps"
-target_role = "application"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.concurrency",
-]
-reason = "pynchy.host.orchestrator.scheduler_deps still has type-checking-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduler_deps"
-target_role = "application"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.concurrency",
-]
-reason = "pynchy.host.orchestrator.scheduler_deps still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduler_deps"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduler_deps still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.scheduler_deps"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager",
-]
-reason = "pynchy.host.orchestrator.scheduler_deps still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.session_handler still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.session",
-]
-reason = "pynchy.host.orchestrator.session_handler still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.session_handler still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.session_handler still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.session_handler still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.session_handler"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.session_handler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.session_handler"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.session_handler still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.startup_handler"
@@ -2381,75 +429,20 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.startup_handler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.startup_handler"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.credentials",
-]
-reason = "pynchy.host.orchestrator.startup_handler still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.startup_handler"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.credentials",
-]
-reason = "pynchy.host.orchestrator.startup_handler still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.startup_handler"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.startup_handler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.startup_handler"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.startup_handler still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.startup_handler"
-target_role = "host_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.migration_backups",
-]
-reason = "pynchy.host.orchestrator.startup_handler still has runtime-import dependencies on the host_adapter role; Use a use-case-owned host capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.startup_handler"
-target_role = "host_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.migration_backups",
-]
-reason = "pynchy.host.orchestrator.startup_handler still imports private modules owned by host_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.status"
@@ -2458,92 +451,20 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.canaries",
+  "pynchy.canaries.api",
 ]
 reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.status"
-target_role = "canary_adapter"
-rule = "visibility"
+target_role = "git_adapter"
+rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.host.orchestrator.status still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.docker",
-  "pynchy.host.container_manager.runtime_names",
-]
-reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.docker",
-  "pynchy.host.container_manager.runtime_names",
-]
-reason = "pynchy.host.orchestrator.status still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.scheduler",
-  "pynchy.host.orchestrator.temporal.status",
-]
-reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.scheduler",
-  "pynchy.host.orchestrator.temporal.status",
-]
-reason = "pynchy.host.orchestrator.status still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.status"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.status still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.task_scheduler"
@@ -2552,7 +473,7 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.task_scheduler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
@@ -2563,88 +484,10 @@ rule = "direction"
 kind = "type-checking-import"
 count = 1
 imports = [
-  "pynchy.config.scheduler_models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.task_scheduler still has type-checking-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
-[[violations]]
-importer = "pynchy.host.orchestrator.task_scheduler"
-target_role = "config"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.config.scheduler_models",
-]
-reason = "pynchy.host.orchestrator.task_scheduler still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.task_scheduler"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.runtime_state",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.task_scheduler still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.task_scheduler"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.runtime_state",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.task_scheduler still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.channel_reconciliation"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.reconciler",
-]
-reason = "pynchy.host.orchestrator.temporal.channel_reconciliation still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.deploy"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.deploy",
-]
-reason = "pynchy.host.orchestrator.temporal.deploy still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.deploy"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.orchestrator.temporal.deploy still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.git_sync"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.adapters",
-]
-reason = "pynchy.host.orchestrator.temporal.git_sync still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.git_sync"
@@ -2653,7 +496,7 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.git_sync still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
@@ -2662,243 +505,55 @@ importer = "pynchy.host.orchestrator.temporal.git_sync"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 4
+count = 1
 imports = [
-  "pynchy.host.git_ops._worktree_notify",
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.git_sync still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.temporal.git_sync"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.host.git_ops._worktree_notify",
-  "pynchy.host.git_ops.repo",
-  "pynchy.host.git_ops.sync_poll",
-  "pynchy.host.git_ops.utils",
-]
-reason = "pynchy.host.orchestrator.temporal.git_sync still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.git_sync"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.orchestrator.temporal.git_sync still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.temporal.host_jobs"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.jobs",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.host_jobs still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.temporal.host_jobs"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.jobs",
-]
-reason = "pynchy.host.orchestrator.temporal.host_jobs still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.host_jobs"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.orchestrator.temporal.host_jobs still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.interactive"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.execution_outcomes",
-  "pynchy.host.orchestrator.runtime_target",
-]
-reason = "pynchy.host.orchestrator.temporal.interactive still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.interactive"
-target_role = "application"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.pipeline",
-]
-reason = "pynchy.host.orchestrator.temporal.interactive still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.interrupted"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 6
-imports = [
-  "pynchy.host.orchestrator.execution_outcomes",
-  "pynchy.host.orchestrator.messaging.in_flight",
-  "pynchy.host.orchestrator.messaging.pipeline",
-  "pynchy.host.orchestrator.runtime_target",
-  "pynchy.host.orchestrator.scheduled_binding",
-  "pynchy.host.orchestrator.task_scheduler",
-]
-reason = "pynchy.host.orchestrator.temporal.interrupted still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.interrupted"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.orchestrator.temporal.interrupted still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.learning"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.runtime_target",
-  "pynchy.host.orchestrator.task_scheduler",
-]
-reason = "pynchy.host.orchestrator.temporal.learning still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.temporal.learning"
 target_role = "learning_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 3
+count = 1
 imports = [
-  "pynchy.host.learning.packet_codec",
-  "pynchy.host.learning.packet_models",
-  "pynchy.host.learning.review_runner",
+  "pynchy.host.learning.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.learning still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.temporal.learning"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.host.learning.packet_codec",
-  "pynchy.host.learning.packet_models",
-  "pynchy.host.learning.review_runner",
-]
-reason = "pynchy.host.orchestrator.temporal.learning still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.linear_work_items"
-target_role = "application"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.task_scheduler",
-]
-reason = "pynchy.host.orchestrator.temporal.linear_work_items still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.temporal.linear_work_items"
 target_role = "integration_adapter"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.plugins.integrations.linear_boot",
-  "pynchy.plugins.integrations.linear_decision_inbox",
+  "pynchy.plugins.integrations.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.linear_work_items still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.temporal.linear_work_items"
-target_role = "integration_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.plugins.integrations.linear_boot",
-  "pynchy.plugins.integrations.linear_decision_inbox",
-]
-reason = "pynchy.host.orchestrator.temporal.linear_work_items still imports private modules owned by integration_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.runtime_state"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.execution_outcomes",
-]
-reason = "pynchy.host.orchestrator.temporal.runtime_state still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.temporal.schedule_reconciler"
 target_role = "git_adapter"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.host.git_ops.repo",
+  "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.schedule_reconciler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.schedule_reconciler"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.repo",
-]
-reason = "pynchy.host.orchestrator.temporal.schedule_reconciler still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.host.orchestrator.execution_outcomes",
-  "pynchy.host.orchestrator.runtime_target",
-  "pynchy.host.orchestrator.scheduled_binding",
-  "pynchy.host.orchestrator.task_scheduler",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.scheduler"
@@ -2907,78 +562,20 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.canaries",
+  "pynchy.canaries.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.scheduler_models",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.scheduler_models",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.learning.packet_codec",
-  "pynchy.host.learning.packet_models",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "learning_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.learning.packet_codec",
-  "pynchy.host.learning.packet_models",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still imports private modules owned by learning_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.temporal.schedules"
@@ -2987,1180 +584,53 @@ rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.schedules still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.temporal.workflows"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.execution_outcomes",
-]
-reason = "pynchy.host.orchestrator.temporal.workflows still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.update_offer"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.update_offer still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.update_offer"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.temporal.deploy",
-  "pynchy.host.orchestrator.temporal.scheduler",
-]
-reason = "pynchy.host.orchestrator.update_offer still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.update_offer"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-]
-reason = "pynchy.host.orchestrator.update_offer still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.update_offer"
-target_role = "git_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.sync_poll",
-]
-reason = "pynchy.host.orchestrator.update_offer still imports private modules owned by git_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_conversation_admission"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.webhook_models",
-]
-reason = "pynchy.host.orchestrator.webhook_conversation_admission still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_conversations"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.webhook_conversations still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_delivery_admission"
-target_role = "state_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.webhook_effect_admission",
-]
-reason = "pynchy.host.orchestrator.webhook_delivery_admission still imports private modules owned by state_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_event_rendering"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.host.orchestrator.webhook_event_rendering still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_event_rendering"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.host.orchestrator.webhook_event_rendering still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.webhook_terminal_retirement"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.host.orchestrator.webhook_terminal_retirement still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.workspace_config"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.host.orchestrator.workspace_config still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.workspace_config"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.host.orchestrator.workspace_config still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.workspace_config"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 5
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.jobs",
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.toml_io",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.workspace_config still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.workspace_config"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.config.jobs",
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.toml_io",
-]
-reason = "pynchy.host.orchestrator.workspace_config still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.workspace_placement"
+importer = "pynchy.host.orchestrator.workspace_registration"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config",
-]
-reason = "pynchy.host.orchestrator.workspace_placement still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.workspace_registration"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.refs",
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.workspace_registration still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.workspace_registration"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 4
-imports = [
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.refs",
-  "pynchy.config.settings",
-]
-reason = "pynchy.host.orchestrator.workspace_registration still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.workspace_threads"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
-count = 4
+count = 1
 imports = [
-  "pynchy.config",
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.workspace_layout",
+  "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.workspace_threads still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.workspace_threads"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.config.merge",
-  "pynchy.config.models",
-  "pynchy.config.workspace_layout",
-]
-reason = "pynchy.host.orchestrator.workspace_threads still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.canaries",
-  "pynchy.google_mcp_canaries",
-]
-reason = "pynchy.operational_canaries still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.canaries",
-  "pynchy.google_mcp_canaries",
-]
-reason = "pynchy.operational_canaries still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config",
-  "pynchy.config.models",
-]
-reason = "pynchy.operational_canaries still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.models",
-]
-reason = "pynchy.operational_canaries still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "integration_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 5
-imports = [
-  "pynchy.plugins.integrations.caldav",
-  "pynchy.plugins.integrations.linear",
-  "pynchy.plugins.integrations.linear_accounts",
-  "pynchy.plugins.integrations.linear_boards",
-  "pynchy.plugins.integrations.proton_bridge",
-]
-reason = "pynchy.operational_canaries still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
-importer = "pynchy.operational_canaries"
-target_role = "integration_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 5
-imports = [
-  "pynchy.plugins.integrations.caldav",
-  "pynchy.plugins.integrations.linear",
-  "pynchy.plugins.integrations.linear_accounts",
-  "pynchy.plugins.integrations.linear_boards",
-  "pynchy.plugins.integrations.proton_bridge",
-]
-reason = "pynchy.operational_canaries still imports private modules owned by integration_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.registry",
-]
-reason = "pynchy.plugins still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins"
-target_role = "extension_api"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.plugins.registry",
-]
-reason = "pynchy.plugins still has type-checking-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.agent_hooks"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.contracts",
-]
-reason = "pynchy.plugins.agent_hooks still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.channel_runtime"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.speech",
-]
-reason = "pynchy.plugins.channel_runtime still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._approval"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.approval",
-]
-reason = "pynchy.plugins.channels.discord._approval still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._approval"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.approval",
-]
-reason = "pynchy.plugins.channels.discord._approval still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._channel"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.messaging.formatters.base",
-  "pynchy.host.orchestrator.messaging.formatters.text",
-]
-reason = "pynchy.plugins.channels.discord._channel still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._channel"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.channels.discord._channel still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._events"
-target_role = "host_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.audio",
-  "pynchy.host.inbound_audio",
-]
-reason = "pynchy.plugins.channels.discord._events still has runtime-import dependencies on the host_adapter role; Use a use-case-owned host capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._events"
-target_role = "host_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.audio",
-  "pynchy.host.inbound_audio",
-]
-reason = "pynchy.plugins.channels.discord._events still imports private modules owned by host_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._voice"
-target_role = "host_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.audio",
-]
-reason = "pynchy.plugins.channels.discord._voice still has runtime-import dependencies on the host_adapter role; Use a use-case-owned host capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.channels.discord._voice"
-target_role = "host_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.audio",
-]
-reason = "pynchy.plugins.channels.discord._voice still imports private modules owned by host_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.slack._blocks"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.messaging.formatter",
-  "pynchy.host.orchestrator.messaging.formatters.base",
-]
-reason = "pynchy.plugins.channels.slack._blocks still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.whatsapp.channel"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.messaging.formatters.text",
-  "pynchy.host.orchestrator.messaging.pending_questions",
-]
-reason = "pynchy.plugins.channels.whatsapp.channel still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.channels.whatsapp.channel"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.channels.whatsapp.channel still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.contracts"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config.jobs",
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.contracts still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.contracts"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config.jobs",
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.contracts still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.contracts"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.mcp_server",
-]
-reason = "pynchy.plugins.contracts still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.hookspecs"
-target_role = "extension_api"
-rule = "direction"
-kind = "type-checking-import"
-count = 11
-imports = [
-  "pynchy.actions",
-  "pynchy.capabilities",
-  "pynchy.plugins.channel_runtime",
-  "pynchy.plugins.computer_use",
-  "pynchy.plugins.connections",
-  "pynchy.plugins.contracts",
-  "pynchy.plugins.memory",
-  "pynchy.plugins.observers",
-  "pynchy.plugins.speech",
-  "pynchy.plugins.tunnels",
-  "pynchy.plugins.webhooks",
-]
-reason = "pynchy.plugins.hookspecs still has type-checking-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.hookspecs"
-target_role = "runtime_adapter"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.plugins.hookspecs still has type-checking-import dependencies on the runtime_adapter role; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.hookspecs"
-target_role = "runtime_adapter"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.plugins.runtimes.detection",
-]
-reason = "pynchy.plugins.hookspecs still imports private modules owned by runtime_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.host_actions"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.actions",
-  "pynchy.capabilities",
-  "pynchy.plugins.registry",
-]
-reason = "pynchy.plugins.host_actions still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.caldav"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 3
-imports = [
-  "pynchy.config",
-  "pynchy.config.caldav",
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.integrations.caldav still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.caldav"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config.caldav",
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.integrations.caldav still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.computer_use._plugin"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.computer_use._plugin still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.cua_driver"
-target_role = "computer_use_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.computer_use.artifacts",
-]
-reason = "pynchy.plugins.integrations.cua_driver still has runtime-import dependencies on the computer_use_adapter role; Use the computer-use contract and select the concrete backend at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.cua_driver"
-target_role = "computer_use_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.computer_use.artifacts",
-]
-reason = "pynchy.plugins.integrations.cua_driver still imports private modules owned by computer_use_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.cua_driver"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.cua_driver still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.desktop_screenshot"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.desktop_screenshot still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.desktop_screenshot"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.gateway",
-]
-reason = "pynchy.plugins.integrations.desktop_screenshot still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.desktop_screenshot"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.gateway",
-]
-reason = "pynchy.plugins.integrations.desktop_screenshot still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._client"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.gog._client still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._config"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config",
-  "pynchy.config.settings",
-]
-reason = "pynchy.plugins.integrations.gog._config still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._config"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.plugins.integrations.gog._config still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._handlers"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.gog._handlers still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._handlers"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.gog._handlers still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.gog._plugin"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.gog._plugin still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.google_setup._handler"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.google_setup._handler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.google_setup._paths"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config",
-  "pynchy.config.settings",
-]
-reason = "pynchy.plugins.integrations.google_setup._paths still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.google_setup._paths"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.plugins.integrations.google_setup._paths still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.google_setup._plugin"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.google_setup._plugin still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.linear still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_accounts"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.linear_accounts still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_boot"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-  "pynchy.host.orchestrator.workspace_placement",
-]
-reason = "pynchy.plugins.integrations.linear_boot still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_boot"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-  "pynchy.host.orchestrator.workspace_placement",
-]
-reason = "pynchy.plugins.integrations.linear_boot still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_boot"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.linear_boot still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_comment_actions"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.plugins.integrations.linear_comment_actions still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_comment_actions"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.plugins.integrations.linear_comment_actions still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_conversation_identity"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_conversation_identity still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_legacy_work_items"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_legacy_work_items still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_planning_tasks"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.linear_planning_tasks still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_planning_tasks"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.linear_planning_tasks still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_planning_tasks"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_planning_tasks still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_self_echoes"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.plugins.integrations.linear_self_echoes still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_self_echoes"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_self_echoes still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_session_reset"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.workflow_control",
-]
-reason = "pynchy.plugins.integrations.linear_session_reset still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_session_reset"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.workflow_control",
-]
-reason = "pynchy.plugins.integrations.linear_session_reset still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_session_reset"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_session_reset still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_webhook_effects"
-target_role = "domain"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.dispatch",
-]
-reason = "pynchy.plugins.integrations.linear_webhook_effects still imports private modules owned by domain packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_webhook_effects"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_webhook_effects still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_webhooks"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.linear_webhooks still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_completion"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_completion still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_provider"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_provider still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_tasks"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_tasks still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_tasks"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.security.fencing",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_tasks still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_tasks"
-target_role = "driving_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.schedules",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_tasks still has runtime-import dependencies on the driving_adapter role; Invoke an application-owned inbound API; do not reach into private application modules."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_tasks"
-target_role = "driving_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.temporal.schedules",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_tasks still imports private modules owned by driving_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_item_tasks"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_work_item_tasks still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_items"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.plugins.integrations.linear_work_items still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_items"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.plugins.integrations.linear_work_items still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.linear_work_items"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.linear_work_items still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.marketplace_health"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.config",
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.integrations.marketplace_health still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.marketplace_health"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.models",
-]
-reason = "pynchy.plugins.integrations.marketplace_health still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.plugins.integrations.matrix_connection"
 target_role = "application"
 rule = "direction"
 kind = "runtime-import"
-count = 2
+count = 1
 imports = [
-  "pynchy.host.orchestrator.conversation_control",
-  "pynchy.host.orchestrator.workspace_config",
+  "pynchy.host.orchestrator.api",
 ]
 reason = "pynchy.plugins.integrations.matrix_connection still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_connection"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.orchestrator.conversation_control",
-  "pynchy.host.orchestrator.workspace_config",
-]
-reason = "pynchy.plugins.integrations.matrix_connection still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
 
 [[violations]]
 importer = "pynchy.plugins.integrations.matrix_connection"
@@ -4174,428 +644,12 @@ imports = [
 reason = "pynchy.plugins.integrations.matrix_connection still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
 
 [[violations]]
-importer = "pynchy.plugins.integrations.matrix_gateway"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.matrix_gateway still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_gateway"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.matrix_gateway still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_route_resolution"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.plugins.integrations.matrix_route_resolution still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_route_resolution"
-target_role = "application"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.capability_policy",
-]
-reason = "pynchy.plugins.integrations.matrix_route_resolution still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
 importer = "pynchy.plugins.integrations.matrix_route_resolution"
 target_role = "config"
 rule = "direction"
 kind = "runtime-import"
 count = 1
 imports = [
-  "pynchy.config.settings",
+  "pynchy.config.api",
 ]
 reason = "pynchy.plugins.integrations.matrix_route_resolution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_route_resolution"
-target_role = "config"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.settings",
-]
-reason = "pynchy.plugins.integrations.matrix_route_resolution still imports private modules owned by config packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.peekaboo"
-target_role = "computer_use_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.computer_use.artifacts",
-]
-reason = "pynchy.plugins.integrations.peekaboo still has runtime-import dependencies on the computer_use_adapter role; Use the computer-use contract and select the concrete backend at composition."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.peekaboo"
-target_role = "computer_use_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.computer_use.artifacts",
-]
-reason = "pynchy.plugins.integrations.peekaboo still imports private modules owned by computer_use_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.peekaboo"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.integrations.peekaboo still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.memory._api"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins",
-]
-reason = "pynchy.plugins.memory._api still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.observers._api"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.event_bus",
-  "pynchy.plugins",
-]
-reason = "pynchy.plugins.observers._api still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.observers.sqlite_observer.observer"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.security.llm_redaction",
-  "pynchy.host.container_manager.security.secrets_scanner",
-]
-reason = "pynchy.plugins.observers.sqlite_observer.observer still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.observers.sqlite_observer.observer"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.security.llm_redaction",
-  "pynchy.host.container_manager.security.secrets_scanner",
-]
-reason = "pynchy.plugins.observers.sqlite_observer.observer still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.observers.sqlite_observer.observer"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.observers.sqlite_observer.observer still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."
-
-[[violations]]
-importer = "pynchy.plugins.registry"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.hookspecs",
-]
-reason = "pynchy.plugins.registry still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.apple_runtime.runtime"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.labels",
-]
-reason = "pynchy.plugins.runtimes.apple_runtime.runtime still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.apple_runtime.runtime"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.labels",
-]
-reason = "pynchy.plugins.runtimes.apple_runtime.runtime still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.detection"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config",
-]
-reason = "pynchy.plugins.runtimes.detection still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.docker_runtime.runtime"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.labels",
-]
-reason = "pynchy.plugins.runtimes.docker_runtime.runtime still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.docker_runtime.runtime"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.labels",
-]
-reason = "pynchy.plugins.runtimes.docker_runtime.runtime still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.system_checks"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.cleanup",
-]
-reason = "pynchy.plugins.runtimes.system_checks still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.plugins.runtimes.system_checks"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.container_manager.cleanup",
-]
-reason = "pynchy.plugins.runtimes.system_checks still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.plugins.speech._api"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins",
-]
-reason = "pynchy.plugins.speech._api still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.plugins.tunnels._api"
-target_role = "extension_api"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins",
-]
-reason = "pynchy.plugins.tunnels._api still has runtime-import dependencies on the extension_api role; Depend on the inward-facing plugin contract, or move the missing extension contract into this role."
-
-[[violations]]
-importer = "pynchy.security_canaries"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.canaries",
-  "pynchy.security_canaries_artifact",
-]
-reason = "pynchy.security_canaries still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.security_canaries"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.canaries",
-  "pynchy.security_canaries_artifact",
-]
-reason = "pynchy.security_canaries still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.security_canaries"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 7
-imports = [
-  "pynchy.host.container_manager.gateway_builtin",
-  "pynchy.host.container_manager.ipc.handlers_artifact_security",
-  "pynchy.host.container_manager.security.cop",
-  "pynchy.host.container_manager.security.cop_gate",
-  "pynchy.host.container_manager.security.identity",
-  "pynchy.host.container_manager.security.llm_redaction",
-  "pynchy.host.container_manager.security.package_metadata",
-]
-reason = "pynchy.security_canaries still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.security_canaries"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 7
-imports = [
-  "pynchy.host.container_manager.gateway_builtin",
-  "pynchy.host.container_manager.ipc.handlers_artifact_security",
-  "pynchy.host.container_manager.security.cop",
-  "pynchy.host.container_manager.security.cop_gate",
-  "pynchy.host.container_manager.security.identity",
-  "pynchy.host.container_manager.security.llm_redaction",
-  "pynchy.host.container_manager.security.package_metadata",
-]
-reason = "pynchy.security_canaries still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.security_canaries_artifact"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.security_canaries_artifact still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.security_canaries_artifact"
-target_role = "canary_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries",
-]
-reason = "pynchy.security_canaries_artifact still imports private modules owned by canary_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.security_canaries_artifact"
-target_role = "container_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.handlers_artifact_security",
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.security_canaries_artifact still has runtime-import dependencies on the container_adapter role; Use a use-case-owned execution capability and wire this adapter at composition."
-
-[[violations]]
-importer = "pynchy.security_canaries_artifact"
-target_role = "container_adapter"
-rule = "visibility"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.host.container_manager.ipc.handlers_artifact_security",
-  "pynchy.host.container_manager.security.gate",
-]
-reason = "pynchy.security_canaries_artifact still imports private modules owned by container_adapter packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.types"
-target_role = "application"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.formatters.base",
-]
-reason = "pynchy.types still has type-checking-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.types"
-target_role = "application"
-rule = "visibility"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.messaging.formatters.base",
-]
-reason = "pynchy.types still imports private modules owned by application packages; use a declared public facade or expose an exact module only when intentional."
-
-[[violations]]
-importer = "pynchy.types"
-target_role = "domain"
-rule = "direction"
-kind = "runtime-import"
-count = 2
-imports = [
-  "pynchy.deployment_types",
-  "pynchy.session_policy",
-]
-reason = "pynchy.types still has runtime-import dependencies on the domain role; Move the shared semantic type or invariant into the domain role without importing outward behavior."
-
-[[violations]]
-importer = "pynchy.utils"
-target_role = "foundation"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.logger",
-]
-reason = "pynchy.utils still has runtime-import dependencies on the foundation role; Foundation code must not depend outward; move the required stable contract into foundation or domain."
-
-[[violations]]
-importer = "pynchy.webhook_effects"
-target_role = "domain"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.conversation.models",
-]
-reason = "pynchy.webhook_effects still has runtime-import dependencies on the domain role; Move the shared semantic type or invariant into the domain role without importing outward behavior."

@@ -7,21 +7,93 @@ Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 from __future__ import annotations
 
 import json
+import time
 import uuid
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves composition callback annotations.
+    Awaitable,
+    Callable,
+    Coroutine,
+)
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves method annotations.
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
 
-from pynchy.config import get_settings
-from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
+from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
+from pynchy.config.api import Settings, access, get_settings
+from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
     Conversation,
     ConversationId,
 )
 from pynchy.event_bus import Event, EventBus
+from pynchy.host.container_manager.credentials import build_agent_env_vars, has_api_credentials
+from pynchy.host.container_manager.gateway import configure_gateway_runtime
+from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
+from pynchy.host.container_manager.ipc.write import (
+    clean_ipc_input_dir,
+    configure_ipc_base_dir,
+    ipc_response_path,
+    write_ipc_close_sentinel,
+    write_ipc_message,
+    write_ipc_response,
+)
+from pynchy.host.container_manager.mcp.manager import get_mcp_manager
+from pynchy.host.container_manager.orchestrator import (
+    _spawn_container,
+    configure_container_spawn_runtime,
+    stable_container_name,
+)
+from pynchy.host.container_manager.process import (
+    configure_container_process_runtime,
+    docker_rm_force,
+    graceful_stop,
+)
+from pynchy.host.container_manager.security.approval import (
+    _approval_decisions_dir,
+    configure_approval_state_root,
+    find_pending_by_short_id,
+    list_pending_approvals,
+)
+from pynchy.host.container_manager.security.audit import configure_security_audit_storage
+from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, resolve_security
+from pynchy.host.container_manager.session import (
+    SessionDiedError,
+    create_session,
+    destroy_all_sessions,
+    destroy_session,
+    get_session,
+)
+from pynchy.host.git_ops.api import (
+    get_deploy_config_hash,
+    get_head_sha,
+    get_local_head_sha,
+    host_update_main,
+    needs_container_rebuild,
+    needs_deploy,
+    run_git,
+)
+from pynchy.host.git_ops.utils import configure_git_default_cwd
+from pynchy.host.git_ops.worktree import (
+    WorktreeStartupRuntime,
+    configure_worktree_startup_runtime,
+)
+from pynchy.host.learning.api import (
+    profile_name_for_group,
+    refresh_personalized_agent_skills,
+    resolve_learning_paths,
+)
+from pynchy.host.learning.mirror import configure_vault_mount_mirror
+from pynchy.host.learning.skill_activation import (
+    SkillActivationRuntime,
+    configure_skill_activation_runtime,
+)
+from pynchy.host.learning.skills import configure_personalized_skills_root
 from pynchy.host.orchestrator import (
     agent_runner,
+    host_execution,
     linear_plan_review,
     session_handler,
     update_offer,
@@ -33,22 +105,26 @@ from pynchy.host.orchestrator.adapters import (
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
-from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    TurnOutcome,
-)
+from pynchy.host.orchestrator.deploy import DeployGitRuntime, configure_deploy_git_runtime
+from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.host.orchestrator.messaging import (
     ask_user_handler,
     channel_handler,
+    pending_questions,
     reaction_handler,
 )
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
+from pynchy.host.orchestrator.messaging.ask_user_handler import AskUserRuntimeOperations
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    ApprovalRuntimeOperations,
     CommandMatcher,
     DirectCommandOutput,
 )
+from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
+from pynchy.host.orchestrator.runtime_process_control import ContainerRuntimeOperations
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
 from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
     ScheduledExecutionLifecycle,
@@ -56,18 +132,27 @@ from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - b
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
+from pynchy.host.orchestrator.workspace_config import (
+    load_resolved_config,
+    update_profile_skill_policy,
+)
+from pynchy.host.orchestrator.workspace_placement import configure_workspace_placement
 from pynchy.host.orchestrator.workspace_registration import (
     available_workspace_groups,
     rebind_workspace_runtime,
+    workspace_security,
 )
 from pynchy.logger import logger
-from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     MemoryProvider,
-)
-from pynchy.plugins.observers import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     ObserverProvider,
+    prepare_context_reset,
 )
-from pynchy.plugins.session_lifecycle import prepare_context_reset
+from pynchy.plugins.runtimes.api import (
+    configure_runtime_override,
+    ensure_agent_image_available,
+    get_runtime,
+)
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
 )
@@ -78,8 +163,13 @@ from pynchy.state.api import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_conversation,
+    get_latest_canary_runs,
+    get_recent_canary_runs,
     get_router_state,
+    get_unresolved_canary_regressions,
     get_work_item_execution_for_task,
+    prune_messages_by_sender,
+    record_canary_run,
     save_router_state_batch,
     set_session,
     set_workspace_profile,
@@ -87,17 +177,114 @@ from pynchy.state.api import (
     store_message_direct,
     update_task,
 )
+from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
+)
 from pynchy.types import (
     AgentExecutionRuntime,
     Channel,
+    ContainerInput,
     ContainerOutput,
     GroupFolder,
+    McpStartupFailure,
     NewMessage,
     OutboundEvent,
+    RuntimeId,
     ScheduledTask,
     SessionId,
     WorkspaceProfile,
 )
+from pynchy.utils import write_json_atomic
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager.ipc import IpcDeps
+    from pynchy.learning_packets import LearningPacket
+
+
+async def _fresh_container_name(group_folder: str) -> str:
+    """Remove a stale durable worker before replacing it with the same name."""
+    container_name = stable_container_name(group_folder)
+    await docker_rm_force(container_name)
+    return container_name
+
+
+async def _ensure_workspace_mcp(group_folder: str) -> tuple[McpStartupFailure, ...]:
+    """Ensure optional MCP tools for a durable worker and return their failures."""
+    if (manager := get_mcp_manager()) is None:
+        return ()
+    return (await manager.ensure_workspace_running(group_folder)).failures
+
+
+async def _wait_for_agent_query(session: object, query_timeout_seconds: float) -> bool:
+    """Wait for a container query, distinguishing expected worker death."""
+    try:
+        await cast("agent_runner.AgentSession", session).wait_for_query_done(
+            query_timeout_seconds=query_timeout_seconds
+        )
+    except SessionDiedError:
+        return False
+    return True
+
+
+async def _prepare_host_direct_mcp_servers(
+    input_data: ContainerInput,
+    group_folder: str,
+    chat_jid: str,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
+) -> None:
+    """Register host security context, then attach selected MCP proxy routes."""
+    invocation_ts = time.monotonic()
+    security = resolve_security(group_folder, is_admin=input_data.is_admin)
+    create_gate(
+        group_folder,
+        invocation_ts,
+        security,
+        public_source_input=input_data.corruption_tainted,
+        secret_source_input=input_data.secret_tainted,
+    )
+    input_data.invocation_ts = invocation_ts
+    if (manager := get_mcp_manager()) is None:
+        return
+    mcp_startup = await manager.ensure_workspace_running(group_folder)
+    if mcp_startup.failures:
+        await notify_mcp_startup_failures(
+            broadcast_host_message,
+            chat_jid,
+            mcp_startup.failures,
+        )
+    input_data.mcp_direct_servers = manager.get_direct_server_configs(
+        group_folder,
+        invocation_ts=invocation_ts,
+        instance_ids=mcp_startup.ready_instance_ids,
+    )
+
+
+def _has_live_container_session(group_folder: GroupFolder) -> bool:
+    session = get_session(group_folder)
+    return session is not None and session.is_alive
+
+
+def _write_ask_user_response(group_folder: str, request_id: str, result: dict[str, object]) -> None:
+    write_ipc_response(ipc_response_path(group_folder, request_id), {"result": result})
+
+
+def _persist_skill_access_choice(pending: dict[str, Any], answer: dict[str, Any]) -> str | None:
+    """Bind learned-skill policy persistence at application composition."""
+    return persist_skill_access_choice(
+        pending,
+        answer,
+        profile_name_for_group=profile_name_for_group,
+        update_profile_skill_policy=update_profile_skill_policy,
+    )
+
+
+async def _persist_and_process_approval(
+    source_group: str, decision_data: dict[str, object], deps: object
+) -> None:
+    """Persist an operator decision in host-only state, then replay it."""
+    decision_file = _approval_decisions_dir(source_group) / f"{decision_data['request_id']}.json"
+    write_json_atomic(decision_file, decision_data, indent=2)
+    await process_approval_decision(decision_file, source_group, deps=cast("IpcDeps", deps))
 
 
 class PynchyApp(ThreadRouting):
@@ -115,6 +302,7 @@ class PynchyApp(ThreadRouting):
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
         settings = get_settings()
+        self._configure_runtime_dependencies(settings)
         self.agent_name = settings.agent.name
         self.admin_workspace = settings.notifications.admin_workspace
         self.command_matcher = CommandMatcher.from_values(
@@ -125,7 +313,39 @@ class PynchyApp(ThreadRouting):
                 max_concurrent=settings.container.max_concurrent,
                 max_retries=settings.queue.max_retries,
                 retry_base_seconds=settings.queue.base_retry_seconds,
-            )
+            ),
+            ContainerRuntimeOperations(
+                write_message=write_ipc_message,
+                write_close_sentinel=write_ipc_close_sentinel,
+                clean_input_dir=clean_ipc_input_dir,
+                destroy_gate=destroy_gate,
+                destroy_session=destroy_session,
+                destroy_all_sessions=destroy_all_sessions,
+                graceful_stop=graceful_stop,
+            ),
+        )
+        self.container_agent_operations = agent_runner.ContainerAgentOperations(
+            get_session=get_session,
+            fresh_container_name=_fresh_container_name,
+            spawn=_spawn_container,
+            create_session=create_session,
+            destroy_session=destroy_session,
+            ensure_workspace_mcp=_ensure_workspace_mcp,
+            wait_for_query=_wait_for_agent_query,
+        )
+        self.host_runtime_operations = host_execution.HostRuntimeOperations(
+            build_agent_environment=build_agent_env_vars,
+            prepare_mcp=_prepare_host_direct_mcp_servers,
+        )
+        self.ask_user_runtime_operations = AskUserRuntimeOperations(
+            has_live_session=_has_live_container_session,
+            persist_skill_access=_persist_skill_access_choice,
+            write_response=_write_ask_user_response,
+        )
+        self.approval_runtime_operations = ApprovalRuntimeOperations(
+            find_pending_by_short_id=find_pending_by_short_id,
+            list_pending_approvals=list_pending_approvals,
+            persist_and_process=_persist_and_process_approval,
         )
         self.agent_execution_runtime = AgentExecutionRuntime(
             project_root=settings.project_root,
@@ -164,6 +384,112 @@ class PynchyApp(ThreadRouting):
             self.event_bus.emit,
         )
 
+    def _configure_runtime_dependencies(self, settings: Settings) -> None:
+        """Wire concrete host adapters into subsystem-local runtime seams."""
+        configure_ipc_base_dir(settings.data_dir / "ipc")
+        configure_approval_state_root(settings.data_dir / "approvals")
+        configure_security_audit_storage(
+            store_security_audit=store_message_direct,
+            prune_security_audit=prune_messages_by_sender,
+        )
+        configure_canary_runtime(
+            CanaryRuntime(
+                record_run=record_canary_run,
+                latest_runs=get_latest_canary_runs,
+                recent_runs=lambda limit: get_recent_canary_runs(limit=limit),
+                unresolved_regressions=get_unresolved_canary_regressions,
+                code_revision=lambda: get_head_sha() or "unknown",
+            )
+        )
+        pending_questions.configure_pending_questions_ipc_base_dir(settings.data_dir / "ipc")
+        configure_personalized_skills_root(settings.project_root)
+        configure_git_default_cwd(settings.project_root)
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=get_head_sha,
+                get_deploy_config_hash=get_deploy_config_hash,
+                run_git=run_git,
+            )
+        )
+        configure_worktree_startup_runtime(
+            WorktreeStartupRuntime(
+                home_dir=settings.home_dir,
+                project_root=settings.project_root,
+                configured_tokens={
+                    slug: (repo.token.get_secret_value() if repo.token is not None else None)
+                    for slug, repo in settings.repos.overrides.items()
+                },
+            )
+        )
+        configure_allowed_message_filter(access.filter_allowed_messages)
+
+        def workspace_skill_selection(
+            folder: str,
+        ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] | None:
+            resolved = load_resolved_config(folder, settings=settings)
+            if resolved is None:
+                return None
+            return (
+                tuple(resolved.skills),
+                tuple(resolved.denied_skills),
+                tuple(resolved.tools),
+            )
+
+        configure_skill_activation_runtime(
+            SkillActivationRuntime(
+                project_root=settings.project_root,
+                sessions_root=settings.data_dir / "sessions",
+                tool_skills={
+                    name: tuple(getattr(tool, "skills", ()))
+                    for name, tool in settings.tools.items()
+                },
+                resolve_workspace_skill_selection=workspace_skill_selection,
+                resolve_learning_paths=lambda folder, profile: resolve_learning_paths(
+                    folder, profile_override=profile
+                ),
+            )
+        )
+
+        def missing_workspace_profile(
+            folder: str, control_parent: WorkspaceProfile
+        ) -> WorkspaceProfile | None:
+            config = settings.workspace_config(folder)
+            resolved = settings.resolved_workspace_config(folder)
+            if config is None or resolved is None:
+                return None
+            return WorkspaceProfile(
+                jid=control_parent.jid,
+                name=folder.replace("-", " ").title(),
+                folder=folder,
+                trigger=control_parent.trigger,
+                container_config=control_parent.container_config,
+                security=workspace_security(config, resolved),
+                is_admin=resolved.is_admin,
+                added_at=datetime.now(UTC).isoformat(),
+            )
+
+        configure_workspace_placement(
+            workspace_parent=settings.workspace_parent,
+            missing_workspace_profile=missing_workspace_profile,
+        )
+        configure_runtime_override(settings.container.runtime)
+        runtime = get_runtime()
+        configure_container_spawn_runtime(
+            container_cli=runtime.cli,
+            ensure_agent_image=ensure_agent_image_available,
+        )
+        configure_container_process_runtime(
+            container_cli=runtime.cli,
+            is_apple_runtime=runtime.name == "apple",
+            container_is_running=lambda name: name in runtime.list_running_containers(prefix=name),
+        )
+        configure_gateway_runtime(is_apple_container=runtime.name == "apple")
+        configure_vault_mount_mirror(enabled=runtime.name == "apple")
+        configure_cop_gateway(
+            model=settings.security.cop_model or settings.agent.model,
+            wire_api=settings.security.cop_wire_api,
+        )
+
     @property
     def message_broadcaster(self) -> MessageBroadcaster:
         """Return the shared raw channel broadcaster."""
@@ -178,6 +504,30 @@ class PynchyApp(ThreadRouting):
         """Return whether shutdown has started."""
         return self._shutting_down
 
+    def get_local_head_sha(self, project_root: Path) -> str:
+        """Read the checkout revision for an explicit update-offer dependency."""
+        return get_local_head_sha(project_root)
+
+    def get_deploy_config_hash(self) -> str:
+        """Read the restart-relevant configuration hash for update offers."""
+        return get_deploy_config_hash()
+
+    def host_update_main(self, project_root: Path) -> bool:
+        """Fetch the approved revision through the Git adapter."""
+        return host_update_main(project_root)
+
+    def needs_deploy(self, old_sha: str, new_sha: str) -> bool:
+        """Determine whether an approved update requires a service restart."""
+        return needs_deploy(old_sha, new_sha)
+
+    def needs_container_rebuild(self, old_sha: str, new_sha: str) -> bool:
+        """Determine whether an approved update changes the agent image."""
+        return needs_container_rebuild(old_sha, new_sha)
+
+    def refresh_personalized_agent_skills(self, group_folder: str) -> None:
+        """Refresh learned skills before the next warm agent turn."""
+        refresh_personalized_agent_skills(group_folder)
+
     def begin_shutdown(self) -> bool:
         """Mark shutdown as started; return False if shutdown was already active."""
         if self._shutting_down:
@@ -187,10 +537,10 @@ class PynchyApp(ThreadRouting):
 
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
-        from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - composition root selects the validator.
+        from pynchy.config.api import (  # noqa: PLC0415, RUF100 - composition root selects the validator.
             validate_personalization_tree,
         )
-        from pynchy.host.git_ops.personalization import (  # noqa: PLC0415, RUF100 - composition root selects the Git adapter.
+        from pynchy.host.git_ops.api import (  # noqa: PLC0415, RUF100 - composition root selects the Git adapter.
             sync_personalization_repo,
         )
 
@@ -505,6 +855,10 @@ class PynchyApp(ThreadRouting):
         """Start durable semantic recovery for one interrupted agent turn."""
         await temporal_scheduler.start_interrupted_turn_workflow(turn_id, group_folder)
 
+    async def start_learning_review_workflow(self, packet: LearningPacket) -> None:
+        """Start durable review for a completed learning packet."""
+        await temporal_scheduler.start_learning_review_workflow(packet)
+
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(
@@ -542,6 +896,21 @@ class PynchyApp(ThreadRouting):
     def has_active_host_process(self, group_folder: str) -> bool:
         """Return whether a direct host agent is blocked on this group's IPC."""
         return self.queue.has_active_host_process(group_folder)
+
+    def register_idle_callback(
+        self, group_folder: GroupFolder, callback: Callable[[], Coroutine[Any, Any, None]]
+    ) -> None:
+        """Attach an idle callback to a live container session when one exists."""
+        if (session := get_session(group_folder)) is not None:
+            session.set_idle_callback(callback)
+
+    def has_api_credentials(self) -> bool:
+        """Report whether the selected runtime can authenticate an agent turn."""
+        return has_api_credentials()
+
+    async def destroy_runtime_session(self, group_folder: str) -> None:
+        """Discard the container session for one resettable workspace."""
+        await self.queue.destroy_runtime_session(RuntimeId(group_folder))
 
     async def enqueue_message(self, chat_jid: str, text: str) -> None:
         """Inject a synthetic message for cold-start answer delivery.

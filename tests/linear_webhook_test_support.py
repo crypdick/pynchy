@@ -7,17 +7,18 @@ import hmac
 import json
 from functools import partial
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock
 
 from pynchy.host.orchestrator.http_control import (
     ControlPlaneRuntime,
     ControlPlaneToken,
     RequestRateLimiter,
 )
+from pynchy.plugins.api import WebhookRoute
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRouteConfig,
     parse_linear_webhook,
 )
-from pynchy.plugins.webhooks import WebhookRoute
 from pynchy.state import (
     complete_conversation_delivery,
     conversation_control_state_matches,
@@ -278,6 +279,7 @@ def public_runtime() -> ControlPlaneRuntime:
         allow_remote_deploy=False,
         auth_token=ControlPlaneToken("control-plane-token-that-is-long-enough"),
         rate_limiter=RequestRateLimiter(request_limit=100, window_seconds=60),
+        audit_security_event=AsyncMock(),
     )
 
 

@@ -16,6 +16,12 @@ from functools import partial
 
 from pydantic import ValidationError
 
+from pynchy.plugins.api import (
+    WebhookAuthenticationError,
+    WebhookEvent,
+    WebhookPayloadError,
+    WebhookRoute,
+)
 from pynchy.plugins.integrations.github_webhook_linear import (
     prepare_github_webhook_event,
 )
@@ -23,12 +29,6 @@ from pynchy.plugins.integrations.github_webhook_models import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubEnvelope,
     GitHubWebhookRouteConfig,
-)
-from pynchy.plugins.webhooks import (
-    WebhookAuthenticationError,
-    WebhookEvent,
-    WebhookPayloadError,
-    WebhookRoute,
 )
 
 __all__ = ["GITHUB_MAX_WEBHOOK_BODY_BYTES"]

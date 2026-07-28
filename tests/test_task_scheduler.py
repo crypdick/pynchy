@@ -20,15 +20,15 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import (
+    configure_workspace_placement_for,
+    make_container_runtime_operations,
+    make_settings,
+)
 
-from pynchy.config import SchedulerConfig
-from pynchy.config.jobs import JobConfig
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.api import JobConfig, ProfileConfig, SchedulerConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
-from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.scheduler_deps import ScheduledExecutionLifecycle
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
@@ -42,12 +42,14 @@ from pynchy.state import (
     init_test_database,
     prepare_in_flight_turn_recovery,
 )
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.types import (
     CheckpointControlState,
     ContainerOutput,
     InFlightTurn,
     InFlightWorkKind,
     RuntimeId,
+    RuntimeTarget,
     ScheduledTask,
     SessionPolicy,
     TaskRunLog,
@@ -236,7 +238,8 @@ class MockSchedulerDeps:
     def __init__(self):
         self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
+            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            make_container_runtime_operations(),
         )
         self.messages: list = []
         self.host_messages: list = []
@@ -1585,12 +1588,9 @@ class TestRunScheduledAgent:
             ),
         ]
 
+        configure_workspace_placement_for(settings)
         with (
             patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_placement.get_settings",
-                return_value=settings,
-            ),
             patch(
                 "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
                 new_callable=AsyncMock,
@@ -1667,12 +1667,9 @@ class TestRunScheduledAgent:
             bound_group_folder="cron-runtime",
         )
 
+        configure_workspace_placement_for(settings)
         with (
             patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_placement.get_settings",
-                return_value=settings,
-            ),
             patch(
                 "pynchy.host.orchestrator.config_job_execution.run_shell_command",
                 new_callable=AsyncMock,

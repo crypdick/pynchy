@@ -93,7 +93,7 @@ def test_cli_prune_migration_backups_defaults_to_dry_run(
 
     monkeypatch.setattr(sys, "argv", ["pynchy", "prune-migration-backups", "--keep", "1"])
     monkeypatch.setattr(
-        "pynchy.config.get_settings",
+        "pynchy.config.api.get_settings",
         lambda: make_settings(project_root=tmp_path),
     )
 

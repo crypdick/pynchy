@@ -17,10 +17,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
-import pynchy.config as pynchy_config
-from pynchy.config.models import (
-    ReposConfig,  # noqa: TC001, RUF100 - beartype resolves repo context settings at runtime.
-)
+import pynchy.config.api as pynchy_config
 from pynchy.logger import logger
 
 # Warn when a token expires within this many days
@@ -74,7 +71,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
 
 @runtime_checkable
 class _RepoSettings(Protocol):
-    repos: ReposConfig
+    repos: pynchy_config.ReposConfig
 
 
 def repo_host_root(settings: _RepoSettings, slug: str) -> Path | None:
@@ -103,10 +100,6 @@ def get_repo_token(slug: str) -> str | None:
     2. secrets.gh_token — host's broad token (medium priority)
     3. gh auth token — auto-discovered from gh CLI (lowest priority)
     """
-    from pynchy.host.container_manager.credentials import (  # noqa: PLC0415, RUF100 - importing container_manager.credentials at module load creates a git_ops/container_manager cycle.
-        _read_gh_token,
-    )
-
     s = pynchy_config.get_settings()
     repo_cfg = s.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
@@ -114,6 +107,22 @@ def get_repo_token(slug: str) -> str | None:
     if s.secrets.gh_token:
         return s.secrets.gh_token.get_secret_value()
     return _read_gh_token()
+
+
+def _read_gh_token() -> str | None:
+    """Read the GitHub token from the host's authenticated gh CLI."""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],  # noqa: S607, RUF100 - gh is a trusted host CLI and argv is fixed.
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Failed to read GitHub token from gh CLI", err=str(exc))
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _sanitize_token(text: str, token: str | None) -> str:
@@ -391,7 +400,7 @@ def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
 
 def resolve_repos_for_group(group_folder: str) -> list[RepoContext]:
     """Return every resolved repo context for a workspace, preserving profile order."""
-    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100 - workspace config is orchestrator-owned and only needed for group resolution.
+    from pynchy.host.orchestrator.api import (  # noqa: PLC0415, RUF100 - workspace config is orchestrator-owned and only needed for group resolution.
         load_resolved_config,
     )
 

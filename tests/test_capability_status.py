@@ -17,7 +17,31 @@ from pynchy.actions import (
     ActionTransport,
     EvidenceRequirement,
 )
-from pynchy.capabilities import (
+from pynchy.config.api import (
+    BuiltinTool,
+    CapabilityTomlConfig,
+    LinearTool,
+    ProfileConfig,
+    Settings,
+    WorkspaceConfig,
+    apply_tool_access,
+)
+from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    build_workspace_security,
+    create_gate,
+    destroy_gate,
+    evaluate_host_action_policy,
+)
+from pynchy.host.orchestrator.capability_status import (
+    CapabilityPolicyDecision,
+    CapabilityStatusOperations,
+    WorkspaceCapabilityConfiguration,
+    collect_capability_status,
+    resolve_workspace_capabilities,
+)
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -28,21 +52,13 @@ from pynchy.capabilities import (
     CapabilityRequirementKind,
     CapabilityStatus,
     HostActionAccess,
+    HostActionCatalog,
     HostActionDescriptor,
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.config.models import BuiltinTool, LinearTool, WorkspaceConfig
-from pynchy.config.profiles import CapabilityTomlConfig, ProfileConfig
-from pynchy.host.container_manager.ipc import registry
-from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
-from pynchy.host.orchestrator.capability_status import (
-    collect_capability_status,
-    resolve_workspace_capabilities,
-)
-from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.types import CapabilityRule, WorkspaceProfile, WorkspaceSecurity
 
@@ -127,6 +143,36 @@ def _catalog(
     )
 
 
+def _operations(settings: Settings) -> CapabilityStatusOperations:
+    def workspace_configuration(workspace: str) -> WorkspaceCapabilityConfiguration | None:
+        resolved = settings.resolved_workspace_config(workspace)
+        if resolved is None:
+            return None
+        resolved = apply_tool_access(settings.tools, resolved)[0]
+        return WorkspaceCapabilityConfiguration(
+            enabled_tools=frozenset(resolved.tools),
+            security=build_workspace_security(settings, resolved),
+        )
+
+    def evaluate_action_policy(
+        action: HostActionDescriptor,
+        security: WorkspaceSecurity,
+    ) -> CapabilityPolicyDecision:
+        decision = evaluate_host_action_policy(action, SecurityGate(security), {})
+        return CapabilityPolicyDecision(
+            allowed=decision.allowed,
+            reason=decision.reason,
+            approval_required=decision.needs_human,
+            cop_review_required=decision.needs_cop,
+        )
+
+    return CapabilityStatusOperations(
+        workspaces=tuple(settings.workspaces),
+        workspace_configuration=workspace_configuration,
+        evaluate_action_policy=evaluate_action_policy,
+    )
+
+
 async def _resolved_status(
     *,
     action: HostActionDescriptor | None = None,
@@ -134,9 +180,10 @@ async def _resolved_status(
     outcomes: dict[str, str] | None = None,
     action_specs: tuple[ActionSpec, ...] | None = None,
 ):
+    effective_settings = settings or _settings()
     snapshot = await resolve_workspace_capabilities(
         "test-ws",
-        settings=settings or _settings(),
+        operations=_operations(effective_settings),
         catalog=_catalog(action or _action(), action_specs=action_specs),
         canary_outcomes=outcomes,
     )
@@ -154,9 +201,10 @@ async def test_ready_capability_includes_current_policy_requirements():
 
 @pytest.mark.asyncio
 async def test_missing_workspace_or_tool_is_unconfigured():
+    settings = _settings()
     missing_workspace = await resolve_workspace_capabilities(
         "missing",
-        settings=_settings(),
+        operations=_operations(settings),
         catalog=_catalog(_action()),
     )
     missing_tool = await _resolved_status(settings=_settings(enabled=False))
@@ -202,7 +250,7 @@ async def test_named_linear_account_satisfies_stable_host_action_requirement(mon
 
     snapshot = await resolve_workspace_capabilities(
         "test-ws",
-        settings=settings,
+        operations=_operations(settings),
         catalog=HostActionCatalog(actions=(action,), action_specs=()),
     )
 
@@ -263,9 +311,10 @@ async def test_agentic_evidence_distinguishes_not_established_failed_and_ready()
 
 @pytest.mark.asyncio
 async def test_status_collection_aggregates_workspace_snapshots():
+    settings = _settings(enabled=False)
     result = await collect_capability_status(
         {},
-        settings=_settings(enabled=False),
+        operations=_operations(settings),
         catalog=_catalog(_action()),
     )
 
@@ -302,9 +351,10 @@ async def test_ready_snapshot_does_not_authorize_later_dispatch(tmp_path):
         audit=action.audit,
     )
     catalog = _catalog(action)
+    settings = _settings()
     snapshot = await resolve_workspace_capabilities(
         "test-ws",
-        settings=_settings(),
+        operations=_operations(settings),
         catalog=catalog,
     )
     assert snapshot.capabilities[0].status is CapabilityStatus.READY
@@ -324,8 +374,8 @@ async def test_ready_snapshot_does_not_authorize_later_dispatch(tmp_path):
                 return_value=dispatch_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.write.get_settings",
-                return_value=dispatch_settings,
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                dispatch_settings.data_dir / "ipc",
             ),
         ):
             await registry.dispatch(

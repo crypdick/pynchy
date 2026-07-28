@@ -7,9 +7,8 @@ from typing import Any
 
 import pluggy
 
-import pynchy.config as pynchy_config
 from pynchy.actions import ActionId
-from pynchy.capabilities import (
+from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -24,10 +23,10 @@ from pynchy.capabilities import (
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
+    McpServerConfig,
+    McpServerSpec,
 )
-from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.google_setup._handler import handle_setup_google
-from pynchy.plugins.mcp_server import McpServerConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -75,13 +74,17 @@ class GoogleSetupPlugin:
     profile name into the request data before calling the shared handler.
     """
 
+    def __init__(self, profiles: tuple[str, ...] = ()) -> None:
+        self._profiles = profiles
+
+    def configure(self, profiles: tuple[str, ...]) -> None:
+        """Apply the configured browser profiles before actions are registered."""
+        self._profiles = profiles
+
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
         return HostActionRegistration(
-            actions=tuple(
-                _profile_setup_action(profile)
-                for profile in pynchy_config.get_settings().chrome_profiles
-            )
+            actions=tuple(_profile_setup_action(profile) for profile in self._profiles)
         )
 
 

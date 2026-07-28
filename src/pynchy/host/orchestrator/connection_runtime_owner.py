@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.plugins.connections import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     ConnectionRuntime,
 )
 
