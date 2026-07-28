@@ -169,3 +169,78 @@ async def test_transcribe_audio_file_runs_the_configured_local_provider(
         provider="local_command",
         model="base",
     )
+
+
+async def test_transcribe_audio_file_reports_when_no_provider_is_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    audio_path = tmp_path / "voice.ogg"
+    audio_path.write_bytes(b"audio")
+    monkeypatch.delenv("PYNCHY_LOCAL_STT_COMMAND", raising=False)
+
+    with (
+        patch("pynchy.host.audio.importlib.util.find_spec", return_value=None),
+        patch("pynchy.host.audio.shutil.which", return_value=None),
+    ):
+        result = await transcribe_audio_file(audio_path)
+
+    assert result == AudioTranscriptionResult(
+        success=False,
+        error=(
+            "No STT provider available. Install faster-whisper or configure "
+            "PYNCHY_LOCAL_STT_COMMAND."
+        ),
+    )
+
+
+async def test_transcribe_audio_file_reports_a_failed_local_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    audio_path = tmp_path / "voice.ogg"
+    audio_path.write_bytes(b"audio")
+    monkeypatch.setenv("PYNCHY_LOCAL_STT_COMMAND", "transcriber {input_path}")
+
+    with patch(
+        "pynchy.host.audio.subprocess.run",
+        side_effect=OSError("STT unavailable"),
+    ):
+        result = await transcribe_audio_file(audio_path)
+
+    assert result.success is False
+    assert result.provider == "local_command"
+    assert result.model == "base"
+    assert result.error == "Local STT command failed: STT unavailable"
+
+
+async def test_transcribe_audio_file_prefers_a_working_faster_whisper_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    audio_path = tmp_path / "voice.ogg"
+    audio_path.write_bytes(b"audio")
+    monkeypatch.setenv("PYNCHY_LOCAL_STT_MODEL", "public-api-test")
+    monkeypatch.setenv("PYNCHY_LOCAL_STT_COMMAND", "should-not-run")
+
+    class _WhisperModel:
+        def __init__(self, model: str, *, device: str, compute_type: str) -> None:
+            assert (model, device, compute_type) == ("public-api-test", "auto", "auto")
+
+        def transcribe(self, path: str, **kwargs: object) -> tuple[list[object], object]:
+            assert path == str(audio_path)
+            assert kwargs == {"beam_size": 5, "language": "en"}
+            segment = type("Segment", (), {"text": " hello from whisper "})()
+            info = type("Info", (), {"language": "en"})()
+            return [segment], info
+
+    faster_whisper = type("FasterWhisper", (), {"WhisperModel": _WhisperModel})()
+    with (
+        patch("pynchy.host.audio.importlib.util.find_spec", return_value=object()),
+        patch("pynchy.host.audio.importlib.import_module", return_value=faster_whisper),
+    ):
+        result = await transcribe_audio_file(audio_path)
+
+    assert result == AudioTranscriptionResult(
+        success=True,
+        transcript="hello from whisper",
+        provider="local",
+        model="public-api-test",
+    )
