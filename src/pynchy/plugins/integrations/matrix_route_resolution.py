@@ -8,13 +8,15 @@ from typing import Literal
 from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves route settings.
     Settings,
 )
-from pynchy.types import (
+from pynchy.integration_contracts import (
     MatrixActivation,
     MatrixConnection,
     MatrixEndpoint,
     MatrixOutbound,
-    capability_pattern_matches,
     is_matrix_connection,
+)
+from pynchy.workspace.api import (
+    capability_pattern_matches,
     most_restrictive_capability_rule,
 )
 

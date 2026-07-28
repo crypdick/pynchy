@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 
-from pynchy.state.connection import _get_db
-from pynchy.types import (
+from pynchy.security_context import (
     RecentSecurityContext,
     SecurityContextMessage,
     SecurityContextRole,
     SecurityExecutionAuthority,
     SecurityExecutionAuthorityKind,
 )
+from pynchy.state.connection import _get_db
 
 _MESSAGE_LIMIT = 4
 _MESSAGE_CHAR_LIMIT = 500

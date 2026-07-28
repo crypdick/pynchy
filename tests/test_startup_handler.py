@@ -9,7 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.config.api import NotificationsConfig
+from pynchy.deployments import (
+    DeploymentState,
+    DeployRevision,
+)
 from pynchy.host.orchestrator import startup_handler, startup_rollback
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
@@ -22,6 +31,7 @@ from pynchy.host.orchestrator.startup_handler import (
     terminate_failed_startup,
     validate_plugin_credentials,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.state import (
     begin_in_flight_turn,
     claim_deployment,
@@ -33,15 +43,7 @@ from pynchy.state import (
     initialize_deployment_state,
     set_session,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    DeploymentState,
-    DeployRevision,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 _ACTIVE_REVISION = DeployRevision("active-sha", "active-config")
 

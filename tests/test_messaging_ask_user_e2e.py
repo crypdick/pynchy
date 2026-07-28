@@ -32,7 +32,7 @@ from pynchy.host.orchestrator.messaging.pending_questions import (
     update_message_id,
 )
 from pynchy.state import init_test_database
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

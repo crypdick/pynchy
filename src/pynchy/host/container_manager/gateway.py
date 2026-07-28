@@ -54,8 +54,8 @@ from pynchy.host.container_manager.gateway_litellm import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import McpServerSpec
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
-    ServiceTrustConfig,
+from pynchy.workspace.api import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
 )
 
 _GATEWAY_MASTER_KEY_REQUIRED_ERROR = (

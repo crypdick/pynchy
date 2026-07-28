@@ -17,6 +17,9 @@ from collections.abc import (
 from dataclasses import dataclass
 
 import pynchy.host.orchestrator.todos as todos
+from pynchy.agent_protocol.api import (
+    InFlightWorkKind,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+)
 from pynchy.config.api import filter_allowed_messages, get_settings
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves routing annotations.
@@ -30,7 +33,15 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     reclassify_batch_host_controls,
     turn_boundary_lock,
 )
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.plugins.integrations.api import (
     create_linear_workspace_todo,
     linear_workspace_enabled,
@@ -40,12 +51,7 @@ from pynchy.state.api import (
     get_new_messages,
     get_oldest_resumable_turn_for_group,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
-    InFlightWorkKind,
-    NewMessage,
-    OutboundEvent,
-    OutboundEventType,
-    RuntimeId,
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
     RuntimeTarget,
     WorkspaceProfile,
 )

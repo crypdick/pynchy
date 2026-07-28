@@ -21,7 +21,10 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     ensure_task_active,
     linear_issue_conversation_id,
 )
-from pynchy.types import ScheduledTask, SessionPolicy
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 
 _PLANNING_CONTRACT = (
     "Objective: produce a concrete implementation plan for the exact Ready for Planning "

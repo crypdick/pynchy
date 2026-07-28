@@ -20,7 +20,10 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_tool_preview,
 )
 from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 # Channel broadcast truncation threshold for tool results.
 # Mirrors ``_MAX_TOOL_OUTPUT`` in router.py — full content is always persisted

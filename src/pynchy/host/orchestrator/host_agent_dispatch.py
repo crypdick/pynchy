@@ -7,7 +7,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves callbac
     Callable,
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves annotations at runtime.
 
@@ -23,18 +23,24 @@ from pynchy.host.orchestrator.host_execution import (
     prepare_host_codex_home,
     run_host_agent_turn,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import collect_agent_hook_specs, host_agent_hook_configs
 from pynchy.state.api import clear_runtime_session_references
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ChatJid,
-    ContainerInput,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
-    GroupFolder,
+from pynchy.workspace.api import (
     RuntimeTarget,
-    SessionId,
     WorkspaceProfile,
 )
+
+if TYPE_CHECKING:
+    from pynchy.agent_protocol.api import (
+        AgentExecutionRuntime,
+        ContainerInput,
+    )
 
 
 @runtime_checkable

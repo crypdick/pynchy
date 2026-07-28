@@ -5,13 +5,24 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot annotations.
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    ContainerOutput,
+    OnOutput,
+)
 from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator.api import resolve_agent_core, resolve_container_timeout
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
 from pynchy.host.orchestrator.prompt_loading import read_prompts
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.state.api import (
     get_all_host_jobs,
@@ -24,16 +35,9 @@ from pynchy.state.api import (
     set_session,
     update_in_flight_session,
 )
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ChatJid,
-    ContainerInput,
-    ContainerOutput,
-    GroupFolder,
-    OnOutput,
-    SessionId,
-    WorkspaceProfile,
-)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass

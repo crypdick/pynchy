@@ -6,11 +6,11 @@ import pytest
 from conftest import make_settings
 
 from pynchy.canaries import get_canary_report, run_declared_canaries
+from pynchy.canary_contracts import CanaryOutcome
 from pynchy.config.api import validate_settings_mapping
 from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 from pynchy.state import init_test_database
-from pynchy.types import CanaryOutcome
 
 
 @pytest.mark.asyncio

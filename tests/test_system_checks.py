@@ -13,11 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.plugins.runtimes.system_checks import (
     ensure_agent_image_available,
     ensure_container_system_running,
 )
-from pynchy.types import OrphanReapAgeMs
 
 _DEFAULT_ORPHAN_REAP_AGE = OrphanReapAgeMs(604800000)
 _PROJECT_ROOT = Path("project")

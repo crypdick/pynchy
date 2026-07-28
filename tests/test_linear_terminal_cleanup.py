@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationId,
@@ -28,9 +32,18 @@ from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import TemporalRuntimeUnavailableError
 from pynchy.host.orchestrator.webhook_conversations import ConversationWebhookDeps
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.plugins.api import WebhookLifecycleDelivery
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_lifecycle
 from pynchy.plugins.integrations.linear_work_item_completion import complete_reviewed_work_item
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionResolution,
@@ -61,18 +74,11 @@ from pynchy.state import (
 )
 from pynchy.state.webhook_models import WebhookReceipt
 from pynchy.state.work_item_models import WorkItemTransitionRequest
-from pynchy.types import (
-    ChatJid,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    ScheduledTask,
-    SessionId,
-    SessionPolicy,
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)

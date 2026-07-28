@@ -16,11 +16,15 @@ from pynchy.config.api import (
     WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     parse_chat_ref,
 )
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+)
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
-    Channel,
-    RuntimeId,
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,

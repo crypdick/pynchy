@@ -8,6 +8,9 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+)
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
     get_conversation,
@@ -16,9 +19,8 @@ from pynchy.state.api import (
     get_unfinished_work_item_execution,
     get_work_item_execution_for_task,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
-    ScheduledTask,
-    WorkItemExecution,
+from pynchy.work_items.api import (
+    WorkItemExecution,  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
 )
 
 

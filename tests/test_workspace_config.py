@@ -28,11 +28,13 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_restriction,
     update_profile_skill_policy,
 )
-from pynchy.plugins.api import WorkspaceSpec
-from pynchy.types import (
-    CapabilityRule,
+from pynchy.plugins.api import (
     InboundFetchResult,
     OutboundEvent,
+    WorkspaceSpec,
+)
+from pynchy.workspace.api import (
+    CapabilityRule,
     WorkspaceProfile,
     WorkspaceSecurity,
 )

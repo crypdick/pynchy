@@ -60,7 +60,11 @@ from pynchy.plugins.api import (
     ProbeStatus,
 )
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.types import CapabilityRule, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 _TOOL_NAME = "matrix_route_read"
 _ACTION_ID = "chat.matrix.route.read"

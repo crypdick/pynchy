@@ -1,5 +1,6 @@
 """Curated container-runtime capabilities for composition and internal assurance."""
 
+from pynchy.agent_protocol.api import McpStartupFailure
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.handlers_artifact_security import (
     evaluate_package_coordinates,
@@ -45,6 +46,7 @@ __all__ = [
     "GatewayRedactionPosture",
     "McpCanaryClient",
     "McpCanaryToolError",
+    "McpStartupFailure",
     "PackageCoordinate",
     "PackageEcosystem",
     "PackageIntent",

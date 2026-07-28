@@ -14,14 +14,16 @@ from unittest.mock import patch
 import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
+from pynchy.plugins.api import NewMessage
 from pynchy.state import get_chat_history, store_message
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

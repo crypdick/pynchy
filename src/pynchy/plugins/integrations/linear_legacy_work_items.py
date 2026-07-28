@@ -15,7 +15,7 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
-from pynchy.types import (
+from pynchy.work_items.api import (
     WorkItemClaimConflictError,
     WorkItemExecution,
     WorkItemExecutionStatus,

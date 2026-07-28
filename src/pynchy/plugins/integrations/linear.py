@@ -47,7 +47,10 @@ from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+)
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

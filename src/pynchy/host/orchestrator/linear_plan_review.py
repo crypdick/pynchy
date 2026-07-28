@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from pynchy.agent_protocol.api import ContainerOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.host.orchestrator.workspace_config import (
@@ -21,9 +22,8 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewResult,
 )
 from pynchy.logger import logger
-from pynchy.types import (
+from pynchy.workspace.api import (
     CapabilityRule,
-    ContainerOutput,
     RuntimeTarget,
     WorkspaceProfile,
 )

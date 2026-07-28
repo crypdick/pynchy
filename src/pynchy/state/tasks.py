@@ -10,8 +10,12 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state.connection import _get_db, _update_by_id, atomic_write
-from pynchy.types import ScheduledTask, SessionPolicy, TaskRunLog
 
 
 def _row_to_task(row: Row) -> ScheduledTask:

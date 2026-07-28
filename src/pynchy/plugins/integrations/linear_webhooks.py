@@ -49,8 +49,8 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     state_id,
     workspace_issue,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route validation annotations at runtime.
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves route validation annotations at runtime.
 )
 
 

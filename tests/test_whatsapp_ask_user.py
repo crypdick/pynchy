@@ -14,7 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from pynchy.host.orchestrator.messaging import pending_questions
-from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -21,14 +21,16 @@ from pynchy.host.orchestrator.workspace_threads import (
     WorkspaceThreadAction,
     reconcile_workspace_threads,
 )
-from pynchy.state import create_task
-from pynchy.types import (
+from pynchy.plugins.api import (
     InboundFetchResult,
     OutboundEvent,
+)
+from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
-    WorkspaceProfile,
 )
+from pynchy.state import create_task
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class _ThreadChannel:

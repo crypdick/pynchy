@@ -10,7 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
 from pynchy.config.api import get_settings
+from pynchy.deployments import DeployRevision
 from pynchy.host.git_ops.api import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
@@ -30,14 +35,11 @@ from pynchy.state.api import (
     prepare_in_flight_turn_recovery,
     set_chat_cleared_at,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    DeployRevision,
-    InFlightTurn,
+from pynchy.utils import write_json_atomic
+from pynchy.workspace.api import (
     WorkspaceProfile,
     WorkspaceSecurity,
 )
-from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue

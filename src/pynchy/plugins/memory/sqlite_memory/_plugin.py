@@ -24,7 +24,7 @@ from pynchy.plugins.api import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 from .backend import SqliteMemoryBackend
 

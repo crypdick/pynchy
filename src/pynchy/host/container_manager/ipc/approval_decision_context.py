@@ -14,7 +14,7 @@ from pynchy.host.container_manager.ipc.handlers_service import _get_action_catal
 from pynchy.host.container_manager.security.gate import (  # noqa: TC001, RUF100 - beartype resolves replay-gate annotations.
     SecurityGate,
 )
-from pynchy.types import APPROVAL_TIMEOUT_SECONDS
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 
 @dataclass(frozen=True)

@@ -21,7 +21,8 @@ from pynchy.config.api import (
     resolve_allowed_users,
     resolve_channel_config,
 )
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import WorkspaceProfile
 
 SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"

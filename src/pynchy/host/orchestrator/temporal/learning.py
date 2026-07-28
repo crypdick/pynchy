@@ -7,7 +7,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Tempora
     Awaitable,
     Callable,
 )
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from temporalio import activity
@@ -26,11 +26,13 @@ from pynchy.learning_packets import (
     packet_from_payload,
 )
 from pynchy.logger import logger
-from pynchy.types import (
-    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+from pynchy.workspace.api import (
     RuntimeTarget,
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    WorkspaceProfile,
 )
+
+if TYPE_CHECKING:
+    from pynchy.agent_protocol.api import ContainerOutput
 
 
 def learning_review_workflow_id(packet: LearningPacket) -> str:

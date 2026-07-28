@@ -23,7 +23,11 @@ from pynchy.plugins.integrations.caldav import (
     configure_caldav_runtime,
 )
 from pynchy.state import init_test_database
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 # CalDAV service handlers are exposed through the plugin's public tool contract —
 # the same registry the IPC service dispatcher consumes. Resolve them here rather

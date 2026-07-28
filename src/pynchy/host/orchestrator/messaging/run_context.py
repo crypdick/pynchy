@@ -8,11 +8,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves message
 from pathlib import (  # noqa: TC003, RUF100 - beartype resolves message-context path annotations at runtime.
     Path,
 )
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import pynchy.types as types  # noqa: TC001, RUF100 - beartype resolves message-context annotations at runtime.
 from pynchy.host.orchestrator.messaging import formatter as message_formatter
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import NewMessage
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 def _check_dirty_repo(
@@ -40,8 +43,8 @@ def _check_dirty_repo(
 
 def prepare_message_context(
     data_dir: Path,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
     *,
     is_admin_group: bool,
     repo_is_dirty: Callable[[], bool],

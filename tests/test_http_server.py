@@ -11,6 +11,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
+from pynchy.deployments import (
+    DeployClaim,
+    DeployClaimStatus,
+)
 from pynchy.host.git_ops.api import (
     get_head_commit_message,
     get_head_sha,
@@ -25,10 +29,12 @@ from pynchy.host.orchestrator.http_server import (
     prepare_http_server,
     publish_http_server,
 )
-from pynchy.types import DeployClaim, DeployClaimStatus, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
     from aiohttp import web
+
+    from pynchy.scheduling.api import ScheduledTask
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 def _cp(

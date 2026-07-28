@@ -53,12 +53,10 @@ from pynchy.host.orchestrator.workspace_config import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.plugins.api import AgentCoreSpec
-from pynchy.types import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves timeout annotations at runtime.
-)
 
 if TYPE_CHECKING:
     from pynchy.turn_outcomes import TurnOutcome
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 async def dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:

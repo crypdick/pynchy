@@ -11,10 +11,14 @@ from pathlib import (
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
-from pynchy.host.container_manager.credentials import build_agent_env_vars
-from pynchy.host.container_manager.mcp.startup import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+    AgentExecutionRuntime,
+    ContainerInput,
     McpStartupFailure,
+    VolumeMount,
+    input_to_dict,
 )
+from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.git_ops.api import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
@@ -25,14 +29,10 @@ from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
 from pynchy.logger import logger
 from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_configs
 from pynchy.runtime_names import runtime_container_name
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
-    AgentExecutionRuntime,
-    ContainerInput,
-    VolumeMount,
-    WorkspaceProfile,
-    input_to_dict,
-)
 from pynchy.utils import filtered_process_environment
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+)
 
 type EnsureAgentImage = Callable[..., None]
 

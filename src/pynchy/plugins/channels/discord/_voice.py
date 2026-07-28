@@ -23,7 +23,10 @@ from discord import opus
 
 from pynchy.discord import DiscordChatTarget
 from pynchy.logger import logger
-from pynchy.types import AudioTranscriptionResult, NewMessage
+from pynchy.plugins.api import (
+    AudioTranscriptionResult,
+    NewMessage,
+)
 from pynchy.utils import create_background_task
 
 from ._access import InboundContext

@@ -8,7 +8,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves child policy annotations.  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
     ResolvedWorkspaceConfig,
@@ -20,7 +20,10 @@ from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import Channel
 
 
 @dataclass(frozen=True)

@@ -11,8 +11,11 @@ from pynchy.conversation.api import (
     dynamic_thread_folder,
     routed_conversation_folder,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
 from pynchy.state.connection import _get_db
-from pynchy.types import ChatJid, GroupFolder
 
 if TYPE_CHECKING:
     from aiosqlite import Connection, Row

@@ -19,8 +19,9 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
+from pynchy.scheduling.api import SessionPolicy
 from pynchy.state import get_all_tasks
-from pynchy.types import SessionPolicy, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class MockDeps(NullIpcDeps):

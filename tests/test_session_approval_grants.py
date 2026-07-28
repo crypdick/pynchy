@@ -11,7 +11,11 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.plugins.api import ApprovalMode, HostActionDescriptor
-from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 
 def _action(

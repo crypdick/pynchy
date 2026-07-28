@@ -15,7 +15,7 @@ from pathlib import Path
 import pluggy
 
 from pynchy.plugins.api import McpServerConfig, McpServerSpec
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

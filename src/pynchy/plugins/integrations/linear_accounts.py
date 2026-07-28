@@ -9,7 +9,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass
 
-from pynchy.types import LinearAccountConfig, is_linear_account_config
+from pynchy.integration_contracts import (
+    LinearAccountConfig,
+    is_linear_account_config,
+)
 
 
 @dataclass(frozen=True)

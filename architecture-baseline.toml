@@ -3,13 +3,6 @@ version = 2
 # Exact, shrinking exceptions to the independent visibility and direction gates.
 # Regeneration is not an approved fix: remove entries only when source stops matching.
 
-# Temporary exact-path exceptions to the root-module inbound-importer budget.
-# Each count must shrink with the module split; a new or larger count fails CI.
-[[root_module_inbound_imports]]
-path = "src/pynchy/types.py"
-count = 194
-reason = "Mixed-domain contracts are being moved into their owning packages."
-
 [[root_module_inbound_imports]]
 path = "src/pynchy/utils.py"
 count = 30

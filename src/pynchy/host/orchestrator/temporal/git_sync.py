@@ -13,6 +13,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from pynchy.config.api import get_settings
+from pynchy.deployments import DeployRevision
 from pynchy.host.git_ops.api import (
     HostSyncState,
     check_local_head_drift,
@@ -45,13 +46,10 @@ from pynchy.state.api import (
     get_router_state,
     set_router_state,
 )
-from pynchy.types import (
-    DeployRevision,
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal git-sync annotations at runtime.
-)
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
+    from pynchy.workspace.api import WorkspaceProfile
 
 HOST_GIT_SYNC_ID = "git-sync-host"
 HOST_STATE_KEY = "temporal_git_sync_host_state"

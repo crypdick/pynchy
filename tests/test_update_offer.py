@@ -10,21 +10,22 @@ from beartype import beartype
 from conftest import NullChannel
 
 from pynchy.config.api import SchedulerConfig
-from pynchy.host.orchestrator import update_offer
-from pynchy.state import init_test_database, initialize_deployment_state
-from pynchy.types import (
-    AgentExecutionRuntime,
+from pynchy.deployments import (
     DeployClaim,
     DeployClaimStatus,
     DeployRevision,
-    WorkspaceProfile,
 )
+from pynchy.host.orchestrator import update_offer
+from pynchy.state import init_test_database, initialize_deployment_state
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
     import pytest
+
+    from pynchy.agent_protocol.api import AgentExecutionRuntime
 
 _OLD_SHA = "a" * 40
 _NEW_SHA = "b" * 40

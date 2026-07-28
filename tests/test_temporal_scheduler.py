@@ -29,6 +29,15 @@ import pynchy.host.orchestrator.temporal.linear_work_items as temporal_linear_wo
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+)
+from pynchy.canary_contracts import (
+    CanaryOutcome,
+    CanaryRun,
+)
 from pynchy.config.api import (
     CanaryConfig,
     JobConfig,
@@ -37,6 +46,11 @@ from pynchy.config.api import (
     ReposConfig,
     SchedulerConfig,
     WorkspaceConfig,
+)
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployClaimStatus,
+    DeployRevision,
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
@@ -47,6 +61,11 @@ from pynchy.host.orchestrator.startup_readiness import (
 )
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.learning_packets import LearningPacket, packet_to_payload
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import (
     begin_in_flight_turn,
     claim_in_flight_turn,
@@ -55,21 +74,8 @@ from pynchy.state import (
     initialize_deployment_state,
 )
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import (
-    CanaryOutcome,
-    CanaryRun,
-    CheckpointControlState,
-    DeployChangeKind,
-    DeployClaimStatus,
-    DeployRevision,
-    HostJob,
-    InFlightTurn,
-    InFlightWorkKind,
-    ScheduledTask,
-    SessionPolicy,
-    WorkspaceProfile,
-)
 from pynchy.utils import ShellResult
+from pynchy.workspace.api import WorkspaceProfile
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"

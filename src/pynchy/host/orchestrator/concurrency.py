@@ -14,7 +14,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Callable,
 )
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from pynchy.host.orchestrator.queue_serialization import (
     await_message_turn,
@@ -28,11 +28,11 @@ from pynchy.host.orchestrator.runtime_process_control import (
 from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
 from pynchy.logger import logger
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import (
-    RuntimeId,  # noqa: TC001, RUF100
-    RuntimeTarget,  # noqa: TC001, RUF100
-)
 from pynchy.utils import create_background_task
+
+if TYPE_CHECKING:
+    from pynchy.identifiers import RuntimeId
+    from pynchy.workspace.api import RuntimeTarget
 
 _ResultT = TypeVar("_ResultT")
 

@@ -15,25 +15,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullChannel, make_settings
 
-import pynchy.types as serialization
 from pynchy import state
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    InFlightTurn,
+    InFlightWorkKind,
+    parse_container_output,
+)
 from pynchy.config.api import NotificationsConfig
+from pynchy.deployments import DeployRevision
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
-from pynchy.plugins.api import ChannelPluginContext
+from pynchy.identifiers import RuntimeId
+from pynchy.plugins.api import ChannelPluginContext, NewMessage
 from pynchy.state import get_chat_history, set_router_state, store_message
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import (
-    AgentExecutionRuntime,
-    DeployRevision,
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
-    RuntimeId,
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )
@@ -205,7 +206,7 @@ class FakeProcess(asyncio.subprocess.Process):
         assert handler is not None, "Session has no output handler"
 
         if self._output:
-            output = serialization.parse_container_output(json.dumps(self._output))
+            output = parse_container_output(json.dumps(self._output))
             await handler(output)
 
             # Emit query-done pulse via signal_query_done
@@ -214,7 +215,7 @@ class FakeProcess(asyncio.subprocess.Process):
                 "result": None,
                 "new_session_id": self._output.get("new_session_id", "test-session"),
             }
-            pulse = serialization.parse_container_output(json.dumps(pulse_data))
+            pulse = parse_container_output(json.dumps(pulse_data))
             await handler(pulse)
             session.signal_query_done()
 
@@ -278,7 +279,7 @@ async def _schedule_outputs_via_session(
 
     for output_dict in outputs:
         await asyncio.sleep(0.01)
-        parsed = serialization.parse_container_output(json.dumps(output_dict))
+        parsed = parse_container_output(json.dumps(output_dict))
         await handler(parsed)
         if is_query_done_pulse(parsed):
             emitted_pulse = True
@@ -286,7 +287,7 @@ async def _schedule_outputs_via_session(
 
     # If no output triggered query done, append a pulse
     if not emitted_pulse:
-        pulse = serialization.parse_container_output(
+        pulse = parse_container_output(
             json.dumps({"status": "success", "result": None, "new_session_id": final_session_id})
         )
         await handler(pulse)

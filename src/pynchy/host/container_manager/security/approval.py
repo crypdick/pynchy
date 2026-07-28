@@ -43,7 +43,11 @@ from pynchy.host.container_manager.security.identity import (
     request_payload_hash,
 )
 from pynchy.logger import logger
-from pynchy.types import APPROVAL_TIMEOUT_SECONDS, OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
 # 2-char IDs give 1296 combinations — more than enough for the handful

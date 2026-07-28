@@ -5,24 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from pynchy.types import (
-    WorkItemClaimConflictError as RuntimeWorkItemClaimConflictError,
-)
-from pynchy.types import (
-    WorkItemExecution as RuntimeWorkItemExecution,
-)
-from pynchy.types import (
-    WorkItemExecutionStatus as RuntimeWorkItemExecutionStatus,
-)
-from pynchy.types import (
-    WorkItemTransition as RuntimeWorkItemTransition,
-)
-from pynchy.types import (
-    WorkItemTransitionRequest as RuntimeWorkItemTransitionRequest,
-)
-from pynchy.types import (
-    WorkItemTransitionStatus as RuntimeWorkItemTransitionStatus,
-)
+from pynchy.work_items.api import WorkItemClaimConflictError as RuntimeWorkItemClaimConflictError
+from pynchy.work_items.api import WorkItemExecution as RuntimeWorkItemExecution
+from pynchy.work_items.api import WorkItemExecutionStatus as RuntimeWorkItemExecutionStatus
+from pynchy.work_items.api import WorkItemTransition as RuntimeWorkItemTransition
+from pynchy.work_items.api import WorkItemTransitionRequest as RuntimeWorkItemTransitionRequest
+from pynchy.work_items.api import WorkItemTransitionStatus as RuntimeWorkItemTransitionStatus
 
 # Dataclass constructors are runtime type-checked, so beartype must resolve these names here.
 WorkItemExecution = RuntimeWorkItemExecution

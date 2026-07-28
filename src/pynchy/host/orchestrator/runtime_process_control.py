@@ -8,6 +8,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves operati
     Callable,
 )
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pynchy.host.orchestrator.host_runner import stop_host_process
 from pynchy.host.orchestrator.queue_state import HostProcessLease  # noqa: TC001, RUF100
@@ -15,10 +16,10 @@ from pynchy.host.orchestrator.runtime_registry import (  # noqa: TC001, RUF100 -
     RuntimeRegistry,
 )
 from pynchy.logger import logger
-from pynchy.types import (
-    RuntimeId,  # noqa: TC001, RUF100
-    RuntimeTarget,  # noqa: TC001, RUF100
-)
+
+if TYPE_CHECKING:
+    from pynchy.identifiers import RuntimeId
+    from pynchy.workspace.api import RuntimeTarget
 
 
 @dataclass(frozen=True)

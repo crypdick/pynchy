@@ -24,7 +24,7 @@ from pynchy.host.git_ops.api import (
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

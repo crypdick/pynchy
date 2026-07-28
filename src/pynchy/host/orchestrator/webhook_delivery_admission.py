@@ -16,13 +16,13 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves admi
     WebhookEvent,
     WebhookRoute,
 )
+from pynchy.scheduling.api import ScheduledTask  # noqa: TC001, RUF100 - beartype resolves requests.
 from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     admit_webhook_receipt,
     classify_webhook_effect_callback,
 )
-from pynchy.types import ScheduledTask  # noqa: TC001, RUF100 - beartype resolves requests.
 from pynchy.webhook_effects import WebhookEffectCallbackDecision
 
 

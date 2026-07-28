@@ -45,13 +45,15 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_work_item_lease,
 )
-from pynchy.types import (
+from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
+    agent_task_workflow_id,
+)
+from pynchy.work_items.api import (
     WorkItemClaimConflictError,
     WorkItemExecution,
     WorkItemExecutionStatus,
-    agent_task_workflow_id,
 )
 
 if TYPE_CHECKING:

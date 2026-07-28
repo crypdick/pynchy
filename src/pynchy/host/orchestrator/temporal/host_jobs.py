@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from temporalio import activity
 
@@ -19,10 +20,10 @@ from pynchy.host.orchestrator.temporal.schedules import (
 )
 from pynchy.logger import logger
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
-from pynchy.types import (
-    HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
-)
 from pynchy.utils import ShellResult, log_shell_result, run_shell_command
+
+if TYPE_CHECKING:
+    from pynchy.scheduling.api import HostJob
 
 
 def _resolve_job_cwd(cwd: str | None) -> str:

@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.scheduling.api import HostJob
 from pynchy.state.connection import _get_db, _update_by_id
-from pynchy.types import HostJob
 
 
 def _row_to_host_job(row: Row) -> HostJob:

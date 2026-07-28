@@ -1,7 +1,7 @@
 """Tests for host-side agent session id tracking."""
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.agent_runner import session_id_from_output
-from pynchy.types import ContainerOutput
 
 
 def test_session_id_from_output_reads_system_event_metadata():

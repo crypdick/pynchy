@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.plugins.api import NewMessage
 
 from ._ids import jid as slack_jid
 

@@ -9,8 +9,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,
+    InFlightTurn,
+    InFlightWorkKind,
+    OnOutput,
+)
 from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
@@ -21,6 +27,7 @@ from pynchy.host.orchestrator.messaging.in_flight import (
 from pynchy.host.orchestrator.scheduled_turn_deps import (  # noqa: TC001, RUF100 - beartype resolves request annotations.
     ScheduledTurnDeps,
 )
+from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.state.api import (
     clear_in_flight_turn,
@@ -30,16 +37,11 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves terminal outcome annotations at runtime.
     TurnOutcome,
 )
-from pynchy.types import (
-    ContainerOutput,
-    InFlightTurn,
-    InFlightWorkKind,
-    OnOutput,
-    RuntimeId,
-    ScheduledTask,
-    WorkspaceProfile,
-)
 from pynchy.utils import IdleTimer
+
+if TYPE_CHECKING:
+    from pynchy.scheduling.api import ScheduledTask
+    from pynchy.workspace.api import WorkspaceProfile
 
 SCHEDULED_TURN_INTERRUPTED = "__scheduled_turn_interrupted__"
 

@@ -13,12 +13,14 @@ from pynchy.host.orchestrator.queue_state import (  # noqa: TC001, RUF100 - bear
     GroupState,
     QueuedTask,
 )
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+)
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
     TurnOutcome,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves callback annotations.
-    RuntimeTarget,
+from pynchy.workspace.api import (
+    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
 )
 
 

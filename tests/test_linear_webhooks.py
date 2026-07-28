@@ -74,6 +74,10 @@ from pynchy.host.orchestrator.webhook_event_payloads import (
     webhook_event_from_payload,
     webhook_event_payload,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    SessionId,
+)
 from pynchy.plugins.api import (
     WebhookAuthenticationError,
     WebhookConfigurationError,
@@ -113,13 +117,11 @@ from pynchy.state import (
     set_conversation_control_binding,
     set_conversation_session,
 )
-from pynchy.types import (
-    GroupFolder,
-    SessionId,
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

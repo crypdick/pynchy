@@ -16,9 +16,12 @@ from pathlib import (
 )
 from typing import Any, cast
 
+from pynchy.deployments import (
+    DeployChangeKind,
+    DeployRevision,
+)
 from pynchy.logger import logger
 from pynchy.state import api as pynchy_state
-from pynchy.types import DeployChangeKind, DeployRevision
 from pynchy.utils import write_json_atomic
 
 

@@ -11,7 +11,7 @@ from pynchy.host.container_manager.mounts import build_volume_mounts
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.agent_cores.codex import CodexAgentCorePlugin
 from pynchy.plugins.api import AgentCoreSpec
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 def _group(folder: str = "codex-group") -> WorkspaceProfile:

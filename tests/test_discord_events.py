@@ -22,7 +22,12 @@ from pynchy.plugins.channels.discord import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pynchy.types import InboundAudioProcessingRequest, InboundAudioProcessingResult, NewMessage
+    from pynchy.plugins.api import (
+        InboundAudioProcessingRequest,
+        InboundAudioProcessingResult,
+        NewMessage,
+    )
+
 
 BOT_ID = "999"
 DISCORD_BOT_ENV = "X"

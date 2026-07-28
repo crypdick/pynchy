@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.types import NewMessage
+    from pynchy.plugins.api import NewMessage
 
 s = make_settings()
 TRIGGER_PATTERN = s.trigger_pattern

@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100
+    ContainerInput,
+    ContainerOutput,
+)
 from pynchy.config.api import get_settings
 from pynchy.host.learning.api import (
     prepare_agent_homes,
@@ -25,12 +29,8 @@ from pynchy.host.orchestrator.codex_rollouts import (
 )
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
-from pynchy.types import (  # noqa: TC001, RUF100
-    ContainerInput,
-    ContainerOutput,
-    RuntimeId,
-    RuntimeTarget,  # noqa: TC001, RUF100
-)
+from pynchy.identifiers import RuntimeId  # noqa: TC001, RUF100
+from pynchy.workspace.api import RuntimeTarget  # noqa: TC001, RUF100
 
 if TYPE_CHECKING:
     import asyncio

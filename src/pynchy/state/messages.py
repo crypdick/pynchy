@@ -13,11 +13,9 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
+from pynchy.plugins.api import NewMessage
 from pynchy.state.chat_parents import ensure_chat_parent
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import (
-    NewMessage,  # noqa: TC001, RUF100 - beartype resolves state API annotations.
-)
 
 
 def _row_to_message(row: Row) -> NewMessage:

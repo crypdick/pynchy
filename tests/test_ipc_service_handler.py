@@ -27,7 +27,12 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.plugins.api import ApprovalMode, HostActionCatalog
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)

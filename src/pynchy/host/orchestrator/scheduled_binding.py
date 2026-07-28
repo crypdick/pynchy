@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves binding port annotations.
     Conversation,
@@ -24,15 +24,19 @@ from pynchy.host.orchestrator.conversation_control import (
 from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.types import (
-    Channel,
+from pynchy.identifiers import (
     ChatJid,
     GroupFolder,
-    ScheduledTask,
     SessionId,
-    SessionPolicy,
-    WorkspaceProfile,
 )
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import Channel
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 class ScheduledTaskOwnershipError(RuntimeError):

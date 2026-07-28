@@ -20,6 +20,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
 
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    ContainerOutput,
+)
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
 from pynchy.config.api import Settings, access, get_settings
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
@@ -148,10 +153,18 @@ from pynchy.host.orchestrator.workspace_registration import (
     rebind_workspace_runtime,
     workspace_security,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    RuntimeId,
+    SessionId,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+    Channel,
     MemoryProvider,
+    NewMessage,
     ObserverProvider,
+    OutboundEvent,
     prepare_context_reset,
 )
 from pynchy.plugins.runtimes.api import (
@@ -186,25 +199,14 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.types import (
-    AgentExecutionRuntime,
-    Channel,
-    ContainerInput,
-    ContainerOutput,
-    GroupFolder,
-    McpStartupFailure,
-    NewMessage,
-    OutboundEvent,
-    RuntimeId,
-    ScheduledTask,
-    SessionId,
-    WorkspaceProfile,
-)
 from pynchy.utils import write_json_atomic
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
+    from pynchy.host.container_manager.api import McpStartupFailure
     from pynchy.host.container_manager.ipc import IpcDeps
     from pynchy.learning_packets import LearningPacket
+    from pynchy.scheduling.api import ScheduledTask
 
 
 async def _fresh_container_name(group_folder: str) -> str:

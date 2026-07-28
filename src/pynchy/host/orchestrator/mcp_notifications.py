@@ -7,10 +7,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves notific
     Callable,
 )
 
-from pynchy.logger import logger
-from pynchy.types import (
-    McpStartupFailure,  # noqa: TC001, RUF100 - beartype resolves notification signatures at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves notification callback signatures at runtime.
+    McpStartupFailure,
 )
+from pynchy.logger import logger
 
 
 async def notify_mcp_startup_failures(

@@ -15,8 +15,12 @@ from pynchy.conversation.api import (
     parent_workspace_name,
     routed_conversation_folder,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.logger import logger
-from pynchy.types import ChatJid, GroupFolder, SessionId
 
 
 class RuntimeOwnershipRepairConflictError(RuntimeError):

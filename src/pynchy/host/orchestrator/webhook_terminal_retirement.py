@@ -13,7 +13,9 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
     conversation_runtime_lock,
 )
 from pynchy.host.orchestrator.workspace_config import unregister_runtime_workspace_restriction
-from pynchy.types import GroupFolder  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.identifiers import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+)
 
 
 @runtime_checkable

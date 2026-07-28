@@ -26,7 +26,7 @@ from pathlib import (
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     InboundAudioAttachment,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,

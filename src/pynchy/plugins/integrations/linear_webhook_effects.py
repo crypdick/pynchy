@@ -12,6 +12,7 @@ from typing import Any
 import aiohttp
 
 from pynchy.conversation.api import conversation_runtime_lock
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     WebhookConversation,
@@ -36,7 +37,10 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     state_id,
     workspace_issue,
 )
-from pynchy.types import GroupFolder, WorkItemClaimConflictError, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
+    WorkItemExecutionStatus,
+)
 
 _TERMINAL_STATE_BLOCKER = (
     "Linear reported a terminal state before this managed execution finished. "

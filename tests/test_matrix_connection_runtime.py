@@ -28,7 +28,13 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
-from pynchy.plugins.api import ConnectionRuntimeContext
+from pynchy.identifiers import GroupFolder
+from pynchy.plugins.api import (
+    ConnectionRuntimeContext,
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+)
 from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayError,
@@ -53,13 +59,7 @@ from pynchy.state import (
     set_external_provider_cursor,
     set_workspace_profile,
 )
-from pynchy.types import (
-    GroupFolder,
-    InboundFetchResult,
-    NewMessage,
-    OutboundEvent,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 _ROOM = "!family:matrix.example.com"
 _OWNER = "@me:matrix.example.com"

@@ -21,7 +21,10 @@ from pynchy.plugins.api import (
     HostActionAccess,
     HostActionDescriptor,
 )
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 # ---------------------------------------------------------------------------
 # SecurityGate

@@ -28,8 +28,13 @@ from pynchy.host.container_manager.security.approval import (
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 from pynchy.host.orchestrator.messaging.deps import ApprovalRuntimeOperations
-from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.plugins.api import OutboundEventType
 from pynchy.utils import write_json_atomic
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path

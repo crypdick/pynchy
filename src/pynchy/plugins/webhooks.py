@@ -17,13 +17,15 @@ from pynchy.conversation.api import (
     ExternalDeliveryIdentity,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
 )
 from pynchy.logger import logger
-from pynchy.types import GroupFolder, WorkspaceProfile
 from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves webhook evidence.
     WebhookEffectEvidence,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
+
+    from pynchy.identifiers import GroupFolder
 
 _ROUTE_COMPONENT = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
 _ENV_REFERENCE = re.compile(r"[A-Z][A-Z0-9_]*")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.conversation.api import (
     ConversationClaimId,
@@ -41,8 +41,10 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_restriction,
     unregister_runtime_workspace_restriction,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
+    NewMessage,
     WebhookEvent,
     WebhookRoute,
 )
@@ -58,7 +60,9 @@ from pynchy.state.api import (
     release_conversation_delivery_claim,
     resolve_conversation,
 )
-from pynchy.types import GroupFolder, NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @runtime_checkable

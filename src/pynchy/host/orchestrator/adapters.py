@@ -9,20 +9,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.state.api import clear_session, store_message_direct
-from pynchy.types import (
+from pynchy.plugins.api import (
     Channel,
-    GroupFolder,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
 )
+from pynchy.state.api import clear_session, store_message_direct
 from pynchy.utils import create_background_task, generate_message_id
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]

@@ -17,11 +17,13 @@ from pynchy.config.api import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     SessionPolicy,
-    WorkspaceProfile,
+)
+from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
 )
 
 _JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt or prompt_file"

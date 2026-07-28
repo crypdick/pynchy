@@ -14,7 +14,12 @@ from pynchy.host.orchestrator.http_control import (
     ControlPlaneToken,
     RequestRateLimiter,
 )
-from pynchy.plugins.api import WebhookRoute
+from pynchy.plugins.api import (
+    InboundFetchResult,
+    NewMessage,
+    OutboundEvent,
+    WebhookRoute,
+)
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRouteConfig,
     parse_linear_webhook,
@@ -31,14 +36,7 @@ from pynchy.state import (
 from pynchy.state import (
     retire_conversation_for_terminal as retire_terminal_state,
 )
-from pynchy.types import (
-    InboundFetchResult,
-    NewMessage,
-    OutboundEvent,
-    ScheduledTask,
-    SessionId,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -50,6 +48,8 @@ if TYPE_CHECKING:
         ExternalDeliveryIdentity,
         TerminalConversationRetirement,
     )
+    from pynchy.identifiers import SessionId
+    from pynchy.scheduling.api import ScheduledTask
 
 SIGNING_KEY = "linear-webhook-test-signing-key-long-enough"
 DELIVERY_ID = "234d1a4e-b617-4388-90fe-adc3633d6b72"

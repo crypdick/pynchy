@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from typing import TYPE_CHECKING
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations.
 
-from pynchy.types import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations.
-)
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 async def prepare_context_reset(

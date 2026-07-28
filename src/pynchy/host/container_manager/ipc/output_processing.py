@@ -6,11 +6,15 @@ import asyncio
 import contextlib
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC output paths at runtime.
 
+from pynchy.agent_protocol.api import (
+    OnOutput,
+    parse_container_output,
+)
 from pynchy.host.container_manager import session as session_manager
 from pynchy.host.container_manager.ipc.output_claims import claim_output_file
 from pynchy.host.container_manager.process import is_query_done_pulse
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.types import GroupFolder, OnOutput, parse_container_output
 
 
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:

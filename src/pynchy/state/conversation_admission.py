@@ -9,9 +9,9 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
     ConversationSubject,
     ExternalDeliveryIdentity,
 )
+from pynchy.identifiers import GroupFolder  # noqa: TC001, RUF100 - beartype resolves at runtime.
 from pynchy.state.connection import atomic_write
 from pynchy.state.conversation_routing import _admit_conversation_delivery
-from pynchy.types import GroupFolder  # noqa: TC001, RUF100 - beartype resolves at runtime.
 
 
 async def admit_conversation_delivery(

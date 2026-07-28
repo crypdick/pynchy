@@ -26,6 +26,7 @@ from pynchy.host.container_manager.security.gate import (
     resolve_security,
 )
 from pynchy.host.orchestrator import api as workspace_config
+from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ApprovalMode,
@@ -36,7 +37,6 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves thes
     missing_workspace_tool,
 )
 from pynchy.plugins.integrations.api import get_active_matrix_route
-from pynchy.types import ChatJid
 
 
 @dataclass(frozen=True)

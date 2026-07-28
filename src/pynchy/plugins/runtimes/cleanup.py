@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from pynchy.identifiers import OrphanReapAgeMs  # noqa: TC001, RUF100 - public cleanup contract
 from pynchy.logger import logger
 from pynchy.runtime_names import runtime_namespace
-from pynchy.types import OrphanReapAgeMs  # noqa: TC001, RUF100 - public cleanup contract
 
 _LIVE_STATES = {"running", "paused", "restarting"}
 _DISPOSABLE_STATES = {"created", "dead", "exited", "stopped"}

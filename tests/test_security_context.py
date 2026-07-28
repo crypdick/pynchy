@@ -7,12 +7,16 @@ from typing import Literal
 import pytest
 
 from pynchy import state
-from pynchy.types import (
+from pynchy.agent_protocol.api import (
     CheckpointControlState,
     InFlightTurn,
     InFlightWorkKind,
+)
+from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
+)
+from pynchy.work_items.api import (
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
 )

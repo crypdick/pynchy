@@ -9,7 +9,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from croniter import croniter
 
@@ -20,8 +20,15 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.types import GroupFolder, ScheduledTask, SessionPolicy, WorkspaceProfile
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
-from pynchy.types import CapabilityRule
+from pynchy.workspace.api import CapabilityRule
 
 
 def _deduplicate(items: list[str]) -> list[str]:

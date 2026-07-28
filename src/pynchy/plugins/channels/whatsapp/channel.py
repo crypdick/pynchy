@@ -14,7 +14,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from neonize.aioze import client as neonize_client
 from neonize.aioze import events as neonize_events
@@ -36,14 +36,16 @@ from pynchy.host.orchestrator.api import (
     find_pending_for_jid,
 )
 from pynchy.logger import logger
-from pynchy.types import (
+from pynchy.plugins.api import (
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
-    WorkspaceProfile,
 )
 
 from .ask_user import resolve_ask_user_answer
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 

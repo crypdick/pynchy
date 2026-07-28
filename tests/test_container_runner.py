@@ -32,6 +32,14 @@ from pynchy.agent_home import (
     sync_skills,
     write_settings_json,
 )
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+    ContainerOutput,
+    VolumeMount,
+    input_to_dict,
+    parse_container_output,
+)
 from pynchy.config.api import (
     AgentConfig,
     ContainerConfig,
@@ -85,23 +93,19 @@ from pynchy.host.orchestrator.agent_runner import (
 from pynchy.host.orchestrator.api import resolve_agent_core
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.plugins.api import AgentCoreSpec
 from pynchy.state import SessionSecurityTaint
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ChatJid,
-    ContainerInput,
-    ContainerOutput,
-    GroupFolder,
-    RuntimeTarget,
-    SessionId,
-    VolumeMount,
-    WorkspaceProfile,
-    input_to_dict,
-    parse_container_output,
-)
 from pynchy.utils import ProgressTimeoutError, filtered_process_environment
+from pynchy.workspace.api import (
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

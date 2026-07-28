@@ -14,11 +14,18 @@ from conftest import (
     make_settings,
 )
 
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+)
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator import host_runner
 from pynchy.host.orchestrator.agent_runner import PreContainerResult, run_agent
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.types import AgentExecutionRuntime, ContainerInput, RuntimeTarget, WorkspaceProfile
+from pynchy.workspace.api import (
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 _TEST_GROUP = WorkspaceProfile(
     jid="test@g.us",

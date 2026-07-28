@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves registry annotations.
     ValuesView,
 )
+from typing import TYPE_CHECKING
 
 from pynchy.host.orchestrator.queue_state import GroupState
-from pynchy.types import (
-    RuntimeId,  # noqa: TC001, RUF100
-    RuntimeTarget,  # noqa: TC001, RUF100
-)
+
+if TYPE_CHECKING:
+    from pynchy.identifiers import RuntimeId
+    from pynchy.workspace.api import RuntimeTarget
 
 
 class RuntimeRegistry:

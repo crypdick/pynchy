@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.conversation.api import (
     Conversation,
@@ -24,9 +24,21 @@ from pynchy.host.orchestrator.conversation_control import (
     sync_conversation_control_state,
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.logger import logger
-from pynchy.plugins.api import WebhookLifecycleDelivery, WebhookRoute
-from pynchy.types import Channel, ChatJid, GroupFolder, NewMessage, SessionId, WorkspaceProfile
+from pynchy.plugins.api import (
+    Channel,
+    NewMessage,
+    WebhookLifecycleDelivery,
+    WebhookRoute,
+)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]
 

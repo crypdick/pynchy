@@ -18,6 +18,7 @@ from pynchy.config.api import (
     validate_settings_mapping,
 )
 from pynchy.conversation.models import ConversationId
+from pynchy.identifiers import ChatJid
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import ApprovalTrigger, HostActionAccess
 from pynchy.plugins.integrations import matrix_gateway
@@ -38,7 +39,6 @@ from pynchy.plugins.integrations.matrix_route_resolution import (
     ResolvedMatrixRoute,
     resolve_matrix_routes,
 )
-from pynchy.types import ChatJid
 
 _ROOM = "!family:matrix.example.com"
 _CONTROL = "discord:thread:family"

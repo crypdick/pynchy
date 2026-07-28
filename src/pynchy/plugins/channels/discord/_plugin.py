@@ -17,18 +17,18 @@ from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this run
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    AudioTranscriptionResult,
     ChannelPluginContext,
+    InboundAudioProcessingRequest,
+    InboundAudioProcessingResult,
+    NewMessage,
 )
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves plugin annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    AudioTranscriptionResult,
-    InboundAudioProcessingRequest,
-    InboundAudioProcessingResult,
-    NewMessage,
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 
 from ._channel import DiscordChannel

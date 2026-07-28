@@ -14,7 +14,8 @@ from pynchy.host.container_manager.security.cop import (
 )
 from pynchy.host.container_manager.security.cop_gate import cop_gate
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import OutboundEventType, WorkspaceSecurity
+from pynchy.plugins.api import OutboundEventType
+from pynchy.workspace.api import WorkspaceSecurity
 
 
 @pytest.fixture

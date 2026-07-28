@@ -21,12 +21,12 @@ from pynchy.host.orchestrator.webhook_event_rendering import (
     event_public_source,
     prompt_for_event,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves processing annotations at runtime.
     WebhookEvent,
     WebhookRoute,
 )
 from pynchy.state.api import WebhookConversationRequest
-from pynchy.types import GroupFolder
 
 
 def conversation_admission_request(

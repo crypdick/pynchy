@@ -15,10 +15,17 @@ from pynchy.host.container_manager.api import (
     destroy_gate,
     handle_artifact_security_check,
 )
-from pynchy.types import Channel, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc import IpcDeps
+    from pynchy.plugins.api import (
+        Channel,
+        OutboundEvent,
+    )
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -35,7 +36,10 @@ from pynchy.plugins.integrations.github_webhooks import (
     prepare_github_webhook_event,
 )
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.scheduling.api import ScheduledTask
 
 _SIGNING_KEY = "github-webhook-test-signing-key-long-enough"
 _DELIVERY_ID = "ee7b4ec5-daa1-48fa-8c8f-c4de20e9d65f"

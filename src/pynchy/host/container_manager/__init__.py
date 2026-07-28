@@ -16,6 +16,7 @@ This package is split into focused submodules:
 # Re-export public API so that `from pynchy.host.container_manager import X` works.
 # Private helpers should be imported from their submodules directly.
 
+from pynchy.agent_protocol.api import OnOutput
 from pynchy.host.container_manager.credentials import has_api_credentials
 from pynchy.host.container_manager.session import (
     ContainerSession,
@@ -27,7 +28,6 @@ from pynchy.host.container_manager.session import (
     get_session,
     get_session_output_handler,
 )
-from pynchy.types import OnOutput
 
 __all__ = [
     "ContainerSession",

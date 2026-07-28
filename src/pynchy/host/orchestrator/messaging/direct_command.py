@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-import pynchy.types as types
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.deps import DirectCommandDeps, DirectCommandOutput
 from pynchy.logger import logger
+from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import run_shell_command
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 async def execute_direct_command(
     deps: DirectCommandDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    group: WorkspaceProfile,
+    message: NewMessage,
     command: str,
 ) -> None:
     """Execute a user command directly without LLM approval."""
@@ -57,8 +61,8 @@ async def execute_direct_command(
         )
     )
 
-    event = types.OutboundEvent(
-        type=types.OutboundEventType.TOOL_RESULT,
+    event = OutboundEvent(
+        type=OutboundEventType.TOOL_RESULT,
         content=output_text,
         metadata={"verbose": True},
     )

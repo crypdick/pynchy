@@ -7,22 +7,24 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves cancell
     Callable,
 )
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
+from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     transition_linked_work_item,
 )
-from pynchy.types import (
-    ChatJid,
+from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
-    WorkspaceProfile,
 )
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 _RESET_BLOCKER = (
     "The conversation context was reset during active execution. Pynchy cancelled "

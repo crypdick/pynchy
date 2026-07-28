@@ -17,8 +17,8 @@ from pynchy.actions import ActionId, ActionSpec, ActionTransport
 from pynchy.identifiers import (
     CapabilityId,  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
-    ServiceTrustConfig,
+from pynchy.workspace.api import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
 )
 
 HostToolName = NewType("HostToolName", str)

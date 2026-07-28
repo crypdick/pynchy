@@ -12,9 +12,19 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pynchy.identifiers import (
+    ChannelName,
+    ChatJid,
+)
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    Channel,
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+)
 from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     OutboundDeliveryOperation,
     PendingDelivery,
@@ -27,15 +37,9 @@ from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this r
     message_exists,
     prune_stale_cursors,
 )
-from pynchy.types import (
-    Channel,
-    ChannelName,
-    ChatJid,
-    NewMessage,
-    OutboundEvent,
-    OutboundEventType,
-    WorkspaceProfile,
-)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)

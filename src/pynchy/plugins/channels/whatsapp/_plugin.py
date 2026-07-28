@@ -12,9 +12,9 @@ import pluggy
 
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+    Channel,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     ChannelPluginContext,
 )
-from pynchy.types import Channel  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 _DUPLICATE_AUTH_DB_PATH = (

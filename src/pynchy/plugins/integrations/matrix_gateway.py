@@ -21,6 +21,9 @@ from pynchy.actions import ActionId
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
     ConversationId,
 )
+from pynchy.identifiers import (
+    ChatJid,  # noqa: TC001, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
+)
 from pynchy.plugins.api import (
     ActionIntentContract,
     ActionIntentDraft,
@@ -59,9 +62,6 @@ from pynchy.plugins.integrations.matrix_route_registry import (
 )
 from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime annotations.
     ResolvedMatrixRoute,
-)
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Matrix runtime callbacks at runtime.
-    ChatJid,
 )
 
 hookimpl = pluggy.HookimplMarker("pynchy")

@@ -14,8 +14,9 @@ from pynchy.config.api import ContainerConfig, QueueConfig
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.orchestrator.api import ContainerRuntimeOperations
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.identifiers import RuntimeId
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import RuntimeId, RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget
 
 TASK_EXPLODED_MESSAGE = "task exploded"
 

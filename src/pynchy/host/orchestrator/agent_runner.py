@@ -28,23 +28,25 @@ from pynchy.host.orchestrator.host_agent_dispatch import run_host_execution as _
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
+from pynchy.identifiers import (
+    GroupFolder,
+    RuntimeId,
+)
 from pynchy.logger import logger
 from pynchy.state.api import clear_session
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ContainerInput,
-    GroupFolder,
-    McpStartupFailure,
-    OnOutput,
-    RuntimeId,
-    WorkspaceProfile,
-)
 
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.agent_protocol.api import (
+        AgentExecutionRuntime,
+        ContainerInput,
+        McpStartupFailure,
+        OnOutput,
+    )
     from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 PreContainerResult = _preflight.PreContainerResult

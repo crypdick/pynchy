@@ -16,7 +16,8 @@ from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder, load_resolved_config
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class _DiscordChannel(NullChannel):

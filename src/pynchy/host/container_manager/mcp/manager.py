@@ -23,7 +23,9 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+from pynchy.agent_protocol.api import McpStartupFailure
 from pynchy.config.api import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
@@ -53,16 +55,16 @@ from pynchy.host.container_manager.mcp.resolution import (
     merged_mcp_servers,
     resolve_all_instances,
 )
-from pynchy.host.container_manager.mcp.startup import McpStartupFailure, McpWorkspaceStartup
+from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.orchestrator import api as workspace_config
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
-from pynchy.types import (
-    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
-)
 from pynchy.utils import create_background_task
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import ServiceTrustConfig
 
 # ---------------------------------------------------------------------------
 # Data structures

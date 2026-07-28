@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.config.api import (
     LearningConfig,
     ObsidianLearningConfig,
@@ -25,7 +26,8 @@ from pynchy.host.learning.packets import (
     start_learning_review_workflow,
 )
 from pynchy.learning_packets import packet_from_payload, packet_to_payload
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

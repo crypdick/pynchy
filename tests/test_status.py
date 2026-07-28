@@ -21,13 +21,18 @@ from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRa
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
+from pynchy.scheduling.api import (
+    HostJob,
+    ScheduledTask,
+    SessionPolicy,
+    TaskRunLog,
+)
 from pynchy.state import (
     begin_webhook_effect,
     init_test_database,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
 )
-from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 from pynchy.webhook_effects import WebhookEffectScope
 
 if TYPE_CHECKING:

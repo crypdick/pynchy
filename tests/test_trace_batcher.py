@@ -6,20 +6,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.messaging import router, streaming, updating
 from pynchy.host.orchestrator.messaging.streaming import OutputDeps, TraceBatcher
 from pynchy.host.orchestrator.messaging.updating import (
     UpdatingMessage,
     deliver_updating_event,
 )
-from pynchy.state.outbound import OutboundDeliveryOperation
-from pynchy.types import (
+from pynchy.plugins.api import (
     Channel,
-    ContainerOutput,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
 )
+from pynchy.state.outbound import OutboundDeliveryOperation
+from pynchy.workspace.api import WorkspaceProfile
 
 
 def _event(content: str) -> OutboundEvent:

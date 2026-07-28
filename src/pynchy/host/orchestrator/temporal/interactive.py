@@ -17,7 +17,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget
 
 _INTERACTIVE_TURN_RETRY_REQUESTED = "Interactive message turn requested retry"
 

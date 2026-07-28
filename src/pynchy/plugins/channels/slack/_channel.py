@@ -25,12 +25,12 @@ from datetime import datetime
 from typing import ClassVar, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
 )
+from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
 
 from ._allowlist import SlackAllowlist
 from ._cache import TtlCache

@@ -10,9 +10,11 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
     ConversationSubject,
     ExternalDeliveryIdentity,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
-    GroupFolder,
-    ScheduledTask,
+from pynchy.identifiers import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
+)
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
 )
 
 

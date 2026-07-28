@@ -18,13 +18,15 @@ from pynchy.host.orchestrator.messaging.updating import (
     deliver_updating_event,
 )
 from pynchy.logger import logger
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
     Channel,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
+)
 
 if TYPE_CHECKING:
     from pynchy.event_bus import Event

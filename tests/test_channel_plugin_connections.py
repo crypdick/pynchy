@@ -75,8 +75,8 @@ neonize_enum.ChatPresenceMedia = _ChatPresenceMedia
 neonize_jid.Jid2String = lambda jid: getattr(jid, "value", "")
 neonize_jid.build_jid = lambda *parts: parts
 
+from pynchy.plugins.api import Channel  # noqa: E402
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
-from pynchy.types import Channel  # noqa: E402
 
 
 def _context(

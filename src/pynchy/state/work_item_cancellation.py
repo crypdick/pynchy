@@ -12,7 +12,10 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
 from pynchy.state.connection import atomic_write
 from pynchy.state.conversation_lifecycle_fences import lifecycle_fence_matches
 from pynchy.state.work_item_rows import row_to_execution
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+)
 
 
 async def cancel_work_item_execution(

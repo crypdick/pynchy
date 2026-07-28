@@ -14,7 +14,7 @@ from pynchy.plugins.channels.discord import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.types import NewMessage
+    from pynchy.plugins.api import NewMessage
 
 BOT_ID = "999"
 DISCORD_BOT_ENV = "X"

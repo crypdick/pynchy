@@ -18,7 +18,11 @@ from pynchy.host.container_manager.mcp.proxy import (
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
-from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 # Fully safe trust config — passes outbound gating without triggering needs_human
 _SAFE_TRUST = ServiceTrustConfig(

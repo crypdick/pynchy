@@ -18,6 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from conftest import make_command_matcher, make_settings
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.config.api import AgentConfig, IntervalsConfig, LearningConfig
 from pynchy.conversation.models import (
     ConversationClaimId,
@@ -43,6 +49,11 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     intercept_special_command,
     process_group_messages,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    RuntimeId,
+)
+from pynchy.plugins.api import NewMessage
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -58,18 +69,11 @@ from pynchy.state import (
 )
 from pynchy.state import get_messages_since as get_stored_messages_since
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import (
-    CheckpointControlState,
-    ContainerOutput,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
-    RuntimeId,
+from pynchy.utils import ShellResult
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )
-from pynchy.utils import ShellResult
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.

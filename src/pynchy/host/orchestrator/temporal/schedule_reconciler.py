@@ -49,7 +49,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     DatabaseHostJobWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
     HostJob,
     ScheduledTask,
     agent_task_occurrence_due_at,

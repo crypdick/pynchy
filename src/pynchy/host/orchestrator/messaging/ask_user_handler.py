@@ -28,8 +28,8 @@ from pynchy.host.orchestrator.messaging.pending_questions import (
     find_pending_question,
     resolve_pending_question,
 )
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.types import GroupFolder
 
 
 @dataclass

@@ -11,19 +11,21 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
-import pynchy.types as types
 from pynchy.event_bus import Event  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
 from pynchy.identifiers import (
     GroupFolder,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
 )
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
-    from pynchy.identifiers import RuntimeId
+    from pynchy.agent_protocol.api import ContainerOutput, OnOutput
+    from pynchy.identifiers import (
+        RuntimeId,
+    )
     from pynchy.learning_packets import LearningPacket
+    from pynchy.plugins.api import Channel, NewMessage, OutboundEvent
     from pynchy.turn_outcomes import TurnOutcome
-    from pynchy.types import OnOutput
-
-type Group = types.WorkspaceProfile
+type Group = WorkspaceProfile
 _QueueResultT = TypeVar("_QueueResultT")
 
 
@@ -75,7 +77,7 @@ class DirectCommandOutput:
 
     chat_jid: str
     group: Group
-    source_message: types.NewMessage
+    source_message: NewMessage
     command: str
     exit_code: int | None
     content: str
@@ -100,7 +102,7 @@ class DirectCommandDeps(Protocol):
     async def record_direct_command_output(self, output: DirectCommandOutput) -> None: ...
 
     async def broadcast_to_channels(
-        self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
+        self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
@@ -118,7 +120,7 @@ class MessageQueue(Protocol):
 
     def send_message(self, runtime_id: RuntimeId, content: str) -> bool: ...
 
-    def enqueue_message_check(self, target: types.RuntimeTarget) -> None: ...
+    def enqueue_message_check(self, target: RuntimeTarget) -> None: ...
 
     def defer_interrupt_until_tool_result(self, runtime_id: RuntimeId) -> None: ...
 
@@ -132,11 +134,11 @@ class MessageQueue(Protocol):
 
     async def interrupt_after_tool_result(self, runtime_id: RuntimeId) -> bool: ...
 
-    async def run_message_turn(self, target: types.RuntimeTarget) -> TurnOutcome: ...
+    async def run_message_turn(self, target: RuntimeTarget) -> TurnOutcome: ...
 
     async def run_serialized_task(
         self,
-        target: types.RuntimeTarget,
+        target: RuntimeTarget,
         task_id: str,
         fn: Callable[[], Awaitable[_QueueResultT]],
     ) -> _QueueResultT: ...
@@ -147,7 +149,7 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
     """Dependencies shared by polling and the interactive processing pipeline."""
 
     @property
-    def channels(self) -> list[types.Channel]: ...
+    def channels(self) -> list[Channel]: ...
 
     @property
     def command_matcher(self) -> CommandMatcher: ...
@@ -180,7 +182,7 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
         group: Group,
         timestamp: str,
         *,
-        source_message: types.NewMessage | None = None,
+        source_message: NewMessage | None = None,
     ) -> None: ...
 
     async def handle_end_session(
@@ -189,14 +191,14 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
         group: Group,
         timestamp: str,
         *,
-        source_message: types.NewMessage | None = None,
+        source_message: NewMessage | None = None,
     ) -> None: ...
 
     async def trigger_manual_redeploy(
         self,
         chat_jid: str,
         *,
-        source_message: types.NewMessage | None = None,
+        source_message: NewMessage | None = None,
     ) -> None: ...
 
     async def send_reaction_to_channels(
@@ -217,7 +219,7 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
 
     def new_learning_run_summary(self) -> object: ...
 
-    def observe_learning_output(self, summary: object, output: types.ContainerOutput) -> None: ...
+    def observe_learning_output(self, summary: object, output: ContainerOutput) -> None: ...
 
     async def set_typing_on_channels(self, chat_jid: str, *, is_typing: bool) -> None: ...
 
@@ -246,7 +248,7 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
         self,
         chat_jid: str,
         group: Group,
-        result: types.ContainerOutput,
+        result: ContainerOutput,
         *,
         turn_id: str | None = None,
     ) -> bool: ...

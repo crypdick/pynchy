@@ -22,8 +22,13 @@ from pynchy.host.orchestrator.workspace_config import (
     dynamic_thread_folder,
     reconcile_workspaces,
 )
+from pynchy.plugins.api import Channel
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import Channel, ScheduledTask, SessionPolicy, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass

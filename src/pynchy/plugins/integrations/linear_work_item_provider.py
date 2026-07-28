@@ -34,7 +34,7 @@ from pynchy.plugins.integrations.linear_self_echoes import (
 from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_APPROVED_STATUS,
 )
-from pynchy.types import (
+from pynchy.work_items.api import (
     WorkItemClaimConflictError,
     WorkItemExecution,
     WorkItemExecutionStatus,

@@ -24,10 +24,7 @@ from pynchy.host.orchestrator.api import (  # noqa: TC001, RUF100 - beartype res
     TextFormatter,
 )
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    SpeechSynthesizer,
-)
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     AudioTranscriptionResult,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
@@ -35,9 +32,14 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
     NewMessage,
     OutboundEvent,
     OutboundEventType,
-    WorkspaceProfile,
+)
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    SpeechSynthesizer,
 )
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+)
 
 from ._access import DiscordAccess, interaction_context
 from ._ask_user import DiscordAskUserView, send_ask_user_prompt

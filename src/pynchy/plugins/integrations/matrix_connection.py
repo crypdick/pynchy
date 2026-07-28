@@ -34,9 +34,14 @@ from pynchy.host.orchestrator.api import (
     register_runtime_workspace_restriction,
     unregister_runtime_workspace_restriction,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations.
     ConnectionRuntimeContext,
+    NewMessage,
 )
 from pynchy.plugins.integrations.matrix_event_admission import eligible_matrix_event
 from pynchy.plugins.integrations.matrix_gateway_client import (
@@ -67,8 +72,8 @@ from pynchy.state.api import (
     resolve_conversation,
     set_external_provider_cursor,
 )
-from pynchy.types import CapabilityRule, ChatJid, GroupFolder, NewMessage
 from pynchy.utils import create_background_task
+from pynchy.workspace.api import CapabilityRule
 
 if TYPE_CHECKING:
     from asyncio import Task

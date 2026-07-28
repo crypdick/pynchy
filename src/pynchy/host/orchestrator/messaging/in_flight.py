@@ -6,10 +6,18 @@ import asyncio
 from collections.abc import Awaitable, Callable  # noqa: TC003, RUF100 - Protocol annotations.
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightTurn,
+    InFlightWorkKind,
+    OnOutput,
+)
 from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.state.api import (
     begin_in_flight_turn,
@@ -24,16 +32,12 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    ContainerOutput,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    OnOutput,  # noqa: TC001, RUF100 - beartype resolves Protocols.
-    RuntimeTarget,  # noqa: TC001, RUF100
-    WorkspaceProfile,
-)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import (
+        RuntimeTarget,
+        WorkspaceProfile,
+    )
 
 
 @runtime_checkable

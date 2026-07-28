@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves MCP instance annotations at runtime.
 )
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config.api import (
     McpTool,
@@ -26,9 +26,9 @@ from pynchy.config.api import (
 from pynchy.logger import logger
 from pynchy.plugins.api import McpServerConfig
 from pynchy.runtime_names import runtime_container_name
-from pynchy.types import (
-    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution models at runtime.
-)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import ServiceTrustConfig
 
 _SERVER_NAME_MUST_BE_NON_EMPTY = "server_name must be a non-empty string"
 

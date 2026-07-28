@@ -11,8 +11,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    ContainerInput,
+    ContainerOutput,
+)
 from pynchy.host.orchestrator.host_runner import run_host_input, stop_host_process
-from pynchy.types import ContainerInput, ContainerOutput
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+)
 from pynchy.host.learning.paths import (
     LearningConfigError,
     resolve_learning_paths,
@@ -19,10 +22,11 @@ from pynchy.host.learning.paths import (
 from pynchy.learning_packets import LearningPacket
 from pynchy.learning_packets import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
-    ContainerOutput,
-    NewMessage,
-    WorkspaceProfile,
+from pynchy.plugins.api import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
 )
 
 _MAX_PACKET_MESSAGES = 8

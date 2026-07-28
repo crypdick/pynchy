@@ -8,6 +8,11 @@ from collections.abc import Awaitable, Callable  # noqa: TC003 - beartype resolv
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    ContainerOutput,
+    InFlightWorkKind,
+)
 from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator.messaging.in_flight import (
     InFlightMessageDeps,
@@ -26,10 +31,7 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.types import (
-    CheckpointControlState,
-    ContainerOutput,
-    InFlightWorkKind,
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )

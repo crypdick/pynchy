@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightWorkKind,
+)
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.messaging.in_flight import resume_interrupted_message_turn
 from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
@@ -13,7 +17,7 @@ from pynchy.host.orchestrator.task_scheduler import (
 )
 from pynchy.state.api import get_in_flight_turn, get_task_by_id, release_in_flight_turn_claim
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import CheckpointControlState, InFlightWorkKind, RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget
 
 
 async def dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:

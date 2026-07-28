@@ -26,8 +26,8 @@ from pynchy.plugins.integrations.linear_boards import (
     reconcile_workspace_boards,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 
 LINEAR_BOOT_TIMEOUT_SECONDS = 30

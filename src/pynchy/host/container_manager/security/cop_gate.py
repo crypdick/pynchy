@@ -37,7 +37,10 @@ from pynchy.host.container_manager.security.identity import (
     consume_approval_receipt,
 )
 from pynchy.logger import logger
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 
 def cop_requires_human(verdict: CopVerdict, context: CopInspectionContext) -> bool:

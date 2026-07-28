@@ -24,7 +24,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
     HostJob,
     ScheduledTask,
     agent_task_workflow_id,

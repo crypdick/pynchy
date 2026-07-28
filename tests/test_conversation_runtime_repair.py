@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 from conftest import init_test_database
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -20,6 +24,11 @@ from pynchy.conversation.models import (
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
 from pynchy.state import (
     WebhookReceipt,
     admit_conversation_delivery,
@@ -44,14 +53,7 @@ from pynchy.state import (
 from pynchy.state.conversation_runtime_repair import (
     RuntimeOwnershipRepairConflictError,
 )
-from pynchy.types import (
-    ChatJid,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    SessionId,
-    WorkspaceProfile,
-)
+from pynchy.workspace.api import WorkspaceProfile
 
 RUNTIME_OWNER_MIGRATION_KEY = "migration:conversation_runtime_receipt_owner:v1"
 

@@ -78,6 +78,8 @@ from pynchy.plugins.api import (
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
+    InboundFetchResult,
+    NewMessage,
 )
 from pynchy.plugins.integrations.linear_accounts import (
     LinearAccountRuntime,
@@ -191,7 +193,7 @@ from pynchy.state import (
     update_host_job,
     update_task,
 )
-from pynchy.types import InboundFetchResult, NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 def configure_workspace_placement_for(settings: Settings) -> None:

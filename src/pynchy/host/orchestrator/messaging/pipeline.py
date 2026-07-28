@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, replace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-import pynchy.types as types
+from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
     Settings,
     get_settings,
@@ -56,7 +56,10 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (
     TurnOutcome,
 )
-from pynchy.types import RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import NewMessage
 
 __all__ = [
     "MessageHandlerDeps",
@@ -72,8 +75,8 @@ __all__ = [
 class _FinalizeCursorRetryRequest:
     deps: MessageHandlerDeps
     chat_jid: str
-    group: types.WorkspaceProfile
-    missed_messages: list[types.NewMessage]
+    group: WorkspaceProfile
+    missed_messages: list[NewMessage]
     agent_result: str
     had_error: bool
     missing_terminal_result: bool
@@ -84,7 +87,7 @@ class _FinalizeCursorRetryRequest:
     conversation_claim_id: str | None
 
 
-def _turn_id_for_batch(messages: list[types.NewMessage]) -> str:
+def _turn_id_for_batch(messages: list[NewMessage]) -> str:
     for message in reversed(messages):
         metadata = message.metadata or {}
         turn_id = metadata.get("turn_id")
@@ -93,7 +96,7 @@ def _turn_id_for_batch(messages: list[types.NewMessage]) -> str:
     return new_turn_id()
 
 
-def _input_source_for_batch(messages: list[types.NewMessage]) -> str:
+def _input_source_for_batch(messages: list[NewMessage]) -> str:
     """Carry authenticated external provenance into sticky security taint."""
     public_providers = {
         str(metadata["external_provider"])
@@ -117,7 +120,7 @@ def _input_source_for_batch(messages: list[types.NewMessage]) -> str:
 
 
 def _conversation_claim_for_batch(
-    messages: list[types.NewMessage],
+    messages: list[NewMessage],
 ) -> ConversationClaimId | None:
     claim_ids = {
         str(metadata["conversation_claim_id"])
@@ -133,8 +136,8 @@ def _conversation_claim_for_batch(
 async def _announce_processing_start(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
 ) -> None:
     """Mark dispatched, log, and signal 'agent is working' to the user."""
     # Mark dispatched (in-memory only).  last_agent_timestamp stays at its pre-run value
@@ -163,7 +166,7 @@ async def _announce_processing_start(
 def _register_idle_zzz_callback(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
+    group: WorkspaceProfile,
     *,
     output_sent_to_user: bool,
 ) -> None:
@@ -318,8 +321,8 @@ async def _continue_after_host_turn(
 async def _start_processing(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
 ) -> float:
     """Announce the turn and return its monotonic start time."""
     started_at = time.monotonic()
@@ -329,18 +332,18 @@ async def _start_processing(
 
 async def _begin_interactive_message_turn(
     chat_jid: str,
-    group: types.WorkspaceProfile,
+    group: WorkspaceProfile,
     messages: list[dict[str, Any]],
-    missed_messages: list[types.NewMessage],
+    missed_messages: list[NewMessage],
     since_timestamp: str,
-) -> types.InFlightTurn:
+) -> InFlightTurn:
     turn_id = _turn_id_for_batch(missed_messages)
     return await begin_message_turn(
         MessageTurnStart(
             turn_id=turn_id,
             chat_jid=chat_jid,
             group=group,
-            work_kind=types.InFlightWorkKind.INTERACTIVE,
+            work_kind=InFlightWorkKind.INTERACTIVE,
             input_messages=messages,
             input_start_cursor=since_timestamp,
             input_end_cursor=missed_messages[-1].timestamp,
@@ -360,7 +363,7 @@ class _ProcessingOutcome:
 async def _announce_processing_complete(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
+    group: WorkspaceProfile,
     outcome: _ProcessingOutcome,
 ) -> None:
     await deps.set_typing_on_channels(chat_jid, is_typing=False)

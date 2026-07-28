@@ -17,7 +17,10 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     reconcile_work_item,
 )
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+)
 
 
 @dataclass(frozen=True)

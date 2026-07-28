@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pynchy.logger import logger
-from pynchy.types import (
+from pynchy.plugins.api import (
     SUPPORTED_AUDIO_SUFFIXES,
     AudioMetadataPatch,
     AudioTranscriptionResult,

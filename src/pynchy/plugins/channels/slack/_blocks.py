@@ -24,7 +24,10 @@ from pynchy.host.orchestrator.api import (
     format_internal_tags,
     format_tool_preview,
 )
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
 
 # Slack limits messages to 50 blocks.
 _MAX_BLOCKS_PER_MESSAGE = 50

@@ -17,7 +17,7 @@ from pynchy.host.container_manager.ipc.protocol import (
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 async def _handle_register_group(

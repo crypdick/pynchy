@@ -21,6 +21,10 @@ composition_roots = [
 # Root-level modules are first-class architecture units. This exception only
 # lifts their inbound-importer budget; the owning package role still constrains
 # every first-party dependency the module imports.
+[file_overrides."src/pynchy/identifiers.py"]
+# Universal semantic IDs are the intentionally small shared leaf.
+allow_unbounded_inbound_imports = true
+
 [file_overrides."src/pynchy/logger.py"]
 allow_unbounded_inbound_imports = true
 
@@ -317,14 +321,46 @@ role = "domain"
 public_modules = ["pynchy.security_canary_ids"]
 
 [[packages]]
-# Migration target: remove this aggregate; do not create `pynchy.types.api` or
-# retain a compatibility barrel. Move one coherent contract group at a time to
-# its owning package and expose cross-package contracts through that package's
-# `api.py`. Keep only universal semantic identifiers in `pynchy.identifiers`.
-name = "types"
-root = "pynchy.types"
+name = "agent_protocol"
+root = "pynchy.agent_protocol"
 role = "domain"
-public_modules = ["pynchy.types"]
+public_modules = ["pynchy.agent_protocol.api"]
+
+[[packages]]
+name = "deployments"
+root = "pynchy.deployments"
+role = "domain"
+public_modules = ["pynchy.deployments"]
+
+[[packages]]
+name = "integration_contracts"
+root = "pynchy.integration_contracts"
+role = "domain"
+public_modules = ["pynchy.integration_contracts"]
+
+[[packages]]
+name = "scheduling"
+root = "pynchy.scheduling"
+role = "domain"
+public_modules = ["pynchy.scheduling.api"]
+
+[[packages]]
+name = "security_context"
+root = "pynchy.security_context"
+role = "domain"
+public_modules = ["pynchy.security_context"]
+
+[[packages]]
+name = "work_items"
+root = "pynchy.work_items"
+role = "domain"
+public_modules = ["pynchy.work_items.api"]
+
+[[packages]]
+name = "workspace"
+root = "pynchy.workspace"
+role = "domain"
+public_modules = ["pynchy.workspace.api"]
 
 [[packages]]
 name = "turn_outcomes"

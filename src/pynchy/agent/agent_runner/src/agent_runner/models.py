@@ -5,7 +5,7 @@ ContainerInput: parsed from initial.json in the IPC input directory at
 ContainerOutput: serialized to JSON files in the IPC output directory.
 
 These are the container-side equivalents of the host-side types in
-``pynchy.types`` — they share the same wire format but are defined
+``pynchy.agent_protocol.api`` — they share the same wire format but are defined
 independently so the container has no dependency on the host package.
 """
 

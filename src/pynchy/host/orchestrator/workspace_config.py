@@ -40,14 +40,16 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
-from pynchy.plugins.api import WorkspaceSpec
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    WorkspaceSpec,
+)
 from pynchy.state.api import (
     get_all_tasks,
     update_task,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
     CapabilityRule,
-    Channel,
     WorkspaceProfile,
     capability_pattern_matches,
     most_restrictive_capability_rule,

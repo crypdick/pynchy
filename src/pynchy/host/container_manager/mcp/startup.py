@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from pynchy.types import McpStartupFailure  # noqa: TC001, RUF100 - public import contract.
+if TYPE_CHECKING:
+    from pynchy.agent_protocol.api import McpStartupFailure
 
 
 @dataclass(frozen=True)

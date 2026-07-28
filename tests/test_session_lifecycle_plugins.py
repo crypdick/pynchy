@@ -10,7 +10,7 @@ import pytest
 from pynchy.host.orchestrator import session_handler
 from pynchy.plugins.api import PynchySpec, prepare_context_reset
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

@@ -40,16 +40,16 @@ from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves s
     SpeechSynthesizer,
 )
 from pynchy.runtime_names import runtime_container_name
+from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+    HostJob,
+    ScheduledTask,
+)
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
     get_messaging_stats,
     get_router_state,
     get_task_run_logs,
-)
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
-    HostJob,
-    ScheduledTask,
 )
 
 

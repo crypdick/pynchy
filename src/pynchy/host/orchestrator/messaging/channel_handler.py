@@ -13,7 +13,7 @@ from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from pynchy.types import Channel
+    from pynchy.plugins.api import Channel
 
 
 @runtime_checkable

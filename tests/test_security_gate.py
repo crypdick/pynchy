@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_container_runtime_operations
 
+from pynchy.agent_protocol.api import ContainerInput
 from pynchy.config.api import validate_settings_mapping
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
@@ -20,8 +21,7 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState, QueuePolicy
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-from pynchy.types import (
-    ContainerInput,
+from pynchy.workspace.api import (
     RuntimeTarget,
     ServiceTrustConfig,
     WorkspaceSecurity,

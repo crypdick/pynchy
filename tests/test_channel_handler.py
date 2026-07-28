@@ -14,7 +14,11 @@ from pynchy.host.orchestrator.messaging.channel_handler import (
 )
 from pynchy.host.orchestrator.messaging.sender import BusDeps
 from pynchy.host.orchestrator.messaging.sender import broadcast as broadcast_to_channels
-from pynchy.types import Channel, OutboundEvent, OutboundEventType
+from pynchy.plugins.api import (
+    Channel,
+    OutboundEvent,
+    OutboundEventType,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

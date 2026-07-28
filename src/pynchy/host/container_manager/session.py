@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves session path annotations at runtime.
 )
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
@@ -46,11 +46,11 @@ from pynchy.host.container_manager.process import (
 )
 from pynchy.host.container_manager.security.gate import destroy_gate
 from pynchy.logger import logger
-from pynchy.types import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves session lookup signatures at runtime.
-    OnOutput,  # noqa: TC001, RUF100 - beartype resolves callback annotations at runtime.
-)
 from pynchy.utils import ProgressTimeoutError, create_background_task, wait_for_progress
+
+if TYPE_CHECKING:
+    from pynchy.agent_protocol.api import OnOutput
+    from pynchy.identifiers import GroupFolder
 
 
 class SessionDiedError(Exception):

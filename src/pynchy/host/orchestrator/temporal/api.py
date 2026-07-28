@@ -2,6 +2,7 @@
 
 from typing import cast
 
+from pynchy.deployments import DeployClaim
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.runtime_state import (
     TemporalActivityInfo,
@@ -14,7 +15,6 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     cancel_scheduled_agent_workflow,
 )
 from pynchy.learning_packets import LearningPacket
-from pynchy.types import DeployClaim
 
 
 def get_temporal_scheduler_runtime() -> type[object]:

@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING, cast
 
 from temporalio import activity
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
 from pynchy.host.orchestrator.api import dispatch_interrupted_turn
 from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
@@ -20,7 +24,6 @@ from pynchy.state.api import (
     release_in_flight_turn_claim,
 )
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import CheckpointControlState, InFlightTurn
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies

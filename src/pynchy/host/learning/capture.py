@@ -7,14 +7,16 @@ from typing import TYPE_CHECKING
 
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.plugins.api import NewMessage
 
 FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]
 StartLearningReviewWorkflow = Callable[["LearningPacket"], Awaitable[None]]
 LearningRunSummary = learning_packets.LearningRunSummary
 
 if TYPE_CHECKING:
+    from pynchy.agent_protocol.api import ContainerOutput
     from pynchy.learning_packets import LearningPacket
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 def is_after_turn_learning_enabled(*, enabled: bool, review_after_turn: bool) -> bool:

@@ -11,12 +11,14 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.config.api import LearningConfig, ObsidianLearningConfig
 from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
+from pynchy.plugins.api import NewMessage
 from pynchy.state import init_test_database
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

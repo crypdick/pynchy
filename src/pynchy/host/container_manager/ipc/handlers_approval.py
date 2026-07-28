@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config.api import get_settings
 from pynchy.host.container_manager.ipc.approval_decision_context import (
@@ -63,9 +63,9 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runt
     ApprovalMode,
     HostActionDescriptor,
 )
-from pynchy.types import (
-    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves replay policy callbacks at runtime.
-)
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceSecurity
 
 
 @dataclass(frozen=True)

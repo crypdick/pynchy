@@ -6,7 +6,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from aiohttp import web
 
@@ -35,13 +35,19 @@ from pynchy.plugins.api import (
     WebhookRoute,
     validate_webhook_routes,
 )
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state.api import (
     WebhookAdmission,
     WebhookReceipt,
     get_webhook_receipt,
 )
-from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
 from pynchy.webhook_effects import WebhookEffectCallbackDecision
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @runtime_checkable

@@ -17,13 +17,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
+from pynchy.deployments import DeployChangeKind
 from pynchy.host.orchestrator.deploy import (
     DeployGitRuntime,
     configure_deploy_git_runtime,
     finalize_deploy,
     rollback_deploy_checkout,
 )
-from pynchy.types import DeployChangeKind, InFlightTurn, InFlightWorkKind
 
 _CONFIG_HASH = "config-hash-001"
 

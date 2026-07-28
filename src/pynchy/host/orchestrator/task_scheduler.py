@@ -8,9 +8,14 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.config.api import SchedulerConfig
+    from pynchy.workspace.api import WorkspaceProfile
 
 from temporalio import activity
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+)
 from pynchy.config.api import get_settings
 from pynchy.host.orchestrator.config_job_execution import (
     ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
@@ -42,6 +47,14 @@ from pynchy.host.orchestrator.temporal.api import (
     parse_temporal_activity_info,
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    OutboundEvent,
+    OutboundEventType,
+)
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    TaskRunLog,
+)
 from pynchy.state.api import (
     claim_in_flight_turn,
     clear_in_flight_turn,
@@ -52,15 +65,6 @@ from pynchy.state.api import (
     update_task,
 )
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.types import (
-    CheckpointControlState,
-    InFlightTurn,
-    OutboundEvent,
-    OutboundEventType,
-    ScheduledTask,
-    TaskRunLog,
-    WorkspaceProfile,
-)
 
 _config_job_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None

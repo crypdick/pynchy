@@ -12,11 +12,11 @@ from pynchy.plugins.integrations.linear_session_reset import (
     cancel_linear_execution_for_reset,
 )
 from pynchy.state import WorkItemTransitionRequest
-from pynchy.types import (
+from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
-    WorkspaceProfile,
 )
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @dataclass(frozen=True)

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.secrets_scanner import scan_payload_for_secrets
-from pynchy.types import (
+from pynchy.workspace.api import (
     CapabilityRule,
     ServiceTrustConfig,
     WorkspaceSecurity,

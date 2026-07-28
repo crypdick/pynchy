@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
+from pynchy.identifiers import (
+    ChannelName,
+    ChatJid,
+)
 from pynchy.logger import logger
 from pynchy.state import api as state
 from pynchy.state.api import OutboundDelivery, OutboundDeliveryOperation
-from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import (
+        Channel,
+        OutboundEvent,
+    )
 
 
 @runtime_checkable

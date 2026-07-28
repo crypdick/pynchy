@@ -18,13 +18,14 @@ from uuid import uuid4
 from pynchy.actions import ACTION_SPECS
 from pynchy.canary_contracts import (
     CanaryExercise,
+    CanaryOutcome,
+    CanaryRun,
     CanaryRunContext,
     CanaryScenario,
     CanarySkippedError,
 )
 from pynchy.logger import logger
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
-from pynchy.types import CanaryOutcome, CanaryRun
 
 _CLEANUP_ATTEMPTS = 3
 _SCENARIO_EXECUTORS: dict[str, CanaryScenario] = {}

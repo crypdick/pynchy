@@ -19,7 +19,7 @@ from pynchy.host.container_manager.ipc.output_processing import process_output_f
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pynchy.types import ContainerOutput
+    from pynchy.agent_protocol.api import ContainerOutput
 
 
 @pytest.fixture

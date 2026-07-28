@@ -14,16 +14,20 @@ if TYPE_CHECKING:
 
     from pynchy.turn_outcomes import TurnOutcome
 
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ContainerOutput,
+    OnOutput,
+)
 from pynchy.linear_plan_types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
-    ContainerOutput,
-    OnOutput,
-    OutboundEvent,
+from pynchy.plugins.api import OutboundEvent  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves annotations.
+)
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     RuntimeTarget,
-    ScheduledTask,
     WorkspaceProfile,
 )
 

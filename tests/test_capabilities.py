@@ -34,7 +34,7 @@ from pynchy.plugins.api import (
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
 from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin
-from pynchy.types import (
+from pynchy.workspace.api import (
     CapabilityDecision,
     CapabilityRule,
     ServiceTrustConfig,

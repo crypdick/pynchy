@@ -11,8 +11,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from pynchy.agent_protocol.api import (
+    ContainerInput,
+    ContainerOutput,
+    input_to_dict,
+    parse_container_output,
+)
 from pynchy.logger import logger
-from pynchy.types import ContainerInput, ContainerOutput, input_to_dict, parse_container_output
 from pynchy.utils import ProgressTimeoutError, filtered_process_environment, wait_for_progress
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]

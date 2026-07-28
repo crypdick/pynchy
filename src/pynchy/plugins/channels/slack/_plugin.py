@@ -16,9 +16,7 @@ from pynchy.channels import (
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
     ChannelPluginContext,
-)
-from pynchy.types import (
-    NewMessage,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    NewMessage,
 )
 
 from ._cache import TtlCache

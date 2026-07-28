@@ -23,16 +23,18 @@ from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this run
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
-    SpeechSynthesizer,
-)
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     AudioTranscriptionResult,
     Channel,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
     NewMessage,
-    WorkspaceProfile,
+)
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    SpeechSynthesizer,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
 )
 
 _DEFAULT_CHANNEL_NOT_FOUND = (

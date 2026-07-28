@@ -8,8 +8,8 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves placeme
 )
 from dataclasses import dataclass
 
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves placement annotations.
-    WorkspaceProfile,
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves placement annotations.
 )
 
 type WorkspaceParentResolver = Callable[[str], str | None]

@@ -8,7 +8,7 @@ configuration; user definitions with the same name override plugin defaults.
 ```python
 from pynchy.plugins.mcp_server import McpServerConfig
 from pynchy.plugins.contracts import McpServerSpec
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 
 @hookimpl

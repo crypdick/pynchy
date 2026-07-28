@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
-import pynchy.types as types  # noqa: TC001, RUF100 - beartype resolves control annotations.
+from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves control annotations.
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
+from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.state.api import (
     clear_in_flight_turn,
@@ -21,7 +23,10 @@ from pynchy.state.api import (
     message_exists,
     request_in_flight_turn_control,
 )
-from pynchy.types import RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.plugins.api import NewMessage
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 
@@ -34,9 +39,9 @@ def turn_boundary_lock(chat_jid: str) -> asyncio.Lock:
 async def _consume_checkpoint_control(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    message: types.NewMessage,
-    requested_state: types.CheckpointControlState,
-) -> types.InFlightTurn | None:
+    message: NewMessage,
+    requested_state: CheckpointControlState,
+) -> InFlightTurn | None:
     """Persist command consumption and its checkpoint transition before stopping work."""
     if await message_exists(message.id, chat_jid):
         turn = await consume_in_flight_control_message(
@@ -67,7 +72,7 @@ async def _consume_checkpoint_control(
 async def _send_pause_confirmation(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    message: types.NewMessage,
+    message: NewMessage,
 ) -> None:
     if any(channel.owns_jid(chat_jid) for channel in deps.channels):
         await deps.send_reaction_to_channels(chat_jid, message.id, message.sender, "⏸️")
@@ -78,16 +83,16 @@ async def _send_pause_confirmation(
 async def _handle_pause(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    group: WorkspaceProfile,
+    message: NewMessage,
 ) -> None:
-    runtime_id = types.RuntimeId(group.folder)
+    runtime_id = RuntimeId(group.folder)
     had_active_run = deps.queue.has_active_run(runtime_id)
     turn = await _consume_checkpoint_control(
         deps,
         chat_jid,
         message,
-        types.CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSE_REQUESTED,
     )
     await deps.queue.stop_active_process_for_control(runtime_id)
     await deps.queue.destroy_runtime_session(runtime_id)
@@ -99,8 +104,8 @@ async def _handle_pause(
 async def _intercept_checkpoint_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    group: WorkspaceProfile,
+    message: NewMessage,
     content: str,
 ) -> bool:
     if commands.is_pause(deps.command_matcher, content):
@@ -112,12 +117,12 @@ async def _intercept_checkpoint_command(
     if not commands.is_context_reset(deps.command_matcher, content):
         return False
     logger.info("intercept_trace", step="context_reset_start", group=group.name)
-    had_active_run = deps.queue.has_active_run(types.RuntimeId(group.folder))
+    had_active_run = deps.queue.has_active_run(RuntimeId(group.folder))
     turn = await _consume_checkpoint_control(
         deps,
         chat_jid,
         message,
-        types.CheckpointControlState.RESET_REQUESTED,
+        CheckpointControlState.RESET_REQUESTED,
     )
     await deps.handle_context_reset(
         chat_jid,
@@ -134,8 +139,8 @@ async def _intercept_checkpoint_command(
 async def intercept_special_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    group: WorkspaceProfile,
+    message: NewMessage,
     *,
     advance_command_cursor: bool = True,
 ) -> bool:
@@ -184,8 +189,8 @@ async def intercept_special_command(
 async def intercept_immediate_checkpoint_controls(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    pending: list[types.NewMessage],
+    group: WorkspaceProfile,
+    pending: list[NewMessage],
 ) -> bool | None:
     """Execute pause/reset controls before forwarding any active-turn input."""
     if not any(
@@ -231,7 +236,7 @@ def mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str)
     deps.mark_dispatched(chat_jid, new_timestamp)
 
 
-def host_control_kind(deps: MessageHandlerDeps, message: types.NewMessage) -> tuple[bool, bool]:
+def host_control_kind(deps: MessageHandlerDeps, message: NewMessage) -> tuple[bool, bool]:
     """Return whether a message is an inline or lifecycle host control."""
     content = message.content.strip()
     inline = bool(
@@ -251,8 +256,8 @@ def host_control_kind(deps: MessageHandlerDeps, message: types.NewMessage) -> tu
 async def reclassify_host_control(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    group: WorkspaceProfile,
+    message: NewMessage,
 ) -> bool:
     """Execute or defer one human control and durably hide it from the agent."""
     inline_control, deferred_control = host_control_kind(deps, message)
@@ -289,8 +294,8 @@ async def reclassify_host_control(
 async def reclassify_batch_host_controls(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    messages: list[NewMessage],
     *,
     defer_lifecycle: bool,
 ) -> int:
@@ -312,8 +317,8 @@ async def reclassify_batch_host_controls(
 async def execute_deferred_host_controls(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    messages: list[NewMessage],
 ) -> None:
     """Execute lifecycle controls after the associated agent boundary."""
     for message in messages:
@@ -325,8 +330,8 @@ async def execute_deferred_host_controls(
 async def should_skip_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
+    group: WorkspaceProfile,
+    missed_messages: list[NewMessage],
 ) -> bool:
     """Return whether a batch needs no agent activation."""
     if not missed_messages:

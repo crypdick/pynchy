@@ -7,6 +7,11 @@ from dataclasses import replace
 
 import pytest
 
+from pynchy.agent_protocol.api import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDeliveryStatus,
@@ -19,6 +24,8 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.identifiers import GroupFolder
+from pynchy.plugins.api import NewMessage
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -44,13 +51,6 @@ from pynchy.state import (
     resume_paused_in_flight_turn,
     store_message,
     update_in_flight_session,
-)
-from pynchy.types import (
-    CheckpointControlState,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    NewMessage,
 )
 
 

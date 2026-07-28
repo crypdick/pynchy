@@ -28,7 +28,7 @@ from pynchy.host.container_manager.security.approval import register_mcp_proxy_a
 from pynchy.host.container_manager.security.cop import inspect_inbound
 from pynchy.host.container_manager.security.gate import SecurityGate, get_gate
 from pynchy.logger import logger
-from pynchy.types import APPROVAL_TIMEOUT_SECONDS
+from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
 # Callback to request human approval.  Provided by the orchestrator at
 # construction time.  Signature: (group_folder, tool_name, request_data,

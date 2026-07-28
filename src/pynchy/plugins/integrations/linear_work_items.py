@@ -25,7 +25,11 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     update_issue_state,
     workspace_issue,
 )
-from pynchy.types import WorkItemExecution, WorkItemExecutionStatus, WorkItemTransitionRequest
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
+)
 
 _WORKSPACE_REQUIRED = "source_group is required"
 _ISSUE_REQUIRED = "issue_id is required"

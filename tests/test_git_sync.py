@@ -25,7 +25,7 @@ from pynchy.host.git_ops.api import (
     needs_deploy,
     sync_poll,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

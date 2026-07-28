@@ -48,12 +48,16 @@ from pynchy.host.orchestrator.http_control import resolve_control_plane_runtime
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.logger import logger
 from pynchy.plugins import speech as speech_plugins
 from pynchy.plugins import tunnels as tunnel_plugins
 from pynchy.plugins.api import (
     ChannelPluginContext,
     ConnectionRuntimeContext,
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
     attach_observers,
     get_memory_provider,
     get_plugin_manager,
@@ -82,7 +86,6 @@ from pynchy.state.api import (
     update_chat_name,
 )
 from pynchy.state.connection import StateRuntimeConfig
-from pynchy.types import NewMessage, OrphanReapAgeMs, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
 # ---------------------------------------------------------------------------

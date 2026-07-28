@@ -9,7 +9,9 @@ if TYPE_CHECKING:
     import pluggy
 
     from pynchy.plugins.api import AgentHookSpec
+    from pynchy.workspace.api import WorkspaceProfile
 
+from pynchy.agent_protocol.api import VolumeMount
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.git_ops.api import RepoContext, repo_container_path
 from pynchy.host.learning.api import prepare_agent_homes, prepare_vault_mount_root
@@ -19,7 +21,6 @@ from pynchy.host.paths import (
     SKILLS_DIRNAME,
 )
 from pynchy.plugins.api import agent_hook_mounts
-from pynchy.types import VolumeMount, WorkspaceProfile
 
 
 def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point with explicit mount inputs.

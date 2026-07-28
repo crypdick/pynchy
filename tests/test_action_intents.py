@@ -33,6 +33,10 @@ from pynchy.host.orchestrator.api import (
     execute_action_intent,
     prepare_action_intent,
 )
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+)
 from pynchy.plugins.api import (
     ActionIntentContract,
     ActionIntentDraft,
@@ -68,7 +72,10 @@ from pynchy.state import (
     mark_action_intent_executing,
     recover_incomplete_action_intents,
 )
-from pynchy.types import ChatJid, GroupFolder, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path

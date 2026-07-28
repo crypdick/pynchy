@@ -15,7 +15,7 @@ from pynchy.plugins.integrations.linear_boot import (
     create_linear_workspace_todo,
     reconcile_linear_workspace_boards,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)

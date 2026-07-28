@@ -33,7 +33,7 @@ from pynchy.host.container_manager.security.cop_prompts import (
 )
 from pynchy.logger import logger
 from pynchy.redaction import RedactionSession
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Cop context loader annotations at runtime.
+from pynchy.security_context import (  # noqa: TC001, RUF100 - beartype resolves Cop context loader annotations at runtime.
     RecentSecurityContext,
     SecurityExecutionAuthority,
 )

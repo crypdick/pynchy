@@ -17,6 +17,7 @@ from aiohttp import web
 
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.conversation.api import notify_conversation_delivery_completed
+from pynchy.deployments import DeployClaimStatus
 from pynchy.host.git_ops.api import (
     files_changed_between,
     get_deploy_config_hash,
@@ -62,7 +63,6 @@ from pynchy.state.api import (
     list_work_item_executions,
     reconcile_webhook_effect_absent,
 )
-from pynchy.types import DeployClaimStatus
 from pynchy.webhook_effects import WebhookEffect, WebhookEffectId, WebhookEffectStatus
 
 if TYPE_CHECKING:

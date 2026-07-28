@@ -19,7 +19,12 @@ from pynchy.host.container_manager.security.cop import (
     CopTaintVerdict,
 )
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.plugins.api import OutboundEventType
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 def _make_gate(

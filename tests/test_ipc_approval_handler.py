@@ -22,7 +22,10 @@ from pynchy.host.container_manager.ipc.handlers_approval import process_approval
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.api import ApprovalMode
-from pynchy.types import CapabilityRule, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    WorkspaceSecurity,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path

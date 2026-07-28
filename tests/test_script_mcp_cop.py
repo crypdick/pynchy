@@ -18,7 +18,11 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.state import init_test_database
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.workspace.api import (
+    ServiceTrustConfig,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)

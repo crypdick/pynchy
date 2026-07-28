@@ -12,7 +12,8 @@ from conftest import make_settings
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import AskUserDeps
 from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS
-from pynchy.types import Channel, WorkspaceProfile
+from pynchy.plugins.api import Channel
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path

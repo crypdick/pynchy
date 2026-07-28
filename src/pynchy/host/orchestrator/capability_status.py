@@ -23,8 +23,8 @@ from pynchy.plugins.api import (
     get_host_action_catalog,
     missing_workspace_tool,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    WorkspaceSecurity,
+from pynchy.workspace.api import (
+    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
 )
 
 

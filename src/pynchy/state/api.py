@@ -18,6 +18,13 @@ This package is split into domain-specific submodules:
 # Keep the public surface explicit here. Cross-package imports target this module;
 # implementation modules remain package-private by default.
 
+from pynchy.security_context import (
+    RecentSecurityContext,
+    SecurityContextMessage,
+    SecurityContextRole,
+    SecurityExecutionAuthority,
+    SecurityExecutionAuthorityKind,
+)
 from pynchy.state.action_intents import (
     ActionIntentCreateRequest,
     action_intent_to_dict,
@@ -253,13 +260,6 @@ from pynchy.state.work_items import (
     get_work_item_execution_for_task,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
-)
-from pynchy.types import (
-    RecentSecurityContext,
-    SecurityContextMessage,
-    SecurityContextRole,
-    SecurityExecutionAuthority,
-    SecurityExecutionAuthorityKind,
 )
 
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical

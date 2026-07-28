@@ -21,13 +21,15 @@ from conftest import (
     make_host_runtime_operations,
 )
 
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,
+    ContainerInput,
+)
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.types import (
-    AgentExecutionRuntime,
-    ContainerInput,
-    RuntimeId,
+from pynchy.identifiers import RuntimeId
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )

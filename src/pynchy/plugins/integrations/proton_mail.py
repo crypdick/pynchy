@@ -22,7 +22,7 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailError,
     create_proton_mail_client,
 )
-from pynchy.types import ServiceTrustConfig
+from pynchy.workspace.api import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

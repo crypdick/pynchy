@@ -38,6 +38,12 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )
+from pynchy.identifiers import (
+    ChatJid,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+)
+from pynchy.integration_contracts import (
+    is_matrix_connection,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+)
 from pynchy.plugins.api import ComputerUseRouterConfig
 from pynchy.plugins.integrations.api import linear_account_for_workspace
 from pynchy.plugins.integrations.caldav import (
@@ -177,12 +183,10 @@ from pynchy.state.api import (
     store_event,
     update_task,
 )
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
-    ChatJid,
-    WorkspaceProfile,
-    is_matrix_connection,
-)
 from pynchy.utils import filtered_process_environment
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+)
 
 if TYPE_CHECKING:
     import pluggy

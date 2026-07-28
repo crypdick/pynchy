@@ -11,6 +11,10 @@ import pytest
 from conftest import configure_workspace_placement_for, make_settings
 from linear_webhook_test_support import DiscordThreadChannel
 
+from pynchy.agent_protocol.api import (
+    InFlightTurn,
+    InFlightWorkKind,
+)
 from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     Conversation,
@@ -44,8 +48,16 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
     register_runtime_workspace_restriction,
 )
+from pynchy.identifiers import (
+    GroupFolder,
+    SessionId,
+)
 from pynchy.plugins.api import WebhookConversation, WebhookEvent
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
+from pynchy.scheduling.api import (
+    ScheduledTask,
+    SessionPolicy,
+)
 from pynchy.state import (
     apply_conversation_control_state,
     begin_in_flight_turn,
@@ -63,14 +75,8 @@ from pynchy.state import (
     set_workspace_profile,
     update_task,
 )
-from pynchy.types import (
+from pynchy.workspace.api import (
     CapabilityRule,
-    GroupFolder,
-    InFlightTurn,
-    InFlightWorkKind,
-    ScheduledTask,
-    SessionId,
-    SessionPolicy,
     WorkspaceProfile,
 )
 

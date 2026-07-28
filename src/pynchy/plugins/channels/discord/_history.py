@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import discord
 
-from pynchy.types import NewMessage
+from pynchy.plugins.api import NewMessage
 
 from ._events import build_message_metadata, normalized_message_content
 from ._models import DiscordInboundMessage  # noqa: TC001, RUF100 - beartype resolves it.

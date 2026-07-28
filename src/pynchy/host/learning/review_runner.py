@@ -10,7 +10,7 @@ from pynchy.host.learning.reviewer import build_review_prompt, should_review
 from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPacket,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 RunAgent = Callable[..., Awaitable[str]]
 _LEARNING_PATHS_UNAVAILABLE_ERROR = (

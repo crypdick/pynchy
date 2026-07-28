@@ -10,10 +10,15 @@ import pluggy
 import pytest
 from conftest import make_settings
 
+from pynchy.deployments import (
+    DeploymentState,
+    DeployRevision,
+)
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.startup_readiness import StartupReadinessError
-from pynchy.plugins.api import PynchySpec, load_connection_runtimes
+from pynchy.identifiers import SessionId
+from pynchy.plugins.api import NewMessage, PynchySpec, load_connection_runtimes
 from pynchy.state import (
     claim_deployment,
     get_chat_history,
@@ -21,7 +26,7 @@ from pynchy.state import (
     init_test_database,
     initialize_deployment_state,
 )
-from pynchy.types import DeploymentState, DeployRevision, NewMessage, SessionId, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable

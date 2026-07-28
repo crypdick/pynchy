@@ -12,9 +12,9 @@ from functools import cache
 from typing import TypeGuard
 
 from pynchy.logger import logger
-from pynchy.plugins.api import collect_hook_results
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves runtime-provider annotations.
-    RuntimeProvider,
+from pynchy.plugins.api import (
+    RuntimeProvider,  # noqa: TC001, RUF100 - beartype resolves runtime-provider annotations.
+    collect_hook_results,
 )
 
 _NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE = (

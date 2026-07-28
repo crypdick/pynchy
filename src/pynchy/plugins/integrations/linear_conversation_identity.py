@@ -7,6 +7,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves configu
     Callable,
 )
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pynchy.conversation.api import (
     Conversation,
@@ -14,7 +15,10 @@ from pynchy.conversation.api import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.types import GroupFolder, WorkItemExecution
+from pynchy.identifiers import GroupFolder
+
+if TYPE_CHECKING:
+    from pynchy.work_items.api import WorkItemExecution
 
 
 @dataclass(frozen=True)

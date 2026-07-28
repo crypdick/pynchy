@@ -12,6 +12,7 @@ from temporalio.exceptions import ApplicationError
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.api import NotificationsConfig
+from pynchy.deployments import DeployRevision
 from pynchy.host.git_ops.api import RepoContext, sync_poll
 from pynchy.host.orchestrator.temporal import git_sync
 from pynchy.host.orchestrator.temporal.runtime_state import get_temporal_scheduler_status
@@ -22,7 +23,7 @@ from pynchy.state import (
     initialize_deployment_state,
     set_router_state,
 )
-from pynchy.types import DeployRevision, WorkspaceProfile
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
