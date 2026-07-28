@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import sys
 import types
 from typing import Any
@@ -44,6 +45,21 @@ class _FakeKernelClient:
     def get_iopub_msg(self, timeout: int) -> dict[str, object]:
         assert timeout == 300
         return {}
+
+
+class _ScriptedKernelClient(_FakeKernelClient):
+    def __init__(self, messages: list[dict[str, object]]) -> None:
+        super().__init__()
+        self._messages = messages
+        self.executed: list[str] = []
+
+    def execute(self, code: str) -> str:
+        self.executed.append(code)
+        return "message-id"
+
+    def get_iopub_msg(self, timeout: int) -> dict[str, object]:
+        assert timeout == 300
+        return self._messages.pop(0)
 
 
 class _FakeKernelManager:
@@ -124,6 +140,120 @@ async def test_save_as_persists_stream_output_in_its_notebook(
     result = await notebook_server["save_as"](kernel_id, "coverage.ipynb")
 
     assert result == {"notebook": "coverage.ipynb", "cells": 1}
+
+
+@pytest.mark.action("notebook.cell.execute")
+@pytest.mark.asyncio
+async def test_execute_cell_collects_matching_kernel_message_types(
+    notebook_server: dict[str, Any],
+) -> None:
+    kernel_id = "kernel-messages"
+    messages = [
+        {
+            "parent_header": {"msg_id": "other-message"},
+            "msg_type": "stream",
+            "content": {"name": "stdout", "text": "ignore me"},
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "stream",
+            "content": {"name": "stdout", "text": "hello\n"},
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "execute_result",
+            "content": {"data": {"text/plain": "2"}, "metadata": {}, "execution_count": 1},
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "display_data",
+            "content": {"data": {"text/plain": "shown"}, "metadata": {}},
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "comm",
+            "content": {},
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "error",
+            "content": {
+                "ename": "ValueError",
+                "evalue": "bad input",
+                "traceback": ["Traceback", "ValueError: bad input"],
+            },
+        },
+        {
+            "parent_header": {"msg_id": "message-id"},
+            "msg_type": "status",
+            "content": {"execution_state": "idle"},
+        },
+    ]
+    kernel_manager = _FakeKernelManager(kernel_name="python3")
+    kernel_client = _ScriptedKernelClient(messages)
+    kernel_manager.client_instance = kernel_client
+    notebook_server["_sessions"][kernel_id] = KernelSession(
+        kernel_id,
+        kernel_manager,
+        kernel_client,
+        "coverage",
+    )
+
+    result = await notebook_server["execute_cell"](kernel_id, "1 + 1")
+
+    assert kernel_client.executed == ["1 + 1"]
+    assert result == {
+        "cell_number": 1,
+        "outputs": [
+            {"type": "stream", "name": "stdout", "text": "hello\n"},
+            {"type": "result", "text": "2"},
+            {"type": "display", "text": "shown"},
+            {
+                "type": "error",
+                "ename": "ValueError",
+                "evalue": "bad input",
+                "traceback": "Traceback\nValueError: bad input",
+            },
+        ],
+    }
+
+
+@pytest.mark.action("notebook.cell.execute")
+@pytest.mark.asyncio
+async def test_execute_cell_returns_timeout_output_when_kernel_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+    notebook_server: dict[str, Any],
+) -> None:
+    kernel_id = "kernel-timeout"
+    kernel_manager = _FakeKernelManager(kernel_name="python3")
+    notebook_server["_sessions"][kernel_id] = KernelSession(
+        kernel_id,
+        kernel_manager,
+        kernel_manager.client(),
+        "coverage",
+    )
+
+    async def wait_for_then_timeout(awaitable: Any, **options: int) -> object:
+        assert options == {"timeout": 310}
+        await awaitable
+        raise TimeoutError
+
+    execution_asyncio = inspect.unwrap(notebook_server["execute_code"]).__globals__["asyncio"]
+    monkeypatch.setattr(execution_asyncio, "wait_for", wait_for_then_timeout)
+
+    result = await notebook_server["execute_cell"](kernel_id, "slow()")
+
+    assert result == {
+        "cell_number": 1,
+        "outputs": [
+            {
+                "type": "error",
+                "ename": "Timeout",
+                "evalue": "Cell execution timed out (5 min)",
+                "traceback": "",
+            }
+        ],
+    }
 
 
 @pytest.mark.action("notebook.cell.execute")
