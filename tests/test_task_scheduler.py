@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
@@ -35,7 +36,10 @@ from pynchy.agent_protocol.api import (
 from pynchy.config.api import JobConfig, ProfileConfig, SchedulerConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.scheduler_deps import ScheduledExecutionLifecycle
+from pynchy.host.orchestrator.scheduler_deps import (
+    ScheduledExecutionLifecycle,
+    SchedulerRuntimeConfig,
+)
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
@@ -66,6 +70,8 @@ TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 TEST_ERROR_MESSAGE = "Test error"
 AGENT_FAILED_MESSAGE = "Agent failed"
 
+_scheduler_settings: ContextVar[object | None] = ContextVar("scheduler_settings", default=None)
+
 
 @contextlib.contextmanager
 def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, jobs=None):
@@ -76,8 +82,42 @@ def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, jobs=None):
     if groups_dir is not None:
         overrides["groups_dir"] = groups_dir
     s = make_settings(**overrides)
-    with patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=s):
+    token = _scheduler_settings.set(s)
+    try:
         yield
+    finally:
+        _scheduler_settings.reset(token)
+
+
+def _configure_scheduler_runtime(deps, settings) -> None:
+    deps._scheduler_runtime = _scheduler_runtime_from_settings(settings)
+
+
+def _scheduler_runtime_from_settings(settings) -> SchedulerRuntimeConfig:
+    scheduler = settings.scheduler
+    return SchedulerRuntimeConfig(
+        temporal_address=scheduler.temporal_address,
+        temporal_namespace=scheduler.temporal_namespace,
+        temporal_task_queue=scheduler.temporal_task_queue,
+        poll_interval=scheduler.poll_interval,
+        timezone=settings.timezone or None,
+        git_sync_interval_seconds=scheduler.git_sync_interval_seconds,
+        channel_reconciliation_interval_seconds=scheduler.channel_reconciliation_interval_seconds,
+        auto_deploy=scheduler.auto_deploy,
+        idle_timeout=settings.idle_timeout,
+        groups_dir=settings.groups_dir,
+        project_root=settings.project_root,
+        admin_workspace=settings.notifications.admin_workspace,
+        queue_max_retries=settings.queue.max_retries,
+        queue_base_retry_seconds=float(settings.queue.base_retry_seconds),
+        learning_max_attempts=settings.learning.max_attempts,
+        canary_enabled=settings.canary.enabled,
+        canary_schedule=settings.canary.schedule,
+        canary_target_profile=settings.canary.target_profile,
+        canary_scenario_ids=tuple(settings.canary.scenario_ids),
+        external_repo_sync_slugs=(),
+        config_host_cron_jobs={},
+    )
 
 
 class RecordingTemporalRuntime:
@@ -260,6 +300,7 @@ class MockSchedulerDeps:
         self.thread_creation_supported = True
         self.scheduled_execution: ScheduledExecutionLifecycle | None = None
         self.scheduled_execution_queries: list[str] = []
+        self._scheduler_runtime = _scheduler_runtime_from_settings(make_settings())
         # Configurable return value for run_agent
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
@@ -278,6 +319,15 @@ class MockSchedulerDeps:
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self.groups
 
+    @property
+    def scheduler_runtime(self) -> SchedulerRuntimeConfig:
+        settings = _scheduler_settings.get()
+        return (
+            _scheduler_runtime_from_settings(settings)
+            if settings is not None
+            else self._scheduler_runtime
+        )
+
     async def register_workspace(self, profile: WorkspaceProfile) -> None:
         self.groups[profile.jid] = profile
 
@@ -293,6 +343,10 @@ class MockSchedulerDeps:
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         self.system_notices.append((chat_jid, text))
+
+    async def run_declared_canaries(self, target_profile: str, scenario_ids: tuple[str, ...]):
+        del target_profile, scenario_ids
+        return []
 
     async def reset_scheduled_context(
         self,
@@ -462,6 +516,9 @@ class TestStartSchedulerLoop:
             temporal_namespace="default",
             temporal_task_queue="pynchy-test",
         )
+        mock_deps._scheduler_runtime = _scheduler_runtime_from_settings(
+            make_settings(scheduler=scheduler)
+        )
 
         with (
             patch(
@@ -474,12 +531,8 @@ class TestStartSchedulerLoop:
                 side_effect=asyncio.CancelledError,
             ),
         ):
-            with patch(
-                "pynchy.host.orchestrator.task_scheduler.get_settings",
-                return_value=make_settings(scheduler=scheduler),
-            ):
-                with contextlib.suppress(asyncio.CancelledError):
-                    await start_scheduler_loop(mock_deps)
+            with contextlib.suppress(asyncio.CancelledError):
+                await start_scheduler_loop(mock_deps)
 
         assert enqueued == []
         assert len(runtime_cls.instances) == 1
@@ -1593,8 +1646,8 @@ class TestRunScheduledAgent:
         ]
 
         configure_workspace_placement_for(settings)
+        _configure_scheduler_runtime(mock_deps, settings)
         with (
-            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
             patch(
                 "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
                 new_callable=AsyncMock,
@@ -1672,8 +1725,8 @@ class TestRunScheduledAgent:
         )
 
         configure_workspace_placement_for(settings)
+        _configure_scheduler_runtime(mock_deps, settings)
         with (
-            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
             patch(
                 "pynchy.host.orchestrator.config_job_execution.run_shell_command",
                 new_callable=AsyncMock,
@@ -1719,8 +1772,8 @@ class TestRunScheduledAgent:
             },
         )
 
+        _configure_scheduler_runtime(mock_deps, settings)
         with (
-            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
             patch(
                 "pynchy.host.orchestrator.config_job_execution.run_shell_command",
                 new_callable=AsyncMock,

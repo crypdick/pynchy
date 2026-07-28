@@ -6,6 +6,7 @@ Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -25,7 +26,10 @@ from pynchy.agent_protocol.api import (
     ContainerInput,
     ContainerOutput,
 )
-from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
+from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime, run_declared_canaries
+from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    CanaryRun,
+)
 from pynchy.config.api import Settings, access, get_settings
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
     Conversation,
@@ -84,6 +88,7 @@ from pynchy.host.git_ops.api import (
     is_repo_dirty,
     needs_container_rebuild,
     needs_deploy,
+    repo_host_root,
     run_git,
 )
 from pynchy.host.git_ops.utils import configure_git_default_cwd
@@ -102,6 +107,9 @@ from pynchy.host.learning.api import (
 )
 from pynchy.host.learning.api import (
     capture as learning_capture,
+)
+from pynchy.host.learning.api import (
+    run_learning_review as run_host_learning_review,
 )
 from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
@@ -145,7 +153,9 @@ from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_mess
 from pynchy.host.orchestrator.runtime_process_control import ContainerRuntimeOperations
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
 from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    ConfigHostCronJob,
     ScheduledExecutionLifecycle,
+    SchedulerRuntimeConfig,
 )
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
@@ -176,7 +186,9 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app 
 )
 from pynchy.plugins.integrations.api import (
     create_linear_workspace_todo,
+    linear_workspace_boards,
     linear_workspace_enabled,
+    reconcile_all_linear_work_items,
 )
 from pynchy.plugins.runtimes.api import (
     configure_runtime_override,
@@ -215,11 +227,14 @@ from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves th
     TurnOutcome,
 )
 from pynchy.utils import write_json_atomic
-from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc import IpcDeps
-    from pynchy.learning_packets import LearningPacket
+
+from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    LearningPacket,
+)
 
 
 async def _fresh_container_name(group_folder: str) -> str:
@@ -308,6 +323,59 @@ async def _persist_and_process_approval(
     await process_approval_decision(decision_file, source_group, deps=cast("IpcDeps", deps))
 
 
+def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
+    """Project validated configuration into the scheduler's runtime contract."""
+    config_host_cron_jobs: dict[str, ConfigHostCronJob] = {}
+    for name, job in settings.jobs.items():
+        if not job.is_host or not job.enabled:
+            continue
+        if job.command is None or job.schedule is None:
+            raise RuntimeError(f"validated host job {name!r} is incomplete")
+        config_host_cron_jobs[name] = ConfigHostCronJob(
+            command=job.command,
+            schedule=job.schedule,
+            cwd=job.cwd,
+            timeout_seconds=job.timeout_seconds,
+            quiet_on_success=job.quiet_on_success is True,
+        )
+
+    repo_slugs: set[str] = set()
+    for workspace_name in settings.workspaces:
+        resolved = settings.resolved_workspace_config(workspace_name)
+        if resolved is not None:
+            repo_slugs.update(resolved.repo)
+    external_repo_sync_slugs = tuple(
+        repo_slug
+        for repo_slug in sorted(repo_slugs)
+        if (repo_root := repo_host_root(settings, repo_slug)) is not None
+        and repo_root.resolve() != settings.project_root.resolve()
+    )
+
+    return SchedulerRuntimeConfig(
+        temporal_address=settings.scheduler.temporal_address,
+        temporal_namespace=settings.scheduler.temporal_namespace,
+        temporal_task_queue=settings.scheduler.temporal_task_queue,
+        poll_interval=settings.scheduler.poll_interval,
+        timezone=settings.timezone or None,
+        git_sync_interval_seconds=settings.scheduler.git_sync_interval_seconds,
+        channel_reconciliation_interval_seconds=settings.scheduler.channel_reconciliation_interval_seconds,
+        auto_deploy=settings.scheduler.auto_deploy,
+        idle_timeout=settings.idle_timeout,
+        groups_dir=settings.groups_dir,
+        project_root=settings.project_root,
+        admin_workspace=settings.notifications.admin_workspace,
+        queue_max_retries=settings.queue.max_retries,
+        queue_base_retry_seconds=float(settings.queue.base_retry_seconds),
+        learning_max_attempts=settings.learning.max_attempts,
+        canary_enabled=settings.canary.enabled,
+        canary_schedule=settings.canary.schedule,
+        canary_target_profile=settings.canary.target_profile,
+        canary_scenario_ids=tuple(settings.canary.scenario_ids),
+        external_repo_sync_slugs=external_repo_sync_slugs,
+        config_host_cron_jobs=config_host_cron_jobs,
+    )
+
+
 class PynchyApp(ThreadRouting):
     """Main application class — owns all runtime state and wires subsystems."""
 
@@ -326,6 +394,7 @@ class PynchyApp(ThreadRouting):
         self._configure_runtime_dependencies(settings)
         self.message_data_dir = settings.data_dir
         self.message_poll_interval = settings.intervals.message_poll
+        self.scheduler_runtime = _scheduler_runtime_config(settings)
         self._learning_review_enabled = settings.learning.enabled
         self._learning_review_after_turn = settings.learning.review_after_turn
         self._learning_packet_max_chars = settings.learning.packet_max_chars
@@ -862,6 +931,88 @@ class PynchyApp(ThreadRouting):
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_system_notice(chat_jid, text)
+
+    async def run_declared_canaries(
+        self, target_profile: str, scenario_ids: tuple[str, ...]
+    ) -> list[CanaryRun]:
+        """Run configured canaries through the concrete adapter."""
+        return await run_declared_canaries(
+            target_profile=target_profile,
+            scenario_ids=scenario_ids,
+            scheduler_deps=self,
+        )
+
+    async def run_learning_review(self, packet: LearningPacket) -> str:
+        """Run a hidden learning review through the workspace-owned queue."""
+
+        async def run_agent_via_queue(  # noqa: PLR0913, RUF100 - callback mirrors the agent runner.
+            group: WorkspaceProfile,
+            chat_jid: str,
+            messages: list[dict[str, Any]],
+            on_output: Callable[[ContainerOutput], Awaitable[None]] | None = None,
+            extra_system_notices: list[str] | None = None,
+            *,
+            is_scheduled_task: bool = False,
+            repo_access_override: str | None = None,
+            input_source: str = "user",
+        ) -> str:
+            loop = asyncio.get_running_loop()
+            result_future: asyncio.Future[str] = loop.create_future()
+
+            async def run_queued_agent() -> None:
+                if result_future.cancelled():
+                    return
+                try:
+                    result = await self.run_agent(
+                        group,
+                        chat_jid,
+                        messages,
+                        on_output=on_output,
+                        extra_system_notices=extra_system_notices,
+                        is_scheduled_task=is_scheduled_task,
+                        repo_access_override=repo_access_override,
+                        input_source=input_source,
+                    )
+                except asyncio.CancelledError:
+                    if not result_future.done():
+                        result_future.cancel()
+                    raise
+                except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; propagate queued run failure.
+                    logger.exception("Queued learning run failed", err=str(exc))
+                    if not result_future.done():
+                        result_future.set_exception(exc)
+                else:
+                    if not result_future.done():
+                        result_future.set_result(result)
+
+            accepted = self.queue.enqueue_task(
+                RuntimeTarget.from_workspace(group),
+                f"learning-review-{uuid.uuid4().hex}",
+                run_queued_agent,
+            )
+            if accepted is False:
+                result_future.cancel()
+                raise asyncio.CancelledError
+            try:
+                return await result_future
+            except asyncio.CancelledError:
+                result_future.cancel()
+                raise
+
+        return await run_host_learning_review(packet, run_agent_via_queue)
+
+    async def reconcile_linear_work_items(self) -> int | None:
+        """Reconcile managed Linear work when at least one board is configured."""
+        boards = linear_workspace_boards()
+        if not boards:
+            return None
+        admitted = await reconcile_all_linear_work_items(
+            self.workspaces,
+            boards,
+            review_plan=self.review_linear_plan,
+            broadcast_host_message=self.broadcast_host_message,
+        )
+        return len(admitted)
 
     async def handle_streamed_output(
         self,

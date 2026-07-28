@@ -350,29 +350,6 @@ imports = [
 reason = "pynchy.host.orchestrator.status still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
 
 [[violations]]
-importer = "pynchy.host.orchestrator.task_scheduler"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.task_scheduler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.task_scheduler"
-target_role = "config"
-rule = "direction"
-kind = "type-checking-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.task_scheduler still has type-checking-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-
-[[violations]]
 importer = "pynchy.host.orchestrator.temporal.git_sync"
 target_role = "config"
 rule = "direction"
@@ -393,83 +370,6 @@ imports = [
   "pynchy.host.git_ops.api",
 ]
 reason = "pynchy.host.orchestrator.temporal.git_sync still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.host_jobs"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.temporal.host_jobs still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.learning"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.api",
-]
-reason = "pynchy.host.orchestrator.temporal.learning still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.linear_work_items"
-target_role = "integration_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.api",
-]
-reason = "pynchy.host.orchestrator.temporal.linear_work_items still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.schedule_reconciler"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator.temporal.schedule_reconciler still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "canary_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.canaries.api",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the canary_adapter role; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.scheduler"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.temporal.scheduler still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.temporal.schedules"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.temporal.schedules still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.workspace_config"

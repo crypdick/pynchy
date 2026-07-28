@@ -7,16 +7,21 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Callable,
 )
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime config annotations.
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pynchy.turn_outcomes import TurnOutcome
 
 from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
     OnOutput,
+)
+from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    CanaryRun,
+)
+from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    LearningPacket,
 )
 from pynchy.linear_plan_types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     LinearPlanReviewRequest,
@@ -46,6 +51,44 @@ class ScheduledExecutionLifecycle:
     execution_id: str
     status: str
     has_explicit_outcome: bool
+
+
+@dataclass(frozen=True)
+class ConfigHostCronJob:
+    """Validated host-cron data needed after configuration is loaded."""
+
+    command: str
+    schedule: str
+    cwd: str | None
+    timeout_seconds: int | None
+    quiet_on_success: bool
+
+
+@dataclass(frozen=True)
+class SchedulerRuntimeConfig:
+    """Resolved scheduler settings owned by the orchestrator composition root."""
+
+    temporal_address: str
+    temporal_namespace: str
+    temporal_task_queue: str
+    poll_interval: float
+    timezone: str | None
+    git_sync_interval_seconds: int
+    channel_reconciliation_interval_seconds: int
+    auto_deploy: bool
+    idle_timeout: float
+    groups_dir: Path
+    project_root: Path
+    admin_workspace: str | None
+    queue_max_retries: int
+    queue_base_retry_seconds: float
+    learning_max_attempts: int
+    canary_enabled: bool
+    canary_schedule: str
+    canary_target_profile: str
+    canary_scenario_ids: tuple[str, ...]
+    external_repo_sync_slugs: tuple[str, ...]
+    config_host_cron_jobs: dict[str, ConfigHostCronJob]
 
 
 @runtime_checkable
@@ -90,11 +133,21 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     @property
     def startup_readiness(self) -> StartupReadinessGate: ...
 
+    scheduler_runtime: SchedulerRuntimeConfig
+
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
+
+    async def run_declared_canaries(
+        self, target_profile: str, scenario_ids: tuple[str, ...]
+    ) -> list[CanaryRun]: ...
+
+    async def run_learning_review(self, packet: LearningPacket) -> str: ...
+
+    async def reconcile_linear_work_items(self) -> int | None: ...
 
     async def reset_scheduled_context(
         self,

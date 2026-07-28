@@ -24,13 +24,8 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
-from pynchy.canaries.api import run_declared_canaries
 from pynchy.canary_contracts import (
     CanaryRun,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
-)
-from pynchy.config.api import (
-    SchedulerConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
-    get_settings,
 )
 from pynchy.deployments import (
     DeployClaim,
@@ -44,6 +39,7 @@ from pynchy.host.orchestrator.api import (
 )
 from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
     SchedulerDependencies,
+    SchedulerRuntimeConfig,
 )
 from pynchy.host.orchestrator.temporal.channel_reconciliation import (
     run_channel_reconciliation,
@@ -329,19 +325,18 @@ async def clear_terminal_scheduled_turn(task_id: str) -> str:
 @activity.defn(name="run_scheduled_canaries")
 async def run_scheduled_canaries() -> str:
     """Run configured external-service canaries without retrying side effects."""
-    canary_config = get_settings().canary
-    if not canary_config.enabled:
+    scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
+    scheduler_runtime = scheduler_deps.scheduler_runtime
+    if not scheduler_runtime.canary_enabled:
         _record_activity_result("canaries", "disabled")
         return "disabled"
-    scheduler_deps = _require_scheduler_deps()
     try:
         async with activity_heartbeats("canaries"):
-            results = await run_declared_canaries(
-                target_profile=canary_config.target_profile,
-                scenario_ids=canary_config.scenario_ids,
-                scheduler_deps=scheduler_deps,
+            results = await scheduler_deps.run_declared_canaries(
+                scheduler_runtime.canary_target_profile,
+                scheduler_runtime.canary_scenario_ids,
             )
-        await _notify_canary_transitions(results, cast("SchedulerDependencies", scheduler_deps))
+        await _notify_canary_transitions(results, scheduler_deps)
     except Exception as exc:  # noqa: BLE001, RUF100 - persist operational failure without exposing provider details.
         _record_activity_result("canaries", "error", type(exc).__name__)
         raise
@@ -380,7 +375,9 @@ def _canary_transition_notice(result: CanaryRun) -> str:
 class TemporalSchedulerRuntime:
     """Owns the Temporal client, worker, and schedule reconciliation."""
 
-    def __init__(self, deps: SchedulerDependencies, scheduler_config: SchedulerConfig) -> None:
+    def __init__(
+        self, deps: SchedulerDependencies, scheduler_config: SchedulerRuntimeConfig
+    ) -> None:
         self.deps = deps
         self.scheduler_config = scheduler_config
         self.client: Client | None = None
@@ -482,7 +479,7 @@ class TemporalSchedulerRuntime:
         await self._start_workflow(
             LearningReviewWorkflow.run,
             packet_to_payload(packet),
-            get_settings().learning.max_attempts,
+            self.scheduler_config.learning_max_attempts,
             workflow_id=learning_review_workflow_id(packet),
             status_id=packet.job_id,
         )
@@ -492,12 +489,11 @@ class TemporalSchedulerRuntime:
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
-        settings = get_settings()
         await self._start_workflow(
             InteractiveMessageWorkflow.run,
             chat_jid,
-            settings.queue.max_retries + 1,
-            float(settings.queue.base_retry_seconds),
+            self.scheduler_config.queue_max_retries + 1,
+            self.scheduler_config.queue_base_retry_seconds,
             workflow_id=interactive_message_workflow_id(chat_jid),
             status_id=chat_jid,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
@@ -507,13 +503,12 @@ class TemporalSchedulerRuntime:
         """Start idempotent recovery for a durable interrupted-turn checkpoint."""
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
-        settings = get_settings()
         await self._start_workflow(
             InterruptedTurnWorkflow.run,
             turn_id,
             group_folder,
-            settings.queue.max_retries + 1,
-            float(settings.queue.base_retry_seconds),
+            self.scheduler_config.queue_max_retries + 1,
+            self.scheduler_config.queue_base_retry_seconds,
             workflow_id=interrupted_turn_workflow_id(turn_id),
             status_id=turn_id,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
@@ -567,7 +562,7 @@ class TemporalSchedulerRuntime:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         await reconcile_temporal_schedules(
             self,
-            get_settings_fn=get_settings,
+            scheduler_runtime=self.scheduler_config,
             get_tasks=get_all_tasks,
             get_host_jobs=get_all_host_jobs,
         )
