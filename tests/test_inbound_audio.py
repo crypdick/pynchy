@@ -160,7 +160,10 @@ async def test_transcribe_audio_file_runs_the_configured_local_provider(
         assert kwargs == {"capture_output": True, "text": True, "timeout": 180, "check": True}
         Path(command[2]).joinpath("voice.txt").write_text("transcribed locally\n", encoding="utf-8")
 
-    with patch("pynchy.host.audio.subprocess.run", side_effect=run_local_command):
+    with (
+        patch("pynchy.host.audio.importlib.util.find_spec", return_value=None),
+        patch("pynchy.host.audio.subprocess.run", side_effect=run_local_command),
+    ):
         result = await transcribe_audio_file(audio_path)
 
     assert result == AudioTranscriptionResult(
@@ -200,9 +203,12 @@ async def test_transcribe_audio_file_reports_a_failed_local_command(
     audio_path.write_bytes(b"audio")
     monkeypatch.setenv("PYNCHY_LOCAL_STT_COMMAND", "transcriber {input_path}")
 
-    with patch(
-        "pynchy.host.audio.subprocess.run",
-        side_effect=OSError("STT unavailable"),
+    with (
+        patch("pynchy.host.audio.importlib.util.find_spec", return_value=None),
+        patch(
+            "pynchy.host.audio.subprocess.run",
+            side_effect=OSError("STT unavailable"),
+        ),
     ):
         result = await transcribe_audio_file(audio_path)
 
