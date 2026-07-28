@@ -72,6 +72,7 @@ from pynchy.host.git_ops.api import (
     host_update_main_result,
     is_repo_dirty,
     last_notified_sha,
+    needs_deploy,
     probe_origin_main_sha,
     redact_git_diagnostic,
     run_git,
@@ -426,6 +427,7 @@ def reset_settings(monkeypatch):
             GitSyncRuntime(
                 project_root=safe.project_root,
                 repo_slugs=tuple(safe.repos.overrides),
+                get_restart_hash=lambda: "test-config",
             )
         )
         configure_allowed_message_filter(access.filter_allowed_messages)
@@ -524,7 +526,12 @@ def reset_settings(monkeypatch):
                 host_notify_worktree_updates=host_notify_worktree_updates,
                 host_update_main_result=host_update_main_result,
                 last_notified_sha=last_notified_sha,
+                needs_deploy=needs_deploy,
                 probe_origin_main_sha=probe_origin_main_sha,
+                refresh_host_config=lambda config_hash: orchestrator_api.ConfigRefreshResult(
+                    orchestrator_api.ConfigRefreshStatus.UNCHANGED,
+                    config_hash,
+                ),
             )
         )
         configure_gateway_runtime(is_apple_container=False, get_settings=settings_source)

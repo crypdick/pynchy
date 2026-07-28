@@ -38,11 +38,16 @@ from pynchy.config.api import (
     WorkspaceConfig,
     access,
     apply_tool_access,
+    configuration_source_digest,
     get_settings,
+    load_runtime_candidate,
     mutate_config_toml,
     parse_chat_ref,
+    publish_settings,
     reset_settings,
     resolve_tool_access,
+    restart_fingerprint,
+    skill_policy_projection,
     tool_process_environment,
 )
 from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves scheduled-binding annotations.
@@ -204,6 +209,11 @@ from pynchy.host.orchestrator.adapters import (
     make_host_message_broadcaster,
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.config_refresh import (
+    ConfigRefreshRuntime,
+    configure_config_refresh_runtime,
+    refresh_host_config,
+)
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.deploy import DeployGitRuntime, configure_deploy_git_runtime
 from pynchy.host.orchestrator.job_sources import (
@@ -483,7 +493,9 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             host_notify_worktree_updates=host_notify_worktree_updates,
             host_update_main_result=host_update_main_result,
             last_notified_sha=last_notified_sha,
+            needs_deploy=needs_deploy,
             probe_origin_main_sha=probe_origin_main_sha,
+            refresh_host_config=refresh_host_config,
         )
     )
     configure_startup_runtime(
@@ -778,6 +790,20 @@ class PynchyApp(ThreadRouting):
 
     def _configure_runtime_dependencies(self, settings: Settings) -> None:
         """Wire concrete host adapters into subsystem-local runtime seams."""
+        configure_config_refresh_runtime(
+            ConfigRefreshRuntime(
+                project_root=settings.project_root,
+                configuration_source_digest=configuration_source_digest,
+                get_settings=get_settings,
+                load_runtime_candidate=load_runtime_candidate,
+                publish_settings=cast("Callable[[object], None]", publish_settings),
+                restart_fingerprint=cast("Callable[[object], str]", restart_fingerprint),
+                skill_policy_projection=cast(
+                    "Callable[[object], object]",
+                    skill_policy_projection,
+                ),
+            )
+        )
         configure_ipc_base_dir(settings.data_dir / "ipc")
         configure_approval_state_root(settings.data_dir / "approvals")
         configure_security_audit_storage(
@@ -800,6 +826,7 @@ class PynchyApp(ThreadRouting):
             GitSyncRuntime(
                 project_root=settings.project_root,
                 repo_slugs=tuple(settings.repos.overrides),
+                get_restart_hash=lambda: restart_fingerprint(load_runtime_candidate()),
             )
         )
         configure_deploy_git_runtime(
@@ -840,7 +867,7 @@ class PynchyApp(ThreadRouting):
         def workspace_skill_selection(
             folder: str,
         ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] | None:
-            resolved = load_resolved_config(folder, settings=settings)
+            resolved = load_resolved_config(folder, settings=get_settings())
             if resolved is None:
                 return None
             return (

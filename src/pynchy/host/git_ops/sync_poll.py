@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import subprocess  # noqa: S404 - used only for subprocess exception types.
+from collections.abc import (  # noqa: TC003 - beartype resolves runtime configuration annotations.
+    Callable,
+)
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves git sync helpers at runtime.
 
@@ -49,6 +51,7 @@ class GitSyncRuntime:
 
     project_root: Path
     repo_slugs: tuple[str, ...]
+    get_restart_hash: Callable[[], str]
 
 
 _git_sync_runtime: GitSyncRuntime | None = None
@@ -216,39 +219,9 @@ def needs_container_rebuild(old_sha: str, new_sha: str) -> bool:
     return _host_container_files_changed(old_sha, new_sha)
 
 
-def _hash_config_files() -> str:
-    """Hash config files that require a restart when changed."""
-    h = hashlib.sha256()
-    project_root = _configured_git_sync_runtime().project_root
-    defaults = project_root / "data" / "defaults"
-    personalization = project_root / "data" / "personalization"
-    fixed_paths = (
-        project_root / ".env",
-        defaults / "pynchy.toml",
-        personalization / "pynchy.toml",
-        personalization / "litellm.yaml",
-    )
-    # Agent-authored skills hot-refresh into session homes; including them here
-    # would interrupt every conversation whenever an agent improves a skill.
-    for path in fixed_paths:
-        h.update(path.relative_to(project_root).as_posix().encode())
-        if path.exists():
-            h.update(path.read_bytes())
-        else:
-            h.update(b"__missing__")
-    for directory in (defaults / "automations", personalization / "automations"):
-        if not directory.is_dir():
-            h.update(f"__missing__:{directory.relative_to(project_root).as_posix()}".encode())
-            continue
-        for path in sorted(candidate for candidate in directory.rglob("*") if candidate.is_file()):
-            h.update(path.relative_to(project_root).as_posix().encode())
-            h.update(path.read_bytes())
-    return h.hexdigest()
-
-
 def get_deploy_config_hash() -> str:
     """Return the effective hash of host configuration that requires restart."""
-    return _hash_config_files()
+    return _configured_git_sync_runtime().get_restart_hash()
 
 
 def _find_pynchy_repo_ctx(
@@ -272,16 +245,6 @@ class HostSyncState:
     config_hash: str
     local_head: str | None = None
     offered_sha: str = ""
-
-
-async def _check_config_drift(state: HostSyncState, deps: GitSyncDeps) -> bool:
-    """Return True (after triggering a deploy) if config files drifted."""
-    current_config_hash = _hash_config_files()
-    if current_config_hash == state.config_hash:
-        return False
-    logger.info("Config files changed, triggering restart")
-    await deps.trigger_deploy(state.deployed_sha, rebuild=False)
-    return True
 
 
 async def _check_local_head_drift(

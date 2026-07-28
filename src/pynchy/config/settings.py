@@ -499,6 +499,11 @@ def get_settings() -> Settings:
     return _state.settings
 
 
+def publish_settings(settings: Settings) -> None:
+    """Atomically publish the validated runtime settings snapshot."""
+    _state.settings = settings
+
+
 def reset_settings() -> None:
     """Clear the cached singleton (for tests)."""
     _state.settings = None
