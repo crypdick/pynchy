@@ -12,6 +12,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves teardown strate
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pynchy.async_tasks import create_background_task
 from pynchy.conversation.api import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
@@ -31,7 +32,6 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.state.api import clear_session, set_chat_cleared_at, store_message
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:

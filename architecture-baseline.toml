@@ -2,8 +2,3 @@ version = 2
 
 # Exact, shrinking exceptions to the independent visibility and direction gates.
 # Regeneration is not an approved fix: remove entries only when source stops matching.
-
-[[root_module_inbound_imports]]
-path = "src/pynchy/utils.py"
-count = 30
-reason = "Shared helpers must be narrowed or moved to their owning packages."

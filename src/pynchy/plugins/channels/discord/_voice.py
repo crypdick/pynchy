@@ -21,13 +21,13 @@ from uuid import uuid4
 import discord
 from discord import opus
 
+from pynchy.async_tasks import create_background_task
 from pynchy.discord import DiscordChatTarget
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     AudioTranscriptionResult,
     NewMessage,
 )
-from pynchy.utils import create_background_task
 
 from ._access import InboundContext
 from ._ids import voice_jid

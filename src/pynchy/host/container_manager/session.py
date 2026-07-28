@@ -36,6 +36,7 @@ from typing import Any
 from pynchy.agent_protocol.api import (
     OnOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
+from pynchy.async_tasks import create_background_task
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
     write_ipc_close_sentinel,
@@ -52,7 +53,7 @@ from pynchy.identifiers import (
     GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.utils import ProgressTimeoutError, create_background_task, wait_for_progress
+from pynchy.utils import ProgressTimeoutError, wait_for_progress
 
 
 class SessionDiedError(Exception):

@@ -16,6 +16,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves queue annotatio
 from dataclasses import dataclass
 from typing import TypeVar
 
+from pynchy.async_tasks import create_background_task
 from pynchy.host.orchestrator.queue_serialization import (
     await_message_turn,
     await_queued_task,
@@ -31,7 +32,6 @@ from pynchy.identifiers import (
 )
 from pynchy.logger import logger
 from pynchy.turn_outcomes import TurnOutcome
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
     RuntimeTarget,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )

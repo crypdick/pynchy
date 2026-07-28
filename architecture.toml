@@ -157,6 +157,12 @@ role = "foundation"
 public_modules = ["pynchy.utils"]
 
 [[packages]]
+name = "async_tasks"
+root = "pynchy.async_tasks"
+role = "foundation"
+public_modules = ["pynchy.async_tasks"]
+
+[[packages]]
 name = "agent"
 root = "pynchy.agent"
 role = "foundation"

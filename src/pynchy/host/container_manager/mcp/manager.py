@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from pynchy.agent_protocol.api import McpStartupFailure
+from pynchy.async_tasks import create_background_task
 from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
@@ -59,7 +60,6 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001 - beartype resolves MCP manager signatures at runtime.
 )
-from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
     ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
