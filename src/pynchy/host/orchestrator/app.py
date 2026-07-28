@@ -67,10 +67,13 @@ from pynchy.host.container_manager.session import (
     get_session,
 )
 from pynchy.host.git_ops.api import (
+    count_unpushed_commits,
     get_deploy_config_hash,
     get_head_sha,
     get_local_head_sha,
+    get_repo_context,
     host_update_main,
+    is_repo_dirty,
     needs_container_rebuild,
     needs_deploy,
     run_git,
@@ -838,6 +841,18 @@ class PynchyApp(ThreadRouting):
             await get_all_chats(),
             self.workspaces,
             self.channels,
+        )
+
+    def admin_repo_notices(
+        self, group_folder: str, *, is_admin: bool, repo_access: str | None
+    ) -> list[str]:
+        """Resolve source-control state for the pre-container admin notice."""
+        repo_context = get_repo_context(repo_access) if repo_access else None
+        cwd = repo_context.worktrees_dir / group_folder if repo_context else None
+        return agent_runner.build_admin_system_notices(
+            is_admin=is_admin,
+            repo_dirty=is_repo_dirty(cwd=cwd),
+            unpushed_commits=count_unpushed_commits(cwd=cwd),
         )
 
     # ------------------------------------------------------------------

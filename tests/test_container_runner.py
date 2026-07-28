@@ -176,6 +176,7 @@ class _AgentRunnerDeps:
         self.container_agent_operations = make_container_agent_operations()
         self.host_runtime_operations = make_host_runtime_operations()
         self.refresh_personalized_agent_skills = MagicMock()
+        self.admin_repo_notices = MagicMock(return_value=[])
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -2671,28 +2672,11 @@ class TestAgentRunnerPreContainerHelpers:
         )
 
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
-        repo_ctx = MagicMock()
-        repo_ctx.worktrees_dir = Path.cwd() / "worktrees"
-
-        with (
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.get_repo_context",
-                return_value=repo_ctx,
-            ),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.is_repo_dirty",
-                return_value=True,
-            ),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.count_unpushed_commits",
-                return_value=2,
-            ),
-        ):
-            notices = build_admin_system_notices(
-                "test-group",
-                is_admin=True,
-                repo_access="owner/repo",
-            )
+        notices = build_admin_system_notices(
+            is_admin=True,
+            repo_dirty=True,
+            unpushed_commits=2,
+        )
 
         assert any("uncommitted local changes" in notice for notice in notices)
         assert any("haven't been pushed" in notice for notice in notices)

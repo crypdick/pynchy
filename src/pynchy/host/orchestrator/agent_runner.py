@@ -145,6 +145,10 @@ class AgentRunnerDeps(Protocol):
 
     def refresh_personalized_agent_skills(self, group_folder: str) -> None: ...
 
+    def admin_repo_notices(
+        self, group_folder: str, *, is_admin: bool, repo_access: str | None
+    ) -> list[str]: ...
+
 
 @dataclass(frozen=True)
 class _SpawnAndAwaitRequest:

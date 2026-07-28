@@ -258,17 +258,6 @@ imports = [
 reason = "pynchy.host.learning.paths still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.orchestrator._agent_runner_preflight"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.orchestrator._agent_runner_preflight still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.config_jobs"
 target_role = "config"
 rule = "direction"

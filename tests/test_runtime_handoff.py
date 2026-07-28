@@ -41,6 +41,7 @@ class _RunnerDeps:
         self.container_agent_operations = make_container_agent_operations()
         self.host_runtime_operations = make_host_runtime_operations()
         self.refresh_personalized_agent_skills = MagicMock()
+        self.admin_repo_notices = MagicMock(return_value=[])
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
