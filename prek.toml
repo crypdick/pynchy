@@ -99,6 +99,14 @@ types = ["python"]
 files = "^src/"
 
 [[repos.hooks]]
+id = "check-test-file-length"
+name = "Enforce 600-logical-line test file budget"
+entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600 --baseline test-file-length-baseline.toml"
+language = "system"
+types = ["python"]
+files = "^tests/"
+
+[[repos.hooks]]
 id = "vulture"
 name = "Detect dead code"
 entry = "uv run vulture src tests --min-confidence 80"
