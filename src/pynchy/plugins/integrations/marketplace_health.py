@@ -99,7 +99,7 @@ class MarketplaceHealthSnapshot(BaseModel):
 class MarketplaceHealthRuntime:
     """Resolved marketplace projection configuration selected at composition."""
 
-    options: MarketplaceHealthOptions
+    options: MarketplaceHealthOptions | None
     reader_environment: Callable[[str], dict[str, str] | None]
 
 
@@ -123,7 +123,10 @@ def _configured_runtime() -> MarketplaceHealthRuntime:
 
 
 def _options() -> MarketplaceHealthOptions:
-    return _configured_runtime().options
+    options = _configured_runtime().options
+    if options is None:
+        raise ValueError("Marketplace health projection is not configured")
+    return options
 
 
 def _load_counts(path: Path) -> MarketplaceCounts:

@@ -11,10 +11,12 @@ from conftest import make_settings
 
 from pynchy.actions import ACTION_SPECS
 from pynchy.config.api import McpTool, McpToolConfig, PluginConfig, tool_process_environment
+from pynchy.host.orchestrator.plugin_configuration import configure_marketplace_health_plugin
 from pynchy.plugins.api import HostActionAccess, validate_host_action_descriptors
 from pynchy.plugins.integrations.marketplace_health import (
     MARKETPLACE_HEALTH_HOST_ACTIONS,
     MarketplaceHealthOptions,
+    MarketplaceHealthPlugin,
     MarketplaceHealthRuntime,
     build_marketplace_health_snapshot,
     configure_marketplace_health_runtime,
@@ -170,3 +172,17 @@ def test_host_action_is_a_read_only_validated_action() -> None:
         validate_host_action_descriptors(MARKETPLACE_HEALTH_HOST_ACTIONS.actions, ACTION_SPECS)
         == ()
     )
+
+
+async def test_empty_options_leave_plugin_action_unconfigured() -> None:
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin.return_value = MarketplaceHealthPlugin()
+
+    configure_marketplace_health_plugin(
+        plugin_manager,
+        make_settings(plugins={"marketplace-health": PluginConfig()}),
+    )
+
+    assert await MARKETPLACE_HEALTH_HOST_ACTIONS.actions[0].handler({}) == {
+        "error": "Marketplace health projection is not configured"
+    }

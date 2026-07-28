@@ -519,8 +519,10 @@ def configure_marketplace_health_plugin(
         return filtered_process_environment({**tool.mcp.env, **tool_process_environment(tool)})
 
     runtime = MarketplaceHealthRuntime(
-        options=MarketplaceHealthOptions.model_validate(
-            plugin_config.options if plugin_config is not None else {}
+        options=(
+            MarketplaceHealthOptions.model_validate(plugin_config.options)
+            if plugin_config is not None and plugin_config.options
+            else None
         ),
         reader_environment=reader_environment,
     )
