@@ -361,7 +361,7 @@ class _WebhookDeps:
 
 def _public_runtime() -> ControlPlaneRuntime:
     return ControlPlaneRuntime(
-        bind_host="0.0.0.0",  # noqa: S104, RUF100 - exercise public-bind auth policy
+        bind_host="0.0.0.0",  # noqa: S104 - exercise public-bind auth policy
         port=8484,
         unix_socket=None,
         public_bind=True,

@@ -76,7 +76,7 @@ def _strip_user_prefix(entry: str) -> str:
     return entry
 
 
-def discord_chat_ref_error(  # noqa: PLR0911, RUF100 - each invalid reference needs its exact diagnostic.
+def discord_chat_ref_error(  # noqa: PLR0911 - each invalid reference needs its exact diagnostic.
     config: DiscordConnectionSettings, chat: str
 ) -> str | None:
     """Return an explanatory error when a Discord workspace chat ref is invalid."""

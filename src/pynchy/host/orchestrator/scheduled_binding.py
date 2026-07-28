@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves binding port annotations.
+from pynchy.conversation.api import (  # beartype resolves binding port annotations.
     Conversation,
     ConversationId,
     conversation_runtime_lock,
@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
-from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001, RUF100
+from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.identifiers import (
@@ -30,14 +30,14 @@ from pynchy.identifiers import (
     SessionId,
 )
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 

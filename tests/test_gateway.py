@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 _GATEWAY_MOD = "pynchy.host.container_manager.gateway"
 _LITELLM_MOD = "pynchy.host.container_manager.gateway_litellm"
 _DOCKER_MOD = "pynchy.host.container_manager.docker"
-ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for intentional container-reachable gateway binds.
+ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104 - test data for intentional container-reachable gateway binds.
 
 _LITELLM_KWARGS = {
     "port": 4000,

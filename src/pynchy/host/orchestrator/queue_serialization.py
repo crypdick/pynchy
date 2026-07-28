@@ -3,28 +3,29 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations at runtime.
     Awaitable,
     Callable,
 )
 from typing import cast
 
-from pynchy.host.orchestrator.queue_state import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+from pynchy.host.orchestrator.queue_state import (
+    # beartype resolves queue annotations at runtime.
     GroupState,
     QueuedTask,
 )
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+    RuntimeId,  # noqa: TC001 - beartype resolves queue annotations at runtime.
 )
-from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves queue annotations at runtime.
     TurnOutcome,
 )
 from pynchy.workspace.api import (
-    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves queue annotations at runtime.
+    RuntimeTarget,  # noqa: TC001 - beartype resolves queue annotations at runtime.
 )
 
 
-async def await_queued_task[ResultT](  # noqa: PLR0913, RUF100 - queue adapters keep individual lifecycle controls explicit.
+async def await_queued_task[ResultT](  # noqa: PLR0913 - queue adapters keep individual lifecycle controls explicit.
     enqueue_task: Callable[[RuntimeTarget, QueuedTask], bool],
     cancel_task: Callable[[RuntimeId, QueuedTask], bool],
     stop_active_process: Callable[[RuntimeId], Awaitable[None]],

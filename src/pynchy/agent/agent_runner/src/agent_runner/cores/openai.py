@@ -72,7 +72,7 @@ def _disable_tracing() -> None:
     try:
         set_tracing_disabled(disabled=True)
         _log("Tracing disabled")
-    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001
         _log(f"Tracing disable skipped: {exc}")
 
 
@@ -155,7 +155,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
                 content,
             )
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -170,7 +170,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
             if not updated:
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -179,7 +179,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
         try:
             await asyncio.to_thread(_delete_patch_file, Path(op.path))
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001
             return ApplyPatchResult(status="failed", output=str(exc))
 
 
@@ -371,7 +371,7 @@ class OpenAIAgentCore:
         _disable_tracing()
         try:
             await self._initialize_runtime()
-        except Exception:  # allow: exception-handling; init cleanup  # noqa: BLE001, RUF100
+        except Exception:  # allow: exception-handling; init cleanup
             await self._mcp_stack.aclose()
             raise
 
@@ -439,7 +439,7 @@ class OpenAIAgentCore:
         """Clean up MCP server contexts."""
         try:
             await self._mcp_stack.aclose()
-        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001
             _log(f"Error closing MCP server: {exc}")
         self._mcp_servers.clear()
         self._agent = None

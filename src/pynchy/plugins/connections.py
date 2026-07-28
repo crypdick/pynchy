@@ -2,24 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context callbacks.
+from collections.abc import (  # noqa: TC003 - beartype resolves context callbacks.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations.
 
 from pynchy.identifiers import (
-    SessionId,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+    SessionId,  # noqa: TC001 - beartype resolves protocol annotations.
 )
-from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+from pynchy.plugins.contracts import (  # noqa: TC001 - beartype resolves protocol annotations.
     Channel,
     NewMessage,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves protocol annotations.
 )
 
 

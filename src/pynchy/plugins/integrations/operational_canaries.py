@@ -54,7 +54,7 @@ class _LinearCanaryClient(Protocol):
 
     async def list_issues(self, *, team_id: str) -> list[dict[str, Any]]: ...
 
-    async def create_issue(  # noqa: PLR0913, RUF100 - mirrors the built-in Linear client contract.
+    async def create_issue(  # noqa: PLR0913 - mirrors the built-in Linear client contract.
         self,
         *,
         team_id: str,
@@ -220,7 +220,7 @@ class LinearWorkspaceRoundTripCanary:
                     status="done",
                     team_key=self._team_key,
                 )
-            except Exception:  # noqa: BLE001, RUF100 - remove any issue created before an incomplete canary exercise.
+            except Exception:  # remove any issue created before an incomplete canary exercise.
                 await _delete_linear_artifacts(client, (issue_id, todo_id))
                 raise
             if todo_id is None:

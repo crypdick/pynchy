@@ -10,7 +10,7 @@ container workers use the same IPC/MCP lookup contract.
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves security resolution annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves security resolution annotations.
     Callable,
     Mapping,
     Sequence,
@@ -89,7 +89,7 @@ def configure_security_resolution(
     ],
 ) -> None:
     """Bind the security policy projection at host composition."""
-    global _get_settings, load_resolved_config  # noqa: PLW0603, RUF100 - one host process owns these policy sources.
+    global _get_settings, load_resolved_config  # noqa: PLW0603 - one host process owns these policy sources.
     _get_settings = get_settings
     load_resolved_config = resolve_workspace_config
 

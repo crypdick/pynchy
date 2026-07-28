@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery annotations at runtime.
+from aiosqlite import (  # noqa: TC002 - beartype resolves recovery annotations at runtime.
     Connection,
 )
 

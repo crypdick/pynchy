@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from typing import Protocol, TypeGuard, runtime_checkable
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.event_bus import (
-    EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    EventBus,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
 
@@ -49,7 +49,7 @@ def attach_observers(
     """
     try:
         candidates = plugin_manager.hook.pynchy_observer()
-    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break observer discovery.
+    except Exception:  # noqa: BLE001 - one plugin must not break observer discovery.
         logger.exception("Failed to resolve observer plugins")
         return []
     observers = [candidate for candidate in candidates if _is_valid_observer(candidate)]
@@ -60,7 +60,7 @@ def attach_observers(
             obs.subscribe(event_bus)
             attached.append(obs)
             logger.info("Attached observer", name=obs.name)
-        except Exception:  # noqa: BLE001, RUF100 - observer plugins are isolated best-effort extensions.
+        except Exception:  # noqa: BLE001 - observer plugins are isolated best-effort extensions.
             logger.exception("Failed to attach observer", name=getattr(obs, "name", "?"))
 
     return attached

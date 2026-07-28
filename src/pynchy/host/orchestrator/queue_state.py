@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003, RUF100 - beartype validates dataclass annotations at runtime.
+import asyncio  # noqa: TC003 - beartype validates dataclass annotations at runtime.
 from collections import deque
-from collections.abc import (  # noqa: TC003, RUF100 - beartype validates dataclass annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype validates dataclass annotations at runtime.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass, field
 
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeId,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
 from pynchy.workspace.api import (
-    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeTarget,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 

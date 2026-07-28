@@ -393,7 +393,7 @@ async def _set_action_intent_status(update: ActionIntentStatusUpdate) -> ActionI
                 updated_at = ?,
                 resolved_at = COALESCE(?, resolved_at)
             WHERE request_id = ? AND status IN ({placeholders})
-            """,  # noqa: S608, RUF100 - expected state placeholders are enum-controlled.
+            """,  # noqa: S608 - expected state placeholders are enum-controlled.
             (
                 update.status.value,
                 update.policy_decision,
@@ -437,7 +437,7 @@ async def _close_action_intent(
             UPDATE action_intents
             SET status = ?, error = ?, updated_at = ?, resolved_at = ?
             WHERE request_id = ? AND status IN ({placeholders})
-            """,  # noqa: S608, RUF100 - expected state placeholders are enum-controlled.
+            """,  # noqa: S608 - expected state placeholders are enum-controlled.
             (status.value, error, now, now, request_id, *(item.value for item in expected)),
         )
     return await get_action_intent_by_request(request_id)

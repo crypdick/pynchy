@@ -6,9 +6,9 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-import aiosqlite  # noqa: TC002, RUF100 - beartype resolves this annotation at runtime.
+import aiosqlite  # noqa: TC002 - beartype resolves this annotation at runtime.
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
     ConversationLifecycleFence,
 )
 from pynchy.state.connection import _get_db, atomic_write

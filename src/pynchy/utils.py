@@ -14,7 +14,7 @@ import logging
 import os
 import signal
 from asyncio.subprocess import PIPE, Process
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
     Coroutine,
@@ -22,7 +22,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -313,7 +313,7 @@ async def run_shell_command(
     except asyncio.CancelledError:
         await _terminate_shell_process_group(process)
         raise
-    except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - start_error is surfaced by the caller.
+    except Exception as exc:  # noqa: BLE001  # allow: exception-handling - start_error is surfaced by the caller.
         await _terminate_shell_process_group(process)
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
 

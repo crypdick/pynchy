@@ -51,9 +51,7 @@ def create_agent_core(module_path: str, class_name: str, config: AgentCoreConfig
     # Instantiate the core
     try:
         instance = cls(config)
-    except (
-        Exception
-    ) as exc:  # allow: exception-handling; instantiation error  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; instantiation error
         raise TypeError(
             _INSTANTIATION_ERROR.format(module_path=module_path, class_name=class_name, exc=exc)
         ) from exc

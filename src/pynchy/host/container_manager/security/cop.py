@@ -14,7 +14,7 @@ See docs/plans/2026-02-24-host-mutating-cop-design.md
 from __future__ import annotations
 
 import json as _json
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Cop context loader annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves Cop context loader annotations at runtime.
     Awaitable,
     Callable,
 )
@@ -33,7 +33,7 @@ from pynchy.host.container_manager.security.cop_prompts import (
 )
 from pynchy.logger import logger
 from pynchy.redaction import RedactionSession
-from pynchy.security_context import (  # noqa: TC001, RUF100 - beartype resolves Cop context loader annotations at runtime.
+from pynchy.security_context import (  # noqa: TC001 - beartype resolves Cop context loader annotations at runtime.
     RecentSecurityContext,
     SecurityExecutionAuthority,
 )
@@ -66,7 +66,7 @@ async def load_cop_inspection_context(
     """Load bounded SQLite context or return an explicit degraded value."""
     try:
         context = await load_recent_security_context(chat_jid)
-    except Exception as exc:  # noqa: BLE001, RUF100 - context loss becomes a typed degraded policy input.
+    except Exception as exc:  # noqa: BLE001 - context loss becomes a typed degraded policy input.
         logger.warning(
             "Cop context unavailable",
             chat_jid=chat_jid,
@@ -209,7 +209,7 @@ async def inspect_bash(
             user_content=_command_review_content(command, inspection_context, risk),
         )
         verdict = _parse_command_verdict(result)
-    except Exception as exc:  # noqa: BLE001, RUF100 - failures become typed degraded policy input.
+    except Exception as exc:  # noqa: BLE001 - failures become typed degraded policy input.
         logger.error(
             "Cop command inspection failed; escalating",
             context=context,
@@ -246,7 +246,7 @@ async def inspect_secret_taint(
             user_content=_taint_review_content(tool_name, candidates),
         )
         verdict = _parse_taint_verdict(result)
-    except Exception as exc:  # noqa: BLE001, RUF100 - degraded review confirms taint.
+    except Exception as exc:  # noqa: BLE001 - degraded review confirms taint.
         logger.error(
             "Cop taint inspection failed; confirming conservatively",
             context=context,
@@ -384,7 +384,7 @@ async def _inspect(
     """Run an LLM inspection and return a CopVerdict."""
     try:
         verdict = await _run_inspection(system_prompt, user_content, context)
-    except Exception as exc:  # noqa: BLE001, RUF100 - failures become typed degraded policy input.
+    except Exception as exc:  # noqa: BLE001 - failures become typed degraded policy input.
         logger.error(
             "Cop inspection failed; returning degraded verdict",
             context=context,

@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
 )
@@ -23,14 +23,16 @@ import pluggy
 from aiohttp import web
 
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.  # noqa: TC001, RUF100 - beartype resolves the hook parameter annotation at runtime.
+from pynchy.plugins.api import (
+    # beartype resolves the hook return annotation at runtime.
+    # beartype resolves the hook parameter annotation at runtime.
     ComputerUseBackend,
     HostActionRegistration,
     McpServerConfig,
     McpServerSpec,
-    WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
+    WebhookRoute,  # beartype resolves the hook return annotation at runtime.
 )
-from pynchy.plugins.integrations.linear_accounts import (  # noqa: TC001, RUF100 - beartype resolves plugin configuration annotations at runtime.
+from pynchy.plugins.integrations.linear_accounts import (  # noqa: TC001 - beartype resolves plugin configuration annotations at runtime.
     LinearAccount,
 )
 from pynchy.plugins.integrations.linear_boards import (
@@ -166,7 +168,7 @@ def build_app(*, workspace: str | None = None) -> object:
     return app
 
 
-async def _handle_health(_request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_health(_request: web.Request) -> web.Response:  # noqa: RUF029 - aiohttp route handlers are async.
     return web.json_response({"status": "ok", "service": "pynchy-linear"})
 
 
@@ -191,7 +193,7 @@ async def _handle_mcp(request: web.Request) -> web.StreamResponse:
                 ),
             )
         return _jsonrpc_error(request_id, -32601, f"Unknown MCP method: {method}")
-    except Exception as exc:  # noqa: BLE001, RUF100 - Linear MCP tool failures are converted to JSON-RPC errors.
+    except Exception as exc:  # noqa: BLE001 - Linear MCP tool failures are converted to JSON-RPC errors.
         logger.exception("Linear MCP request failed", method=method)
         return _jsonrpc_result(
             request_id, _text_result(f"Linear tool failed: {exc}", is_error=True)

@@ -14,7 +14,7 @@ from temporalio.client import (
 )
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    SchedulerRuntimeConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
+    SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves Temporal schedule annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.workflows import (
     CanaryRunWorkflow,
@@ -26,7 +26,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
+from pynchy.scheduling.api import (  # beartype resolves Temporal schedule annotations at runtime.
     HostJob,
     ScheduledTask,
     agent_task_workflow_id,

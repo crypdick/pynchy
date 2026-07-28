@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves approval state paths at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves approval state paths at runtime.
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - runtime validation resolves recovery deps.
+    IpcDeps,  # noqa: TC001 - runtime validation resolves recovery deps.
 )
 from pynchy.logger import logger
 
@@ -29,7 +29,7 @@ async def _sweep_group_decisions(
     deps: IpcDeps,
 ) -> int:
     try:
-        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - keep watcher startup narrow.
+        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415 - keep watcher startup narrow.
             process_approval_decision,
         )
 
@@ -48,7 +48,7 @@ async def _sweep_group_decisions(
 
 async def sweep_host_approval_decisions(deps: IpcDeps) -> int:
     """Recover decisions persisted immediately before a host crash."""
-    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - keep watcher startup narrow.
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - keep watcher startup narrow.
         approval_state_root,
     )
 

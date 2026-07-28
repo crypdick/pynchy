@@ -6,10 +6,10 @@ import asyncio
 import json
 import os
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves temporal Git runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves temporal Git runtime annotations.
 )
 from dataclasses import asdict, dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from temporalio import activity
@@ -34,7 +34,7 @@ from pynchy.state.api import (
     set_router_state,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 if TYPE_CHECKING:
@@ -96,11 +96,11 @@ _runtime = TemporalGitSyncRuntime(
 
 def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None:
     """Bind Temporal Git sync operations at host composition."""
-    global _runtime, get_settings, _check_local_head_drift, _find_pynchy_repo_ctx  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
-    global get_deploy_config_hash, get_local_head_sha, get_repo_context, git_env_with_token  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
-    global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
-    global host_update_main_result, check_origin_drift  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
-    global probe_origin_main_sha, last_notified_sha  # noqa: PLW0603, RUF100 - one host process owns Temporal Git sync operations.
+    global _runtime, get_settings, _check_local_head_drift, _find_pynchy_repo_ctx  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global get_deploy_config_hash, get_local_head_sha, get_repo_context, git_env_with_token  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global host_update_main_result, check_origin_drift  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global probe_origin_main_sha, last_notified_sha  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     _runtime = runtime
     get_settings = runtime.get_settings
     _check_local_head_drift = runtime.check_local_head_drift
@@ -167,7 +167,7 @@ class _TemporalGitSyncDeps:
         return self._deps.sync_personalization(project_root)
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
-        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - avoids scheduler <-> git_sync import cycle.
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - avoids scheduler <-> git_sync import cycle.
             start_deploy_workflow,
         )
 

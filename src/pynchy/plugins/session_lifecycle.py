@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations.
 
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 

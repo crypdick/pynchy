@@ -11,7 +11,7 @@ import json
 import re
 import tempfile
 import time
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
 )
@@ -78,7 +78,7 @@ async def try_step(
     """Attempt an automated Console step; use the manual + noVNC path when needed."""
     try:
         await step_fn(page)
-    except Exception as exc:  # noqa: BLE001, RUF100 - UI automation can require manual noVNC completion.
+    except Exception as exc:  # noqa: BLE001 - UI automation can require manual noVNC completion.
         logger.warning("GCP automation step failed; using manual path", error=str(exc))
         with contextlib.suppress(Exception):
             debug_screenshot = Path(tempfile.gettempdir()) / "gdrive-setup-debug.png"
@@ -309,7 +309,7 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
 
     try:
         await _automate(page)
-    except Exception as exc:  # noqa: BLE001, RUF100 - credential download automation falls back to manual steps.
+    except Exception as exc:  # noqa: BLE001 - credential download automation falls back to manual steps.
         logger.warning("Credential creation automation failed", error=str(exc))
         logger.info(
             "Manual step required: create Desktop App credentials",
@@ -324,7 +324,7 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
             async with page.expect_download(timeout=180_000) as download_info:
                 download = await download_info.value
                 await download.save_as(str(dest))
-        except Exception as exc:  # noqa: BLE001, RUF100 - missing download remains a manual credential-creation path.
+        except Exception as exc:  # missing download remains a manual credential-creation path.
             raise RuntimeError(COULD_NOT_DETECT_CREDENTIAL_DOWNLOAD_ERROR) from exc
 
     if not dest.exists():

@@ -5,12 +5,12 @@ from __future__ import annotations
 import shutil
 import sys
 from collections.abc import (
-    Iterator,  # noqa: TC003, RUF100 - beartype resolves context-manager annotations.
+    Iterator,  # noqa: TC003 - beartype resolves context-manager annotations.
 )
 from contextlib import contextmanager
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 
-from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.host.learning.paths import (  # beartype resolves this runtime annotation.
     LearningPaths,
     resolve_automation_memory_paths,
 )
@@ -21,7 +21,7 @@ _use_vault_mount_mirror = False
 
 def configure_vault_mount_mirror(*, enabled: bool) -> None:
     """Select Apple Container mirror behavior at host composition."""
-    global _use_vault_mount_mirror  # noqa: PLW0603, RUF100 - one host process owns one vault mount mode.
+    global _use_vault_mount_mirror  # noqa: PLW0603 - one host process owns one vault mount mode.
     _use_vault_mount_mirror = enabled
 
 

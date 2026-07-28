@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from pynchy.conversation.api import (
-    ConversationDeliveryCompletion,  # noqa: TC001, RUF100 - beartype resolves completion results.
+    ConversationDeliveryCompletion,  # beartype resolves completion results.
     notify_conversation_delivery_completed,
 )
 from pynchy.state.api import complete_in_flight_turn
@@ -46,7 +46,7 @@ async def advance_cursor(
     deps.last_agent_timestamp[chat_jid] = new_cursor
     try:
         await deps.save_state()
-    except Exception:  # noqa: BLE001, RUF100 - cursor save is a state boundary; roll back the optimistic advance.
+    except Exception:  # cursor save is a state boundary; roll back the optimistic advance.
         deps.last_agent_timestamp[chat_jid] = previous_cursor
         raise
 
@@ -68,7 +68,7 @@ async def complete_turn_with_cursor(
             last_agent_timestamps=deps.last_agent_timestamp,
             conversation_claim_id=conversation_claim_id,
         )
-    except Exception:  # noqa: BLE001, RUF100 - cursor persistence rolls back in-memory state.
+    except Exception:  # cursor persistence rolls back in-memory state.
         deps.last_agent_timestamp[chat_jid] = previous_cursor
         raise
     if completed is not None:

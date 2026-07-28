@@ -11,7 +11,7 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewResult,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves this annotation at runtime.
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_issue_mutations import update_issue_state
@@ -38,7 +38,7 @@ LinearPlanReviewer = Callable[
 ]
 
 
-async def review_approved_plan(  # noqa: PLR0913, RUF100 - the approval boundary needs exact issue evidence.
+async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs exact issue evidence.
     client: LinearPlanReviewClient,
     reviewer: LinearPlanReviewer | None,
     *,
@@ -72,7 +72,7 @@ async def review_approved_plan(  # noqa: PLR0913, RUF100 - the approval boundary
                     public_source=public_source,
                 )
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - reviewer errors return to the approval boundary.
+        except Exception as exc:  # noqa: BLE001 - reviewer errors return to the approval boundary.
             logger.exception(
                 "Linear plan freshness review failed",
                 issue=identifier,

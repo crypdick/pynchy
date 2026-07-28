@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import (
-    Iterator,  # noqa: TC003, RUF100 - beartype resolves this contextmanager annotation at runtime.
+    Iterator,  # noqa: TC003 - beartype resolves this contextmanager annotation at runtime.
 )
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves this contextmanager annotation at runtime.
+    Path,  # noqa: TC003 - beartype resolves this contextmanager annotation at runtime.
 )
 
 _output_files_in_progress: set[Path] = set()

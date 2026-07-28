@@ -111,7 +111,7 @@ def is_skill_selected(
 # ---------------------------------------------------------------------------
 
 
-def sync_skills(  # noqa: PLR0913, RUF100 - source selection and companion authorization are independent inputs.
+def sync_skills(  # noqa: PLR0913 - source selection and companion authorization are independent inputs.
     session_dir: Path,
     *,
     project_root: Path,

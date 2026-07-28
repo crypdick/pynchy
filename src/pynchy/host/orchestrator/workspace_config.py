@@ -7,15 +7,15 @@ Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
-    Iterable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
+    Iterable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
 )
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
@@ -29,14 +29,14 @@ from pynchy.host.orchestrator.workspace_registration import (
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    Channel,  # beartype resolves workspace config annotations at runtime.
     WorkspaceSpec,
 )
 from pynchy.state.api import (
     get_all_tasks,
     update_task,
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+from pynchy.workspace.api import (  # beartype resolves workspace config annotations at runtime.
     CapabilityRule,
     WorkspaceProfile,
     capability_pattern_matches,
@@ -76,7 +76,7 @@ _runtime = WorkspaceConfigRuntime(
 
 def configure_workspace_config_runtime(runtime: WorkspaceConfigRuntime) -> None:
     """Bind configuration loading and persistence at host composition."""
-    global _runtime  # noqa: PLW0603, RUF100 - one host process owns workspace configuration.
+    global _runtime  # noqa: PLW0603 - one host process owns workspace configuration.
     _runtime = runtime
 
 

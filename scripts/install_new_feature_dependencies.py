@@ -10,7 +10,7 @@ import os
 import platform
 import re
 import shutil
-import subprocess  # noqa: S404, RUF100 - fixed package-manager commands install pinned tools.
+import subprocess  # noqa: S404 - fixed package-manager commands install pinned tools.
 import sys
 import tarfile
 import tempfile
@@ -74,11 +74,11 @@ def _temporal_archive_name(system: str, architecture: str) -> str:
 def _download(url: str) -> bytes:
     if not url.startswith("https://github.com/temporalio/cli/releases/download/"):
         raise DependencyError(f"Refusing untrusted download URL: {url}")
-    request = urllib.request.Request(  # noqa: S310, RUF100 - URL prefix is allowlisted above.
+    request = urllib.request.Request(  # noqa: S310 - URL prefix is allowlisted above.
         url, headers={"User-Agent": "pynchy-dependency-installer"}
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310, RUF100 - URL prefix is allowlisted above.
+        with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - URL prefix is allowlisted above.
             return bytes(response.read())
     except OSError as exc:
         raise DependencyError(f"Failed to download Temporal CLI: {exc}") from exc
@@ -144,7 +144,7 @@ def _resolved_command(name: str, bin_dir: Path) -> str | None:
 
 
 def _run_checked(command: list[str], *, env: dict[str, str] | None = None) -> None:
-    result = subprocess.run(  # noqa: S603, RUF100 - argv is a fixed pinned install command.
+    result = subprocess.run(  # noqa: S603 - argv is a fixed pinned install command.
         command,
         env=env,
         check=False,
@@ -178,7 +178,7 @@ def _install_codex(npm: str, bin_dir: Path) -> None:
 
 
 def _docker_ready(docker: str) -> bool:
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed read-only Docker readiness check.
+    result = subprocess.run(  # noqa: S603 - fixed read-only Docker readiness check.
         [docker, "info"],
         capture_output=True,
         check=False,
@@ -189,7 +189,7 @@ def _docker_ready(docker: str) -> bool:
 def _temporal_version(temporal: Path) -> str | None:
     """Return the installed Temporal CLI version without trusting PATH order."""
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - Temporal path is inside the selected runtime bin directory.
+        result = subprocess.run(  # noqa: S603 - Temporal path is inside the selected runtime bin directory.
             [str(temporal), "--version"],
             capture_output=True,
             check=False,
@@ -207,7 +207,7 @@ def _temporal_version(temporal: Path) -> str | None:
 def _new_feature_version(new_feature: str) -> str | None:
     """Return the installed new-feature version for the selected command."""
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - selected tool command is locally resolved.
+        result = subprocess.run(  # noqa: S603 - selected tool command is locally resolved.
             [new_feature, "--version"],
             capture_output=True,
             check=False,

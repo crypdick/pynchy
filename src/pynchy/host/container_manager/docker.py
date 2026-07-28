@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess  # noqa: S404, RUF100 - Docker helpers use fixed no-shell argv.
+import subprocess  # noqa: S404 - Docker helpers use fixed no-shell argv.
 import time
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Docker environment annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves Docker environment annotations at runtime.
     Mapping,
 )
 from dataclasses import dataclass
@@ -49,8 +49,8 @@ def _run_docker_sync(
     environment: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command (blocking — internal only)."""
-    return subprocess.run(  # noqa: S603, RUF100 - args are constrained by internal Docker helper call sites; no shell.
-        ["docker", *args],  # noqa: S607, RUF100 - docker is the trusted runtime CLI for this helper.
+    return subprocess.run(  # noqa: S603 - args are constrained by internal Docker helper call sites; no shell.
+        ["docker", *args],  # noqa: S607 - docker is the trusted runtime CLI for this helper.
         capture_output=True,
         text=True,
         timeout=timeout,

@@ -75,7 +75,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyupgrade>=3.21.2",
     "rich>=14.3.3",
-    "ruff>=0.15.20",
+    "ruff>=0.16.0",
     "types-croniter>=6.2.3.20260704",
     "types-pyyaml>=6.0.12.20260518",
     "types-qrcode>=8.2.0.20260518",
@@ -241,6 +241,9 @@ select = [
     "W",
     "YTT",
 ]
+# Ruff 0.16 preview migrations; keep standard noqa comments and rule-code policy
+# selectors until a focused readability migration can review them together.
+ignore = ["RUF105", "RUF201"]
 [tool.ruff.lint.per-file-ignores]
 # Tests legitimately capture unused returns, assert directly, touch private implementation
 # details, use boolean positional helpers, and use high-complexity parameterized setup.

@@ -157,7 +157,7 @@ async def _main_async() -> int:
             container_input.agent_core_class,
             build_host_core_config(container_input, cwd=cwd),
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - report startup failures to host.  # allow: exception-handling
+    except Exception as exc:  # noqa: BLE001 - report startup failures to host.  # allow: exception-handling
         _write_error(f"Failed to start host runner: {exc}", query_id=query_id)
         return 1
 
@@ -170,13 +170,13 @@ async def _main_async() -> int:
             session_id,
             query_id=container_input.query_id,
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - report agent failures to host.  # allow: exception-handling
+    except Exception as exc:  # noqa: BLE001 - report agent failures to host.  # allow: exception-handling
         _write_error(str(exc), session_id, query_id=container_input.query_id)
         return 1
     finally:
         try:
             await core.stop()
-        except Exception as exc:  # noqa: BLE001, RUF100 - report cleanup failure on stderr.  # allow: exception-handling
+        except Exception as exc:  # noqa: BLE001 - report cleanup failure on stderr.  # allow: exception-handling
             sys.stderr.write(f"[host-direct] error stopping core: {exc}\n")
             sys.stderr.flush()
     return 0

@@ -132,7 +132,7 @@ def _exit_container() -> NoReturn:
         },
     },
 )
-async def _reset_context_handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _reset_context_handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     data: dict[str, str] = {

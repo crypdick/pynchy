@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves Temporal reconciler annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves Temporal reconciler annotations at runtime.
 )
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -19,7 +19,7 @@ from temporalio.common import WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    SchedulerRuntimeConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+    SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves Temporal reconciler annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
@@ -48,7 +48,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     DatabaseHostJobWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+from pynchy.scheduling.api import (  # beartype resolves Temporal reconciler annotations at runtime.
     HostJob,
     ScheduledTask,
     agent_task_occurrence_due_at,
@@ -151,7 +151,7 @@ async def _reconcile_external_repo_sync_schedules(
         )
 
 
-async def _reconcile_task_schedules(  # noqa: PLR0913, RUF100 - reconciliation needs these exact schedule inputs.
+async def _reconcile_task_schedules(  # noqa: PLR0913 - reconciliation needs these exact schedule inputs.
     runtime: object,
     client: object,
     tasks: list[ScheduledTask],

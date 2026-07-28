@@ -16,17 +16,17 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,  # noqa: TC003 - beartype resolves these runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves these runtime annotations.
 )
 from datetime import UTC, datetime
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
+    Path,  # noqa: TC003 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
 )
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     InboundAudioAttachment,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
@@ -214,7 +214,7 @@ async def _read_attachment_bytes(attachment: DiscordAttachment) -> bytes | None:
             value = await value
         if isinstance(value, bytes):
             return value
-    except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - bad Discord attachment reads should not drop the message.
+    except Exception as exc:  # noqa: BLE001  # allow: exception-handling - bad Discord attachment reads should not drop the message.
         logger.warning("Discord attachment read failed", err=str(exc))
     return None
 

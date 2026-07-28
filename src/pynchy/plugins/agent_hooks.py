@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.agent_protocol.api import VolumeMount
 from pynchy.logger import logger

@@ -14,7 +14,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from email import policy
 from email.message import (
-    EmailMessage,  # noqa: TC003, RUF100 - beartype resolves this hint at runtime.
+    EmailMessage,  # beartype resolves this hint at runtime.
 )
 from email.parser import BytesParser
 from email.utils import make_msgid
@@ -164,7 +164,7 @@ class CommandPasswordProvider:
             raise ProtonMailError("Proton Bridge password command is empty")
 
         try:
-            process = subprocess.run(  # noqa: S603, RUF100 - command is trusted host config.
+            process = subprocess.run(  # noqa: S603 - command is trusted host config.
                 args,
                 capture_output=True,
                 check=False,

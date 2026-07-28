@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves transactional annotations at runtime.
+from aiosqlite import (  # noqa: TC002 - beartype resolves transactional annotations at runtime.
     Connection,
 )
 
@@ -127,7 +127,7 @@ async def get_in_flight_turn_for_chat(
         WHERE chat_jid = ? AND work_kind IN ({placeholders})
         ORDER BY started_at, turn_id
         LIMIT 1
-        """,  # noqa: S608, RUF100 - placeholders are generated only from the enum set size.
+        """,  # noqa: S608 - placeholders are generated only from the enum set size.
         (chat_jid, *(kind.value for kind in work_kinds)),
     )
     row = await cursor.fetchone()
@@ -182,7 +182,7 @@ async def get_oldest_resumable_turn_for_group(
         WHERE group_folder = ? AND work_kind IN ({placeholders})
         ORDER BY started_at, turn_id
         LIMIT 1
-        """,  # noqa: S608, RUF100 - placeholders derive only from the enum set size.
+        """,  # noqa: S608 - placeholders derive only from the enum set size.
         (group_folder, *(kind.value for kind in work_kinds)),
     )
     row = await cursor.fetchone()

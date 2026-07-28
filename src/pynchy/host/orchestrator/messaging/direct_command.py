@@ -10,7 +10,7 @@ from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import run_shell_command
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves direct-command annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves direct-command annotations at runtime.
 )
 
 

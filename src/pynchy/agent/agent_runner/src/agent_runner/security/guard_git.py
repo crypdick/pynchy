@@ -34,7 +34,7 @@ def _starts_new_rebase(command: str) -> bool:
     return False
 
 
-async def guard_git_hook(  # noqa: RUF029, RUF100 - async hook API.
+async def guard_git_hook(  # noqa: RUF029 - async hook API.
     tool_name: str,
     tool_input: dict[str, Any],
 ) -> HookDecision:

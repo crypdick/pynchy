@@ -10,7 +10,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._oauth import (
@@ -82,7 +82,7 @@ def refresh_access_token(profile_name: str) -> str | None:
             "grant_type": "refresh_token",
         }
     ).encode()
-    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
+    req = urllib.request.Request(  # noqa: S310 - opened only through the HTTPS-gated helper.
         GOOGLE_OAUTH_ENDPOINT_URL,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -114,7 +114,7 @@ def _stored_refresh_token(profile_name: str) -> str | None:
 def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> bool:
     """Enable a Google API via the Service Usage REST API."""
     url = f"{SERVICE_USAGE_URL}/projects/{project_number}/services/{api_id}:enable"
-    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
+    req = urllib.request.Request(  # noqa: S310 - opened only through the HTTPS-gated helper.
         url,
         data=b"{}",
         headers={

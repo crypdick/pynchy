@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves deploy handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.logger import logger
@@ -14,7 +14,7 @@ from pynchy.logger import logger
 async def _handle_deploy(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Handle a deploy request from the admin group agent.

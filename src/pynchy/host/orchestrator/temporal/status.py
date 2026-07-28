@@ -16,7 +16,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     database_host_job_workflow_id,
 )
 from pynchy.logger import logger
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves runtime annotations.
     HostJob,
     ScheduledTask,
 )
@@ -88,7 +88,7 @@ async def _describe_temporal_schedule(client: object, schedule_id: str) -> dict[
         description = await client_any.get_schedule_handle(schedule_id).describe(
             rpc_timeout=timedelta(seconds=2)
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - status exposes Temporal availability per item.
+    except Exception as exc:  # noqa: BLE001 - status exposes Temporal availability per item.
         logger.debug("Temporal Schedule status read failed", schedule_id=schedule_id, err=str(exc))
         return _temporal_error_state(exc, schedule_id=schedule_id, workflow_id=None)
 
@@ -111,7 +111,7 @@ async def _describe_temporal_workflow(client: object, workflow_id: str) -> dict[
         description = await client_any.get_workflow_handle(workflow_id).describe(
             rpc_timeout=timedelta(seconds=2)
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - status exposes Temporal availability per item.
+    except Exception as exc:  # noqa: BLE001 - status exposes Temporal availability per item.
         logger.debug("Temporal workflow status read failed", workflow_id=workflow_id, err=str(exc))
         return _temporal_error_state(exc, schedule_id=None, workflow_id=workflow_id)
 
@@ -180,7 +180,7 @@ async def get_temporal_orchestration_states(
             namespace=temporal_namespace,
             lazy=True,
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - status reports the Temporal connection failure.
+    except Exception as exc:  # noqa: BLE001 - status reports the Temporal connection failure.
         logger.debug("Temporal status connection failed", err=str(exc))
         for key, kind, temporal_id in descriptions:
             states[key] = _unavailable_orchestration_state(

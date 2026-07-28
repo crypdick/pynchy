@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 
 DEFAULT_MIGRATION_BACKUP_KEEP = 3
 _KEEP_TOO_SMALL_ERROR = "keep must be at least 1"

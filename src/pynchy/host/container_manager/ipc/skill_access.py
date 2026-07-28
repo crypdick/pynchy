@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves persistence callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves persistence callbacks at runtime.
 )
 from typing import Any
 

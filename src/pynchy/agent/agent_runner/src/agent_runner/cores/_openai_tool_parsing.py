@@ -41,7 +41,7 @@ def _as_mapping(obj: object) -> SdkMapping | None:
     if hasattr(obj, "model_dump"):
         try:
             data = obj.model_dump()
-        except Exception:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
+        except Exception:  # allow: exception-handling; best-effort  # noqa: BLE001
             data = None
         if isinstance(data, dict):
             return data

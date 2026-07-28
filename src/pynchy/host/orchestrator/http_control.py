@@ -9,7 +9,7 @@ import secrets
 import socket
 import stat
 import time
-from collections.abc import (  # noqa: TC003, RUF100 - control-plane audit callback is stored at runtime.
+from collections.abc import (  # control-plane audit callback is stored at runtime.
     Awaitable,
     Callable,
 )
@@ -167,7 +167,7 @@ def _read_control_plane_token(
     return ControlPlaneToken(token) if token else None
 
 
-def resolve_control_plane_runtime(  # noqa: PLR0913, RUF100 - composition passes each validated listener setting directly.
+def resolve_control_plane_runtime(  # noqa: PLR0913 - composition passes each validated listener setting directly.
     *,
     bind_host: str,
     port: int,
@@ -404,7 +404,7 @@ def register_unix_socket_cleanup(app: AiohttpApplication, runtime: ControlPlaneR
     if socket_path is None:
         return
 
-    async def cleanup_unix_socket(_app: AiohttpApplication) -> None:  # noqa: RUF029, RUF100 - aiohttp cleanup callbacks are async.
+    async def cleanup_unix_socket(_app: AiohttpApplication) -> None:  # noqa: RUF029 - aiohttp cleanup callbacks are async.
         _remove_socket_if_owned(socket_path)
 
     app.on_cleanup.append(cleanup_unix_socket)

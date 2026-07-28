@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.conversation.api import (  # beartype resolves runtime annotations.
     ConversationClaimId,
     ConversationId,
     ExternalDeliveryIdentity,
@@ -14,7 +14,7 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
 )
 from pynchy.host.orchestrator.workspace_config import unregister_runtime_workspace_restriction
 from pynchy.identifiers import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    GroupFolder,  # beartype resolves runtime annotations.
 )
 
 

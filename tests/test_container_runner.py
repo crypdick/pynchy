@@ -8,7 +8,7 @@ import json
 import logging
 import shutil
 import signal
-import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test fixtures mock subprocess behavior and exceptions
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path, PurePosixPath

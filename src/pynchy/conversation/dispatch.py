@@ -50,7 +50,7 @@ async def notify_conversation_delivery_completed(
     for waker in tuple(_wakers.get(delivery.identity.provider, {}).values()):
         try:
             await waker(delivery)
-        except Exception:  # noqa: BLE001, RUF100 - committed turns must not roll back when a sibling wake fails.
+        except Exception:  # noqa: BLE001 - committed turns must not roll back when a sibling wake fails.
             logger.exception(
                 "Conversation delivery sibling wake failed",
                 provider=delivery.identity.provider,

@@ -19,7 +19,7 @@ from pynchy.learning_packets import LearningPacket
 
 def get_temporal_scheduler_runtime() -> type[object]:
     """Return the scheduler implementation without creating an import cycle."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - scheduler imports the application facade.
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - scheduler imports the application facade.
         TemporalSchedulerRuntime,
     )
 
@@ -28,7 +28,7 @@ def get_temporal_scheduler_runtime() -> type[object]:
 
 def get_temporal_scheduler_status() -> dict[str, object]:
     """Return the live Temporal scheduler status."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - scheduler imports the application facade.
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - scheduler imports the application facade.
         get_temporal_scheduler_status as get_status,
     )
 
@@ -37,7 +37,7 @@ def get_temporal_scheduler_status() -> dict[str, object]:
 
 async def start_deploy_workflow(request: DeployRequest) -> DeployClaim:
     """Start the deploy workflow for one request."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - scheduler imports the application facade.
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - scheduler imports the application facade.
         start_deploy_workflow as start,
     )
 
@@ -46,7 +46,7 @@ async def start_deploy_workflow(request: DeployRequest) -> DeployClaim:
 
 async def start_learning_review_workflow(packet: LearningPacket) -> None:
     """Start the hidden learning-review workflow for one packet."""
-    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - scheduler imports the application facade.
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - scheduler imports the application facade.
         start_learning_review_workflow as start,
     )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess  # noqa: S404, RUF100 - test runs the current interpreter with a fixed script.
+import subprocess  # noqa: S404 - test runs the current interpreter with a fixed script.
 import sys
 from pathlib import Path
 
@@ -28,7 +28,7 @@ def test_notebook_package_imports_without_the_host_package(tmp_path: Path) -> No
     ignore = shutil.ignore_patterns("__pycache__")
     shutil.copytree(source, tmp_path / "notebook_server", ignore=ignore)
 
-    result = subprocess.run(  # noqa: S603, RUF100 - executable and arguments are fixed test inputs.
+    result = subprocess.run(  # noqa: S603 - executable and arguments are fixed test inputs.
         [sys.executable, "-c", _BLOCK_PYNCHY_IMPORTS],
         cwd=tmp_path,
         env={**os.environ, "PYTHONPATH": str(tmp_path)},

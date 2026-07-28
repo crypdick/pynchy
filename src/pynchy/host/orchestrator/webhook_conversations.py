@@ -43,7 +43,7 @@ from pynchy.host.orchestrator.workspace_config import (
 )
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves dispatcher inputs.
     NewMessage,
     WebhookEvent,
     WebhookRoute,
@@ -61,7 +61,7 @@ from pynchy.state.api import (
     resolve_conversation,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -295,7 +295,7 @@ class WebhookConversationDispatcher:
         async with conversation_runtime_lock(conversation_id):
             try:
                 await sync_conversation_control_state(self.deps.channels(), conversation_id)
-            except Exception:  # noqa: BLE001, RUF100 - durable intent is retried at startup.
+            except Exception:  # noqa: BLE001 - durable intent is retried at startup.
                 logger.exception(
                     "Conversation control lifecycle sync failed",
                     provider=route.provider,

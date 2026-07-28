@@ -19,7 +19,7 @@ class ServerConfig(BaseModel):
     unix_socket: Path | None = Path("data/pynchy.sock")
     allow_public_bind: bool = False
     allow_remote_deploy: bool = False
-    auth_token_env: str = "PYNCHY_CONTROL_TOKEN"  # noqa: S105, RUF100 - environment variable name, not a credential value.
+    auth_token_env: str = "PYNCHY_CONTROL_TOKEN"  # noqa: S105 - environment variable name, not a credential value.
     auth_token_file: Path | None = Path("data/control-plane.token")
     rate_limit_requests: int = 120
     rate_limit_window_seconds: int = 60

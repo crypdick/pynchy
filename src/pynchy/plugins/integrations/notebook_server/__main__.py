@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-import subprocess  # noqa: S404, RUF100 - launches JupyterLab with fixed argv and sys.executable.
+import subprocess  # noqa: S404 - launches JupyterLab with fixed argv and sys.executable.
 import sys
 import uuid
 from dataclasses import dataclass
@@ -50,7 +50,7 @@ from ._output import (
     save_cell_images,
 )
 
-CONTAINER_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - notebook MCP/Jupyter run in Docker and must be reachable from sibling containers and Tailscale.
+CONTAINER_BIND_HOST = "0.0.0.0"  # noqa: S104 - notebook MCP/Jupyter run in Docker and must be reachable from sibling containers and Tailscale.
 
 # ---------------------------------------------------------------------------
 # CLI argument parsing (workspace kwargs arrive as --key value pairs)
@@ -246,7 +246,7 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """Add a markdown cell to the notebook.
 
     Args:
@@ -272,7 +272,7 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:  # noqa:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def save_as(kernel_id: str, name: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def save_as(kernel_id: str, name: str) -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """Save the current notebook under a different name.
 
     Args:
@@ -301,7 +301,7 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:  # noqa: RUF029,
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def read_notebook(name: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def read_notebook(name: str) -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """Read an existing notebook without starting a kernel.
 
     Args:
@@ -340,7 +340,7 @@ async def read_notebook(name: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - 
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def list_notebooks() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def list_notebooks() -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """List saved notebooks in the notebook directory.
 
     Returns:
@@ -365,7 +365,7 @@ async def list_notebooks() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP 
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def list_kernels() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def list_kernels() -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """List active kernels and their notebook names.
 
     Returns:
@@ -386,7 +386,7 @@ async def list_kernels() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP ma
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
+async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:  # noqa: RUF029 - FastMCP may await tools.
     """Save and shut down a kernel.
 
     Args:
@@ -430,7 +430,7 @@ _state = _NotebookServerState()
 
 def _start_jupyterlab() -> None:
     """Start JupyterLab as a viewing frontend."""
-    _state.lab_process = subprocess.Popen(  # noqa: S603, RUF100 - fixed python -m jupyterlab argv; no shell.
+    _state.lab_process = subprocess.Popen(  # noqa: S603 - fixed python -m jupyterlab argv; no shell.
         [
             sys.executable,
             "-m",

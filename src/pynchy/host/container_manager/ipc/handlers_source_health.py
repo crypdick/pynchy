@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.host.container_manager.ipc.deps import (  # beartype resolves this runtime annotation.
     IpcDeps,
     MessagingSourceHealth,
     SourceHealthDeps,
@@ -19,7 +19,7 @@ from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    Channel,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
 
 _CHANNEL_CONNECTION_TYPES = frozenset({"discord", "slack", "whatsapp"})
@@ -208,7 +208,7 @@ def _latest_inbound(sources: list[dict[str, object]]) -> dict[str, object] | Non
 async def _handle_messaging_source_health(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registry callback signature.
+    is_admin: bool,  # noqa: FBT001 - registry callback signature.
     deps: IpcDeps,
 ) -> None:
     """Return provider readiness and persisted-ingress freshness without message bodies."""

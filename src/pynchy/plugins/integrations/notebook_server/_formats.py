@@ -7,7 +7,7 @@ Functions that need a notebook directory accept it as an explicit parameter.
 from __future__ import annotations
 
 import datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import cast
 
 import nbformat
@@ -16,7 +16,7 @@ from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 def generate_name() -> str:
     """Generate a notebook name: YYYY-MM-DD-adjective-animal."""
-    from ubuntu_namer import (  # noqa: PLC0415, RUF100 - optional plugin dependency.
+    from ubuntu_namer import (  # noqa: PLC0415 - optional plugin dependency.
         generate,
     )
 

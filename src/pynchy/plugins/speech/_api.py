@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Protocol, TypeGuard, runtime_checkable
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.logger import logger
 
@@ -62,7 +62,7 @@ def get_speech_synthesizer(pm: pluggy.PluginManager) -> SpeechSynthesizer | None
     """Discover the configured speech provider; the first valid provider wins."""
     try:
         candidates = pm.hook.pynchy_speech_synthesizer()
-    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break speech discovery.
+    except Exception:  # noqa: BLE001 - one plugin must not break speech discovery.
         logger.exception("Failed to resolve speech synthesizer plugins")
         return None
     providers = [candidate for candidate in candidates if _is_valid_speech_synthesizer(candidate)]

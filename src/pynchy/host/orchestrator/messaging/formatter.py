@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves formatter annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves formatter annotations at runtime.
     Callable,
 )
 from typing import Any
 
 from pynchy.plugins.api import (
-    NewMessage,  # noqa: TC001, RUF100 - beartype resolves formatter annotations at runtime.
+    NewMessage,  # noqa: TC001 - beartype resolves formatter annotations at runtime.
 )
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")

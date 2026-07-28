@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.identifiers import (  # beartype resolves these runtime annotations.
     ChannelName,
     ChatJid,
 )

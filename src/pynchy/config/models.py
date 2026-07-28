@@ -14,8 +14,8 @@ from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validato
 from pynchy.config.caldav import CalDAVConfig
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 from pynchy.config.workspace_layout import (
-    WorkspaceScopeConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
-    WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
+    WorkspaceScopeConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
+    WorkspaceThreadConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
 )
 from pynchy.discord import (
     DiscordAccessSettings,
@@ -23,7 +23,7 @@ from pynchy.discord import (
     DiscordConnectionSettings,
     DiscordGuildSettings,
 )
-from pynchy.integration_contracts import (  # noqa: TC001, RUF100 - Pydantic resolves Matrix annotations at runtime.
+from pynchy.integration_contracts import (  # noqa: TC001 - Pydantic resolves Matrix annotations at runtime.
     MatrixActivation,
     MatrixOutbound,
 )
@@ -125,7 +125,7 @@ ValidatedEnvName = Annotated[str, AfterValidator(_validated_env_name)]
 CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 CopWireApi = Literal["messages", "responses"]
 
-CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - agent containers must reach the host gateway through the configured container_host.
+CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104 - agent containers must reach the host gateway through the configured container_host.
 
 
 def _default_repos_root() -> Path:
@@ -425,13 +425,13 @@ class NotificationsConfig(_StrictModel):
 
 def __getattr__(name: str) -> object:
     if name == "CapabilityTomlConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy re-export keeps imports acyclic.
+        from pynchy.config.profiles import (  # noqa: PLC0415 - lazy re-export keeps imports acyclic.
             CapabilityTomlConfig,
         )
 
         return CapabilityTomlConfig
     if name == "ProfileConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy re-export keeps imports acyclic.
+        from pynchy.config.profiles import (  # noqa: PLC0415 - lazy re-export keeps imports acyclic.
             ProfileConfig,
         )
 

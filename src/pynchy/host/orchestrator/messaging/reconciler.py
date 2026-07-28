@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves sender-policy annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves sender-policy annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -25,7 +25,7 @@ from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.state.api import (  # beartype resolves this runtime annotation.
     OutboundDeliveryOperation,
     PendingDelivery,
     advance_cursors_atomic,
@@ -38,7 +38,7 @@ from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this r
     prune_stale_cursors,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
@@ -56,7 +56,7 @@ def configure_allowed_message_filter(
     allowed_message_filter: Callable[[list[NewMessage], object, str | None], list[NewMessage]],
 ) -> None:
     """Inject routed sender policy from application composition."""
-    global _allowed_message_filter  # noqa: PLW0603, RUF100 - one host process owns one sender policy.
+    global _allowed_message_filter  # noqa: PLW0603 - one host process owns one sender policy.
     _allowed_message_filter = allowed_message_filter
 
 
@@ -246,7 +246,7 @@ async def _deliver_pending_outbound_row(
     ):
         try:
             await update_event(target_jid, row.remote_message_id, event)
-        except Exception as exc:  # noqa: BLE001, RUF100 - a stale or unavailable edit target falls back to a visible post.
+        except Exception as exc:  # noqa: BLE001 - a stale or unavailable edit target falls back to a visible post.
             logger.warning(
                 "Outbound edit retry failed, falling back to a post",
                 channel=ch.name,
@@ -299,7 +299,7 @@ async def _retry_outbound(
                 row,
                 new_outbound_cursor,
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - outbound retry is best-effort and stops after the first delivery failure.
+        except Exception as exc:  # noqa: BLE001 - outbound retry is best-effort and stops after the first delivery failure.
             logger.warning(
                 "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
             )

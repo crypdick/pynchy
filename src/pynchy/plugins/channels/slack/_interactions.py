@@ -44,7 +44,7 @@ class SlackInteractions:
     async def on_agent_stop_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
         await self._on_agent_stop_interaction(body, action)
 
-    async def _finalize_decision(  # noqa: PLR0913, RUF100 - shared callback helper keeps interaction handlers small.
+    async def _finalize_decision(  # noqa: PLR0913 - shared callback helper keeps interaction handlers small.
         self,
         body: dict[str, Any],
         channel_id: str,
@@ -72,7 +72,7 @@ class SlackInteractions:
             await self._channel.slack_app.client.chat_update(
                 channel=channel_id, ts=message_ts, text=fallback, blocks=kept_blocks
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - interactive message updates are best-effort UX.
+        except Exception as exc:  # noqa: BLE001 - interactive message updates are best-effort UX.
             logger.debug("failed to update message", label=label, err=str(exc))
 
     async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
@@ -135,7 +135,7 @@ class SlackInteractions:
                         }
                     ],
                 )
-            except Exception as exc:  # noqa: BLE001, RUF100 - ask_user message updates are best-effort UX.
+            except Exception as exc:  # noqa: BLE001 - ask_user message updates are best-effort UX.
                 logger.debug("Failed to update ask_user message", err=str(exc))
 
     async def _on_approval_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:

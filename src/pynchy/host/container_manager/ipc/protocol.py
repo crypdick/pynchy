@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC protocol paths at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves IPC protocol paths at runtime.
 from typing import Any, cast
 
 from pynchy.identifiers import (
@@ -256,7 +256,7 @@ def _payload_object(value: object) -> dict[str, Any]:
     raise ValueError(PAYLOAD_OBJECT_MESSAGE)
 
 
-def make_ipc_request(  # noqa: PLR0913, RUF100 - canonical envelope builder keeps transport fields explicit.
+def make_ipc_request(  # noqa: PLR0913 - canonical envelope builder keeps transport fields explicit.
     *,
     kind: str,
     request_id: str,

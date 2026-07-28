@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves canary runtime annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves canary runtime annotations at runtime.
-    Collection,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
-    Mapping,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves canary runtime annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves canary runtime annotations at runtime.
+    Collection,  # noqa: TC003 - beartype resolves canary runner annotations at runtime.
+    Mapping,  # noqa: TC003 - beartype resolves canary runner annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -47,7 +47,7 @@ _runtime: CanaryRuntime | None = None
 
 def configure_canary_runtime(runtime: CanaryRuntime) -> None:
     """Inject canary persistence and source revision capabilities."""
-    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one canary runtime.
+    global _runtime  # noqa: PLW0603 - one host process owns one canary runtime.
     _runtime = runtime
 
 
@@ -108,7 +108,7 @@ class _CanaryRunRequest:
     config_revision: str
 
 
-async def run_declared_canaries(  # noqa: PLR0913, RUF100 - optional revisions and executors support isolated runs.
+async def run_declared_canaries(  # noqa: PLR0913 - optional revisions and executors support isolated runs.
     *,
     target_profile: str,
     scenario_ids: Collection[str] | None = None,
@@ -245,7 +245,7 @@ async def _exercise_and_verify(
         exercise = await scenario.exercise(context)
     except CanarySkippedError:
         return CanaryOutcome.SKIPPED, None, (), None
-    except Exception as exc:  # noqa: BLE001, RUF100 - external canary failure must be redacted and persisted.
+    except Exception as exc:  # noqa: BLE001 - external canary failure must be redacted and persisted.
         error_class = type(exc).__name__
         logger.warning(
             "Canary exercise failed",
@@ -257,7 +257,7 @@ async def _exercise_and_verify(
         verifier_refs = await scenario.verify(context, exercise)
     except CanarySkippedError:
         return CanaryOutcome.SKIPPED, None, exercise.evidence_refs, exercise
-    except Exception as exc:  # noqa: BLE001, RUF100 - verifier failure still requires artifact cleanup.
+    except Exception as exc:  # noqa: BLE001 - verifier failure still requires artifact cleanup.
         error_class = type(exc).__name__
         logger.warning(
             "Canary verification failed",
@@ -280,7 +280,7 @@ async def _cleanup_scenario(
     for _attempt in range(_CLEANUP_ATTEMPTS):
         try:
             return None, None, _deduplicated_refs(await scenario.cleanup(context, exercise))
-        except Exception as exc:  # noqa: BLE001, RUF100 - cleanup gets independent retries before recording failure.
+        except Exception as exc:  # noqa: BLE001 - cleanup gets independent retries before recording failure.
             error_class = type(exc).__name__
             logger.warning(
                 "Canary cleanup failed",

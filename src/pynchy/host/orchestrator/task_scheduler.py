@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves scheduler annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves scheduler annotations.
 from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
@@ -14,7 +14,7 @@ from pynchy.agent_protocol.api import (
     InFlightTurn,
 )
 from pynchy.host.orchestrator.config_job_execution import (
-    ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
+    ConfigJobExecutionDeps,  # beartype resolves scheduler annotations.
     prepare_config_job,
     run_deterministic_config_job,
 )
@@ -34,7 +34,7 @@ from pynchy.host.orchestrator.scheduled_turn import (
     TaskAgentRequest,
     run_task_agent,
 )
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - public runtime re-export.
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001 - public runtime re-export.
     SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.api import (
@@ -62,7 +62,7 @@ from pynchy.state.api import (
 )
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 _task_run_locks: dict[str, asyncio.Lock] = {}
@@ -102,7 +102,7 @@ async def start_scheduler_loop(
     ready: asyncio.Future[None] | None = None,
 ) -> None:
     """Start the scheduler polling loop."""
-    global _scheduler_running  # noqa: PLW0603, RUF100 - process-wide Temporal queue owner.
+    global _scheduler_running  # noqa: PLW0603 - process-wide Temporal queue owner.
     async with _scheduler_startup_lock:
         if _scheduler_running:
             raise RuntimeError("Temporal scheduler runtime is already running")
@@ -126,7 +126,7 @@ async def _run_scheduler_loop(
     while True:
         try:
             await temporal_runtime.reconcile_schedules()
-        except Exception:  # noqa: BLE001, RUF100 - scheduler loop is a long-lived reconcile boundary.
+        except Exception:  # noqa: BLE001 - scheduler loop is a long-lived reconcile boundary.
             logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(_deps.scheduler_runtime.poll_interval)
@@ -199,7 +199,7 @@ async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | Non
     return scheduled_failure_decision(recent_failure_run(logs))
 
 
-async def _finish_scheduled_agent_run(  # noqa: PLR0913, RUF100 - scheduler completion needs its task, dependency port, and run record.
+async def _finish_scheduled_agent_run(  # noqa: PLR0913 - scheduler completion needs its task, dependency port, and run record.
     task: ScheduledTask,
     deps: SchedulerDependencies,
     *,
@@ -312,7 +312,7 @@ async def run_scheduled_agent(
             )
 
 
-async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler terminal outcomes.
+async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal outcomes.
     task: ScheduledTask,
     deps: SchedulerDependencies,
     *,

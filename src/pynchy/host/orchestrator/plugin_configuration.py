@@ -14,15 +14,16 @@ from pynchy.canaries import (
     registered_canary_scenarios,
 )
 from pynchy.canary_contracts import (
-    CanaryScenario,  # noqa: TC001, RUF100 - beartype resolves registration callback annotations at runtime.
+    CanaryScenario,  # noqa: TC001 - beartype resolves registration callback annotations at runtime.
 )
-from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves composition annotations at runtime.
+from pynchy.config.api import (  # beartype resolves composition annotations at runtime.
     CalDAVTool,
     McpTool,
     Settings,
     tool_process_environment,
 )
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+from pynchy.conversation.api import (
+    # beartype resolves composition callback annotations at runtime.
     ConversationClaimId,
     ConversationId,
     ConversationSubject,
@@ -52,11 +53,11 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     cancel_scheduled_agent_workflow,
 )
 from pynchy.identifiers import (
-    ChatJid,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    ChatJid,  # beartype resolves composition callback annotations at runtime.
     GroupFolder,
 )
 from pynchy.integration_contracts import (
-    is_matrix_connection,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    is_matrix_connection,  # beartype resolves composition callback annotations at runtime.
 )
 from pynchy.plugins.api import ComputerUseRouterConfig, ConnectionRuntimeContext
 from pynchy.plugins.integrations.api import linear_account_for_workspace
@@ -80,7 +81,7 @@ from pynchy.plugins.integrations.google_setup import (
 )
 from pynchy.plugins.integrations.linear import LinearMcpPlugin, WorkspaceContext
 from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccount,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    LinearAccount,  # beartype resolves composition callback annotations at runtime.
     LinearAccountRuntime,
     configure_linear_account_runtime,
     configured_linear_accounts,
@@ -217,7 +218,7 @@ from pynchy.state.api import (
 from pynchy.utils import filtered_process_environment
 from pynchy.workspace.api import (
     CapabilityRule,
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    WorkspaceProfile,  # beartype resolves composition callback annotations at runtime.
 )
 
 if TYPE_CHECKING:

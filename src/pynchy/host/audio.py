@@ -13,7 +13,7 @@ import importlib.util
 import os
 import shlex
 import shutil
-import subprocess  # noqa: S404, RUF100 - local STT providers are host tools.
+import subprocess  # noqa: S404 - local STT providers are host tools.
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -124,7 +124,7 @@ def _transcribe_cached_model(path: Path, model: str) -> tuple[str, object]:
 def _transcribe_faster_whisper(path: Path, model: str) -> AudioTranscriptionResult:
     try:
         transcript, info = _transcribe_cached_model(path, model)
-    except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - STT provider failures must not break message ingestion.
+    except Exception as exc:  # noqa: BLE001  # allow: exception-handling - STT provider failures must not break message ingestion.
         logger.warning("Local audio transcription failed", filename=path.name, err=str(exc))
         return AudioTranscriptionResult(
             success=False,
@@ -235,7 +235,7 @@ def _local_command_argv(
 
 
 def _run_local_command(command: list[str]) -> None:
-    subprocess.run(  # noqa: S603, RUF100 - argv comes from explicit local STT configuration; shell is never used.
+    subprocess.run(  # noqa: S603 - argv comes from explicit local STT configuration; shell is never used.
         command,
         capture_output=True,
         text=True,

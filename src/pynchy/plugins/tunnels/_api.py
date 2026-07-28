@@ -53,7 +53,7 @@ def _check_tunnel_provider(t: TunnelProvider) -> str | None:
             tunnel=t.name,
             status=t.status_summary(),
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - tunnel provider checks are best-effort plugin isolation.
+    except Exception as exc:  # noqa: BLE001 - tunnel provider checks are best-effort plugin isolation.
         logger.warning("Tunnel check failed", tunnel=t.name, err=str(exc))
         return None
     else:
@@ -67,7 +67,7 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
     """
     try:
         candidates = pm.hook.pynchy_tunnel()
-    except Exception:  # noqa: BLE001, RUF100 - one plugin must not break tunnel discovery.
+    except Exception:  # noqa: BLE001 - one plugin must not break tunnel discovery.
         logger.exception("Failed to resolve tunnel plugins")
         return
     tunnels = [candidate for candidate in candidates if _is_valid_tunnel_provider(candidate)]

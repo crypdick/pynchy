@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from pynchy.conversation.api import (
-    ConversationId,  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ConversationId,  # beartype resolves annotations.
     TerminalConversationRetirement,
     conversation_id_from_folder,
     dynamic_thread_folder,

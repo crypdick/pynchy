@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves placement annotations.
+from collections.abc import (  # beartype resolves placement annotations.
     Callable,
     Iterable,
 )
 from dataclasses import dataclass
 
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves placement annotations.
+    WorkspaceProfile,  # beartype resolves placement annotations.
 )
 
 type WorkspaceParentResolver = Callable[[str], str | None]
@@ -25,7 +25,7 @@ def configure_workspace_placement(
     missing_workspace_profile: MissingWorkspaceProfileResolver,
 ) -> None:
     """Inject configured workspace ownership resolution at composition."""
-    global _workspace_parent, _missing_workspace_profile  # noqa: PLW0603, RUF100 - one host process owns one workspace placement policy.
+    global _workspace_parent, _missing_workspace_profile  # noqa: PLW0603 - one host process owns one workspace placement policy.
     _workspace_parent = workspace_parent
     _missing_workspace_profile = missing_workspace_profile
 

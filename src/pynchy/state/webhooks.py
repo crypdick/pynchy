@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundary annotations at runtime.
+from aiosqlite import (  # noqa: TC002 - beartype resolves state boundary annotations at runtime.
     Connection,
     Row,
 )
@@ -27,7 +27,7 @@ from pynchy.state.webhook_models import (
     WebhookConversationRequest,
     WebhookReceipt,
 )
-from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves admission evidence.
+from pynchy.webhook_effects import (  # noqa: TC001 - beartype resolves admission evidence.
     WebhookEffectEvidence,
 )
 

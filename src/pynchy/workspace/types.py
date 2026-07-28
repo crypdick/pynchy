@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Iterable,  # noqa: TC003, RUF100 - beartype resolves policy annotations at runtime.
+    Iterable,  # noqa: TC003 - beartype resolves policy annotations at runtime.
 )
 from dataclasses import dataclass, field
 from typing import Any, Literal

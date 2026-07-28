@@ -37,7 +37,7 @@ def configure_security_audit_storage(
     prune_security_audit: PruneSecurityAudit,
 ) -> None:
     """Inject the durable audit store at host composition."""
-    global _store_security_audit, _prune_security_audit  # noqa: PLW0603, RUF100 - one host process owns one audit store.
+    global _store_security_audit, _prune_security_audit  # noqa: PLW0603 - one host process owns one audit store.
     _store_security_audit = store_security_audit
     _prune_security_audit = prune_security_audit
 
@@ -56,7 +56,7 @@ def redact_audit_reason(reason: str | None) -> str | None:
     return _URL_QUERY.sub(r"\1?<redacted>", redacted)
 
 
-async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror the policy decision fields directly.
+async def record_security_event(  # noqa: PLR0913 - audit rows mirror the policy decision fields directly.
     chat_jid: str,
     workspace: str,
     tool_name: str,

@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves annotations.
     ContainerOutput,
     OnOutput,
 )
-from pynchy.identifiers import RuntimeId  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.identifiers import RuntimeId  # noqa: TC001 - beartype resolves annotations.
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves annotations.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves annotations.
 )
 
 
@@ -29,7 +29,7 @@ class ScheduledTurnDeps(Protocol):
     @property
     def queue(self) -> ScheduledTurnQueue: ...
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
+    async def run_agent(  # noqa: PLR0913 - mirrors the orchestrator contract.
         self,
         group: WorkspaceProfile,
         chat_jid: str,

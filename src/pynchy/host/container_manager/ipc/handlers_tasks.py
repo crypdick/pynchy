@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,7 +14,7 @@ from uuid import uuid4
 from croniter import croniter
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves task handler signatures at runtime.
+    IpcDeps,  # beartype resolves task handler signatures at runtime.
     ScheduledWorkStore,
     TaskHandlerDeps,
 )
@@ -99,7 +99,7 @@ def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
 async def _handle_schedule_host_job(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not is_admin:
@@ -168,7 +168,7 @@ async def _handle_schedule_host_job(
 async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -187,7 +187,7 @@ async def _handle_pause_task(
 async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -210,7 +210,7 @@ async def _handle_resume_task(
 async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -226,7 +226,7 @@ async def _handle_cancel_task(
     )
 
 
-async def _authorized_task_action(  # noqa: PLR0913, RUF100 - authorization needs task identity, actor, persistence, and operation.
+async def _authorized_task_action(  # noqa: PLR0913 - authorization needs task identity, actor, persistence, and operation.
     data: dict[str, Any],
     source_group: str,
     *,

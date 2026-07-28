@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from pynchy.identifiers import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.identifiers import (  # noqa: TC001 - beartype resolves these runtime annotations.
     ChannelName,
     ChatJid,
 )
@@ -200,11 +200,11 @@ async def gc_delivered(max_age_hours: int = 24) -> int:
     # S608 audit: only the number of SQLite value placeholders is dynamic.
     async with atomic_write() as wdb:
         await wdb.execute(
-            f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})",  # noqa: S608, RUF100
+            f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})",  # noqa: S608
             ids,
         )
         await wdb.execute(
-            f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})",  # noqa: S608, RUF100
+            f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})",  # noqa: S608
             ids,
         )
     return len(ids)

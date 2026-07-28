@@ -16,16 +16,16 @@ to the collaborators (see ``self.lifecycle``/``allowlist``/``events``/``interact
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003, RUF100 - beartype resolves task annotations at runtime.
+import asyncio  # noqa: TC003 - beartype resolves task annotations at runtime.
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Awaitable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from datetime import datetime
 from typing import ClassVar, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
@@ -48,7 +48,7 @@ JsonDict = dict[str, object]
 
 @runtime_checkable
 class _SlackClient(Protocol):
-    def chat_postMessage(self, **kwargs: object) -> Awaitable[JsonDict]: ...  # noqa: N802, RUF100 - Slack SDK method name.
+    def chat_postMessage(self, **kwargs: object) -> Awaitable[JsonDict]: ...  # noqa: N802 - Slack SDK method name.
 
     def chat_update(self, **kwargs: object) -> Awaitable[JsonDict]: ...
 
@@ -72,7 +72,7 @@ class SlackChannel:
     prefix_assistant_name: bool = False  # Slack shows the bot username already
     supports_direct_ask_user_callbacks: bool = True
 
-    def __init__(  # noqa: PLR0913, RUF100 - Slack channel constructor is the plugin integration boundary.
+    def __init__(  # noqa: PLR0913 - Slack channel constructor is the plugin integration boundary.
         self,
         connection_name: str,
         bot_token: str,
@@ -432,7 +432,7 @@ class SlackChannel:
             await self._app.client.reactions_add(
                 channel=channel_id, timestamp=slack_ts, name=emoji_name
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - Slack reactions are best-effort delivery.
+        except Exception as exc:  # noqa: BLE001 - Slack reactions are best-effort delivery.
             logger.debug("Slack reaction failed", err=str(exc))
 
     async def send_ask_user(
@@ -525,7 +525,7 @@ class SlackChannel:
                 or user_id
             )
             self._user_name_cache.put(user_id, name)
-        except Exception as exc:  # noqa: BLE001, RUF100 - Slack user lookup failures fall back to the raw user ID.
+        except Exception as exc:  # noqa: BLE001 - Slack user lookup failures fall back to the raw user ID.
             logger.debug("Failed to resolve Slack user name", user_id=user_id, error=str(exc))
             return user_id
         else:
@@ -546,7 +546,7 @@ class SlackChannel:
             channel = resp.get("channel", {})
             name: str = channel.get("name", channel_id)
             self._channel_name_cache.put(channel_id, name)
-        except Exception as exc:  # noqa: BLE001, RUF100 - Slack channel lookup failures fall back to the channel ID.
+        except Exception as exc:  # noqa: BLE001 - Slack channel lookup failures fall back to the channel ID.
             logger.debug(
                 "Failed to resolve Slack channel name", channel_id=channel_id, error=str(exc)
             )

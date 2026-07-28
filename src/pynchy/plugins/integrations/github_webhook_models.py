@@ -22,7 +22,7 @@ class GitHubWebhookRouteConfig(_GitHubModel):
     name: str
     workspace: str
     repository: str
-    secret_env: str = "GITHUB_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
+    secret_env: str = "GITHUB_WEBHOOK_SECRET"  # noqa: S105 - environment variable name, not a credential.
     max_body_bytes: int = GITHUB_MAX_WEBHOOK_BODY_BYTES
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60

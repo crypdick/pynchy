@@ -6,11 +6,11 @@ import asyncio
 import json
 import os
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves startup runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves startup runtime annotations.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves startup annotations at runtime.
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
@@ -91,8 +91,8 @@ class StartupRuntime:
 
 def configure_startup_runtime(runtime: StartupRuntime) -> None:
     """Bind startup configuration and source-control operations at composition."""
-    global _get_settings, get_head_commit_message, get_head_sha  # noqa: PLW0603, RUF100 - one host process owns startup operations.
-    global is_repo_dirty, run_git  # noqa: PLW0603, RUF100 - one host process owns startup operations.
+    global _get_settings, get_head_commit_message, get_head_sha  # noqa: PLW0603 - one host process owns startup operations.
+    global is_repo_dirty, run_git  # noqa: PLW0603 - one host process owns startup operations.
     _get_settings = runtime.get_settings
     get_head_commit_message = runtime.head_commit_message
     get_head_sha = runtime.head_sha

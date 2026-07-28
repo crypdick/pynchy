@@ -10,7 +10,7 @@ import atexit
 import contextlib
 import os
 import shutil
-import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
+import subprocess  # noqa: S404 - fixed argv process helpers; never uses shell=True.
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,7 +65,7 @@ def _start_vnc_layer_processes(
 ) -> list[subprocess.Popen[bytes]]:
     procs: list[subprocess.Popen[bytes]] = []
     with contextlib.ExitStack() as stack:
-        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
+        x11vnc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved x11vnc path.
             [
                 tool_paths["x11vnc"],
                 "-display",
@@ -90,7 +90,7 @@ def _start_vnc_layer_processes(
         ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
+        websockify_proc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved path.
             ws_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -124,7 +124,7 @@ def ensure_xvfb() -> None:
         xvfb_path = _resolve_executable("Xvfb")
     except RuntimeError as exc:
         raise RuntimeError(_XVFB_NOT_INSTALLED) from exc
-    _state.xvfb_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
+    _state.xvfb_proc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved Xvfb path.
         [xvfb_path, XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

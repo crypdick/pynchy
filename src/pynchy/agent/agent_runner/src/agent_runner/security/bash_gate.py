@@ -29,7 +29,7 @@ async def _ipc_bash_check(command: str) -> HookDecision:
 
     Reuses the existing ipc_service_request machinery (watchdog-based).
     """
-    from agent_runner.agent_tools._ipc_request import (  # noqa: PLC0415, PLC2701, RUF100 - defer IPC machinery until host escalation is required.
+    from agent_runner.agent_tools._ipc_request import (  # noqa: PLC0415 - defer IPC machinery until host escalation is required.
         ipc_service_request,
     )
 
@@ -41,7 +41,7 @@ async def _ipc_bash_check(command: str) -> HookDecision:
             type_override="security:bash_check",
             guarded_action_id=str(current_guarded_action_id()),
         )
-    except Exception as exc:  # allow: exception-handling  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling  # noqa: BLE001
         reason = f"Host Bash policy unavailable; failing closed: {type(exc).__name__}"
         _log(reason)
         return HookDecision(allowed=False, reason=reason)

@@ -12,7 +12,7 @@ _skills_root: Path | None = None
 
 def configure_personalized_skills_root(project_root: Path) -> None:
     """Set the canonical personalization skill root during composition."""
-    global _skills_root  # noqa: PLW0603, RUF100 - one host process owns one personalized skills root.
+    global _skills_root  # noqa: PLW0603 - one host process owns one personalized skills root.
     _skills_root = (project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME).resolve()
 
 

@@ -130,6 +130,9 @@ select = [
     "W",
     "YTT",
 ]
+# Ruff 0.16 preview migrations; keep standard noqa comments and rule-code policy
+# selectors until a focused readability migration can review them together.
+ignore = ["RUF105", "RUF201"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "INP", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
 # The outer project directory stays non-package so pytest does not import the

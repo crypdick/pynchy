@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import socket
-import subprocess  # noqa: S404, RUF100 - failure probe inspects its harness-owned Docker image.
+import subprocess  # noqa: S404 - failure probe inspects its harness-owned Docker image.
 import time
 import urllib.request
 from pathlib import Path
@@ -68,7 +68,9 @@ def _wait_for_semantic_readiness(spec: harness.RuntimeSpec) -> str:
     status_url = f"http://127.0.0.1:{spec.server_port}/status"
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(status_url, timeout=2) as response:  # noqa: S310, RUF100 - fixed loopback status endpoint.
+            with urllib.request.urlopen(
+                status_url, timeout=2
+            ) as response:  # fixed loopback status endpoint.
                 if response.status == 200:
                     status = json.loads(response.read())
                     if harness.is_runtime_ready(status):
@@ -86,8 +88,8 @@ def _ready_runtime_agent_image(state_path: Path) -> str:
     image = state.get("agent_image")
     if not isinstance(image, str):
         raise TypeError("Runtime state is missing the namespace-scoped agent image")
-    result = subprocess.run(  # noqa: S603, RUF100 - image comes from this harness-owned state file.
-        [  # noqa: S607, RUF100 - Docker is the deterministic runtime's required executable.
+    result = subprocess.run(  # noqa: S603 - image comes from this harness-owned state file.
+        [  # noqa: S607 - Docker is the deterministic runtime's required executable.
             "docker",
             "image",
             "inspect",

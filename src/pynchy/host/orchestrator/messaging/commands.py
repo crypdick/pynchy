@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves matcher annotations at runtime.
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves matcher annotations at runtime.
     CommandMatcher,
 )
 

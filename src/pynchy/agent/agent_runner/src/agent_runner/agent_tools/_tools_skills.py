@@ -168,7 +168,7 @@ def _access_granted(skill_name: str, *, persistent: bool) -> list[TextContent]:
         "required": ["query"],
     },
 )
-async def _search_skills_handle(  # noqa: RUF029, RUF100 - async MCP handler contract.
+async def _search_skills_handle(  # noqa: RUF029 - async MCP handler contract.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     query = str(arguments.get("query", "")).strip()
