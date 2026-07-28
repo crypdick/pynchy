@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves Slack Bolt callback annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves Slack Bolt callback annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves Slack Bolt callback annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves Slack Bolt callback annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -130,7 +130,7 @@ class SlackEvents:
 
     def _register_assistant_handlers(self) -> None:
         """Register Slack Assistant API handlers for the sidebar panel."""
-        from slack_bolt.middleware.assistant.async_assistant import (  # noqa: PLC0415, RUF100 - optional Slack SDK loaded only when Slack connects.
+        from slack_bolt.middleware.assistant.async_assistant import (  # noqa: PLC0415 - optional Slack SDK loaded only when Slack connects.
             AsyncAssistant,
         )
 

@@ -79,7 +79,7 @@ async def _messaging_source_health_handle(arguments: dict[str, Any]) -> list[Tex
         "required": ["text"],
     },
 )
-async def _handle(  # noqa: RUF029, RUF100 - async tool API.
+async def _handle(  # noqa: RUF029 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     data = {

@@ -48,6 +48,7 @@ class JobConfig(_StrictModel):
     pre_run_timeout_seconds: int | None = None
     agent: bool = True
     reset_before_run: bool = True
+    memory: bool = True
 
     @property
     def is_host(self) -> bool:

@@ -21,7 +21,7 @@ from pynchy.identifiers import (
     ChatJid,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
     Channel,
     OutboundEvent,
 )
@@ -54,7 +54,7 @@ async def _record_to_ledger(
         return await state.record_outbound(
             ChatJid(chat_jid), text, source, [ChannelName(c) for c in channel_names]
         )
-    except Exception:  # noqa: BLE001, RUF100 - outbound ledger write is best-effort and must not block delivery.
+    except Exception:  # noqa: BLE001 - outbound ledger write is best-effort and must not block delivery.
         logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
         return None
 
@@ -64,7 +64,7 @@ async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
         return
     try:
         await state.mark_delivered(ledger_id, channel_name)
-    except Exception:  # noqa: BLE001, RUF100 - ledger success marking is best-effort bookkeeping.
+    except Exception:  # noqa: BLE001 - ledger success marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivered failed (best-effort)", channel=channel_name)
 
 
@@ -73,7 +73,7 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
         return
     try:
         await state.mark_delivery_error(ledger_id, channel_name, error)
-    except Exception:  # noqa: BLE001, RUF100 - ledger error marking is best-effort bookkeeping.
+    except Exception:  # noqa: BLE001 - ledger error marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivery_error failed (best-effort)", channel=channel_name)
 
 
@@ -121,7 +121,7 @@ def resolve_target_jid(chat_jid: str, channel: Channel) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def broadcast(  # noqa: PLR0913, RUF100 - outbound bus keeps the full routing/broadcast contract explicit.
+async def broadcast(  # noqa: PLR0913 - outbound bus keeps the full routing/broadcast contract explicit.
     deps: BusDeps,
     chat_jid: str,
     event: OutboundEvent,
@@ -258,7 +258,7 @@ async def _deliver_stream_targets(
             await ch.update_event(target_jid, msg_id, event)
             await _mark_success(ledger_id, ch.name)
             delivered = True
-        except Exception:  # noqa: BLE001, RUF100 - stream update retry keeps delivery moving.
+        except Exception:  # noqa: BLE001 - stream update retry keeps delivery moving.
             logger.warning("Stream update failed, falling back to send_event", channel=ch.name)
             try:
                 await ch.send_event(target_jid, event)

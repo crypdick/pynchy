@@ -14,12 +14,12 @@ import os
 import signal
 import threading
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves lifecycle annotations at runtime.
 )
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations.
+from pathlib import Path  # beartype resolves lifecycle annotations.
 from typing import Any
 
-import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config.api import get_settings
@@ -40,7 +40,7 @@ from pynchy.host.orchestrator import (
     task_scheduler,
     workspace_config,
 )
-from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
+from pynchy.host.orchestrator.app import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
     PynchyApp,
 )
 from pynchy.host.orchestrator.deploy import current_deploy_revision
@@ -69,7 +69,7 @@ from pynchy.plugins.api import (
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.runtimes import system_checks
@@ -119,7 +119,7 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
         )
         if admin_jid and app.channels:
             await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
-    except Exception:  # noqa: BLE001, RUF100 - shutdown notification is best-effort and must not block teardown.
+    except Exception:  # noqa: BLE001 - shutdown notification is best-effort and must not block teardown.
         logger.debug("Shutdown notification failed", exc_info=True)
 
 
@@ -506,16 +506,16 @@ async def _prepare_state_and_subsystems(
             continuation_path=continuation_path,
         )
         await _start_runtime_owners(app, interrupted_recovery)
-    except BaseException as exc:  # noqa: BLE001, RUF100 - rollback must also release waiters during cancellation.
+    except BaseException as exc:  # rollback must also release waiters during cancellation.
         app.startup_readiness.mark_failed(exc)
         await app.subsystem_tasks.stop()
         try:
             await app.cleanup_http_runner()
-        except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
+        except Exception:  # noqa: BLE001 - preserve the startup error that triggers rollback.
             logger.exception("HTTP cleanup failed during startup rollback")
         try:
             await app.connection_runtime_owner.close()
-        except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
+        except Exception:  # noqa: BLE001 - preserve the startup error that triggers rollback.
             logger.exception("Connection runtime cleanup failed during startup rollback")
         if isinstance(exc, Exception) and await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
@@ -543,7 +543,7 @@ async def run_app(app: PynchyApp) -> None:
 
     try:
         await _initialize_core(app)
-    except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any init failure should trigger rollback.
+    except Exception as exc:  # startup rollback boundary; any init failure should trigger rollback.
         if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
@@ -566,7 +566,8 @@ async def run_app(app: PynchyApp) -> None:
 
     try:
         await _setup_channels(app)
-    except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any channel setup failure should trigger rollback.
+    # startup rollback boundary; any channel setup failure should trigger rollback.
+    except Exception as exc:
         if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise

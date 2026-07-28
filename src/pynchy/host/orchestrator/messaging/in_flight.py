@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable  # noqa: TC003, RUF100 - Protocol annotations.
+from collections.abc import Awaitable, Callable  # noqa: TC003 - Protocol annotations.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
@@ -29,10 +29,10 @@ from pynchy.state.api import (
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+from pynchy.turn_outcomes import (  # beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
     RuntimeTarget,
     WorkspaceProfile,
 )
@@ -45,7 +45,7 @@ class InFlightMessageDeps(Protocol):
 
     async def save_state(self) -> None: ...
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
+    async def run_agent(  # noqa: PLR0913 - mirrors the orchestrator contract.
         self,
         group: WorkspaceProfile,
         chat_jid: str,

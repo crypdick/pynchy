@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves snapshot annotations.
 from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
@@ -36,7 +36,7 @@ from pynchy.state.api import (
     update_in_flight_session,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -86,7 +86,7 @@ def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, 
     }
 
 
-def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire inputs keep this boundary inspectable.
+def build_container_input(  # noqa: PLR0913 - explicit runner wire inputs keep this boundary inspectable.
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
     chat_jid: str,

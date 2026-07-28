@@ -12,6 +12,8 @@ litellm_config.yaml
 # Python environments and tool caches.
 .venv/
 **/.venv/
+# Apple Container traverses this nested environment before applying **/.venv/.
+src/pynchy/agent/agent_runner/.venv/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -29,5 +31,6 @@ node_modules/
 
 # VCS/editor noise.
 .git/
+.worktrees/
 .gitignore
 .DS_Store

@@ -11,17 +11,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves git sync helper signatures at runtime.
+    Path,  # noqa: TC003 - beartype resolves git sync helper signatures at runtime.
 )
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helper signatures at runtime.
+    RepoContext,  # noqa: TC001 - beartype resolves git sync helper signatures at runtime.
 )
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -140,7 +140,7 @@ async def _notify_dirty_worktree(
     )
 
 
-async def _rebase_and_notify(  # noqa: PLR0913, RUF100 - local notification helper keeps the rebase inputs explicit.
+async def _rebase_and_notify(  # noqa: PLR0913 - local notification helper keeps the rebase inputs explicit.
     *,
     conflict_notify: _NotifyFn,
     success_notify: _NotifyFn | None,

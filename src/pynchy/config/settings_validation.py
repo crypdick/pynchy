@@ -2,25 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
     Callable,
 )
 from typing import TYPE_CHECKING, Protocol
 
 from pynchy.actions import ACTION_SPECS
-from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+from pynchy.config.jobs import (  # noqa: TC001 - beartype resolves annotations at runtime.
     JobConfig,
 )
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+from pynchy.config.models import (  # noqa: TC001 - beartype resolves annotations at runtime.
     AgentConfig,
     ToolConfig,
     WorkspaceConfig,
 )
-from pynchy.config.profiles import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+from pynchy.config.profiles import (  # noqa: TC001 - beartype resolves annotations at runtime.
     ProfileConfig,
 )
 from pynchy.config.refs import parse_chat_ref
-from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+from pynchy.config.scheduler_models import (  # noqa: TC001 - beartype resolves annotations at runtime.
     CanaryConfig,
 )
 from pynchy.config.workspace_layout import semantic_workspace_configs

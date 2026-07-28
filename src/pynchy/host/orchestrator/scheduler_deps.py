@@ -2,39 +2,39 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations.
     Awaitable,
     Callable,
 )
 from contextlib import (
-    AbstractContextManager,  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
+    AbstractContextManager,  # noqa: TC003 - beartype resolves protocol annotations.
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime config annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves runtime config annotations.
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.turn_outcomes import TurnOutcome
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves annotations.
     ContainerOutput,
     OnOutput,
 )
-from pynchy.canary_contracts import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.canary_contracts import (  # noqa: TC001 - beartype resolves annotations.
     CanaryRun,
 )
-from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves annotations.
     LearningPacket,
 )
-from pynchy.linear_plan_types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves annotations.
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
-from pynchy.plugins.api import OutboundEvent  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.plugins.api import OutboundEvent  # noqa: TC001 - beartype resolves annotations.
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ScheduledTask,  # noqa: TC001 - beartype resolves annotations.
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves annotations.
     RuntimeTarget,
     WorkspaceProfile,
 )
@@ -65,6 +65,7 @@ class ConfigHostCronJob:
     cwd: str | None
     timeout_seconds: int | None
     quiet_on_success: bool
+    memory_enabled: bool
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,7 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
         request: LinearPlanReviewRequest,
     ) -> LinearPlanReviewResult: ...
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
+    async def run_agent(  # noqa: PLR0913 - mirrors the orchestrator contract.
         self,
         group: WorkspaceProfile,
         chat_jid: str,

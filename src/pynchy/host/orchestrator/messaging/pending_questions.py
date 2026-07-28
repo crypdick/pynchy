@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves recovery callback annotations.
+    Callable,  # beartype resolves recovery callback annotations.
 )
 from datetime import UTC, datetime
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves pending-question path annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves pending-question path annotations at runtime.
 )
 from typing import Any, cast
 
@@ -38,7 +38,7 @@ _ipc_base_dir: Path | None = None
 
 def configure_pending_questions_ipc_base_dir(path: Path) -> None:
     """Set the host-owned IPC root during application composition."""
-    global _ipc_base_dir  # noqa: PLW0603, RUF100 - one host process owns one pending-question IPC root.
+    global _ipc_base_dir  # noqa: PLW0603 - one host process owns one pending-question IPC root.
     _ipc_base_dir = path
 
 
@@ -61,7 +61,7 @@ def _pending_questions_dir(source_group: str) -> Path:
 # -- State operations ----------------------------------------------------------
 
 
-def create_pending_question(  # noqa: PLR0913, RUF100 - file-backed pending-question payload mirrors the channel callback contract.
+def create_pending_question(  # noqa: PLR0913 - file-backed pending-question payload mirrors the channel callback contract.
     request_id: str,
     source_group: str,
     chat_jid: str,
@@ -215,7 +215,7 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
 # -- Startup sweep -------------------------------------------------------------
 
 
-async def sweep_expired_questions(  # noqa: RUF029, RUF100 - IPC startup awaits the recovery sweep API.
+async def sweep_expired_questions(  # noqa: RUF029 - IPC startup awaits the recovery sweep API.
     write_expiration_response: ExpirationResponseWriter,
 ) -> list[dict[str, Any]]:
     """Find and auto-expire stale pending questions (crash recovery).
@@ -268,7 +268,7 @@ async def sweep_expired_questions(  # noqa: RUF029, RUF100 - IPC startup awaits 
     return expired
 
 
-def _expire_pending_question(  # noqa: PLR0913, RUF100 - expiry context is preserved for recovery audit logging.
+def _expire_pending_question(  # expiry context is preserved for recovery audit logging.
     group_name: str,
     filepath: Path,
     data: dict[str, Any],

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch

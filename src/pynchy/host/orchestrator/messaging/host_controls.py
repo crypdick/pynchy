@@ -7,13 +7,13 @@ import asyncio
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves control annotations.
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves control annotations.
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves control annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves control annotations at runtime.
     NewMessage,
 )
 from pynchy.state.api import (

@@ -137,6 +137,7 @@ class TestCreatePeriodicAgent:
 
         assert request is not None
         assert request.profile == "pynchy-worker"
+        assert request.memory_enabled is True
 
     @staticmethod
     def _settings(tmp_path):
@@ -198,6 +199,7 @@ class TestCreatePeriodicAgent:
                     "profile": "pynchy-worker",
                     "schedule": "0 9 * * *",
                     "prompt": "Compile a daily briefing",
+                    "memory": False,
                 },
                 "admin-1",
                 True,
@@ -206,6 +208,7 @@ class TestCreatePeriodicAgent:
             add_ws.assert_called_once()
             add_job.assert_called_once()
             assert add_job.call_args.args[1].workspace == "daily-briefing"
+            assert add_job.call_args.args[1].memory is False
             profile = register_workspace.call_args.args[0]
             assert profile.jid == "agent@g.us"
             assert profile.folder == "daily-briefing"
@@ -228,6 +231,7 @@ class TestCreatePeriodicAgent:
         assert task.schedule_value == "0 9 * * *"
         assert task.prompt == "Compile a daily briefing"
         assert task.status == "active"
+        assert task.memory_enabled is False
 
     async def test_custom_claude_md(self, deps, tmp_path, monkeypatch):
         """Custom claude_md content should be written to CLAUDE.md."""

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import subprocess  # noqa: S404, RUF100 - helper reads only a harness-owned Docker sidecar.
+import subprocess  # noqa: S404 - helper reads only a harness-owned Docker sidecar.
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -110,8 +110,8 @@ def status(state: dict[str, Any]) -> dict[str, Any]:
 
 def response_requests(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Read the fake sidecar's private response-chain audit through Docker exec."""
-    result = subprocess.run(  # noqa: S603, RUF100 - fixed probe against a harness-owned sidecar.
-        [  # noqa: S607, RUF100 - Docker is a required local runtime executable.
+    result = subprocess.run(  # noqa: S603 - fixed probe against a harness-owned sidecar.
+        [  # noqa: S607 - Docker is a required local runtime executable.
             "docker",
             "exec",
             _required_string(state, "fake_container"),

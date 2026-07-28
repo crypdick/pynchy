@@ -9,7 +9,7 @@ import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
@@ -104,7 +104,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         }
     ).encode()
 
-    req = urllib.request.Request(  # noqa: S310, RUF100 - opened only through the HTTPS-gated helper.
+    req = urllib.request.Request(  # noqa: S310 - opened only through the HTTPS-gated helper.
         GOOGLE_OAUTH_ENDPOINT_URL,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -127,7 +127,7 @@ def urlopen_https_request(req: urllib.request.Request) -> object:
     scheme = urllib.parse.urlsplit(req.full_url).scheme.lower()
     if scheme != "https":
         raise RuntimeError(GOOGLE_API_URL_MUST_USE_HTTPS_ERROR)
-    return urllib.request.urlopen(req)  # noqa: S310, RUF100 - scheme is constrained above.
+    return urllib.request.urlopen(req)  # noqa: S310 - scheme is constrained above.
 
 
 def save_credentials_to_profile(tokens: dict[str, object], profile_name: str) -> Path:

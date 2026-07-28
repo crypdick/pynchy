@@ -394,7 +394,8 @@ class ClaudeAgentCore:
         if self._client is not None:
             try:
                 await self._client_stack.aclose()
-            except Exception as exc:  # allow: exception-handling; cleanup; logged via _log()  # noqa: BLE001, RUF100
+            # cleanup; logged via _log()
+            except Exception as exc:  # allow: exception-handling  # noqa: BLE001
                 _log(f"Error during client cleanup: {exc}")
             finally:
                 self._client = None

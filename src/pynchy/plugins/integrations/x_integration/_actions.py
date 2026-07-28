@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-import subprocess  # noqa: S404, TC003, RUF100 - trusted display helper handles and beartype runtime annotation binding.
+import subprocess  # noqa: S404, TC003 - trusted display helper handles and beartype runtime annotation binding.
 from typing import Any, cast
 
 from pynchy.logger import logger
@@ -25,7 +25,7 @@ from pynchy.plugins.integrations.x_integration._browser import (
     validate_content,
     with_browser,
 )
-from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates nested action contracts at runtime.
+from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001 - beartype validates nested action contracts at runtime.
     XLocator,
     XPage,
 )
@@ -44,7 +44,7 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
         if need_vnc:
             vnc_procs, novnc_url = start_vnc_layer()
         return await _run_x_session_setup(timeout_seconds, novnc_url)
-    except Exception as exc:  # noqa: BLE001, RUF100 - X session setup failures are surfaced to the caller.
+    except Exception as exc:  # noqa: BLE001 - X session setup failures are surfaced to the caller.
         logger.error("X session setup failed", error=str(exc))
         return {"error": str(exc)}
 
@@ -53,7 +53,7 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _run_x_session_setup(timeout_seconds: int, novnc_url: str | None) -> dict[str, Any]:
-    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+    from playwright.async_api import (  # noqa: PLC0415 - optional browser automation dependency.
         async_playwright,
     )
 
@@ -90,7 +90,7 @@ async def _run_x_session_setup(timeout_seconds: int, novnc_url: str | None) -> d
                 SEL["account_switcher"],
                 timeout=timeout_seconds * 1000,
             )
-        except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - timeout becomes a caller-facing error.
+        except Exception:  # noqa: BLE001  # allow: exception-handling - timeout becomes a caller-facing error.
             return {
                 "error": (
                     f"Login not completed within {timeout_seconds}s. "

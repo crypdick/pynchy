@@ -6,13 +6,13 @@ agent process only when its selected tool explicitly authorizes that exposure.
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves credential runtime annotations.
+import subprocess  # noqa: S404 - credential discovery uses fixed no-shell gh/git argv.
+from collections.abc import (  # noqa: TC003 - beartype resolves credential runtime annotations.
     Callable,
 )
 from urllib.parse import urlparse
 
-from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
+from pynchy.host.container_manager.gateway import (  # noqa: TC001 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
 )
@@ -25,8 +25,8 @@ from pynchy.logger import logger
 
 def _read_git_config_value(key: str) -> str | None:
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - git config key is selected from a fixed tuple; no shell.
-            ["git", "config", key],  # noqa: S607, RUF100 - git is a trusted host CLI and argv shape is constrained.
+        result = subprocess.run(  # noqa: S603 - git config key is selected from a fixed tuple; no shell.
+            ["git", "config", key],  # noqa: S607 - git is a trusted host CLI and argv shape is constrained.
             capture_output=True,
             text=True,
             timeout=5,
@@ -66,7 +66,7 @@ def configure_workspace_environment(
     workspace_env_vars: Callable[..., dict[str, str]],
 ) -> None:
     """Install the selected workspace environment projection at composition."""
-    global _workspace_env_vars  # noqa: PLW0603, RUF100 - one host process owns credential policy composition.
+    global _workspace_env_vars  # noqa: PLW0603 - one host process owns credential policy composition.
     _workspace_env_vars = workspace_env_vars
 
 
@@ -78,7 +78,7 @@ def _configured_workspace_environment() -> Callable[..., dict[str, str]]:
 
 def has_api_credentials() -> bool:
     """Check whether the host gateway can serve an LLM provider."""
-    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415 - keep lazy import to avoid startup cost and preserve patchability.
         get_gateway,
     )
 
@@ -151,7 +151,7 @@ def build_agent_env_vars(
     extra_env_vars: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build the selected workspace environment without ambient discovery."""
-    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415 - keep lazy import to avoid startup cost and preserve patchability.
         get_gateway,
     )
 

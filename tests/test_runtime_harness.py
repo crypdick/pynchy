@@ -6,7 +6,7 @@ import argparse
 import contextlib
 import json
 import stat
-import subprocess  # noqa: S404, RUF100 - test helpers record mocked subprocess results only.
+import subprocess  # noqa: S404 - test helpers record mocked subprocess results only.
 import sys
 import time
 from typing import TYPE_CHECKING

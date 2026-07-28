@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves webhook runtime callbacks at runtime.
 )
 from dataclasses import dataclass, replace
 from functools import partial
@@ -19,10 +19,10 @@ from pynchy.plugins.api import (
     WebhookRoute,
 )
 from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccount,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+    LinearAccount,  # noqa: TC001 - beartype resolves webhook runtime callbacks at runtime.
 )
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves workspace evidence.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves workspace evidence.
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_boot import (
@@ -35,8 +35,8 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
 )
 from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
 from pynchy.plugins.integrations.linear_webhook_config import (
-    LinearPluginOptions,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
-    LinearWebhookRouteConfig,  # noqa: TC001, RUF100 - beartype resolves webhook runtime callbacks at runtime.
+    LinearPluginOptions,  # noqa: TC001 - beartype resolves webhook runtime callbacks at runtime.
+    LinearWebhookRouteConfig,  # noqa: TC001 - beartype resolves webhook runtime callbacks at runtime.
 )
 from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
@@ -50,7 +50,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     workspace_issue,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves route validation annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves route validation annotations at runtime.
 )
 
 

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pynchy.conversation.api import (
-    Conversation,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.
+    Conversation,  # beartype resolves lookup annotations at runtime.
     ConversationId,
-    ConversationSubjectKey,  # noqa: TC001, RUF100 - beartype resolves lookup annotations at runtime.
+    ConversationSubjectKey,  # beartype resolves lookup annotations at runtime.
 )
-from pynchy.identifiers import GroupFolder  # noqa: TC001, RUF100 - beartype resolves annotations
+from pynchy.identifiers import GroupFolder  # noqa: TC001 - beartype resolves annotations
 from pynchy.state.connection import _get_db
 from pynchy.state.conversation_routing import get_conversation
 

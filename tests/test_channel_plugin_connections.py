@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path  # noqa: TC003, RUF100 - test context constructs the concrete cache path.
+from pathlib import Path  # noqa: TC003 - test context constructs the concrete cache path.
 from types import ModuleType
 from typing import Any
 from unittest.mock import ANY, MagicMock, patch
@@ -12,7 +12,7 @@ from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config.api import (
     DiscordConnectionConfig,
 )
-from pynchy.discord import (  # noqa: TC001, RUF100 - test context exposes the concrete domain value.
+from pynchy.discord import (  # noqa: TC001 - test context exposes the concrete domain value.
     DiscordConnectionSettings,
 )
 from pynchy.plugins.api import ChannelPluginContext
@@ -28,7 +28,7 @@ DISCORD_BOT_ENV = "DISCORD"
 def _install_module(name: str, *, package: bool = False) -> ModuleType:
     module = ModuleType(name)
     if package:
-        module.__path__ = []  # type: ignore[attr-defined]  # noqa: RUF100 - import package marker.
+        module.__path__ = []  # type: ignore[attr-defined]  # import package marker.
     sys.modules[name] = module
     return module
 

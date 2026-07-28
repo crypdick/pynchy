@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell container CLI argv.
+import subprocess  # noqa: S404 - runtime adapter uses fixed no-shell container CLI argv.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -92,7 +92,7 @@ class AppleContainerRuntime:
 
     def ensure_running(self) -> None:
         try:
-            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, "system", "status"],
                 capture_output=True,
                 check=True,
@@ -100,7 +100,7 @@ class AppleContainerRuntime:
             )
         except (subprocess.SubprocessError, OSError):
             try:
-                subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+                subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
                     [self.cli, "system", "start"],
                     capture_output=True,
                     check=True,
@@ -110,7 +110,7 @@ class AppleContainerRuntime:
                 raise RuntimeError(_APPLE_CONTAINER_START_FAILURE_MESSAGE) from exc
 
     def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             [self.cli, "ls", "--all", "--format", "json"],
             capture_output=True,
             text=True,
@@ -150,7 +150,7 @@ class AppleContainerRuntime:
         if force:
             args.append("--force")
         args.append(name)
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             args,
             capture_output=True,
             text=True,
@@ -163,7 +163,7 @@ class AppleContainerRuntime:
         """Remove Apple Container's BuildKit container after Pynchy image builds."""
         removed = False
         for args in (("builder", "stop"), ("builder", "rm", "--force")):
-            result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, *args],
                 capture_output=True,
                 text=True,
@@ -179,7 +179,7 @@ class AppleContainerRuntime:
         args = [self.cli, "image", "prune"]
         if all_images:
             args.append("--all")
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             args,
             capture_output=True,
             text=True,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves job reconciliation annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves job reconciliation annotations at runtime.
 )
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -12,13 +12,13 @@ from typing import Any, Literal, cast
 
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
+from pynchy.scheduling.api import (  # beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     SessionPolicy,
 )
 from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves job reconciliation annotations at runtime.
 )
 
 type JobConfig = Any
@@ -73,6 +73,7 @@ class _AgentJobTaskDetails:
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
     session_policy: SessionPolicy
+    memory_enabled: bool
     derived_thread_name: str
     is_deterministic: bool
     command: str | None
@@ -151,6 +152,7 @@ async def _create_agent_job_task(
             schedule_type=details.schedule_type,
             schedule_value=details.schedule_value,
             session_policy=details.session_policy,
+            memory_enabled=details.memory_enabled,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
             config_job_name=job_name,
@@ -185,6 +187,8 @@ def _agent_job_updates(
         updates["schedule_value"] = details.schedule_value
     if existing.session_policy is not details.session_policy:
         updates["session_policy"] = details.session_policy
+    if existing.memory_enabled is not details.memory_enabled:
+        updates["memory_enabled"] = details.memory_enabled
     if existing.repo_access is not None:
         updates["repo_access"] = None
     if existing.config_job_name != job_name:
@@ -252,6 +256,7 @@ async def reconcile_agent_jobs(
             session_policy=(
                 SessionPolicy.RESET_BEFORE_RUN if job.reset_before_run else SessionPolicy.CONTINUE
             ),
+            memory_enabled=job.memory,
             derived_thread_name=(f"{context.root_folder} | {job.display_name or job_name}"),
             is_deterministic=job.is_deterministic,
             command=job.command if job.is_deterministic else None,

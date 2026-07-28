@@ -10,7 +10,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves dispatch inputs at runtime.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves dispatch inputs at runtime.
     ConversationId,
 )
 from pynchy.host.orchestrator.http_control import ClientAddress, RequestRateLimiter
@@ -46,7 +46,7 @@ from pynchy.state.api import (
 )
 from pynchy.webhook_effects import WebhookEffectCallbackDecision
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -308,7 +308,7 @@ def _task_for_event(
     )
 
 
-async def _prepare_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp startup hooks use an async callback contract.
+async def _prepare_conversation_routes(  # noqa: RUF029 - aiohttp startup hooks use an async callback contract.
     app: web.Application,
 ) -> None:
     ingress = app[webhook_ingress_key]
@@ -323,7 +323,7 @@ async def recover_webhook_conversations(app: web.Application) -> None:
         await ingress.conversation_dispatcher.recover_pending()
 
 
-async def _stop_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp cleanup hooks use an async callback contract.
+async def _stop_conversation_routes(  # noqa: RUF029 - aiohttp cleanup hooks use an async callback contract.
     app: web.Application,
 ) -> None:
     ingress = app[webhook_ingress_key]

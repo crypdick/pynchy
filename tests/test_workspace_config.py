@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Callable  # noqa: TC003, RUF100 - dataclass field type.
+from collections.abc import Callable  # noqa: TC003 - dataclass field type.
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves cancellation annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves cancellation annotations at runtime.
     Awaitable,
     Callable,
 )
@@ -23,7 +23,7 @@ from pynchy.work_items.api import (
     WorkItemExecutionStatus,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 _RESET_BLOCKER = (

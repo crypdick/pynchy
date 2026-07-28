@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves state annotations at runtime.
+from pynchy.conversation.api import (  # beartype resolves state annotations at runtime.
     ExternalDeliveryIdentity,
     ExternalDeliveryReceipt,
 )

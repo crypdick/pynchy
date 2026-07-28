@@ -87,7 +87,7 @@ class SlackHistory:
             resp = await ch.require_slack_app().client.conversations_history(
                 channel=channel_id, oldest=oldest, limit=limit
             )
-        except Exception:  # noqa: BLE001, RUF100 - history catch-up is best-effort and should not block reconnect.
+        except Exception:  # noqa: BLE001 - history catch-up is best-effort and should not block reconnect.
             logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
             return None
         raw_messages = list(cast("list[JsonDict]", resp.get("messages", [])))

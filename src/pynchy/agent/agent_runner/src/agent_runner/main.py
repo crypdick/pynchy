@@ -286,7 +286,7 @@ def _read_container_input() -> ContainerInput:
     """Read initial input from file (written by host before container start)."""
     try:
         container_input = read_initial_input()
-    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001
         write_output(ContainerOutput(status="error", error=f"Failed to read initial input: {exc}"))
         sys.exit(1)
     else:
@@ -354,7 +354,7 @@ async def _create_and_start_core(
         core = create_agent_core(
             container_input.agent_core_module, container_input.agent_core_class, core_config
         )
-    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
@@ -367,7 +367,7 @@ async def _create_and_start_core(
 
     try:
         await core.start()
-    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001
         write_output(
             ContainerOutput(
                 status="error",
@@ -513,7 +513,7 @@ async def _run_conversation_loop(
     try:
         await _drive_conversation_loop(core, core_config, prompt, session_id)
 
-    except Exception as exc:  # allow: exception-handling; loop  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; loop  # noqa: BLE001
         error_message = str(exc)
         log(f"Agent error: {error_message}")
         write_output(
@@ -528,7 +528,7 @@ async def _run_conversation_loop(
     finally:
         try:
             await core.stop()
-        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001
             log(f"Error stopping core: {exc}")
 
 

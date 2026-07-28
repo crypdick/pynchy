@@ -16,7 +16,7 @@ class XLocator(Protocol):
 
     def filter(self, **kwargs: object) -> XLocator: ...
 
-    async def wait_for(self, *, timeout: int) -> None: ...  # noqa: ASYNC109, RUF100 - mirrors Playwright's locator API.
+    async def wait_for(self, *, timeout: int) -> None: ...  # noqa: ASYNC109 - mirrors Playwright's locator API.
 
     async def click(self) -> None: ...
 

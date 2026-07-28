@@ -10,9 +10,9 @@ from __future__ import annotations
 import datetime
 import re
 import shutil
-import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
+import subprocess  # noqa: S404 - repo helpers use fixed no-shell git/gh argv.
 import uuid
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves repository runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves repository runtime annotations.
     Callable,
     Mapping,
     Sequence,
@@ -83,7 +83,7 @@ def configure_repo_runtime(
     resolve_workspace_config: Callable[[str], ResolvedRepoWorkspace | None],
 ) -> None:
     """Bind repository paths and workspace access at host composition."""
-    global _get_settings, load_resolved_config  # noqa: PLW0603, RUF100 - one host process owns this repository configuration.
+    global _get_settings, load_resolved_config  # noqa: PLW0603 - one host process owns this repository configuration.
     _get_settings = get_settings
     load_resolved_config = resolve_workspace_config
 
@@ -170,7 +170,7 @@ def _read_gh_token() -> str | None:
     """Read the GitHub token from the host's authenticated gh CLI."""
     try:
         result = subprocess.run(
-            ["gh", "auth", "token"],  # noqa: S607, RUF100 - gh is a trusted host CLI and argv is fixed.
+            ["gh", "auth", "token"],  # noqa: S607 - gh is a trusted host CLI and argv is fixed.
             capture_output=True,
             text=True,
             timeout=5,
@@ -184,7 +184,7 @@ def _read_gh_token() -> str | None:
 
 def _sanitize_token(text: str, token: str | None) -> str:
     """Strip tokens from text to avoid leaking credentials in logs."""
-    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415 - preserve the package's lazy import boundary.
         redact_git_diagnostic,
     )
 
@@ -265,7 +265,7 @@ def _repo_readiness_error(repo_root: Path, expected_slug: str) -> str | None:
     if not repo_root.is_dir():
         return "checkout path is not a directory"
 
-    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415 - preserve the package's lazy import boundary.
         redact_git_diagnostic,
         run_git,
     )
@@ -313,7 +313,7 @@ def _remove_staged_checkout(staged_root: Path) -> None:
 
 def _clone_repo_to(repo_ctx: RepoContext, target: Path) -> bool:
     """Clone and validate one auto-managed repository at an unpublished path."""
-    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415 - preserve the package's lazy import boundary.
         git_env_with_token,
         run_git,
     )
@@ -471,8 +471,8 @@ def check_token_expiry(slug: str, token: str) -> None:
     Silently succeeds if the API call fails (network issues, classic token, etc.).
     """
     try:
-        result = subprocess.run(  # noqa: S603, RUF100 - fixed gh API argv with token passed as a header; no shell.
-            [  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
+        result = subprocess.run(  # noqa: S603 - fixed gh API argv with token passed as a header; no shell.
+            [  # noqa: S607 - gh is the trusted host GitHub CLI.
                 "gh",
                 "api",
                 "/rate_limit",

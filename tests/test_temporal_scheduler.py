@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -98,6 +98,7 @@ def _scheduler_runtime(
             cwd=job.cwd,
             timeout_seconds=job.timeout_seconds,
             quiet_on_success=job.quiet_on_success is True,
+            memory_enabled=job.memory,
         )
         for name, job in (jobs or {}).items()
         if job.is_host and job.enabled
@@ -1233,6 +1234,31 @@ class TestTemporalSchedulerRuntime:
 
         with pytest.raises(RuntimeError, match="Host job backup_db exited with code 1"):
             await temporal_host_jobs.run_config_host_cron_job("backup_db")
+
+    @pytest.mark.asyncio
+    async def test_config_host_job_memory_opt_out(self, monkeypatch):
+        deps = NullSchedulerDeps(
+            scheduler_runtime=_scheduler_runtime(
+                jobs={
+                    "backup_db": JobConfig(
+                        schedule="15 3 * * *",
+                        workspace="host",
+                        command="scripts/backup_runtime_dbs.sh",
+                        memory=False,
+                    )
+                }
+            )
+        )
+        temporal_scheduler.bind_scheduler_deps(deps)
+        memory_context = Mock(side_effect=AssertionError("memory directory must stay disabled"))
+        monkeypatch.setattr(deps, "automation_memory_dir", memory_context)
+        mock_shell = AsyncMock(return_value=ShellResult(returncode=0, stdout="", stderr=""))
+        monkeypatch.setattr(temporal_host_jobs, "run_shell_command", mock_shell)
+
+        assert await temporal_host_jobs.run_config_host_cron_job("backup_db") == "completed"
+
+        assert mock_shell.await_args.kwargs["env"] is None
+        memory_context.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedules_for_git_sync_and_channel_reconcile(

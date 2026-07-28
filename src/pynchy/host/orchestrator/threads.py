@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    Channel,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
 
 

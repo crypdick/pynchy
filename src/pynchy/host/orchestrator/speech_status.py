@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves runtime annotations.
     SpeechSynthesizer,
 )
 
@@ -21,7 +21,7 @@ async def collect_speech_status(synthesizer: SpeechSynthesizer | None) -> dict[s
         }
     try:
         health = await synthesizer.health()
-    except Exception as exc:  # noqa: BLE001, RUF100 - status must report plugin failures without failing /status.
+    except Exception as exc:  # noqa: BLE001 - status must report plugin failures without failing /status.
         logger.warning(
             "Speech synthesis health check failed",
             provider=synthesizer.name,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess  # noqa: S404, RUF100 - test invokes a repository-owned script with a controlled environment.
+import subprocess  # noqa: S404 - test invokes a repository-owned script with a controlled environment.
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,7 +57,7 @@ def _run_build_script(
         "PYNCHY_TEST_PRUNE_COUNT": str(prune_count),
         "PYNCHY_TEST_RUNTIME_LOG": str(runtime_log),
     }
-    result = subprocess.run(  # noqa: S603, RUF100 - executable is the repository-owned build script.
+    result = subprocess.run(  # noqa: S603 - executable is the repository-owned build script.
         [str(project_root / "src" / "pynchy" / "agent" / "build.sh")],
         cwd=project_root,
         env=env,
@@ -78,6 +78,27 @@ def test_build_script_prunes_before_and_after_build(tmp_path: Path) -> None:
     assert result.runtime_calls[0] == "image prune -f"
     assert result.runtime_calls[-1] == "image prune -f"
     assert any(call.startswith("build -t pynchy-agent:latest") for call in result.runtime_calls)
+
+
+def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
+    result = _run_build_script(tmp_path)
+    project_root = Path(__file__).resolve().parents[1]
+    mcp_dir = project_root / "src" / "pynchy" / "agent" / "mcp"
+    integrations_dir = project_root / "src" / "pynchy" / "plugins" / "integrations"
+
+    assert (
+        f"build -t pynchy-mcp-gcal:latest -f {mcp_dir / 'gcal.Dockerfile'} {mcp_dir}"
+        in result.runtime_calls
+    )
+    assert (
+        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {mcp_dir}"
+        in result.runtime_calls
+    )
+    notebook_build = (
+        f"build -t pynchy-mcp-notebook:latest -f {mcp_dir / 'notebook.Dockerfile'} "
+        f"{integrations_dir}"
+    )
+    assert notebook_build in result.runtime_calls
 
 
 def test_build_script_refuses_build_when_preflight_prune_fails(tmp_path: Path) -> None:

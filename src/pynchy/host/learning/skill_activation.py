@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves skill-runtime annotations at runtime.
-    Mapping,  # noqa: TC003, RUF100 - beartype resolves skill-runtime annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves skill-runtime annotations at runtime.
+    Mapping,  # noqa: TC003 - beartype resolves skill-runtime annotations at runtime.
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -62,7 +62,7 @@ _runtime: SkillActivationRuntime | None = None
 
 def configure_skill_activation_runtime(runtime: SkillActivationRuntime) -> None:
     """Inject resolved workspace policy and paths at host composition."""
-    global _runtime  # noqa: PLW0603, RUF100 - one host process owns one skill runtime.
+    global _runtime  # noqa: PLW0603 - one host process owns one skill runtime.
     _runtime = runtime
 
 

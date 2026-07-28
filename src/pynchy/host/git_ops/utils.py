@@ -6,9 +6,9 @@ import contextlib
 import os
 import re
 import signal
-import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell argv.
+import subprocess  # noqa: S404 - shared git helper uses fixed no-shell argv.
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
+    Path,  # noqa: TC003 - beartype resolves git helper signatures at runtime.
 )
 
 from pynchy.logger import logger
@@ -26,7 +26,7 @@ _default_cwd: Path | None = None
 
 def configure_git_default_cwd(project_root: Path) -> None:
     """Set the host checkout used only when a Git caller omits ``cwd``."""
-    global _default_cwd  # noqa: PLW0603, RUF100 - one host process owns one default Git checkout.
+    global _default_cwd  # noqa: PLW0603 - one host process owns one default Git checkout.
     _default_cwd = project_root
 
 
@@ -72,8 +72,8 @@ def _run_git_process(
     command: list[str], *, cwd: str, env: dict[str, str], timeout: int
 ) -> subprocess.CompletedProcess[str]:
     """Run one git process while retaining ownership of its process group."""
-    process = subprocess.Popen(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
-        command,  # noqa: S607, RUF100 - git is the trusted host VCS executable.
+    process = subprocess.Popen(  # noqa: S603 - git args are passed as argv by internal helper call sites; no shell.
+        command,  # git is the trusted host VCS executable.
         cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -132,7 +132,7 @@ def git_env_with_token(slug: str) -> dict[str, str] | None:
     token — safer than embedding tokens in URLs since the token never appears
     in .git/config or ``git remote -v`` output.
     """
-    from pynchy.host.git_ops import (  # noqa: PLC0415, RUF100 - keep repo dependency lazy to avoid tightening git_ops package initialization.
+    from pynchy.host.git_ops import (  # noqa: PLC0415 - keep repo dependency lazy to avoid tightening git_ops package initialization.
         repo as git_repo,
     )
 

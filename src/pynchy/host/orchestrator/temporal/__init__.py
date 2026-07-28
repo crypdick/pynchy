@@ -10,7 +10,7 @@ __all__ = ["TemporalSchedulerRuntime"]
 
 def __getattr__(name: str) -> object:
     if name == "TemporalSchedulerRuntime":
-        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - package attribute stays lazy to avoid importing Temporal scheduler at package import time.
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - package attribute stays lazy to avoid importing Temporal scheduler at package import time.
             TemporalSchedulerRuntime,
         )
 

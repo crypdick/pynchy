@@ -109,7 +109,7 @@ def _load_or_create_persistent_key(path: Path, prefix: str = "") -> str:
 
 def resolve_litellm_environment(config_path: Path) -> dict[str, str]:
     """Load the config's sibling ``.env`` and overlay the host environment."""
-    from dotenv import (  # noqa: PLC0415, RUF100 - lazy import keeps optional dotenv dependency out of module startup.
+    from dotenv import (  # noqa: PLC0415 - lazy import keeps optional dotenv dependency out of module startup.
         dotenv_values,
     )
 
@@ -170,7 +170,7 @@ class LiteLLMGateway:
         key: Ephemeral master key for container authentication.
     """
 
-    def __init__(  # noqa: PLR0913, RUF100 - stable gateway constructor shared by orchestrator call sites.
+    def __init__(  # noqa: PLR0913 - stable gateway constructor shared by orchestrator call sites.
         self,
         *,
         config_path: str,
@@ -252,7 +252,7 @@ class LiteLLMGateway:
     @staticmethod
     def _uses_phoenix_callback(config_path: Path) -> bool:
         """Return True when LiteLLM is configured to export traces to Phoenix."""
-        import yaml  # noqa: PLC0415, RUF100 - lazy import keeps optional yaml dependency out of module startup.
+        import yaml  # noqa: PLC0415 - lazy import keeps optional yaml dependency out of module startup.
 
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         if not isinstance(config, dict):
@@ -275,7 +275,7 @@ class LiteLLMGateway:
 
     async def _check_phoenix_ready(self, endpoint: str) -> None:
         """Fail startup when Phoenix is enabled but unreachable."""
-        import aiohttp  # noqa: PLC0415, RUF100 - lazy import keeps optional aiohttp dependency out of module startup.
+        import aiohttp  # noqa: PLC0415 - lazy import keeps optional aiohttp dependency out of module startup.
 
         health_url = self._phoenix_health_url(endpoint)
         try:
@@ -288,7 +288,9 @@ class LiteLLMGateway:
                     return
                 msg = f"Phoenix health check failed at {health_url}: HTTP {response.status}"
                 raise RuntimeError(msg)
-        except Exception as exc:  # noqa: BLE001, RUF100 - startup health check converts gateway failure into a required-host error.
+        except (
+            Exception
+        ) as exc:  # startup health check converts gateway failure into a required-host error.
             msg = f"Phoenix is required but not reachable at {health_url}: {exc}"
             raise RuntimeError(msg) from exc
 

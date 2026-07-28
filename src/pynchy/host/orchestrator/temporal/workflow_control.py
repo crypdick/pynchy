@@ -36,13 +36,13 @@ class TemporalRuntimeUnavailableError(RuntimeError):
 
 def bind_workflow_client(client: WorkflowControlClient) -> None:
     """Expose the live client through the narrow workflow-control boundary."""
-    global _active_client  # noqa: PLW0603, RUF100 - one process owns one Temporal worker.
+    global _active_client  # noqa: PLW0603 - one process owns one Temporal worker.
     _active_client = client
 
 
 def unbind_workflow_client(client: WorkflowControlClient | None) -> None:
     """Clear only the client owned by the runtime that is stopping."""
-    global _active_client  # noqa: PLW0603, RUF100 - one process owns one Temporal worker.
+    global _active_client  # noqa: PLW0603 - one process owns one Temporal worker.
     if _active_client is client:
         _active_client = None
 

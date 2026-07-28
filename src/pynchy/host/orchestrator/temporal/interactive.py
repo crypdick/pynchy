@@ -51,7 +51,7 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
     """Temporal activity that runs one interactive message turn."""
     try:
         outcome = await _run_message_turn_activity(chat_jid)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(chat_jid, "error", str(exc))
         raise
     return settle_turn_activity(
@@ -66,7 +66,7 @@ async def run_interactive_runtime_turn(group_folder: str) -> str:
     """Run pending messages against a stable runtime's current address."""
     try:
         outcome = await _run_runtime_turn_activity(group_folder)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+    except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(group_folder, "error", str(exc))
         raise
     return settle_turn_activity(

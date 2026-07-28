@@ -12,16 +12,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves inbound routing annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves inbound routing annotations at runtime.
 )
 from dataclasses import dataclass
 
 import pynchy.host.orchestrator.todos as todos
 from pynchy.agent_protocol.api import (
-    InFlightWorkKind,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    InFlightWorkKind,  # beartype resolves inbound routing annotations at runtime.
 )
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves routing annotations.
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves routing annotations.
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.host_controls import (
@@ -33,10 +33,10 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     turn_boundary_lock,
 )
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    RuntimeId,  # beartype resolves inbound routing annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+from pynchy.plugins.api import (  # beartype resolves inbound routing annotations at runtime.
     NewMessage,
     OutboundEvent,
     OutboundEventType,
@@ -46,7 +46,7 @@ from pynchy.state.api import (
     get_new_messages,
     get_oldest_resumable_turn_for_group,
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+from pynchy.workspace.api import (  # beartype resolves inbound routing annotations at runtime.
     RuntimeTarget,
     WorkspaceProfile,
 )
@@ -493,7 +493,7 @@ async def start_message_loop(
     while not shutting_down():
         try:
             await _poll_incoming_messages(deps)
-        except Exception:  # noqa: BLE001, RUF100 - message loop is the routing boundary; keep polling after a failure.
+        except Exception:  # noqa: BLE001 - message loop is the routing boundary; keep polling after a failure.
             logger.exception("Error in message loop")
 
         await asyncio.sleep(deps.message_poll_interval)

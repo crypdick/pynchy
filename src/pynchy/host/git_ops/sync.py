@@ -10,15 +10,15 @@ containers can't read host state (logs, config, etc.).
 from __future__ import annotations
 
 import dataclasses
-import subprocess  # noqa: S404, RUF100 - PR helpers use fixed no-shell gh argv.
+import subprocess  # noqa: S404 - PR helpers use fixed no-shell gh argv.
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
+    Callable,  # noqa: TC003 - beartype resolves git sync signatures at runtime.
 )
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves git sync signatures at runtime.
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync signatures at runtime.
+    RepoContext,  # noqa: TC001 - beartype resolves git sync signatures at runtime.
 )
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -31,7 +31,7 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.logger import logger
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 # Valid git_policy values
@@ -312,8 +312,8 @@ def host_create_pr_from_worktree(
 
     # 2. Check if a PR already exists for this branch
     # env includes GH_TOKEN which gh CLI respects
-    pr_check = subprocess.run(  # noqa: S603, RUF100 - branch name comes from validated worktree context and no shell is used.
-        ["gh", "pr", "view", ctx.branch_name, "--json", "url", "--jq", ".url"],  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
+    pr_check = subprocess.run(  # noqa: S603 - branch name comes from validated worktree context and no shell is used.
+        ["gh", "pr", "view", ctx.branch_name, "--json", "url", "--jq", ".url"],  # noqa: S607 - gh is the trusted host GitHub CLI.
         cwd=str(repo_ctx.root),
         capture_output=True,
         text=True,
@@ -348,8 +348,8 @@ def host_create_pr_from_worktree(
         f"### Commits\n{body_result.stdout.strip()}"
     )
 
-    pr_create = subprocess.run(  # noqa: S603, RUF100 - PR fields are argv elements, not shell-interpreted.
-        [  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
+    pr_create = subprocess.run(  # noqa: S603 - PR fields are argv elements, not shell-interpreted.
+        [  # noqa: S607 - gh is the trusted host GitHub CLI.
             "gh",
             "pr",
             "create",

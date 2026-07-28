@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
+    Callable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,7 +14,7 @@ from uuid import uuid4
 from croniter import croniter
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves task handler signatures at runtime.
+    IpcDeps,  # beartype resolves task handler signatures at runtime.
     ScheduledWorkStore,
     TaskHandlerDeps,
 )
@@ -31,6 +31,7 @@ class _HostJobRequest:
     schedule_value: str
     cwd: str | None
     timeout_seconds: int
+    memory_enabled: bool
 
 
 def _scheduled_work_store(deps: IpcDeps) -> ScheduledWorkStore:
@@ -73,6 +74,9 @@ def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
     cwd = data.get("cwd")
     if cwd is not None and not isinstance(cwd, str):
         return None
+    memory_enabled = data.get("memory", True)
+    if not isinstance(memory_enabled, bool):
+        return None
 
     return _HostJobRequest(
         name=name,
@@ -81,6 +85,7 @@ def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
         schedule_value=schedule_value,
         cwd=cwd,
         timeout_seconds=timeout_seconds,
+        memory_enabled=memory_enabled,
     )
 
 
@@ -99,7 +104,7 @@ def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
 async def _handle_schedule_host_job(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not is_admin:
@@ -155,6 +160,7 @@ async def _handle_schedule_host_job(
             "cwd": request.cwd,
             "timeout_seconds": request.timeout_seconds,
             "enabled": True,
+            "memory_enabled": request.memory_enabled,
         }
     )
     logger.info(
@@ -168,7 +174,7 @@ async def _handle_schedule_host_job(
 async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -187,7 +193,7 @@ async def _handle_pause_task(
 async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -210,7 +216,7 @@ async def _handle_resume_task(
 async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     store = _scheduled_work_store(deps)
@@ -226,7 +232,7 @@ async def _handle_cancel_task(
     )
 
 
-async def _authorized_task_action(  # noqa: PLR0913, RUF100 - authorization needs task identity, actor, persistence, and operation.
+async def _authorized_task_action(  # noqa: PLR0913 - authorization needs task identity, actor, persistence, and operation.
     data: dict[str, Any],
     source_group: str,
     *,

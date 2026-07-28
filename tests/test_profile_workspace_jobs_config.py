@@ -177,6 +177,7 @@ def test_agent_job_targets_configured_workspace() -> None:
     assert job.workspace == "admin"
     assert job.schedule == "0 8 * * *"
     assert job.prompt_file == "prompts/daily-triage.md"
+    assert job.memory is True
 
 
 def test_agent_job_workspace_can_use_a_profile_shared_by_other_roots() -> None:

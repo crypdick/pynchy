@@ -37,7 +37,7 @@ from pynchy.plugins.api import (
     WebhookRoute,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]
@@ -145,7 +145,7 @@ async def complete_lifecycle_delivery(
     archive_error: Exception | None = None
     try:
         await sync_conversation_control_state(deps.channels(), conversation.id)
-    except Exception as exc:  # noqa: BLE001, RUF100 - preserve retry after local retirement.
+    except Exception as exc:  # noqa: BLE001 - preserve retry after local retirement.
         logger.exception(
             "Conversation control archive failed",
             provider=route.provider,
@@ -313,7 +313,7 @@ async def restore_runtime_workspace(
                 owner_workspace=conversation.workspace,
             ),
         )
-    except Exception:  # noqa: BLE001, RUF100 - one stale provider control must not prevent webhook startup.
+    except Exception:  # noqa: BLE001 - one stale provider control must not prevent webhook startup.
         logger.exception(
             "Routed webhook workspace registration recovery failed",
             conversation_id=conversation_id,

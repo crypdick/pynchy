@@ -13,7 +13,7 @@ from typing import TypeGuard
 
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    RuntimeProvider,  # noqa: TC001, RUF100 - beartype resolves runtime-provider annotations.
+    RuntimeProvider,  # beartype resolves runtime-provider annotations.
     collect_hook_results,
 )
 
@@ -97,7 +97,7 @@ def _fallback_runtime(candidates: dict[str, RuntimeProvider]) -> RuntimeProvider
 
 def configure_runtime_override(override: str | None) -> None:
     """Set the application-selected runtime before the singleton is first read."""
-    global _runtime_override  # noqa: PLW0603, RUF100 - one host process owns one runtime selection.
+    global _runtime_override  # noqa: PLW0603 - one host process owns one runtime selection.
     _runtime_override = (override or "").lower()
     get_runtime.cache_clear()
 

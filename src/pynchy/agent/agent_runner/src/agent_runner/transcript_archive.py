@@ -208,7 +208,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
 
         file_path, markdown = payload
         await asyncio.to_thread(_write_archive_file, file_path, markdown)
-    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001
         _log(f"Failed to archive transcript: {exc}")
         return None
     else:
@@ -216,7 +216,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
 
         # Best-effort: also save to structured memory for search
         try:
-            from .agent_tools import (  # noqa: PLC0415, RUF100 - only needed for best-effort memory archival.
+            from .agent_tools import (  # noqa: PLC0415 - only needed for best-effort memory archival.
                 request_host_service,
             )
 
@@ -228,7 +228,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
                     "category": "conversation",
                 },
             )
-        except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001
             _log(f"save_memory IPC failed (non-fatal): {exc}")
         return file_path
 
@@ -253,7 +253,7 @@ def main() -> None:
 
     try:
         asyncio.run(archive_transcript(transcript_path, session_id))
-    except Exception as exc:  # allow: exception-handling; gate fails open  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling; gate fails open  # noqa: BLE001
         _log(f"archive error, skipping: {exc}")
 
     sys.exit(0)

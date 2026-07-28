@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workspace registration annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves workspace registration annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
 )
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+    RuntimeId,  # beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+    Channel,  # noqa: TC001 - beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
+from pynchy.workspace.api import (
+    # beartype resolves workspace registration annotations at runtime.
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -38,7 +39,7 @@ parse_chat_ref: Callable[[str], Any] = _unconfigured_chat_ref
 
 def configure_workspace_registration_runtime(*, parse_chat_reference: Callable[[str], Any]) -> None:
     """Bind workspace chat parsing at host composition."""
-    global parse_chat_ref  # noqa: PLW0603, RUF100 - one host process owns the configured chat parser.
+    global parse_chat_ref  # noqa: PLW0603 - one host process owns the configured chat parser.
     parse_chat_ref = parse_chat_reference
 
 
@@ -130,7 +131,7 @@ def workspace_security(
     )
 
 
-async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration boundary keeps the full workspace creation contract explicit.
+async def ensure_workspace_registered(  # noqa: PLR0913 - registration boundary keeps the full workspace creation contract explicit.
     folder: str,
     config: WorkspaceConfig,
     resolved: ResolvedWorkspaceConfig,
@@ -160,7 +161,7 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
 
         try:
             created_jid = await channel.create_group(display_name)
-        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one workspace must not block startup.
+        except Exception as exc:  # noqa: BLE001 - allow: exception-handling; one workspace must not block startup.
             logger.warning(
                 "Workspace chat creation failed; skipping registration",
                 folder=folder,
@@ -252,7 +253,7 @@ def _workspace_creation_channel(
     )
 
 
-async def sync_workspace_profile(  # noqa: PLR0913, RUF100 - sync boundary mirrors the stored workspace profile update contract.
+async def sync_workspace_profile(  # noqa: PLR0913 - sync boundary mirrors the stored workspace profile update contract.
     jid: str | None,
     workspaces: dict[str, WorkspaceProfile],
     folder: str,

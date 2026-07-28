@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves startup annotations at runtime.
 from typing import NoReturn
 
 

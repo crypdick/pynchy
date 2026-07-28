@@ -32,15 +32,15 @@ Implementation lives in:
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves gateway runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves gateway runtime annotations.
     Callable,
     Mapping,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves gateway runtime annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves gateway runtime annotations.
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+from pynchy.plugins.api import (  # beartype resolves the collector return annotation at runtime.
     McpServerConfig,
 )
 
@@ -59,7 +59,7 @@ from pynchy.host.container_manager.gateway_litellm import (
 from pynchy.logger import logger
 from pynchy.plugins.api import McpServerSpec
 from pynchy.workspace.api import (
-    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+    ServiceTrustConfig,  # noqa: TC001 - beartype resolves the collector return annotation at runtime.
 )
 
 _GATEWAY_MASTER_KEY_REQUIRED_ERROR = (
@@ -127,7 +127,7 @@ def configure_gateway_runtime(
     get_settings: Callable[[], GatewaySettings] | None = None,
 ) -> None:
     """Select container-network behavior at host composition."""
-    global _apple_container_runtime, _get_settings  # noqa: PLW0603, RUF100 - one host process owns one container-network mode.
+    global _apple_container_runtime, _get_settings  # noqa: PLW0603 - one host process owns one container-network mode.
     _apple_container_runtime = is_apple_container
     if get_settings is not None:
         _get_settings = get_settings
@@ -316,7 +316,7 @@ async def start_gateway(
         or plugin_mcp_servers
     )
     if isinstance(gateway, LiteLLMGateway) and has_servers:
-        from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - defer MCP manager setup until LiteLLM gateway is ready
+        from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415 - defer MCP manager setup until LiteLLM gateway is ready
             McpManager,
             set_mcp_manager,
         )
@@ -337,7 +337,7 @@ async def stop_gateway() -> None:
     """Stop the gateway if running."""
 
     # Stop MCP containers before stopping the gateway
-    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - defer MCP manager import until shutdown actually needs it
+    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415 - defer MCP manager import until shutdown actually needs it
         get_mcp_manager,
         set_mcp_manager,
     )

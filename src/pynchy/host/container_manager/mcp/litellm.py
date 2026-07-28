@@ -15,13 +15,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves Path annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves Path annotations at runtime.
 from typing import Any, cast
 
 import aiohttp
 
 from pynchy.host.container_manager.gateway_litellm import (
-    LiteLLMGateway,  # noqa: TC001, RUF100 - beartype resolves LiteLLM sync signatures at runtime.
+    LiteLLMGateway,  # noqa: TC001 - beartype resolves LiteLLM sync signatures at runtime.
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam
 from pynchy.logger import logger
@@ -42,7 +42,7 @@ class _ApiRequestContext:
     log_kwargs: dict[str, object]
 
 
-async def api_request(  # noqa: PLR0913, RUF100 - stable request helper; call sites already pass these transport knobs explicitly.
+async def api_request(  # noqa: PLR0913 - stable request helper; call sites already pass these transport knobs explicitly.
     session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     method: str,

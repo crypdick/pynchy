@@ -6,12 +6,12 @@ Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves observer callback annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves observer callback annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves observer callback annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves observer callback annotations at runtime.
 )
 from dataclasses import dataclass
 
-from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.event_bus import (  # beartype resolves these runtime annotations.
     AgentActivityEvent,
     AgentTraceEvent,
     ChatClearedEvent,
@@ -166,7 +166,7 @@ class SqliteEventObserver:
     ) -> None:
         try:
             await self._store_event(event_type, chat_jid, payload)
-        except Exception as exc:  # noqa: BLE001, RUF100 - event persistence is best-effort observer behavior.
+        except Exception as exc:  # noqa: BLE001 - event persistence is best-effort observer behavior.
             logger.warning(
                 "SQLite observer failed to store event",
                 err=str(exc),

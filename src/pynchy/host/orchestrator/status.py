@@ -8,10 +8,10 @@ asyncio.gather() for fast response times (~200ms budget).
 from __future__ import annotations
 
 import asyncio
-import subprocess  # noqa: S404, RUF100 - used for git subprocess exception types in status collection.
+import subprocess  # noqa: S404 - used for git subprocess exception types in status collection.
 import time
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves GitStatusOperations annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves GitStatusOperations annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -28,11 +28,11 @@ from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_wor
 from pynchy.host.orchestrator.speech_status import collect_speech_status
 from pynchy.host.orchestrator.temporal.api import get_temporal_orchestration_states
 from pynchy.logger import logger
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
 )
 from pynchy.runtime_names import runtime_container_name
-from pynchy.scheduling.api import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves status annotations at runtime.
     HostJob,
     ScheduledTask,
 )
@@ -83,7 +83,7 @@ def record_start_time() -> None:
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return worker status lazily so status imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.api import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
+    from pynchy.host.orchestrator.temporal.api import (  # noqa: PLC0415 - status module must not import the Temporal scheduler at module load.
         get_temporal_scheduler_status as _get_temporal_scheduler_status,
     )
 
@@ -381,7 +381,7 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
     try:
         client = await Client.connect(address, namespace=namespace, lazy=True)
         healthy = await client.service_client.check_health(timeout=timedelta(seconds=2))
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; degraded status is intentional.
+    except Exception as exc:  # noqa: BLE001 - allow: exception-handling; degraded status is intentional.
         logger.debug(
             "Temporal cluster health check failed",
             address=address,
@@ -426,8 +426,8 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
 
 async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
     try:
-        import aiohttp  # noqa: PLC0415, RUF100 - gateway readiness is optional best-effort status collection.
-    except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
+        import aiohttp  # noqa: PLC0415 - gateway readiness is optional best-effort status collection.
+    except Exception as exc:  # noqa: BLE001 - gateway health is best-effort status collection.
         logger.debug("Gateway health check failed", err=str(exc))
         return {"ready": None}
 
@@ -439,7 +439,7 @@ async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
                 timeout=aiohttp.ClientTimeout(total=5),
             )
             data = await resp.json()
-    except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
+    except Exception as exc:  # noqa: BLE001 - gateway health is best-effort status collection.
         logger.debug("Gateway health check failed", err=str(exc))
         return {"ready": None}
 

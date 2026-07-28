@@ -15,12 +15,12 @@ Agents publish committed changes explicitly through ``sync_worktree_to_main``.
 from __future__ import annotations
 
 import shutil
-import subprocess  # noqa: S404, RUF100 - worktree helper uses fixed no-shell hook-runner argv.
+import subprocess  # noqa: S404 - worktree helper uses fixed no-shell hook-runner argv.
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
+    Callable,  # noqa: TC003 - beartype resolves worktree signatures at runtime.
 )
 from dataclasses import dataclass, field
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
+from pathlib import Path  # beartype resolves worktree signatures at runtime.
 
 import pynchy.host.git_ops.repo as repo_manager
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
@@ -282,8 +282,8 @@ def _run_hook_installer(
     args = ["uv", "tool", "run", runner, "install"]
     if overwrite:
         args.append("--overwrite")
-    return subprocess.run(  # noqa: S603, RUF100 - runner comes from a fixed config-to-runner table.
-        args,  # noqa: S607, RUF100 - uv is the trusted tool runner.
+    return subprocess.run(  # noqa: S603 - runner comes from a fixed config-to-runner table.
+        args,  # uv is the trusted tool runner.
         cwd=str(repo_root),
         capture_output=True,
         text=True,

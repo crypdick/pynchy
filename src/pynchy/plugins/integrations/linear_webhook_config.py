@@ -15,7 +15,7 @@ class LinearWebhookRouteConfig(_LinearWebhookConfigModel):
     name: str
     workspace: str | None = None
     tool: str = "linear"
-    secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
+    secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105 - environment variable name, not a credential.
     organization_id: str | None = None
     timestamp_tolerance_seconds: int = 60
     max_body_bytes: int = 256 * 1024

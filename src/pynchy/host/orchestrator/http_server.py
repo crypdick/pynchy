@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
+import subprocess  # noqa: S404 - deploy validation uses fixed no-shell uv argv.
 import time
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves HTTP operation annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves HTTP operation annotations at runtime.
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves HTTP dependency annotations at runtime.
 )
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -147,7 +147,7 @@ class HttpServerDeps(DeployHttpDeps, WebhookIngressDeps, Protocol):
     def get_plugin_manager(self) -> object: ...
 
 
-async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029 - aiohttp route handlers are async.
     """Return a non-sensitive readiness response suitable for unauthenticated probes."""
     del request
     return web.json_response({"status": "ok"})

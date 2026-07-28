@@ -6,9 +6,9 @@ import asyncio
 import json
 import platform
 import shutil
-import subprocess  # noqa: S404, RUF100 - resolved Cua binary runs with closed argv.
+import subprocess  # noqa: S404 - resolved Cua binary runs with closed argv.
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
 from typing import Annotated, Any
 
 import pluggy

@@ -11,7 +11,7 @@ import json
 import os
 import shutil
 import signal
-import subprocess  # noqa: S404, RUF100 - tests construct completed process results without executing commands.
+import subprocess  # noqa: S404 - tests construct completed process results without executing commands.
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 

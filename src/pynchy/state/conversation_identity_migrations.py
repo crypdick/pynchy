@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from aiosqlite import Connection  # noqa: TC002, RUF100 - beartype resolves annotations.
+from aiosqlite import Connection  # noqa: TC002 - beartype resolves annotations.
 
 
 class ConversationIdentityMigrationConflictError(RuntimeError):

@@ -77,7 +77,7 @@ def register_ipc_tool(
     Use this for tools that are pure IPC proxies — no local validation
     or custom logic, just forwarding to the host.
     """
-    from ._ipc_request import (  # noqa: PLC0415, RUF100 - only IPC-proxy tools need watchdog-backed IPC setup.
+    from ._ipc_request import (  # noqa: PLC0415 - only IPC-proxy tools need watchdog-backed IPC setup.
         ipc_service_request,
     )
 

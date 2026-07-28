@@ -9,11 +9,11 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    AsyncIterator,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import Any
 
 import aiosqlite
@@ -126,7 +126,7 @@ async def _update_by_id(
     db = _get_db()
     # S608 audit: table and field names are allowlisted and identifier-validated above.
     await db.execute(
-        f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608, RUF100
+        f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608
         values,
     )
     await db.commit()

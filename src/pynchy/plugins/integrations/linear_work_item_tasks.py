@@ -5,7 +5,7 @@ from __future__ import annotations
 # allow: file-length - task admission and recovery share one durable lease policy.
 import hashlib
 import json
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves task annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves task annotations at runtime.
     Awaitable,
     Callable,
 )
@@ -17,7 +17,7 @@ from pynchy.content_fencing import fence_untrusted_content
 from pynchy.conversation.api import ConversationControlBinding, ConversationId
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves task annotations.
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves task annotations.
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
@@ -207,7 +207,7 @@ async def _report_plan_review_status(
         if binding is None or binding.closed:
             return
         await context.broadcast_host_message(str(binding.thread_jid), text)
-    except Exception:  # noqa: BLE001, RUF100 - status delivery must not change admission.
+    except Exception:  # noqa: BLE001 - status delivery must not change admission.
         logger.exception(
             "Linear plan review status delivery failed",
             issue=issue.identifier,

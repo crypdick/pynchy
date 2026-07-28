@@ -6,13 +6,13 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+    ContainerOutput,  # noqa: TC001 - beartype resolves learning annotations at runtime.
 )
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves learning annotations at runtime.
 )
 
 FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]
@@ -30,7 +30,7 @@ def is_after_turn_learning_enabled(*, enabled: bool, review_after_turn: bool) ->
 def observe_learning_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
     try:
         learning_packets.observe_container_output(summary, output)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must never block user output.
+    except Exception as exc:  # noqa: BLE001 - allow: exception-handling; learning must never block user output.
         logger.exception(
             "Failed to observe learning output",
             err=str(exc),
@@ -54,7 +54,7 @@ async def messages_for_learning_packet(
 
     try:
         expanded_messages = await fetch_messages_since(chat_jid, initial_last_timestamp)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning fetch is best-effort.
+    except Exception as exc:  # noqa: BLE001 - allow: exception-handling; learning fetch is best-effort.
         logger.exception(
             "Skipped learning packet because expanded message fetch failed",
             group=group.name,
@@ -82,7 +82,7 @@ async def messages_for_learning_packet(
     return sorted(covered_messages, key=lambda message: message.timestamp)
 
 
-async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learning review entry point mirrors the turn state it needs.
+async def start_completed_turn_learning_review(  # noqa: PLR0913 - learning review entry point mirrors the turn state it needs.
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
@@ -128,7 +128,7 @@ async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learn
             packet_max_chars=packet_max_chars,
             start_review_workflow=start_review_workflow,
         )
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
+    except Exception as exc:  # noqa: BLE001 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
             "Failed to capture completed turn learning packet",
             group=group.name,

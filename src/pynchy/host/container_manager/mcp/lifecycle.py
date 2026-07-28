@@ -13,9 +13,9 @@ import contextlib
 import os
 import re
 import signal
-import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
+import subprocess  # noqa: S404 - MCP lifecycle starts configured no-shell processes.
 import sys
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves MCP environment annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves MCP environment annotations at runtime.
     Mapping,
 )
 from pathlib import Path
@@ -31,11 +31,11 @@ from pynchy.host.container_manager.docker import (
     wait_healthy,
 )
 from pynchy.host.container_manager.mcp.resolution import (
-    McpInstance,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+    McpInstance,  # noqa: TC001 - beartype resolves MCP lifecycle signatures at runtime.
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+    McpServerConfig,  # noqa: TC001 - beartype resolves MCP lifecycle signatures at runtime.
 )
 from pynchy.runtime_names import runtime_network_name
 from pynchy.utils import filtered_process_environment
@@ -166,7 +166,7 @@ def _start_script_process(
     cmd: list[str],
     env: dict[str, str],
 ) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(  # noqa: S603, RUF100 - MCP script command comes from trusted config and runs without a shell.
+    return subprocess.Popen(  # noqa: S603 - MCP script command comes from trusted config and runs without a shell.
         cmd,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -191,7 +191,7 @@ async def warm_image_cache(instances: dict[str, McpInstance]) -> None:
         try:
             await _ensure_mcp_image(cfg, inst.project_root)
             logger.info("Warmed MCP image cache", image=cfg.image)
-        except Exception:  # noqa: BLE001, RUF100 - image warm-up is best-effort and must not block boot.
+        except Exception:  # noqa: BLE001 - image warm-up is best-effort and must not block boot.
             logger.exception("Failed to warm MCP image", image=cfg.image)
 
 

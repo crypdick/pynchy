@@ -6,11 +6,11 @@ import json
 import re
 from dataclasses import asdict
 
-from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.host.learning.paths import (  # noqa: TC001 - beartype resolves this runtime annotation.
     LearningPaths,
 )
 from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
-from pynchy.learning_packets import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves this runtime annotation.
     LearningPacket,
 )
 

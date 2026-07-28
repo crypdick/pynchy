@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves observer callback annotations at runtime.
+from collections.abc import (  # beartype resolves observer callback annotations at runtime.
     Awaitable,
     Callable,
 )

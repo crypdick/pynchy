@@ -35,10 +35,10 @@ class SlackLifecycle:
         self._channel = channel
 
     async def connect(self) -> None:
-        from slack_bolt.adapter.socket_mode.async_handler import (  # noqa: PLC0415, RUF100 - optional Slack SDK loaded only when Slack connects.
+        from slack_bolt.adapter.socket_mode.async_handler import (  # noqa: PLC0415 - optional Slack SDK loaded only when Slack connects.
             AsyncSocketModeHandler,
         )
-        from slack_bolt.async_app import (  # noqa: PLC0415, RUF100 - optional Slack SDK loaded only when Slack connects.
+        from slack_bolt.async_app import (  # noqa: PLC0415 - optional Slack SDK loaded only when Slack connects.
             AsyncApp,
         )
 
@@ -53,7 +53,7 @@ class SlackLifecycle:
         try:
             auth = await ch.slack_app.client.auth_test()
             ch.bot_user_id = auth.get("user_id", "")
-        except Exception:  # noqa: BLE001, RUF100 - bot user lookup is best-effort and can be skipped.
+        except Exception:  # noqa: BLE001 - bot user lookup is best-effort and can be skipped.
             logger.warning("Failed to resolve bot user ID (mention stripping disabled)")
 
         await ch.sync_allowed_channels()
@@ -153,7 +153,7 @@ class SlackLifecycle:
             ch.handler_task = None
             await ch.connect()
             ch.reconnect_task = None
-        except Exception as exc:  # noqa: BLE001, RUF100 - reconnect failures are expected retryable Slack lifecycle errors.
+        except Exception as exc:  # noqa: BLE001 - reconnect failures are expected retryable Slack lifecycle errors.
             logger.warning("Slack reconnect failed, will retry", delay=delay, exc=str(exc))
             ch.connected = False
             next_delay = min(delay * 2, 300)

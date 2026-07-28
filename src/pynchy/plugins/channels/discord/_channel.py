@@ -5,26 +5,26 @@ from __future__ import annotations
 # allow: file-length - Protocol methods share this connection's live client state.
 # Splitting them would obscure the connection-level lifecycle.
 import asyncio
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
     Iterable,
 )
 from dataclasses import replace
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves this constructor annotation at runtime.
+    Path,  # noqa: TC003 - beartype resolves this constructor annotation at runtime.
 )
 from typing import Any, cast
 
 import discord
 
 from pynchy.discord import DiscordChatTarget, DiscordConnectionSettings, resolve_discord_chat_target
-from pynchy.host.orchestrator.api import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.host.orchestrator.api import (  # beartype resolves this runtime annotation.
     RenderedMessage,
     TextFormatter,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     AudioTranscriptionResult,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
@@ -33,12 +33,12 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves thes
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.plugins.speech import (  # noqa: TC001 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
 )
 from pynchy.utils import create_background_task
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
 )
 
 from ._access import DiscordAccess, interaction_context
@@ -85,7 +85,7 @@ class DiscordChannel:
     auto_provision_configured_chats: bool = True
     supports_direct_ask_user_callbacks: bool = True
 
-    def __init__(  # noqa: PLR0913, RUF100 - channel constructor is a boundary surface for plugin wiring.
+    def __init__(  # noqa: PLR0913 - channel constructor is a boundary surface for plugin wiring.
         self,
         connection_name: str,
         config: DiscordConnectionSettings,

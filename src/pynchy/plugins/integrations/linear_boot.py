@@ -8,8 +8,8 @@ avoid a plugin -> webhook -> boot import cycle.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves Linear boot callbacks at runtime.
-    Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Callable,  # noqa: TC003 - beartype resolves Linear boot callbacks at runtime.
+    Iterable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from dataclasses import dataclass, field
 
@@ -17,7 +17,7 @@ import aiohttp
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccount,  # noqa: TC001, RUF100 - beartype resolves Linear boot runtime callbacks at runtime.
+    LinearAccount,  # noqa: TC001 - beartype resolves Linear boot runtime callbacks at runtime.
 )
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
@@ -27,7 +27,7 @@ from pynchy.plugins.integrations.linear_boards import (
 )
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
 
 LINEAR_BOOT_TIMEOUT_SECONDS = 30
@@ -118,7 +118,7 @@ async def reconcile_linear_workspace_boards(
                         team_key=account.team_key,
                     )
                 )
-            except Exception as exc:  # noqa: BLE001, RUF100 - one optional account must not block startup.
+            except Exception as exc:  # noqa: BLE001 - one optional account must not block startup.
                 logger.warning(
                     "Linear workspace board reconciliation failed",
                     account=account_name,
@@ -223,7 +223,7 @@ async def create_linear_workspace_todo(
                 WorkspaceTodoProposal(title=title),
                 team_key=context.account.team_key,
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - local todo capture still succeeds even if Linear fails.
+        except Exception as exc:  # noqa: BLE001 - local todo capture still succeeds even if Linear fails.
             logger.warning(
                 "Linear todo creation failed",
                 workspace=context.folder,

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves notification callback signatures at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves notification callback signatures at runtime.
     Awaitable,
     Callable,
 )
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves notification callback signatures at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves notification callback signatures at runtime.
     McpStartupFailure,
 )
 from pynchy.logger import logger
@@ -26,5 +26,5 @@ async def notify_mcp_startup_failures(
     try:
         # Log-only failures leave the channel user unaware that a requested tool is absent.
         await broadcast_host_message(chat_jid, message)
-    except Exception:  # noqa: BLE001, RUF100 - allow: exception-handling; best-effort notification.
+    except Exception:  # noqa: BLE001 - allow: exception-handling; best-effort notification.
         logger.warning("Failed to send MCP startup notice", chat_jid=chat_jid, exc_info=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell Docker/open argv.
+import subprocess  # noqa: S404 - runtime adapter uses fixed no-shell Docker/open argv.
 import sys
 import time
 from dataclasses import dataclass
@@ -79,7 +79,7 @@ class DockerContainerRuntime:
 
     def ensure_running(self) -> None:
         try:
-            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, "info"],
                 capture_output=True,
                 check=True,
@@ -106,7 +106,7 @@ class DockerContainerRuntime:
         logger.info("Docker not running, attempting to start Docker Desktop...")
         try:
             subprocess.run(
-                ["open", "-a", "Docker"],  # noqa: S607, RUF100 - macOS open is a trusted platform launcher and argv is fixed.
+                ["open", "-a", "Docker"],  # noqa: S607 - macOS open is a trusted platform launcher and argv is fixed.
                 capture_output=True,
                 check=True,
             )
@@ -116,7 +116,7 @@ class DockerContainerRuntime:
         for i in range(30):
             try:
                 subprocess.run(
-                    ["docker", "info"],  # noqa: S607, RUF100 - docker is the trusted runtime CLI and argv is fixed.
+                    ["docker", "info"],  # noqa: S607 - docker is the trusted runtime CLI and argv is fixed.
                     capture_output=True,
                     check=True,
                 )
@@ -131,7 +131,7 @@ class DockerContainerRuntime:
         raise RuntimeError(_DOCKER_DESKTOP_DID_NOT_BECOME_READY) from original_exc
 
     def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             [self.cli, "ps", "-a", "--format", "{{json .}}"],
             capture_output=True,
             text=True,
@@ -163,7 +163,7 @@ class DockerContainerRuntime:
         if force:
             args.append("-f")
         args.append(name)
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             args,
             capture_output=True,
             text=True,
@@ -176,7 +176,7 @@ class DockerContainerRuntime:
         args = [self.cli, "image", "prune", "-f"]
         if all_images:
             args.append("-a")
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+        result = subprocess.run(  # noqa: S603 - runtime CLI is fixed by this adapter and argv is trusted.
             args,
             capture_output=True,
             text=True,

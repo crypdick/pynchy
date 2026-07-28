@@ -158,7 +158,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
 
         try:
             _merge_loaded_hook(name, module_path, hooks)
-        except Exception as exc:  # allow: exception-handling; isolate  # noqa: BLE001, RUF100
+        except Exception as exc:  # allow: exception-handling; isolate  # noqa: BLE001
             _hook_log(f"Failed to load hook '{name}': {exc}")
 
     return hooks
@@ -166,16 +166,16 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
 
 async def builtin_security_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:
     """Run every built-in tool policy under one guarded-action identity."""
-    from agent_runner.security.action_identity import (  # noqa: PLC0415, RUF100 - avoid security/hooks import cycle.
+    from agent_runner.security.action_identity import (  # noqa: PLC0415 - avoid security/hooks import cycle.
         guarded_action_scope,
     )
-    from agent_runner.security.artifact_gate import (  # noqa: PLC0415, RUF100 - artifact_gate imports HookDecision from this module.
+    from agent_runner.security.artifact_gate import (  # noqa: PLC0415 - artifact_gate imports HookDecision from this module.
         artifact_security_hook,
     )
-    from agent_runner.security.bash_gate import (  # noqa: PLC0415, RUF100 - bash_gate imports HookDecision from this module.
+    from agent_runner.security.bash_gate import (  # noqa: PLC0415 - bash_gate imports HookDecision from this module.
         bash_security_hook,
     )
-    from agent_runner.security.guard_git import (  # noqa: PLC0415, RUF100 - guard hook imports HookDecision from this module.
+    from agent_runner.security.guard_git import (  # noqa: PLC0415 - guard hook imports HookDecision from this module.
         guard_git_hook,
     )
 

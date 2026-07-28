@@ -23,7 +23,7 @@ from pynchy.plugins.api import (
 from pynchy.state.api import clear_session, store_message_direct
 from pynchy.utils import create_background_task, generate_message_id
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 # Type aliases for callback signatures used across adapters

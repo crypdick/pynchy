@@ -6,4 +6,6 @@
 **/.pytest_cache/
 **/.ruff_cache/
 **/.venv/
+# Apple Container needs this concrete path to avoid traversing the nested environment.
+agent_runner/.venv/
 agent_runner/tests/

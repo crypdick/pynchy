@@ -8,7 +8,7 @@ from typing import Any
 
 from pynchy.action_intents import ActionIntent, ActionIntentStatus
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves runtime annotations.
     HostActionDescriptor,
 )
 from pynchy.state.api import (
@@ -155,7 +155,7 @@ async def _record_action_intent_attempt(
         raise RuntimeError("Transactional action lost its intent contract")
     try:
         response = await action.handler(data)
-    except Exception as exc:  # noqa: BLE001, RUF100 - provider call outcome cannot be proven after an exception.
+    except Exception as exc:  # noqa: BLE001 - provider call outcome cannot be proven after an exception.
         logger.warning(
             "External action provider call produced no durable receipt",
             request_id=request_id,

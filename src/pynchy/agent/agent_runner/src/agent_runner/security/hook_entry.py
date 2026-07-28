@@ -153,7 +153,7 @@ def main() -> None:
         tool_name, tool_input = _extract_tool_call(data)
         hooks = _load_roster()
         decision = asyncio.run(_evaluate(hooks, tool_name, tool_input))
-    except Exception as exc:  # allow: exception-handling  # noqa: BLE001, RUF100
+    except Exception as exc:  # allow: exception-handling  # noqa: BLE001
         reason = f"Built-in security gate failed closed: {type(exc).__name__}"
         _log(reason)
         _emit_deny(reason)

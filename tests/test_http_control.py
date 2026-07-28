@@ -26,11 +26,13 @@ from pynchy.host.orchestrator.http_control import (
     start_control_plane_sites,
 )
 
-TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105, RUF100 - synthetic bearer fixture, not a credential.
-PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for explicit public-bind policy.
+TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105 - synthetic bearer fixture, not a credential.
+PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104 - test data for explicit public-bind policy.
 
 
-async def _discard_audit(*_args: object, **_kwargs: object) -> None:  # noqa: RUF029, RUF100 - middleware requires an awaitable audit callback.
+async def _discard_audit(
+    *_args: object, **_kwargs: object
+) -> None:  # middleware requires an awaitable audit callback.
     pass
 
 
@@ -332,7 +334,7 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
         audit_security_event=audit,
     )
 
-    async def ok(_request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+    async def ok(_request: web.Request) -> web.Response:  # noqa: RUF029 - aiohttp route handlers are async.
         return web.json_response({"status": "ok"})
 
     app = web.Application(middlewares=[build_control_plane_middleware(runtime)])

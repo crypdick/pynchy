@@ -2,36 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves approval callback annotations.
+from collections.abc import (  # noqa: TC003 - beartype resolves approval callback annotations.
     Awaitable,
     Callable,
     Coroutine,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves protocol annotations.
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves messaging dependency annotations at runtime.
     ContainerOutput,
     OnOutput,
 )
-from pynchy.event_bus import Event  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+from pynchy.event_bus import Event  # noqa: TC001 - beartype resolves protocol annotations.
 from pynchy.identifiers import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
-    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    GroupFolder,  # noqa: TC001 - beartype resolves protocol annotations.
+    RuntimeId,  # noqa: TC001 - beartype resolves messaging dependency annotations at runtime.
 )
 from pynchy.learning_packets import (
-    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    LearningPacket,  # noqa: TC001 - beartype resolves messaging dependency annotations at runtime.
 )
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves messaging dependency annotations at runtime.
     Channel,
     NewMessage,
     OutboundEvent,
 )
 from pynchy.turn_outcomes import (
-    TurnOutcome,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    TurnOutcome,  # noqa: TC001 - beartype resolves messaging dependency annotations at runtime.
 )
-from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+from pynchy.workspace.api import (  # beartype resolves messaging dependency annotations at runtime.
     RuntimeTarget,
     WorkspaceProfile,
 )
@@ -270,7 +270,7 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
         summary: object,
     ) -> None: ...
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - protocol preserves orchestration call shape.
+    async def run_agent(  # noqa: PLR0913 - protocol preserves orchestration call shape.
         self,
         group: Group,
         chat_jid: str,

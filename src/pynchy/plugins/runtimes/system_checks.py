@@ -3,20 +3,20 @@
 from __future__ import annotations
 
 import os
-import subprocess  # noqa: S404, RUF100 - system checks use fixed no-shell runtime CLI argv.
+import subprocess  # noqa: S404 - system checks use fixed no-shell runtime CLI argv.
 import sys
 import threading
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves system-check annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves system-check annotations at runtime.
 )
 from typing import cast
 
 from pynchy.identifiers import (
-    OrphanReapAgeMs,  # noqa: TC001, RUF100 - beartype resolves the public startup contract.
+    OrphanReapAgeMs,  # noqa: TC001 - beartype resolves the public startup contract.
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    RuntimeProvider,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeProvider,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.plugins.runtimes.cleanup import (
     OrphanReapingRuntime,
@@ -43,7 +43,7 @@ def _generate_plugin_requirements(container_dir: Path, project_root: Path) -> No
     """Write the plugin requirements file consumed by the agent Dockerfile."""
     generator = container_dir / "scripts" / "generate_plugin_requirements.py"
     requirements = container_dir / "requirements-plugins.txt"
-    result = subprocess.run(  # noqa: S603, RUF100 - host Python runs a repository-local generator with fixed argv.
+    result = subprocess.run(  # noqa: S603 - host Python runs a repository-local generator with fixed argv.
         [
             sys.executable,
             str(generator),
@@ -63,7 +63,7 @@ def _generate_plugin_requirements(container_dir: Path, project_root: Path) -> No
 def _ensure_agent_image_available(runtime: object, *, project_root: Path, image: str) -> None:
     """Build the configured agent image when it is absent from the runtime."""
     runtime_cli = cast("RuntimeProvider", runtime).cli
-    result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+    result = subprocess.run(  # noqa: S603 - runtime CLI is selected by trusted runtime detection and argv is fixed.
         [runtime_cli, "image", "inspect", image],
         capture_output=True,
         check=False,
@@ -81,7 +81,7 @@ def _ensure_agent_image_available(runtime: object, *, project_root: Path, image:
         _generate_plugin_requirements(container_dir, project_root)
         logger.info("Container image not found, building...", image=image)
         try:
-            build = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+            build = subprocess.run(  # noqa: S603 - runtime CLI is selected by trusted runtime detection and argv is fixed.
                 [runtime_cli, "build", "-t", image, "."],
                 cwd=str(container_dir),
                 check=False,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC output paths at runtime.
+from pathlib import Path  # noqa: TC003 - beartype resolves IPC output paths at runtime.
 
 from pynchy.agent_protocol.api import (
     OnOutput,
@@ -82,7 +82,7 @@ async def _process_claimed_output_file(
     """Process an output file after this task has claimed handler delivery."""
     try:
         await _handle_claimed_output_file(file_path, source_group)
-    except Exception:  # noqa: BLE001, RUF100 - output file processing is an isolation boundary.
+    except Exception:  # noqa: BLE001 - output file processing is an isolation boundary.
         logger.exception(
             "Error processing output file",
             file=file_path.name,
@@ -116,7 +116,7 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
     if handler is not None:
         try:
             await handler(output)
-        except Exception:  # noqa: BLE001, RUF100 - output handler is a delivery boundary; keep the file alive.
+        except Exception:  # noqa: BLE001 - output handler is a delivery boundary; keep the file alive.
             logger.exception(
                 "Output handler callback failed",
                 group=source_group,

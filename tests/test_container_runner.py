@@ -8,7 +8,7 @@ import json
 import logging
 import shutil
 import signal
-import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
+import subprocess  # noqa: S404 - test fixtures mock subprocess behavior and exceptions
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -2056,6 +2056,47 @@ class TestContainerInputAgentCoreConfig:
         assert (TEST_GROUP.folder in deps.sessions) is not should_reset
         assert destroy_session.await_count == int(should_reset)
         assert clear_session.await_count == int(should_reset)
+
+    @pytest.mark.asyncio
+    async def test_scheduled_memory_opt_out_replaces_a_warm_mounted_worker(self):
+        deps = _AgentRunnerDeps({"test-group": "session-1"})
+        ctx = self._ctx("session-1")
+        session = MagicMock(is_alive=True)
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch.object(
+                deps.container_agent_operations,
+                "get_session",
+                return_value=session,
+            ),
+            patch.object(
+                deps.container_agent_operations,
+                "destroy_session",
+                new_callable=AsyncMock,
+            ) as destroy_session,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._cold_start",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as cold_start,
+        ):
+            result = await run_agent(
+                deps,
+                TEST_GROUP,
+                "chat",
+                [],
+                is_scheduled_task=True,
+                automation_memory_dir=None,
+            )
+
+        assert result == "success"
+        destroy_session.assert_awaited_once_with(TEST_GROUP.folder)
+        cold_start.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_run_agent_dispatches_host_execution_mode_to_host_runner(self, tmp_path: Path):

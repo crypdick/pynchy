@@ -133,7 +133,7 @@ async def stop_host_process(proc: _HostRunnerProcess) -> None:
             await asyncio.wait_for(proc.wait(), timeout=5)
 
 
-async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps execution inputs explicit.
+async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution inputs explicit.
     input_data: ContainerInput,
     *,
     cwd: Path,

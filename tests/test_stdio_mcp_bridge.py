@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
-import subprocess  # noqa: S404, RUF100 - test starts a local stdio MCP fixture.
+import subprocess  # noqa: S404 - test starts a local stdio MCP fixture.
 import sys
 
 import aiohttp
@@ -43,7 +43,7 @@ def _free_port() -> int:
 
 
 def _start_bridge(port: int, backend: str) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(  # noqa: S603, RUF100 - fixed test command, no shell.
+    return subprocess.Popen(  # noqa: S603 - fixed test command, no shell.
         [
             sys.executable,
             "-m",

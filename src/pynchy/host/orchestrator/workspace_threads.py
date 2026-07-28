@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workspace-thread annotations at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves workspace-thread annotations at runtime.
+    Awaitable,  # noqa: TC003 - beartype resolves workspace-thread annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves workspace-thread annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_look
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -33,7 +33,7 @@ get_settings: Callable[[], Any] = _unconfigured_settings
 
 def configure_workspace_threads_runtime(*, settings: Callable[[], Any]) -> None:
     """Bind child-policy settings at host composition."""
-    global get_settings  # noqa: PLW0603, RUF100 - one host process owns workspace thread policy.
+    global get_settings  # noqa: PLW0603 - one host process owns workspace thread policy.
     get_settings = settings
 
 
@@ -48,7 +48,7 @@ class WorkspaceThreadAction:
     detail: str | None = None
 
 
-def _child_profile(  # noqa: PLR0913, RUF100 - profile construction keeps policy and placement explicit.
+def _child_profile(  # noqa: PLR0913 - profile construction keeps policy and placement explicit.
     parent: WorkspaceProfile,
     child_jid: str,
     thread_name: str,
@@ -153,7 +153,7 @@ async def reconcile_workspace_threads(
                     declared_thread.name,
                     dry_run=dry_run,
                 )
-            except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one remote thread must not block startup.
+            except Exception as exc:  # noqa: BLE001 - allow: exception-handling; one remote thread must not block startup.
                 detail = f"thread ensure failed: {type(exc).__name__}"
                 actions.append(
                     WorkspaceThreadAction("blocked", folder, declared_thread.name, detail=detail)
@@ -194,7 +194,7 @@ async def reconcile_workspace_threads(
                 continue
             try:
                 await register_fn(profile)
-            except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one conflicting child must not block startup.
+            except Exception as exc:  # noqa: BLE001 - allow: exception-handling; one conflicting child must not block startup.
                 detail = f"workspace registration failed: {type(exc).__name__}"
                 actions.append(
                     WorkspaceThreadAction(

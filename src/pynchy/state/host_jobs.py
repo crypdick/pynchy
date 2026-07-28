@@ -29,6 +29,7 @@ def _row_to_host_job(row: Row) -> HostJob:
         cwd=row["cwd"],
         timeout_seconds=row["timeout_seconds"],
         enabled=bool(row["enabled"]),
+        memory_enabled=bool(row["memory_enabled"]),
     )
 
 
@@ -40,8 +41,8 @@ async def create_host_job(job: dict[str, Any]) -> None:
         INSERT INTO host_jobs
             (id, name, command, schedule_type, schedule_value,
              next_run, status, created_at, created_by, cwd,
-             timeout_seconds, enabled)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             timeout_seconds, enabled, memory_enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job["id"],
@@ -56,6 +57,7 @@ async def create_host_job(job: dict[str, Any]) -> None:
             job.get("cwd"),
             job.get("timeout_seconds", 600),
             1 if job.get("enabled", True) else 0,
+            1 if job.get("memory_enabled", True) else 0,
         ),
     )
     await db.commit()
@@ -105,7 +107,7 @@ async def get_all_host_jobs() -> list[HostJob]:
     return [_row_to_host_job(row) for row in rows]
 
 
-_HOST_JOB_UPDATE_FIELDS = {"status", "enabled", "schedule_value"}
+_HOST_JOB_UPDATE_FIELDS = {"status", "enabled", "memory_enabled", "schedule_value"}
 
 
 async def update_host_job(job_id: str, updates: dict[str, Any]) -> None:

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves handler signatures at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves handler signatures at runtime.
     Awaitable,
     Callable,
 )
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler signatures at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.protocol import IpcRequestEnvelope
 from pynchy.logger import logger
@@ -47,7 +47,7 @@ def register_prefix(
 async def dispatch(
     request: IpcRequestEnvelope | dict[str, Any],
     source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - dispatcher callback signature is part of the IPC protocol.
+    is_admin: bool,  # noqa: FBT001 - dispatcher callback signature is part of the IPC protocol.
     deps: IpcDeps,
 ) -> None:
     """Dispatch an IPC request to its registered handler."""

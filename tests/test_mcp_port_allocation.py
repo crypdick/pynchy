@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess  # noqa: S404, RUF100 - test fixtures construct completed Docker command results.
+import subprocess  # noqa: S404 - test fixtures construct completed Docker command results.
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -33,7 +33,7 @@ from pynchy.host.orchestrator.workspace_config import (
 )
 from pynchy.plugins.api import McpServerConfig
 
-ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test fixture for pass-through MCP args that intentionally contain bind-all data.
+ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104 - test fixture for pass-through MCP args that intentionally contain bind-all data.
 
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders

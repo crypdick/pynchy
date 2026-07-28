@@ -63,7 +63,9 @@ Scheduled work uses a task-owned filesystem contract instead of provider
 session history. With Obsidian learning enabled, all agent, deterministic, and
 host automation shapes resolve
 `wiki/systems/pynchy/automation-memory/<task-id>/` under the configured vault
-and receive it through `PYNCHY_AUTOMATION_MEMORY_DIR`.
+and receive it through `PYNCHY_AUTOMATION_MEMORY_DIR` by default. A task with
+`memory = false` receives no directory or environment variable; disabling it
+doesn't delete previously written memory.
 
 Container executions mount only that task directory at
 `/workspace/automation-memory`. Direct-host and shell executions receive the

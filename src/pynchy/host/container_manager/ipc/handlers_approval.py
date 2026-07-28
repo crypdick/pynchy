@@ -21,11 +21,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves approval runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves approval runtime annotations.
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
+    Path,  # noqa: TC003 - beartype resolves approval decision paths at runtime.
 )
 from typing import Any, Protocol, cast
 
@@ -48,7 +48,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error as _approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves approval replay dependencies at runtime.
+    IpcDeps,  # noqa: TC001 - beartype resolves approval replay dependencies at runtime.
 )
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
@@ -63,12 +63,12 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.plugins.api import (  # beartype resolves runtime annotations.
     ApprovalMode,
     HostActionDescriptor,
 )
 from pynchy.workspace.api import (
-    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceSecurity,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 
@@ -87,7 +87,7 @@ _get_settings: Callable[[], ApprovalSettings] = _unconfigured_settings
 
 def configure_approval_runtime(*, get_settings: Callable[[], ApprovalSettings]) -> None:
     """Bind the workspace policy source at host composition."""
-    global _get_settings  # noqa: PLW0603, RUF100 - one host process owns one configuration source.
+    global _get_settings  # noqa: PLW0603 - one host process owns one configuration source.
     _get_settings = get_settings
 
 
@@ -500,7 +500,7 @@ async def _execute_service_approval(
                 request_id=context.request_id,
                 tool_name=context.tool_name,
             )
-        except Exception as exc:  # noqa: BLE001, RUF100 - approved handler execution is an IPC boundary.
+        except Exception as exc:  # noqa: BLE001 - approved handler execution is an IPC boundary.
             logger.error(
                 "Approved request failed",
                 request_id=context.request_id,

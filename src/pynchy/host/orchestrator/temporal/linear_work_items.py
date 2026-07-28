@@ -23,7 +23,7 @@ async def run_linear_work_item_reconciliation() -> str:
     deps = cast("SchedulerDependencies", _require_scheduler_deps())
     try:
         admitted = await deps.reconcile_linear_work_items()
-    except Exception as exc:  # noqa: BLE001, RUF100 - record the Temporal activity failure.
+    except Exception as exc:  # record the Temporal activity failure.
         _record_tracked_activity_result(_ACTIVITY_ID, "error", type(exc).__name__)
         raise
     if admitted is None:

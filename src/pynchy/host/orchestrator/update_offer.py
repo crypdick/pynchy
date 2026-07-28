@@ -9,17 +9,17 @@ configured admin accepts it.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves these annotations at runtime.
     Awaitable,
     Callable,
 )
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves update-offer dependencies at runtime.
+    Path,  # noqa: TC003 - beartype resolves update-offer dependencies at runtime.
 )
 from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.agent_protocol.api import (
-    AgentExecutionRuntime,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    AgentExecutionRuntime,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.deployments import (
     DeployClaimStatus,
@@ -29,11 +29,11 @@ from pynchy.host.orchestrator.adapters import resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import advance_deployment_baseline, get_deployment_state
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 _REQUEST_PREFIX = "host-update:"

@@ -85,7 +85,7 @@ async def verify_approval_receipt(
     return verification
 
 
-async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation, payload, and dependency context explicit.
+async def cop_gate(  # noqa: PLR0913 - gate boundary keeps the operation, payload, and dependency context explicit.
     operation: str,
     payload_summary: str,
     data: dict[str, Any],

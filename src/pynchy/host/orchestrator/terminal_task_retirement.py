@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves adapter annotations at runtime.
     Conversation,
     ConversationId,
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+    ScheduledTask,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
@@ -20,7 +20,7 @@ from pynchy.state.api import (
     get_work_item_execution_for_task,
 )
 from pynchy.work_items.api import (
-    WorkItemExecution,  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+    WorkItemExecution,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
 )
 
 

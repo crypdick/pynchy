@@ -33,7 +33,7 @@ hooks = [
 
 [[repos]]
 repo = "https://github.com/henryiii/validate-pyproject-schema-store"
-rev = "2026.07.08"
+rev = "2026.07.28"
 hooks = [
     { id = "validate-pyproject" },
 ]

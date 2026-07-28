@@ -22,19 +22,19 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves session callback signatures at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves session callback signatures at runtime.
     Awaitable,
     Callable,
     Coroutine,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves session path annotations at runtime.
+    Path,  # noqa: TC003 - beartype resolves session path annotations at runtime.
 )
 from typing import Any
 
 from pynchy.agent_protocol.api import (
-    OnOutput,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    OnOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
@@ -49,7 +49,7 @@ from pynchy.host.container_manager.process import (
 )
 from pynchy.host.container_manager.security.gate import destroy_gate
 from pynchy.identifiers import (
-    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
 from pynchy.utils import ProgressTimeoutError, create_background_task, wait_for_progress
@@ -319,7 +319,7 @@ class ContainerSession:
             if self._on_idle_expire is not None:
                 try:
                     await self._on_idle_expire()
-                except Exception:  # noqa: BLE001, RUF100 - idle callback is best-effort teardown and must not block destroy.
+                except Exception:  # noqa: BLE001 - idle callback is best-effort teardown and must not block destroy.
                     logger.exception(
                         "Idle callback failed",
                         group=self.group_folder,
@@ -511,7 +511,7 @@ def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     return session.output_handler
 
 
-async def create_session(  # noqa: PLR0913, RUF100 - session creation needs explicit process, path, and timeout inputs.
+async def create_session(  # noqa: PLR0913 - session creation needs explicit process, path, and timeout inputs.
     group_folder: str,
     container_name: str,
     proc: asyncio.subprocess.Process,

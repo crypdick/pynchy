@@ -8,8 +8,8 @@ import os
 import tempfile
 import wave
 from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,  # noqa: TC003 - beartype resolves these runtime annotations.
+    Callable,  # noqa: TC003 - beartype resolves these runtime annotations.
 )
 from ctypes.util import find_library
 from dataclasses import dataclass, field

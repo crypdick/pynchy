@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import re
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves parser annotations at runtime.
+from collections.abc import (  # noqa: TC003 - beartype resolves parser annotations at runtime.
     Mapping,
 )
 from dataclasses import dataclass
@@ -35,7 +35,7 @@ from pynchy.plugins.integrations.linear_statuses import (
     LINEAR_TODO_STATUSES,
     TERMINAL_STATE_TYPES,
 )
-from pynchy.plugins.integrations.linear_webhook_config import (  # noqa: TC001, RUF100 - beartype resolves parser annotations at runtime.
+from pynchy.plugins.integrations.linear_webhook_config import (  # noqa: TC001 - beartype resolves parser annotations at runtime.
     LinearWebhookRouteConfig,
 )
 from pynchy.plugins.integrations.linear_webhook_evidence import (
@@ -46,7 +46,7 @@ from pynchy.plugins.integrations.linear_webhook_prompts import (
     LINEAR_ISSUE_INSTRUCTIONS,
     comment_instructions,
 )
-from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves parser evidence.
+from pynchy.webhook_effects import (  # noqa: TC001 - beartype resolves parser evidence.
     WebhookEffectEvidence,
 )
 

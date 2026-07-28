@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import (
-    Sequence,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Sequence,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from typing import TYPE_CHECKING, Any
 
@@ -60,7 +60,7 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
     )
 
 
-async def store_message_direct(  # noqa: PLR0913, RUF100 - DB row writer keeps the message columns explicit.
+async def store_message_direct(  # noqa: PLR0913 - DB row writer keeps the message columns explicit.
     *,
     message_id: str,
     chat_jid: str,
@@ -153,7 +153,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND is_from_me = 0
         ORDER BY timestamp
-    """  # noqa: S608, RUF100
+    """  # noqa: S608
     cursor = await db.execute(sql, [last_timestamp, *jids])
     rows = await cursor.fetchall()
 
@@ -235,7 +235,7 @@ async def get_latest_inbound_timestamp(chat_jids: Sequence[str]) -> str | None:
     placeholders = ",".join("?" for _ in chat_jids)
     # S608 audit: only the number of SQLite value placeholders is dynamic.
     cursor = await db.execute(
-        f"SELECT MAX(timestamp) AS latest FROM messages"  # noqa: S608, RUF100
+        f"SELECT MAX(timestamp) AS latest FROM messages"  # noqa: S608
         f" WHERE is_from_me = 0 AND chat_jid IN ({placeholders})",
         tuple(chat_jids),
     )

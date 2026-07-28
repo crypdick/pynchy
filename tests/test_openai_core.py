@@ -259,7 +259,7 @@ class TestOpenAIQueryModel:
         metadata: dict[str, str] | None = None,
     ) -> object:
         try:
-            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
+            from agent_runner.cores.openai import (  # noqa: PLC0415 - optional SDK import controls skip behavior.
                 OpenAIAgentCore,
             )
         except ImportError:
@@ -277,7 +277,7 @@ class TestOpenAIQueryModel:
     @pytest.mark.asyncio
     async def test_query_passes_metadata_via_run_config(self, monkeypatch):
         try:
-            from agent_runner.cores import openai as openai_core  # noqa: PLC0415, RUF100
+            from agent_runner.cores import openai as openai_core  # noqa: PLC0415
         except ImportError:
             pytest.skip("openai-agents not installed")
 
@@ -325,7 +325,7 @@ class TestOpenAIQueryModel:
 
     def test_pinned_runner_signature_uses_run_config_not_metadata(self):
         try:
-            from agent_runner.cores import openai as openai_core  # noqa: PLC0415, RUF100
+            from agent_runner.cores import openai as openai_core  # noqa: PLC0415
         except ImportError:
             pytest.skip("openai-agents not installed")
 
