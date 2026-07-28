@@ -152,12 +152,14 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
             build_agent_environment=build_agent_environment,
             host_learning_vault=lambda _folder: tmp_path,
         ),
+        automation_memory_dir=tmp_path / "automation-memory/job-security",
     )
 
     assert env["OPENAI_BASE_URL"] == "http://localhost:4000"
     assert env["PYNCHY_GROUP_FOLDER"] == "pynchy-dev"
     assert env["PYNCHY_IS_ADMIN"] == "1"
     assert env["OBSIDIAN_VAULT_PATH"] == str(tmp_path)
+    assert env["PYNCHY_AUTOMATION_MEMORY_DIR"] == str(tmp_path / "automation-memory/job-security")
     assert env["PYNCHY_IPC_DIR"] == str(tmp_path / "data" / "ipc" / "pynchy-dev")
     assert env["PYNCHY_SKILLS_ROOT"] == str(
         settings.project_root / "data" / "personalization" / "skills"

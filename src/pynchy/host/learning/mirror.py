@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import shutil
 import sys
+from collections.abc import (
+    Iterator,  # noqa: TC003, RUF100 - beartype resolves context-manager annotations.
+)
+from contextlib import contextmanager
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
 from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPaths,
+    resolve_automation_memory_paths,
 )
 from pynchy.logger import logger
 
@@ -75,6 +80,41 @@ def sync_vault_mount_mirror(paths: LearningPaths) -> None:
 
     mirror_root = paths.vault_mirror_root
     _copy_mirror_subtree_to_vault(mirror_root, paths.profile_root, paths.vault_root)
+
+
+@contextmanager
+def automation_memory_dir(task_id: str) -> Iterator[Path | None]:
+    """Yield durable task memory and sync Apple-runtime writes back to Obsidian."""
+    paths = resolve_automation_memory_paths(task_id)
+    if paths is None:
+        yield None
+        return
+    if not should_use_vault_mount_mirror():
+        paths.canonical.mkdir(parents=True, exist_ok=True)
+        yield paths.canonical
+        return
+
+    if paths.dirty_marker.exists() and paths.mirror.exists():
+        paths.canonical.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(paths.mirror, paths.canonical, dirs_exist_ok=True, symlinks=True)
+    paths.mirror.mkdir(parents=True, exist_ok=True)
+    if paths.canonical.exists():
+        shutil.copytree(paths.canonical, paths.mirror, dirs_exist_ok=True, symlinks=True)
+    paths.dirty_marker.touch()
+    try:
+        yield paths.mirror
+    finally:
+        sync_automation_memory(task_id)
+
+
+def sync_automation_memory(task_id: str) -> None:
+    """Flush a dirty Apple-runtime task mirror before recording completion."""
+    paths = resolve_automation_memory_paths(task_id)
+    if paths is None or not should_use_vault_mount_mirror() or not paths.dirty_marker.exists():
+        return
+    paths.canonical.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(paths.mirror, paths.canonical, dirs_exist_ok=True, symlinks=True)
+    paths.dirty_marker.unlink()
 
 
 def _copy_vault_subtree_to_mirror(mirror_root: Path, source_root: Path, vault_root: Path) -> None:

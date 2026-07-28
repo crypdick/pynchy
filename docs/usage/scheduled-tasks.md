@@ -11,6 +11,26 @@ Three execution shapes share the scheduler:
 - **Host tasks** run infrastructure commands without a conversational
   workspace.
 
+## Persistent Automation Memory
+
+When Obsidian learning is enabled, every scheduled task owns a durable
+directory at
+`wiki/systems/pynchy/automation-memory/<task-id>/` in the configured vault.
+Pynchy exposes that directory as `PYNCHY_AUTOMATION_MEMORY_DIR` to agent tasks,
+pre-run gates, deterministic workspace commands, and host commands. Container
+agents see `/workspace/automation-memory`; host processes receive an absolute
+host path.
+
+This memory belongs to the task ID, not its thread or provider session, so both
+`continue` and `reset_before_run` preserve it. Pausing or removing a task leaves
+its directory intact. Renaming a config-backed job creates a new task ID and
+therefore a new memory directory.
+
+On the Apple container runtime, Pynchy runs against a data-owned mirror and
+syncs it back to the vault before recording success. An interrupted dirty
+mirror is recovered on the next occurrence. A sync failure fails the
+occurrence so Temporal can retry it.
+
 ## Agent Tasks
 
 Agent tasks run an agent on schedule. The agent gets a prompt and uses its

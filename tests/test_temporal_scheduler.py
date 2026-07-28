@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -158,6 +158,12 @@ class NullSchedulerDeps:
     @property
     def workspaces(self):
         return self.groups
+
+    def automation_memory_dir(self, _task_id: str):
+        return nullcontext(None)
+
+    def sync_automation_memory(self, _task_id: str) -> None:
+        pass
 
     async def broadcast_to_channels(self, jid, event) -> None: ...
 
