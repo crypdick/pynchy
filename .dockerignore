@@ -29,5 +29,6 @@ node_modules/
 
 # VCS/editor noise.
 .git/
+.worktrees/
 .gitignore
 .DS_Store
