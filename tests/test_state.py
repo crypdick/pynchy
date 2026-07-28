@@ -468,6 +468,7 @@ class TestTaskCRUD:
                 next_run="2024-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
+                memory_enabled=False,
             )
         )
 
@@ -475,6 +476,7 @@ class TestTaskCRUD:
         assert task is not None
         assert task.prompt == "do something"
         assert task.status == "active"
+        assert task.memory_enabled is False
 
     async def test_updates_task_status(self):
         await create_task(
@@ -1931,10 +1933,10 @@ class TestEnsureColumns:
 
         cursor = await db.execute(
             "SELECT occurrence_generation, occurrence_due_at, "
-            "superseded_occurrence_generation, superseded_occurrence_due_at "
+            "superseded_occurrence_generation, superseded_occurrence_due_at, memory_enabled "
             "FROM scheduled_tasks WHERE id = 'legacy-once'"
         )
-        assert await cursor.fetchone() == (0, None, None, None)
+        assert await cursor.fetchone() == (0, None, None, None, 1)
         await db.close()
 
     async def test_adds_missing_column_to_existing_table(self):

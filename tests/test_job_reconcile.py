@@ -57,6 +57,7 @@ class TestJobReconcile:
                     schedule="0 8 * * *",
                     workspace="admin",
                     prompt="Run the daily triage memo.",
+                    memory=False,
                 )
             },
         )
@@ -82,6 +83,7 @@ class TestJobReconcile:
         assert task.schedule_type == "cron"
         assert task.schedule_value == "0 8 * * *"
         assert task.session_policy is SessionPolicy.RESET_BEFORE_RUN
+        assert task.memory_enabled is False
         assert task.repo_access is None
         assert task.config_job_name == "daily-triage"
         assert task.config_job_is_deterministic is False
@@ -299,6 +301,7 @@ class TestJobReconcile:
                     schedule="0 8 * * *",
                     workspace="admin",
                     prompt="Run the daily triage memo.",
+                    memory=False,
                 )
             },
         )
@@ -333,6 +336,7 @@ class TestJobReconcile:
         assert task is not None
         assert task.chat_jid == "slack:CNEW"
         assert task.config_job_name == "daily-triage"
+        assert task.memory_enabled is False
 
     async def test_job_reconcile_rebinds_an_explicit_parent_workspace(
         self, db, monkeypatch, tmp_path

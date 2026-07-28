@@ -82,6 +82,7 @@ class TestHostJobScheduling:
             "schedule_value": "0 2 * * *",
             "cwd": cwd,
             "timeout_seconds": 300,
+            "memory": False,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
@@ -97,6 +98,7 @@ class TestHostJobScheduling:
         assert job.timeout_seconds == 300
         assert job.created_by == "admin-1"
         assert job.enabled is True
+        assert job.memory_enabled is False
 
     async def test_create_host_job_rejects_non_admin(self, mock_ipc_deps):
         """Non-admin groups cannot schedule host jobs."""
@@ -179,6 +181,34 @@ class TestHostJobScheduling:
         assert completed_job.status == "completed"
         assert completed_job.last_run is not None
         assert completed_job.next_run is None
+
+    @patch.object(_SchedulerDeps, "sync_automation_memory")
+    @patch.object(_SchedulerDeps, "automation_memory_dir")
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
+    async def test_temporal_database_host_job_memory_opt_out(
+        self, mock_shell, memory_context, sync_memory
+    ):
+        mock_shell.return_value = ShellResult(returncode=0, stdout="", stderr="")
+        await create_host_job(
+            {
+                "id": "job-no-memory",
+                "name": "no-memory",
+                "command": "echo done",
+                "schedule_type": "cron",
+                "schedule_value": "0 2 * * *",
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+                "created_by": "admin-1",
+                "enabled": True,
+                "memory_enabled": False,
+            }
+        )
+
+        assert await run_database_host_job("job-no-memory") == "completed"
+
+        assert mock_shell.await_args.kwargs["env"] is None
+        memory_context.assert_not_called()
+        sync_memory.assert_not_called()
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_failure_is_not_recorded_as_success(

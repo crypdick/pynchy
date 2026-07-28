@@ -190,13 +190,17 @@ async def _run_target_agent(run: _TaskAgentRun) -> None:
             request.group.jid,
             run.input_messages,
             on_output,
-            extra_system_notices=[
-                (
-                    "Persistent task memory is the directory named by "
-                    "PYNCHY_AUTOMATION_MEMORY_DIR. Read it before acting and update it "
-                    "only with durable state needed by a future occurrence."
-                )
-            ],
+            extra_system_notices=(
+                [
+                    (
+                        "Persistent task memory is the directory named by "
+                        "PYNCHY_AUTOMATION_MEMORY_DIR. Read it before acting and update it "
+                        "only with durable state needed by a future occurrence."
+                    )
+                ]
+                if request.automation_memory_dir is not None
+                else None
+            ),
             is_scheduled_task=True,
             repo_access_override=request.task.repo_access,
             input_source=(

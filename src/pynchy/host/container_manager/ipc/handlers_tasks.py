@@ -31,6 +31,7 @@ class _HostJobRequest:
     schedule_value: str
     cwd: str | None
     timeout_seconds: int
+    memory_enabled: bool
 
 
 def _scheduled_work_store(deps: IpcDeps) -> ScheduledWorkStore:
@@ -73,6 +74,9 @@ def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
     cwd = data.get("cwd")
     if cwd is not None and not isinstance(cwd, str):
         return None
+    memory_enabled = data.get("memory", True)
+    if not isinstance(memory_enabled, bool):
+        return None
 
     return _HostJobRequest(
         name=name,
@@ -81,6 +85,7 @@ def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
         schedule_value=schedule_value,
         cwd=cwd,
         timeout_seconds=timeout_seconds,
+        memory_enabled=memory_enabled,
     )
 
 
@@ -155,6 +160,7 @@ async def _handle_schedule_host_job(
             "cwd": request.cwd,
             "timeout_seconds": request.timeout_seconds,
             "enabled": True,
+            "memory_enabled": request.memory_enabled,
         }
     )
     logger.info(

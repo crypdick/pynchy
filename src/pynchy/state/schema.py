@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS host_jobs (
     created_by TEXT NOT NULL,
     cwd TEXT,
     timeout_seconds INTEGER DEFAULT 600,
-    enabled INTEGER DEFAULT 1
+    enabled INTEGER DEFAULT 1,
+    memory_enabled INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_host_jobs_next_run ON host_jobs(next_run);
 CREATE INDEX IF NOT EXISTS idx_host_jobs_status ON host_jobs(status);

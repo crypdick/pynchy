@@ -430,6 +430,7 @@ class MockSchedulerDeps:
                 "chat_jid": chat_jid,
                 "messages": messages,
                 "on_output": on_output,
+                "extra_system_notices": extra_system_notices,
                 "is_scheduled_task": is_scheduled_task,
                 "repo_access_override": repo_access_override,
                 "input_source": input_source,
@@ -842,6 +843,43 @@ class TestRunScheduledAgent:
         assert len(run["messages"]) == 1
         assert run["messages"][0]["content"] == "Test task"
         assert run["messages"][0]["sender"] == "scheduled_task"
+
+    @pytest.mark.asyncio
+    async def test_memory_opt_out_skips_directory_and_sync(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        task = replace(sample_task, memory_enabled=False)
+        mock_deps.groups[sample_group.jid] = sample_group
+
+        with (
+            patch.object(
+                mock_deps,
+                "automation_memory_dir",
+                side_effect=AssertionError("memory directory must stay disabled"),
+            ),
+            patch.object(
+                mock_deps,
+                "sync_automation_memory",
+                side_effect=AssertionError("disabled memory must not sync"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.log_task_run",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            await _run_due_task_via_scheduler(mock_deps, task)
+
+        assert mock_deps.agent_runs[0]["automation_memory_dir"] is None
+        assert mock_deps.agent_runs[0]["extra_system_notices"] is None
 
     @pytest.mark.asyncio
     async def test_reset_policy_resets_once_per_occurrence_including_first_run(

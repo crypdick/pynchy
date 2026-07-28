@@ -32,6 +32,7 @@ def _row_to_task(row: Row) -> ScheduledTask:
         last_result=row["last_result"],
         status=row["status"],
         created_at=row["created_at"],
+        memory_enabled=bool(row["memory_enabled"]),
         repo_access=row["repo_access"] or None,
         input_source=row["input_source"] or "scheduled_task",
         config_job_name=row["config_job_name"] or None,
@@ -84,7 +85,8 @@ async def create_task(task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
-             repo_access, input_source, config_job_name, config_job_is_deterministic,
+             memory_enabled, repo_access, input_source, config_job_name,
+             config_job_is_deterministic,
              config_job_command, config_job_cwd, config_job_timeout_seconds,
              config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
              config_job_pre_run_timeout_seconds, derived_thread_name,
@@ -92,7 +94,7 @@ async def create_task(task: ScheduledTask) -> None:
              occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
              superseded_occurrence_due_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -105,6 +107,7 @@ async def create_task(task: ScheduledTask) -> None:
             None,
             task.status,
             task.created_at,
+            task.memory_enabled,
             task.repo_access or None,
             task.input_source,
             task.config_job_name,
@@ -138,7 +141,8 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
         INSERT OR IGNORE INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
-             repo_access, input_source, config_job_name, config_job_is_deterministic,
+             memory_enabled, repo_access, input_source, config_job_name,
+             config_job_is_deterministic,
              config_job_command, config_job_cwd, config_job_timeout_seconds,
              config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
              config_job_pre_run_timeout_seconds, derived_thread_name,
@@ -146,7 +150,7 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
              occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
              superseded_occurrence_due_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?)
+                ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -159,6 +163,7 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.next_run,
             task.status,
             task.created_at,
+            task.memory_enabled,
             task.repo_access,
             task.input_source,
             task.config_job_name,
@@ -236,6 +241,7 @@ _TASK_UPDATE_FIELDS = {
     "schedule_value",
     "session_policy",
     "status",
+    "memory_enabled",
     "repo_access",
     "input_source",
     "config_job_name",

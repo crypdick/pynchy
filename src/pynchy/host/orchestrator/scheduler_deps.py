@@ -65,6 +65,7 @@ class ConfigHostCronJob:
     cwd: str | None
     timeout_seconds: int | None
     quiet_on_success: bool
+    memory_enabled: bool
 
 
 @dataclass(frozen=True)

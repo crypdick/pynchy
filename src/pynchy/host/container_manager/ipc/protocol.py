@@ -357,6 +357,7 @@ class CreatePeriodicAgentRequest:
     prompt: str
     claude_md: str
     chat: str | None
+    memory_enabled: bool
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CreatePeriodicAgentRequest | None:
@@ -364,7 +365,14 @@ class CreatePeriodicAgentRequest:
         profile = data.get("profile")
         schedule = data.get("schedule")
         prompt = data.get("prompt")
-        if not name or not profile or not schedule or not prompt:
+        memory_enabled = data.get("memory", True)
+        if (
+            not name
+            or not profile
+            or not schedule
+            or not prompt
+            or not isinstance(memory_enabled, bool)
+        ):
             return None
         return cls(
             name=name,
@@ -373,6 +381,7 @@ class CreatePeriodicAgentRequest:
             prompt=prompt,
             claude_md=data.get("claude_md", f"You are the {name} periodic agent."),
             chat=data.get("chat"),
+            memory_enabled=memory_enabled,
         )
 
 

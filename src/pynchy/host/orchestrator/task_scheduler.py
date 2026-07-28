@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves scheduler annotations.
 from typing import Any, Protocol, cast, runtime_checkable
@@ -208,7 +209,8 @@ async def _finish_scheduled_agent_run(  # noqa: PLR0913 - scheduler completion n
     error: str | None,
     turn_id: str | None = None,
 ) -> TurnOutcome:
-    deps.sync_automation_memory(task.id)
+    if task.memory_enabled:
+        deps.sync_automation_memory(task.id)
     outcome = await classify_scheduled_agent_outcome(deps, task.id, result=result, error=error)
     logger.info(
         "Task completed",
@@ -303,7 +305,10 @@ async def run_scheduled_agent(
     # every execution stays in the task's one memory directory and derived thread.
     lock = _task_run_locks.setdefault(task.id, asyncio.Lock())
     async with lock:
-        with deps.automation_memory_dir(task.id) as memory_dir:
+        memory_context = (
+            deps.automation_memory_dir(task.id) if task.memory_enabled else nullcontext(None)
+        )
+        with memory_context as memory_dir:
             return await _run_scheduled_agent(
                 task,
                 deps,

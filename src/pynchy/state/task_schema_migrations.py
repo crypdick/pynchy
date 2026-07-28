@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     last_result TEXT,
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL,
+    memory_enabled INTEGER NOT NULL DEFAULT 1,
     session_policy TEXT NOT NULL DEFAULT 'reset_before_run',
     repo_access TEXT,
     input_source TEXT NOT NULL DEFAULT 'scheduled_task',
