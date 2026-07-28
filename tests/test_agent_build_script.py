@@ -19,16 +19,26 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def _run_build_script(tmp_path: Path, *, fail_prune_call: int | None = None) -> BuildScriptRun:
+def _run_build_script(
+    tmp_path: Path,
+    *,
+    fail_build: bool = False,
+    fail_prune_call: int | None = None,
+    runtime: str = "docker",
+) -> BuildScriptRun:
     project_root = Path(__file__).resolve().parents[1]
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
+    runtime_binary = "container" if runtime == "apple" else runtime
     runtime_log = tmp_path / "runtime.log"
     prune_count = tmp_path / "prune-count"
     _write_executable(
-        fake_bin / "docker",
+        fake_bin / runtime_binary,
         "#!/bin/sh\n"
         'printf "%s\\n" "$*" >> "$PYNCHY_TEST_RUNTIME_LOG"\n'
+        'if [ "$PYNCHY_TEST_FAIL_BUILD" = "1" ]; then\n'
+        '    case "$*" in build\\ *) exit 1 ;; esac\n'
+        "fi\n"
         'if [ "$*" = "image prune -f" ]; then\n'
         '    count="$(cat "$PYNCHY_TEST_PRUNE_COUNT" 2>/dev/null || printf 0)"\n'
         '    count="$((count + 1))"\n'
@@ -40,9 +50,10 @@ def _run_build_script(tmp_path: Path, *, fail_prune_call: int | None = None) -> 
     _write_executable(fake_bin / "uv", "#!/bin/sh\nexit 0\n")
     env = {
         **os.environ,
-        "CONTAINER_RUNTIME": "docker",
+        "CONTAINER_RUNTIME": runtime,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "PYNCHY_TEST_FAIL_PRUNE_CALL": str(fail_prune_call or 0),
+        "PYNCHY_TEST_FAIL_BUILD": "1" if fail_build else "0",
         "PYNCHY_TEST_PRUNE_COUNT": str(prune_count),
         "PYNCHY_TEST_RUNTIME_LOG": str(runtime_log),
     }
@@ -83,3 +94,18 @@ def test_build_script_fails_when_postbuild_prune_fails(tmp_path: Path) -> None:
     assert result.result.returncode == 1
     assert any(call.startswith("build -t pynchy-agent:latest") for call in result.runtime_calls)
     assert "Container build-state cleanup failed." in result.result.stderr
+
+
+def test_build_script_preserves_healthy_apple_builder(tmp_path: Path) -> None:
+    result = _run_build_script(tmp_path, runtime="apple")
+
+    assert result.result.returncode == 0
+    assert "builder stop" not in result.runtime_calls
+    assert "builder rm --force" not in result.runtime_calls
+
+
+def test_build_script_reclaims_apple_builder_after_a_failed_build(tmp_path: Path) -> None:
+    result = _run_build_script(tmp_path, fail_build=True, runtime="apple")
+
+    assert result.result.returncode == 1
+    assert result.runtime_calls[-3:] == ["builder stop", "builder rm --force", "image prune"]

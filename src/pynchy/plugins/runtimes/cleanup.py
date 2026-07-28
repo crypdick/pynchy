@@ -123,10 +123,8 @@ def cleanup_runtime_images(runtime: object) -> bool:
 
 
 def cleanup_runtime_build_state(runtime: object) -> bool:
-    """Discard stale builders and dangling layers around controlled builds."""
-    builder_cleaned = cleanup_runtime_builder(runtime)
-    images_cleaned = cleanup_runtime_images(runtime)
-    return builder_cleaned and images_cleaned
+    """Prune dangling image layers without discarding a reusable builder cache."""
+    return cleanup_runtime_images(runtime)
 
 
 def reap_orphaned_agent_containers(
