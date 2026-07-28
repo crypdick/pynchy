@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable  # noqa: TC003, RUF100 - Protocol annotations.
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
     CheckpointControlState,
@@ -32,12 +32,10 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import (
-        RuntimeTarget,
-        WorkspaceProfile,
-    )
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 
 @runtime_checkable

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves snapshot annotations.
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.agent_protocol.api import (
@@ -35,9 +35,9 @@ from pynchy.state.api import (
     set_session,
     update_in_flight_session,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @dataclass

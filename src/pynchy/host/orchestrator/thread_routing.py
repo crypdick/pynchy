@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from pynchy.host.orchestrator.threads import (
     EnsuredThread,
     add_thread_participants,
@@ -12,9 +10,9 @@ from pynchy.host.orchestrator.threads import (
     find_thread,
     supports_thread_creation,
 )
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import Channel
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 class ThreadRouting:

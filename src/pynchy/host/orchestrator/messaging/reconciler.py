@@ -12,7 +12,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.identifiers import (
     ChannelName,
@@ -37,9 +37,9 @@ from pynchy.state.api import (  # noqa: TC001, RUF100 - beartype resolves this r
     message_exists,
     prune_stale_cursors,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)
 _INITIAL_LOOKBACK = timedelta(hours=24)

@@ -5,18 +5,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+)
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves learning annotations at runtime.
+)
 
 FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]
 StartLearningReviewWorkflow = Callable[["LearningPacket"], Awaitable[None]]
 LearningRunSummary = learning_packets.LearningRunSummary
 
 if TYPE_CHECKING:
-    from pynchy.agent_protocol.api import ContainerOutput
     from pynchy.learning_packets import LearningPacket
-    from pynchy.workspace.api import WorkspaceProfile
 
 
 def is_after_turn_learning_enabled(*, enabled: bool, review_after_turn: bool) -> bool:

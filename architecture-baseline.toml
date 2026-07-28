@@ -240,17 +240,6 @@ imports = [
 reason = "pynchy.host.git_ops.sync_poll still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.host.learning.paths"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.learning.paths still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.orchestrator.config_jobs"
 target_role = "config"
 rule = "direction"
@@ -260,28 +249,6 @@ imports = [
   "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.config_jobs still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_execution"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.host_execution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.host_execution"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.api",
-]
-reason = "pynchy.host.orchestrator.host_execution still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_server"
@@ -326,50 +293,6 @@ imports = [
   "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.job_sources still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.inbound"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.messaging.inbound still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.inbound"
-target_role = "integration_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.api",
-]
-reason = "pynchy.host.orchestrator.messaging.inbound still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.messaging.pipeline"
-target_role = "learning_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.learning.api",
-]
-reason = "pynchy.host.orchestrator.messaging.pipeline still has runtime-import dependencies on the learning_adapter role; Use a use-case-owned learning capability and wire the concrete adapter at composition."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.session_handler"

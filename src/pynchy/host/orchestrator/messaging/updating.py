@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.identifiers import (
@@ -11,14 +11,12 @@ from pynchy.identifiers import (
     ChatJid,
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,
+    OutboundEvent,
+)
 from pynchy.state import api as state
 from pynchy.state.api import OutboundDelivery, OutboundDeliveryOperation
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import (
-        Channel,
-        OutboundEvent,
-    )
 
 
 @runtime_checkable

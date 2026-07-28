@@ -9,22 +9,33 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves approva
 )
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    ContainerOutput,
+    OnOutput,
+)
 from pynchy.event_bus import Event  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
 from pynchy.identifiers import (
     GroupFolder,  # noqa: TC001, RUF100 - beartype resolves protocol annotations.
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
 )
-from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+from pynchy.learning_packets import (
+    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+)
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    Channel,
+    NewMessage,
+    OutboundEvent,
+)
+from pynchy.turn_outcomes import (
+    TurnOutcome,  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+)
+from pynchy.workspace.api import (  # noqa: TC001, RUF100 - beartype resolves messaging dependency annotations at runtime.
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
-if TYPE_CHECKING:
-    from pynchy.agent_protocol.api import ContainerOutput, OnOutput
-    from pynchy.identifiers import (
-        RuntimeId,
-    )
-    from pynchy.learning_packets import LearningPacket
-    from pynchy.plugins.api import Channel, NewMessage, OutboundEvent
-    from pynchy.turn_outcomes import TurnOutcome
 type Group = WorkspaceProfile
 _QueueResultT = TypeVar("_QueueResultT")
 
@@ -165,6 +176,25 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
 
     last_timestamp: str
 
+    agent_name: str
+    message_poll_interval: float
+
+    @property
+    def message_data_dir(self) -> Path: ...
+
+    def filter_allowed_messages(
+        self,
+        messages: list[NewMessage],
+        group: Group,
+        channel_plugin_name: str | None,
+    ) -> list[NewMessage]: ...
+
+    def linear_workspace_enabled(self, group: Group) -> bool: ...
+
+    async def create_linear_workspace_todo(
+        self, group: Group, title: str
+    ) -> dict[str, object] | None: ...
+
     @property
     def queue(self) -> MessageQueue: ...
 
@@ -230,6 +260,15 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
     async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None: ...
 
     async def start_learning_review_workflow(self, packet: LearningPacket) -> None: ...
+
+    async def start_completed_turn_learning_review(
+        self,
+        chat_jid: str,
+        group: Group,
+        messages: list[NewMessage],
+        final_cursor: str,
+        summary: object,
+    ) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - protocol preserves orchestration call shape.
         self,

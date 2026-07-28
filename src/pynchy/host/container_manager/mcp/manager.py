@@ -23,7 +23,6 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from pynchy.agent_protocol.api import McpStartupFailure
 from pynchy.config.api import (
@@ -62,9 +61,9 @@ from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import ServiceTrustConfig
+from pynchy.workspace.api import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 # ---------------------------------------------------------------------------
 # Data structures

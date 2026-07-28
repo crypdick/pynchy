@@ -11,16 +11,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
-from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
-    Settings,
-    get_settings,
-)
 from pynchy.conversation.api import ConversationClaimId, new_turn_id
 from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.learning.api import capture as learning_capture
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor, complete_turn_with_cursor
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
@@ -48,6 +43,9 @@ from pynchy.host.orchestrator.messaging.turn_control import (
 )
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
+)
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_messages_since,
@@ -57,9 +55,6 @@ from pynchy.turn_outcomes import (
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import NewMessage
 
 __all__ = [
     "MessageHandlerDeps",
@@ -82,7 +77,6 @@ class _FinalizeCursorRetryRequest:
     missing_terminal_result: bool
     output_sent_to_user: bool
     learning_summary: object
-    s: Settings
     turn_id: str
     conversation_claim_id: str | None
 
@@ -263,17 +257,12 @@ async def _finalize_cursor_and_retry(
         )
         return TurnOutcome.COMPLETED
 
-    await learning_capture.start_completed_turn_learning_review(
+    await request.deps.start_completed_turn_learning_review(
         request.chat_jid,
         request.group,
         request.missed_messages,
         final_cursor,
-        cast("learning_capture.LearningRunSummary", request.learning_summary),
-        get_messages_since,
-        request.deps.start_learning_review_workflow,
-        enabled=request.s.learning.enabled,
-        review_after_turn=request.s.learning.review_after_turn,
-        packet_max_chars=request.s.learning.packet_max_chars,
+        request.learning_summary,
     )
 
     return TurnOutcome.COMPLETED
@@ -388,7 +377,7 @@ async def process_group_messages(
     chat_jid: str,
 ) -> TurnOutcome:
     """Process all pending messages for a group. Called by GroupQueue."""
-    s, group = get_settings(), deps.workspaces.get(chat_jid)
+    group = deps.workspaces.get(chat_jid)
     if not group:
         return TurnOutcome.COMPLETED
 
@@ -396,7 +385,7 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        s.data_dir,
+        deps.message_data_dir,
         TurnPreparationCallbacks(
             process_pending=lambda jid: process_group_messages(deps, jid),
             get_pending_messages=get_messages_since,
@@ -457,7 +446,6 @@ async def process_group_messages(
             missing_terminal_result=agent_run.missing_terminal_result,
             output_sent_to_user=agent_run.output_sent_to_user,
             learning_summary=agent_run.learning_summary,
-            s=s,
             turn_id=turn_id,
             conversation_claim_id=turn.conversation_claim_id,
         )

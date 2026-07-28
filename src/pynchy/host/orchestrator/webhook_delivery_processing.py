@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.conversation.api import (
     Conversation,
@@ -36,9 +36,9 @@ from pynchy.plugins.api import (
     WebhookLifecycleDelivery,
     WebhookRoute,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]
 

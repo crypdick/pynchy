@@ -12,12 +12,16 @@ from typing import TYPE_CHECKING
 
 import pluggy
 
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,
+    RuntimeProvider,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+
 if TYPE_CHECKING:
     from pynchy.actions import ActionSpec
-    from pynchy.plugins.api import (
-        Channel,
-        RuntimeProvider,
-    )
     from pynchy.plugins.capabilities import HostActionRegistration
     from pynchy.plugins.channel_runtime import ChannelPluginContext
     from pynchy.plugins.computer_use import ComputerUseBackend
@@ -34,7 +38,6 @@ if TYPE_CHECKING:
     from pynchy.plugins.speech import SpeechSynthesizer
     from pynchy.plugins.tunnels import TunnelProvider
     from pynchy.plugins.webhooks import WebhookRoute
-    from pynchy.workspace.api import WorkspaceProfile
 
 hookspec = pluggy.HookspecMarker("pynchy")
 

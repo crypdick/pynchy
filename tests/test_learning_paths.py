@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
+from conftest import configure_learning_paths_for, make_settings
 from pydantic import ValidationError
 
 from pynchy.config.api import LearningConfig, ObsidianLearningConfig, Settings, WorkspaceConfig
@@ -36,6 +36,12 @@ def _enabled_learning(vault_root: Path, **obsidian_overrides) -> LearningConfig:
     )
 
 
+@contextmanager
+def _configured_learning_paths(settings: Settings):
+    configure_learning_paths_for(settings)
+    yield
+
+
 def test_learning_config_defaults_to_disabled_without_vault():
     cfg = LearningConfig()
 
@@ -46,7 +52,7 @@ def test_learning_config_defaults_to_disabled_without_vault():
 def test_resolver_returns_none_when_learning_is_disabled(tmp_path):
     settings = _settings(tmp_path=tmp_path, learning=LearningConfig(enabled=False))
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         assert resolve_learning_paths("shopping") is None
 
 
@@ -54,7 +60,7 @@ def test_enabled_learning_without_vault_fails_in_resolver(tmp_path):
     settings = _settings(tmp_path=tmp_path, learning=LearningConfig(enabled=True))
 
     with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        _configured_learning_paths(settings),
         pytest.raises(LearningConfigError, match=r"obsidian\.vault_root"),
     ):
         resolve_learning_paths("shopping")
@@ -68,7 +74,7 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
         workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
@@ -89,7 +95,7 @@ def test_vault_root_expands_home_directory(tmp_path, monkeypatch):
         workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
@@ -105,7 +111,7 @@ def test_custom_mount_path_is_used_for_mounted_paths(tmp_path):
         workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
@@ -122,7 +128,7 @@ def test_resolver_does_not_create_directories(tmp_path):
         workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
@@ -144,7 +150,7 @@ def test_symlink_escape_through_profile_root_is_rejected(tmp_path):
     )
 
     with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        _configured_learning_paths(settings),
         pytest.raises(LearningConfigError, match="inside"),
     ):
         resolve_learning_paths("shopping-group")
@@ -158,7 +164,7 @@ def test_workspace_without_profile_resolves_default_profile(tmp_path):
         workspaces={"unprofiled": WorkspaceConfig()},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         assert profile_name_for_group("unprofiled") == "default"
         paths = resolve_learning_paths("unprofiled")
 
@@ -176,7 +182,7 @@ def test_workspace_with_multiple_profiles_uses_first_profile_for_learning_contex
         workspaces={"team": WorkspaceConfig(profiles=["base", "ops"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         assert profile_name_for_group("team") == "base"
         paths = resolve_learning_paths("team")
 
@@ -193,7 +199,7 @@ def test_dynamic_thread_uses_parent_workspace_learning_profile(tmp_path):
         workspaces={"pynchy-dev": WorkspaceConfig(profiles=["pynchy-dev"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("pynchy-dev__thread_discord-channel-42")
 
     assert paths is not None
@@ -209,7 +215,7 @@ def test_profile_slug_is_path_safe_but_original_profile_is_preserved(tmp_path):
         workspaces={"shopping-group": WorkspaceConfig(profiles=[profile])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
@@ -226,7 +232,7 @@ def test_profile_override_wins_over_workspace_profile_and_is_slugged(tmp_path):
         workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+    with _configured_learning_paths(settings):
         paths = resolve_learning_paths("shopping-group", profile_override="Deep Work!!")
 
     assert paths is not None
@@ -263,7 +269,7 @@ def test_settings_validation_allows_learning_enabled_without_vault_root(tmp_path
     )
 
     with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        _configured_learning_paths(settings),
         pytest.raises(LearningConfigError, match=r"obsidian\.vault_root"),
     ):
         resolve_learning_paths("shopping")

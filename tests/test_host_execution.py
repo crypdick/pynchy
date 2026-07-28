@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from beartype import beartype
@@ -10,7 +11,29 @@ from conftest import make_settings
 
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.orchestrator import codex_rollouts, host_execution
-from pynchy.host.orchestrator.host_execution import codex_thread_exists_in_host_runtime
+from pynchy.host.orchestrator.host_execution import (
+    HostRuntimeOperations,
+    codex_thread_exists_in_host_runtime,
+)
+
+
+def _runtime_operations(
+    settings,
+    *,
+    build_agent_environment=lambda **_kwargs: {},
+    host_learning_vault=lambda _folder: None,
+) -> HostRuntimeOperations:
+    return HostRuntimeOperations(
+        build_agent_environment=build_agent_environment,
+        prepare_mcp=AsyncMock(),
+        sessions_root=settings.data_dir / "sessions",
+        project_root=settings.project_root,
+        gateway_port=settings.gateway.port,
+        prepare_host_codex_home=lambda folder, _plugins: (
+            settings.data_dir / "sessions" / folder / ".codex"
+        ),
+        host_learning_vault=host_learning_vault,
+    )
 
 
 def test_host_agent_turn_request_is_runtime_decoratable() -> None:
@@ -121,14 +144,14 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
         mounted_memory_root="/workspace/vault/profiles/default/memory",
     )
     settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
-    monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: learning_paths)
-    monkeypatch.setattr(host_execution, "prepare_full_vault_host_root", lambda _paths: tmp_path)
-
     env = host_execution.host_agent_env_vars(
         is_admin=True,
         group_folder="pynchy-dev",
-        build_agent_environment=build_agent_environment,
+        operations=_runtime_operations(
+            settings,
+            build_agent_environment=build_agent_environment,
+            host_learning_vault=lambda _folder: tmp_path,
+        ),
     )
 
     assert env["OPENAI_BASE_URL"] == "http://localhost:4000"
@@ -148,14 +171,10 @@ def test_admin_host_execution_skips_missing_full_learning_vault_mirror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
-    monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: object())
-    monkeypatch.setattr(host_execution, "prepare_full_vault_host_root", lambda _paths: None)
-
     env = host_execution.host_agent_env_vars(
         is_admin=True,
         group_folder="pynchy-dev",
-        build_agent_environment=lambda **_kwargs: {},
+        operations=_runtime_operations(settings),
     )
 
     assert "OBSIDIAN_VAULT_PATH" not in env
@@ -166,13 +185,10 @@ def test_non_admin_host_execution_propagates_hook_workspace_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = make_settings(data_dir=tmp_path / "data")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
-    monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: None)
-
     env = host_execution.host_agent_env_vars(
         is_admin=False,
         group_folder="review",
-        build_agent_environment=lambda **_kwargs: {},
+        operations=_runtime_operations(settings),
     )
 
     assert env["PYNCHY_GROUP_FOLDER"] == "review"
@@ -207,11 +223,11 @@ def test_host_codex_thread_migrates_from_scoped_sibling_home(
     source_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
     target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
     source = _write_rollout(source_home, thread_id, body='{"type":"response"}\n')
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     migrated = host_execution.migrate_host_codex_thread(
         f"codex:gpt-5.5:{thread_id}",
         codex_home=target_home,
+        sessions_root=settings.data_dir / "sessions",
         legacy_codex_home=tmp_path / "empty-legacy-home",
     )
 
@@ -233,7 +249,6 @@ def test_host_codex_thread_rejects_divergent_global_and_sibling_rollouts(
     target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
     global_source = _write_rollout(legacy_home, thread_id, body="global history\n")
     sibling_source = _write_rollout(sibling_home, thread_id, body="sibling history\n")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     with pytest.raises(
         host_execution.CodexRolloutInspectionError,
@@ -242,6 +257,7 @@ def test_host_codex_thread_rejects_divergent_global_and_sibling_rollouts(
         host_execution.migrate_host_codex_thread(
             f"codex:gpt-5.5:{thread_id}",
             codex_home=target_home,
+            sessions_root=settings.data_dir / "sessions",
             legacy_codex_home=legacy_home,
         )
 
@@ -261,7 +277,6 @@ def test_host_codex_thread_rejects_divergent_sibling_rollouts(
     target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
     first_source = _write_rollout(first_home, thread_id, body="first history\n")
     second_source = _write_rollout(second_home, thread_id, body="second history\n")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     with pytest.raises(
         host_execution.CodexRolloutInspectionError,
@@ -270,6 +285,7 @@ def test_host_codex_thread_rejects_divergent_sibling_rollouts(
         host_execution.migrate_host_codex_thread(
             f"codex:gpt-5.5:{thread_id}",
             codex_home=target_home,
+            sessions_root=settings.data_dir / "sessions",
             legacy_codex_home=tmp_path / "empty-legacy-home",
         )
 
@@ -293,11 +309,11 @@ def test_host_codex_thread_accepts_identical_global_and_sibling_rollouts(
         _write_rollout(first_home, thread_id, body="identical history\n"),
         _write_rollout(second_home, thread_id, body="identical history\n"),
     )
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     assert host_execution.migrate_host_codex_thread(
         f"codex:gpt-5.5:{thread_id}",
         codex_home=target_home,
+        sessions_root=settings.data_dir / "sessions",
         legacy_codex_home=legacy_home,
     )
 
@@ -315,11 +331,11 @@ def test_host_codex_thread_ignores_sibling_rollout_with_mismatched_header(
     source_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
     target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
     source = _write_rollout(source_home, thread_id, header_id="different-thread")
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     migrated = host_execution.migrate_host_codex_thread(
         f"codex:gpt-5.5:{thread_id}",
         codex_home=target_home,
+        sessions_root=settings.data_dir / "sessions",
         legacy_codex_home=tmp_path / "empty-legacy-home",
     )
 
@@ -343,12 +359,12 @@ def test_host_codex_thread_rejects_sibling_sessions_symlink_outside_scope(
         target_is_directory=True,
     )
     target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     with pytest.raises(host_execution.CodexRolloutInspectionError):
         host_execution.migrate_host_codex_thread(
             f"codex:gpt-5.5:{thread_id}",
             codex_home=target_home,
+            sessions_root=settings.data_dir / "sessions",
             legacy_codex_home=tmp_path / "empty-legacy-home",
         )
 
@@ -371,13 +387,13 @@ def test_host_codex_thread_sibling_path_error_is_not_treated_as_missing(
             raise OSError("storage unavailable")
         return original_iterdir(path)
 
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
     monkeypatch.setattr(Path, "iterdir", fail_sibling_scan)
 
     with pytest.raises(host_execution.CodexRolloutInspectionError):
         host_execution.migrate_host_codex_thread(
             f"codex:gpt-5.5:{thread_id}",
             codex_home=target_home,
+            sessions_root=settings.data_dir / "sessions",
             legacy_codex_home=tmp_path / "empty-legacy-home",
         )
 
@@ -401,11 +417,11 @@ def test_host_codex_thread_collision_preserves_both_raw_rollouts(
     )
     source_raw = source.read_bytes()
     target_raw = colliding.read_bytes()
-    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
 
     assert host_execution.migrate_host_codex_thread(
         f"codex:gpt-5.5:{thread_id}",
         codex_home=target_home,
+        sessions_root=settings.data_dir / "sessions",
         legacy_codex_home=tmp_path / "empty-legacy-home",
     )
 

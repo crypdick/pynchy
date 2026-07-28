@@ -8,18 +8,19 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves operati
     Callable,
 )
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from pynchy.host.orchestrator.host_runner import stop_host_process
 from pynchy.host.orchestrator.queue_state import HostProcessLease  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.runtime_registry import (  # noqa: TC001, RUF100 - beartype resolves controller annotations.
     RuntimeRegistry,
 )
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.identifiers import RuntimeId
-    from pynchy.workspace.api import RuntimeTarget
+from pynchy.workspace.api import (
+    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @dataclass(frozen=True)

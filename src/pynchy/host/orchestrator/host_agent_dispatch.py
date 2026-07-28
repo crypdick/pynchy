@@ -7,10 +7,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves callbac
     Callable,
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves annotations at runtime.
 
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    AgentExecutionRuntime,
+    ContainerInput,
+)
 from pynchy.host.orchestrator._agent_runner_preflight import (
     PreContainerResult,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
@@ -35,12 +39,6 @@ from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )
-
-if TYPE_CHECKING:
-    from pynchy.agent_protocol.api import (
-        AgentExecutionRuntime,
-        ContainerInput,
-    )
 
 
 @runtime_checkable
@@ -92,8 +90,13 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
     destroy_session: Callable[[str], Awaitable[None]],
 ) -> str:
     """Run one durable thread turn through the direct-host runtime."""
-    codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager)
-    session_available = migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
+    operations = deps.host_runtime_operations
+    codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager, operations)
+    session_available = migrate_host_codex_thread(
+        ctx.session_id,
+        codex_home=codex_home,
+        sessions_root=operations.sessions_root,
+    )
     if (session_id := ctx.session_id) is not None and not session_available:
         logger.info(
             "Stored Codex session is not available to host runtime; starting fresh",
@@ -134,12 +137,13 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
         HostAgentTurnRequest(
             input_data=input_data,
             cwd=host_cwd,
+            project_root=operations.project_root,
             on_output=ctx.wrapped_on_output,
             timeout_seconds=ctx.config_timeout,
             env=host_agent_env_vars(
                 is_admin=ctx.is_admin,
                 group_folder=group.folder,
-                build_agent_environment=deps.host_runtime_operations.build_agent_environment,
+                operations=operations,
                 codex_home=codex_home,
             ),
             queue=deps.queue,

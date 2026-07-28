@@ -7,14 +7,14 @@ Built-in backends live under ``plugins/memory/``.
 from __future__ import annotations
 
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
+from pynchy.identifiers import (
+    GroupFolder,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.identifiers import GroupFolder
 
 __all__ = ["MemoryProvider", "get_memory_provider"]
 

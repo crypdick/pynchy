@@ -14,20 +14,18 @@ proceeds fire-and-forget — the same behaviour as before the ledger existed.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.identifiers import (
     ChannelName,
     ChatJid,
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+    Channel,
+    OutboundEvent,
+)
 from pynchy.state import api as state
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import (
-        Channel,
-        OutboundEvent,
-    )
 
 
 @runtime_checkable

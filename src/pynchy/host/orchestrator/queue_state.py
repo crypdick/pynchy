@@ -9,13 +9,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype validates datacl
     Callable,
 )
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+from pynchy.identifiers import (
+    RuntimeId,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.identifiers import RuntimeId
-    from pynchy.workspace.api import RuntimeTarget
+from pynchy.workspace.api import (
+    RuntimeTarget,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @dataclass(eq=False)

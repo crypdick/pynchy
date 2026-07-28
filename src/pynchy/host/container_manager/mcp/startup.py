@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from pynchy.agent_protocol.api import McpStartupFailure
+from pynchy.agent_protocol.api import (
+    McpStartupFailure,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 @dataclass(frozen=True)

@@ -14,12 +14,6 @@ from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100
     ContainerInput,
     ContainerOutput,
 )
-from pynchy.config.api import get_settings
-from pynchy.host.learning.api import (
-    prepare_agent_homes,
-    prepare_full_vault_host_root,
-    resolve_learning_paths,
-)
 from pynchy.host.orchestrator.codex_rollouts import (
     CodexRolloutInspectionError as _CodexRolloutInspectionError,
 )
@@ -35,8 +29,6 @@ from pynchy.workspace.api import RuntimeTarget  # noqa: TC001, RUF100
 if TYPE_CHECKING:
     import asyncio
 
-    import pluggy
-
     from pynchy.host.orchestrator.queue_state import HostProcessLease
 _CODEX_SESSION_PREFIX = "codex:"
 CodexRolloutInspectionError = _CodexRolloutInspectionError
@@ -49,6 +41,11 @@ class HostRuntimeOperations:
 
     build_agent_environment: Callable[..., dict[str, str]]
     prepare_mcp: Callable[..., Awaitable[None]]
+    sessions_root: Path
+    project_root: Path
+    gateway_port: int
+    prepare_host_codex_home: Callable[[str, object | None], Path]
+    host_learning_vault: Callable[[str], Path | None]
 
 
 @runtime_checkable
@@ -76,6 +73,7 @@ class HostAgentTurnRequest:
 
     input_data: ContainerInput
     cwd: Path
+    project_root: Path
     on_output: HostOutput
     timeout_seconds: int | float
     env: dict[str, str]
@@ -113,20 +111,25 @@ def host_execution_cwd(group_folder: str) -> Path | None:
     return Path(resolved.cwd).expanduser()
 
 
-def host_codex_home(group_folder: str) -> Path:
+def host_codex_home(group_folder: str, operations: HostRuntimeOperations) -> Path:
     """Return the isolated Codex home for one direct-host workspace."""
-    return get_settings().data_dir / "sessions" / group_folder / ".codex"
+    return operations.sessions_root / group_folder / ".codex"
 
 
-def prepare_host_codex_home(group_folder: str, plugin_manager: pluggy.PluginManager | None) -> Path:
+def prepare_host_codex_home(
+    group_folder: str,
+    plugin_manager: object | None,
+    operations: HostRuntimeOperations,
+) -> Path:
     """Synchronize selected skills into a direct-host workspace's Codex home."""
-    return prepare_agent_homes(group_folder, plugin_manager).codex_home
+    return operations.prepare_host_codex_home(group_folder, plugin_manager)
 
 
 def migrate_host_codex_thread(
     session_id: str | None,
     *,
     codex_home: Path,
+    sessions_root: Path | None = None,
     legacy_codex_home: Path | None = None,
 ) -> bool:
     """Copy a pre-scoped host rollout into its workspace-local Codex home."""
@@ -141,7 +144,7 @@ def migrate_host_codex_thread(
             thread_id,
             codex_home=codex_home,
             legacy_codex_home=legacy_codex_home or _codex_home(),
-            scoped_sessions_root=get_settings().data_dir / "sessions",
+            scoped_sessions_root=sessions_root or codex_home.parent,
         )
         is not None
     )
@@ -151,23 +154,22 @@ def host_agent_env_vars(
     *,
     is_admin: bool,
     group_folder: str,
-    build_agent_environment: Callable[..., dict[str, str]],
+    operations: HostRuntimeOperations,
     codex_home: Path | None = None,
 ) -> dict[str, str]:
-    env = build_agent_environment(
+    env = operations.build_agent_environment(
         is_admin=is_admin,
         group_folder=group_folder,
     )
-    s = get_settings()
     # Direct-host CLI hooks are fresh subprocesses, separate from the Pynchy MCP
     # process configured in host_direct. They therefore need the workspace
     # identity in their inherited environment as well as the group-scoped IPC path.
     env["PYNCHY_GROUP_FOLDER"] = group_folder
     env["PYNCHY_IS_ADMIN"] = "1" if is_admin else "0"
-    env["PYNCHY_IPC_DIR"] = str(s.data_dir / "ipc" / group_folder)
+    env["PYNCHY_IPC_DIR"] = str(operations.sessions_root.parent / "ipc" / group_folder)
     if codex_home is not None:
         env["CODEX_HOME"] = str(codex_home)
-    personalization_skills = s.project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME
+    personalization_skills = operations.project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME
     personalization_skills.mkdir(parents=True, exist_ok=True)
     env["PYNCHY_SKILLS_ROOT"] = str(personalization_skills)
     # Host-direct agents must be able to edit this intentionally shared source
@@ -178,12 +180,8 @@ def host_agent_env_vars(
     env["GIT_CEILING_DIRECTORIES"] = os.pathsep.join(ceilings)
     for key in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"):
         if key in env:
-            env[key] = _host_reachable_gateway_url(env[key])
-    if (
-        is_admin
-        and (learning_paths := resolve_learning_paths(group_folder)) is not None
-        and (host_vault_root := prepare_full_vault_host_root(learning_paths))
-    ):
+            env[key] = _host_reachable_gateway_url(env[key], operations.gateway_port)
+    if is_admin and (host_vault_root := operations.host_learning_vault(group_folder)) is not None:
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
     return env
 
@@ -206,7 +204,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
         result = await run_host_input(
             request.input_data,
             cwd=request.cwd,
-            project_root=get_settings().project_root,
+            project_root=request.project_root,
             on_output=request.on_output,
             timeout_seconds=request.timeout_seconds,
             env=request.env,
@@ -230,10 +228,10 @@ def _codex_home() -> Path:
     return Path(configured).expanduser() if configured else Path.home() / ".codex"
 
 
-def _host_reachable_gateway_url(base_url: str) -> str:
+def _host_reachable_gateway_url(base_url: str, gateway_port: int) -> str:
     parsed = urlparse(base_url)
     if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
         return base_url
 
-    port = parsed.port or get_settings().gateway.port
+    port = parsed.port or gateway_port
     return urlunparse(parsed._replace(netloc=f"localhost:{port}"))

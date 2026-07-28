@@ -15,7 +15,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync signatures at runtime.
@@ -30,9 +30,9 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 # Valid git_policy values
 GIT_POLICY_MERGE = "merge-to-main"

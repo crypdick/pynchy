@@ -46,10 +46,12 @@ from pynchy.state.api import (
     get_router_state,
     set_router_state,
 )
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
-    from pynchy.workspace.api import WorkspaceProfile
 
 HOST_GIT_SYNC_ID = "git-sync-host"
 HOST_STATE_KEY = "temporal_git_sync_host_state"

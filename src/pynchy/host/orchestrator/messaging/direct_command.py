@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.deps import DirectCommandDeps, DirectCommandOutput
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import run_shell_command
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves direct-command annotations at runtime.
+)
 
 
 async def execute_direct_command(

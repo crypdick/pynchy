@@ -16,8 +16,11 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these a
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves update-offer dependencies at runtime.
 )
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
+from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.deployments import (
     DeployClaimStatus,
     DeployRevision,
@@ -25,12 +28,13 @@ from pynchy.deployments import (
 from pynchy.host.orchestrator.adapters import resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.state.api import advance_deployment_baseline, get_deployment_state
-
-if TYPE_CHECKING:
-    from pynchy.agent_protocol.api import AgentExecutionRuntime
-    from pynchy.plugins.api import Channel
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 _REQUEST_PREFIX = "host-update:"
 _APPROVE_LABEL = "Fetch and upgrade"

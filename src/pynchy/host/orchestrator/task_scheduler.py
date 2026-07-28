@@ -6,9 +6,12 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+
 if TYPE_CHECKING:
     from pynchy.config.api import SchedulerConfig
-    from pynchy.workspace.api import WorkspaceProfile
 
 from temporalio import activity
 

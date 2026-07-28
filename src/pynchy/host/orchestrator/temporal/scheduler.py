@@ -15,7 +15,7 @@ from datetime import (
 from types import (
     TracebackType,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from temporalio import activity
 from temporalio.client import Client
@@ -25,6 +25,9 @@ from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from pynchy.canaries.api import run_declared_canaries
+from pynchy.canary_contracts import (
+    CanaryRun,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.config.api import (
     SchedulerConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
     get_settings,
@@ -124,6 +127,9 @@ from pynchy.learning_packets import (
     packet_to_payload,
 )
 from pynchy.logger import logger
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.state.api import (
     claim_deployment,
     clear_pending_deployment,
@@ -136,10 +142,6 @@ from pynchy.turn_outcomes import (  # noqa: TC001, RUF100 - beartype resolves ne
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget
-
-if TYPE_CHECKING:
-    from pynchy.canary_contracts import CanaryRun
-    from pynchy.scheduling.api import ScheduledTask
 
 
 @dataclass

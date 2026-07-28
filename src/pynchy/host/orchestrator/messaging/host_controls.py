@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn
 from pynchy.host.orchestrator.messaging import approval_handler, commands
@@ -14,6 +13,9 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
+from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves control annotations at runtime.
+    NewMessage,
+)
 from pynchy.state.api import (
     clear_in_flight_turn,
     consume_in_flight_control_message,
@@ -24,9 +26,6 @@ from pynchy.state.api import (
     request_in_flight_turn_control,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import NewMessage
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 

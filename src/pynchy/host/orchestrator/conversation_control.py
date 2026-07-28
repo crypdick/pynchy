@@ -9,7 +9,6 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context
 )
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from pynchy.conversation.api import (
     ControlSurface,
@@ -27,6 +26,9 @@ from pynchy.identifiers import (
     GroupFolder,
     SessionId,
 )
+from pynchy.plugins.api import (
+    Channel,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.state.api import (
     ConversationControlWorkspaceChangedError,
     get_conversation,
@@ -37,9 +39,6 @@ from pynchy.state.api import (
     set_conversation_control_binding,
 )
 from pynchy.workspace.api import WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import Channel
 
 _DISCORD_THREAD_TITLE_MAX_LENGTH = 100
 

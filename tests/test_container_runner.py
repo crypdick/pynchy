@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pluggy
 import pytest
 from conftest import (
+    configure_learning_paths_for,
     configure_skill_activation_for,
     make_container_agent_operations,
     make_host_runtime_operations,
@@ -75,7 +76,6 @@ from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionD
 from pynchy.host.git_ops.api import RepoContext, WorktreeResult, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
-    PreparedAgentHomes,
     prepare_agent_homes,
     refresh_personalized_agent_skills,
 )
@@ -200,9 +200,7 @@ class _AgentRunnerDeps:
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
-    "pynchy.host.learning.paths",
     "pynchy.host.orchestrator.workspace_config",
-    "pynchy.host.orchestrator.host_execution",
 ]
 
 _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=None)
@@ -317,6 +315,7 @@ def _patch_settings(
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
     configure_personalized_skills_root(s.project_root)
+    configure_learning_paths_for(s)
     configure_skill_activation_for(s)
     token = _test_settings.set(s)
     try:
@@ -1188,11 +1187,18 @@ class TestMountBuilding:
             workspaces=workspaces,
         ) as settings:
             settings.profiles.update(profiles)
-            codex_home = host_execution.prepare_host_codex_home("test-group", None)
+            operations = make_host_runtime_operations()
+            operations.sessions_root = settings.data_dir / "sessions"
+            operations.project_root = settings.project_root
+            operations.gateway_port = settings.gateway.port
+            operations.prepare_host_codex_home = lambda folder, plugins: (
+                prepare_agent_homes(folder, plugins).codex_home
+            )
+            codex_home = host_execution.prepare_host_codex_home("test-group", None, operations)
             env = host_execution.host_agent_env_vars(
                 is_admin=False,
                 group_folder="test-group",
-                build_agent_environment=lambda **_kwargs: {},
+                operations=operations,
                 codex_home=codex_home,
             )
 
@@ -2035,6 +2041,11 @@ class TestContainerInputAgentCoreConfig:
         deps.host_runtime_operations.build_agent_environment = MagicMock(
             return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"}
         )
+        deps.host_runtime_operations.sessions_root = tmp_path / "sessions"
+        deps.host_runtime_operations.project_root = tmp_path
+        deps.host_runtime_operations.prepare_host_codex_home = lambda _folder, _plugins: (
+            tmp_path / ".codex"
+        )
 
         with (
             patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
@@ -2052,14 +2063,6 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
-            patch(
-                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
-                return_value=PreparedAgentHomes(
-                    claude_home=tmp_path / ".claude",
-                    codex_home=tmp_path / ".codex",
-                    learning_paths=None,
-                ),
-            ),
             patch(
                 "pynchy.host.orchestrator.agent_runner._cold_start",
                 new_callable=AsyncMock,
@@ -2274,6 +2277,11 @@ class TestContainerInputAgentCoreConfig:
             return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"}
         )
         deps.host_runtime_operations.prepare_mcp = AsyncMock(side_effect=prepare_mcp)
+        deps.host_runtime_operations.sessions_root = tmp_path / "sessions"
+        deps.host_runtime_operations.project_root = tmp_path
+        deps.host_runtime_operations.prepare_host_codex_home = lambda _folder, _plugins: (
+            tmp_path / ".codex"
+        )
 
         with (
             patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
@@ -2291,14 +2299,6 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
-            patch(
-                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
-                return_value=PreparedAgentHomes(
-                    claude_home=tmp_path / ".claude",
-                    codex_home=tmp_path / ".codex",
-                    learning_paths=None,
-                ),
-            ),
         ):
             result = await run_agent(deps, group, "chat", [{"content": "hi"}])
 
@@ -2390,6 +2390,7 @@ class TestContainerInputAgentCoreConfig:
         migrate_thread.assert_called_once_with(
             "codex:gpt-5.5:missing-thread",
             codex_home=tmp_path / ".codex",
+            sessions_root=deps.host_runtime_operations.sessions_root,
         )
 
     @pytest.mark.asyncio

@@ -16,6 +16,12 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves contain
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
+from pynchy.agent_protocol.api import (  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
+    AgentExecutionRuntime,
+    ContainerInput,
+    McpStartupFailure,
+    OnOutput,
+)
 from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
 from pynchy.host.orchestrator.agent_core_config import (
@@ -34,19 +40,15 @@ from pynchy.identifiers import (
 )
 from pynchy.logger import logger
 from pynchy.state.api import clear_session
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves agent-runner annotations at runtime.
+)
 
 if TYPE_CHECKING:
     import pluggy
 
-    from pynchy.agent_protocol.api import (
-        AgentExecutionRuntime,
-        ContainerInput,
-        McpStartupFailure,
-        OnOutput,
-    )
     from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
-    from pynchy.workspace.api import WorkspaceProfile
 
 
 PreContainerResult = _preflight.PreContainerResult

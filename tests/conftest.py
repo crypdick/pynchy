@@ -42,7 +42,11 @@ from pynchy.host.container_manager.security.cop import (
     CopVerdict,
 )
 from pynchy.host.git_ops.utils import configure_git_default_cwd
-from pynchy.host.learning.api import resolve_learning_paths
+from pynchy.host.learning.api import (
+    LearningPathsRuntime,
+    configure_learning_paths_runtime,
+    resolve_learning_paths,
+)
 from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
     SkillActivationRuntime,
@@ -249,6 +253,26 @@ def configure_skill_activation_for(settings: Settings) -> None:
     )
 
 
+def configure_learning_paths_for(settings: Settings) -> None:
+    """Wire learning-path resolution to one test's resolved settings."""
+
+    def profile_for_workspace(folder: str) -> str | None:
+        workspace = settings.workspaces.get(folder)
+        return workspace.profiles[0] if workspace is not None and workspace.profiles else None
+
+    configure_learning_paths_runtime(
+        LearningPathsRuntime(
+            enabled=settings.learning.enabled,
+            vault_root=settings.learning.obsidian.vault_root,
+            vault_mount_path=settings.learning.obsidian.mount_path,
+            default_profile_root=settings.learning.obsidian.default_profile_root,
+            memory_dir_name=settings.learning.obsidian.memory_dir_name,
+            data_dir=settings.data_dir,
+            profile_for_workspace=profile_for_workspace,
+        )
+    )
+
+
 def configure_linear_accounts_for(settings: Settings) -> None:
     """Wire Linear account lookups to one test's resolved settings."""
 
@@ -436,6 +460,11 @@ def make_host_runtime_operations() -> HostRuntimeOperations:
     return HostRuntimeOperations(
         build_agent_environment=empty_environment,
         prepare_mcp=AsyncMock(),
+        sessions_root=Path("sessions"),
+        project_root=Path(),
+        gateway_port=4000,
+        prepare_host_codex_home=lambda folder, _plugins: Path("sessions") / folder / ".codex",
+        host_learning_vault=lambda _folder: None,
     )
 
 
@@ -878,6 +907,7 @@ def reset_settings(monkeypatch):
         configure_git_default_cwd(safe.project_root)
         configure_allowed_message_filter(access.filter_allowed_messages)
         configure_workspace_placement_for(safe)
+        configure_learning_paths_for(safe)
         configure_skill_activation_for(safe)
         configure_linear_accounts_for(safe)
         configure_container_spawn_runtime(

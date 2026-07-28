@@ -8,14 +8,16 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves message
 from pathlib import (  # noqa: TC003, RUF100 - beartype resolves message-context path annotations at runtime.
     Path,
 )
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pynchy.host.orchestrator.messaging import formatter as message_formatter
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import NewMessage
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.plugins.api import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 
 def _check_dirty_repo(

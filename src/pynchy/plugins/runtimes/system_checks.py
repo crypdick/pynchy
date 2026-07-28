@@ -9,21 +9,21 @@ import threading
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves system-check annotations at runtime.
 )
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from pynchy.identifiers import (
     OrphanReapAgeMs,  # noqa: TC001, RUF100 - beartype resolves the public startup contract.
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    RuntimeProvider,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.plugins.runtimes.cleanup import (
     OrphanReapingRuntime,
     cleanup_runtime_build_state,
     reap_orphaned_agent_containers,
 )
 from pynchy.plugins.runtimes.detection import get_runtime
-
-if TYPE_CHECKING:
-    from pynchy.plugins.api import RuntimeProvider
 
 _MISSING_IMAGE_AND_DOCKERFILE_ERROR = (
     "Container image '{image}' not found and no Dockerfile at {dockerfile}"

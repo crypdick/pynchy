@@ -32,6 +32,9 @@ from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves
     ConversationId,
 )
 from pynchy.event_bus import Event, EventBus
+from pynchy.host.container_manager.api import (
+    McpStartupFailure,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 from pynchy.host.container_manager.credentials import build_agent_env_vars, has_api_credentials
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
@@ -89,12 +92,16 @@ from pynchy.host.git_ops.worktree import (
     configure_worktree_startup_runtime,
 )
 from pynchy.host.learning.api import (
-    capture as learning_capture,
-)
-from pynchy.host.learning.api import (
+    LearningPathsRuntime,
+    configure_learning_paths_runtime,
+    prepare_agent_homes,
+    prepare_full_vault_host_root,
     profile_name_for_group,
     refresh_personalized_agent_skills,
     resolve_learning_paths,
+)
+from pynchy.host.learning.api import (
+    capture as learning_capture,
 )
 from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
@@ -167,6 +174,10 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app 
     OutboundEvent,
     prepare_context_reset,
 )
+from pynchy.plugins.integrations.api import (
+    create_linear_workspace_todo,
+    linear_workspace_enabled,
+)
 from pynchy.plugins.runtimes.api import (
     configure_runtime_override,
     ensure_agent_image_available,
@@ -174,6 +185,9 @@ from pynchy.plugins.runtimes.api import (
 )
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
+)
+from pynchy.scheduling.api import (
+    ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
@@ -183,6 +197,7 @@ from pynchy.state.api import (
     get_all_workspace_profiles,
     get_conversation,
     get_latest_canary_runs,
+    get_messages_since,
     get_recent_canary_runs,
     get_router_state,
     get_unresolved_canary_regressions,
@@ -203,10 +218,8 @@ from pynchy.utils import write_json_atomic
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager.api import McpStartupFailure
     from pynchy.host.container_manager.ipc import IpcDeps
     from pynchy.learning_packets import LearningPacket
-    from pynchy.scheduling.api import ScheduledTask
 
 
 async def _fresh_container_name(group_folder: str) -> str:
@@ -311,6 +324,11 @@ class PynchyApp(ThreadRouting):
         self.message_loop_running: bool = False
         settings = get_settings()
         self._configure_runtime_dependencies(settings)
+        self.message_data_dir = settings.data_dir
+        self.message_poll_interval = settings.intervals.message_poll
+        self._learning_review_enabled = settings.learning.enabled
+        self._learning_review_after_turn = settings.learning.review_after_turn
+        self._learning_packet_max_chars = settings.learning.packet_max_chars
         self.agent_name = settings.agent.name
         self.admin_workspace = settings.notifications.admin_workspace
         self.command_matcher = CommandMatcher.from_values(
@@ -341,9 +359,25 @@ class PynchyApp(ThreadRouting):
             ensure_workspace_mcp=_ensure_workspace_mcp,
             wait_for_query=_wait_for_agent_query,
         )
+
+        def prepare_host_codex_home(folder: str, plugin_manager: object | None) -> Path:
+            return prepare_agent_homes(
+                folder,
+                cast("pluggy.PluginManager | None", plugin_manager),
+            ).codex_home
+
+        def host_learning_vault(folder: str) -> Path | None:
+            paths = resolve_learning_paths(folder)
+            return prepare_full_vault_host_root(paths) if paths is not None else None
+
         self.host_runtime_operations = host_execution.HostRuntimeOperations(
             build_agent_environment=build_agent_env_vars,
             prepare_mcp=_prepare_host_direct_mcp_servers,
+            sessions_root=settings.data_dir / "sessions",
+            project_root=settings.project_root,
+            gateway_port=settings.gateway.port,
+            prepare_host_codex_home=prepare_host_codex_home,
+            host_learning_vault=host_learning_vault,
         )
         self.ask_user_runtime_operations = AskUserRuntimeOperations(
             has_live_session=_has_live_container_session,
@@ -430,6 +464,22 @@ class PynchyApp(ThreadRouting):
             )
         )
         configure_allowed_message_filter(access.filter_allowed_messages)
+
+        def profile_for_workspace(folder: str) -> str | None:
+            workspace = settings.workspaces.get(folder)
+            return workspace.profiles[0] if workspace is not None and workspace.profiles else None
+
+        configure_learning_paths_runtime(
+            LearningPathsRuntime(
+                enabled=settings.learning.enabled,
+                vault_root=settings.learning.obsidian.vault_root,
+                vault_mount_path=settings.learning.obsidian.mount_path,
+                default_profile_root=settings.learning.obsidian.default_profile_root,
+                memory_dir_name=settings.learning.obsidian.memory_dir_name,
+                data_dir=settings.data_dir,
+                profile_for_workspace=profile_for_workspace,
+            )
+        )
 
         def workspace_skill_selection(
             folder: str,
@@ -726,6 +776,22 @@ class PynchyApp(ThreadRouting):
     ) -> None:
         await channel_handler.send_reaction_to_channels(self, chat_jid, message_id, sender, emoji)
 
+    def filter_allowed_messages(
+        self,
+        messages: list[NewMessage],
+        group: WorkspaceProfile,
+        channel_plugin_name: str | None,
+    ) -> list[NewMessage]:
+        return access.filter_allowed_messages(messages, group, channel_plugin_name)
+
+    def linear_workspace_enabled(self, group: WorkspaceProfile) -> bool:
+        return linear_workspace_enabled(group)
+
+    async def create_linear_workspace_todo(
+        self, group: WorkspaceProfile, title: str
+    ) -> dict[str, object] | None:
+        return await create_linear_workspace_todo(group, title)
+
     def processing_ack_emoji(self, chat_jid: str) -> str | None:
         return channel_handler.processing_ack_emoji(self, chat_jid)
 
@@ -873,6 +939,28 @@ class PynchyApp(ThreadRouting):
         learning_capture.observe_learning_output(
             cast("learning_capture.LearningRunSummary", summary),
             output,
+        )
+
+    async def start_completed_turn_learning_review(
+        self,
+        chat_jid: str,
+        group: WorkspaceProfile,
+        messages: list[NewMessage],
+        final_cursor: str,
+        summary: object,
+    ) -> None:
+        """Capture completed-turn learning through the selected host adapter."""
+        await learning_capture.start_completed_turn_learning_review(
+            chat_jid,
+            group,
+            messages,
+            final_cursor,
+            cast("learning_capture.LearningRunSummary", summary),
+            get_messages_since,
+            self.start_learning_review_workflow,
+            enabled=self._learning_review_enabled,
+            review_after_turn=self._learning_review_after_turn,
+            packet_max_chars=self._learning_packet_max_chars,
         )
 
     # ------------------------------------------------------------------

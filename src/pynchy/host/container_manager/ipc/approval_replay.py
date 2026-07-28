@@ -9,7 +9,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
     ConversationId,
@@ -26,9 +26,9 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves evid
     HostActionDescriptor,
     missing_workspace_tool,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceSecurity
+from pynchy.workspace.api import (
+    WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 type WorkspaceTools = tuple[str, ...] | None
 

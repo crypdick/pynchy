@@ -6,10 +6,13 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pynchy.agent_protocol.api import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from pynchy.agent_protocol.api import ContainerOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.host.orchestrator.workspace_config import (

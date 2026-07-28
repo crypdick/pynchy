@@ -7,7 +7,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves cancell
     Callable,
 )
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
 
@@ -22,9 +22,9 @@ from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
 )
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
+)
 
 _RESET_BLOCKER = (
     "The conversation context was reset during active execution. Pynchy cancelled "
