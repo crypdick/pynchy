@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 from scripts.prek_hooks import check_coverage_ratchet
 from scripts.prek_hooks.check_coverage_ratchet import (
     check_ratchet,
-    legacy_rounding_correction_allowed,
     measured_ratchet,
     minimum_allowed_ratchet,
     raise_ratchet,
@@ -80,21 +79,6 @@ def test_coverage_ratchet_floors_a_measurement_at_its_display_precision(
     monkeypatch.setattr(check_coverage_ratchet, "Coverage", _Coverage)
 
     assert measured_ratchet() == Decimal(82)
-
-
-def test_coverage_ratchet_allows_only_the_legacy_overrounding_correction(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        check_coverage_ratchet,
-        "_read_ref_source",
-        lambda ref, _relative_path: (
-            'measured = Decimal(f"{total:.{precision}f}")' if ref == "main" else None
-        ),
-    )
-
-    assert legacy_rounding_correction_allowed(Decimal(82), Decimal(83)) is True
-    assert legacy_rounding_correction_allowed(Decimal(81), Decimal(82)) is False
 
 
 def test_merge_stages_the_ratchet_after_integrated_coverage() -> None:

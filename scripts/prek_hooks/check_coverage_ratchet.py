@@ -19,23 +19,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 _BASELINE_REFS = ("HEAD", "main", "origin/main")
-_LEGACY_ROUNDING_EXPRESSION = 'Decimal(f"{total:.{precision}f}")'
-_LEGACY_OVERRAISED_FLOOR = (Decimal(82), Decimal(83))
 _RATCHET_LINE = re.compile(
     r"(?ms)(^\[tool\.coverage\.report\]\s*$.*?^fail_under\s*=\s*)"
     r"([0-9]+(?:\.[0-9]+)?)"
 )
-
-
-def _read_ref_source(ref: str, relative_path: str) -> str | None:
-    """Read a tracked file from a local Git ref, if it exists."""
-    result = subprocess.run(  # noqa: S603 - fixed Git read with no shell.
-        ["git", "show", f"{ref}:{relative_path}"],  # noqa: S607 - Git is required here.
-        check=False,
-        capture_output=True,
-        encoding="utf-8",
-    )
-    return result.stdout if result.returncode == 0 else None
 
 
 def read_ratchet(content: str) -> Decimal:
@@ -60,9 +47,14 @@ def committed_ratchets(project_file: Path) -> list[Decimal]:
     relative_path = project_file.resolve().relative_to(Path.cwd().resolve()).as_posix()
     ratchets: list[Decimal] = []
     for ref in _BASELINE_REFS:
-        source = _read_ref_source(ref, relative_path)
-        if source is not None:
-            ratchets.append(read_ratchet(source))
+        result = subprocess.run(  # noqa: S603 - fixed Git read with no shell.
+            ["git", "show", f"{ref}:{relative_path}"],  # noqa: S607 - Git is required here.
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+        )
+        if result.returncode == 0:
+            ratchets.append(read_ratchet(result.stdout))
     return ratchets
 
 
@@ -90,27 +82,12 @@ def raise_ratchet(project_file: Path, measured: Decimal) -> bool:
     return True
 
 
-def legacy_rounding_correction_allowed(current: Decimal, required: Decimal) -> bool:
-    """Permit the one-time 83% legacy-rounding correction to 82%."""
-    if (current, required) != _LEGACY_OVERRAISED_FLOOR:
-        return False
-    return any(
-        (source := _read_ref_source(ref, "scripts/prek_hooks/check_coverage_ratchet.py"))
-        and _LEGACY_ROUNDING_EXPRESSION in source
-        for ref in _BASELINE_REFS
-    )
-
-
 def check_ratchet(project_file: Path, *, update: bool) -> int:
     """Enforce committed floors and optionally raise the current floor."""
     content = project_file.read_text(encoding="utf-8")
     current = read_ratchet(content)
     required = minimum_allowed_ratchet(committed_ratchets(project_file))
-    if (
-        required is not None
-        and current < required
-        and not legacy_rounding_correction_allowed(current, required)
-    ):
+    if required is not None and current < required:
         print(
             f"Coverage ratchet cannot fall from {required}% to {current}%.",
             file=sys.stderr,
