@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from conftest import configure_skill_activation_for, make_settings
+from conftest import configure_learning_paths_for, configure_skill_activation_for, make_settings
 
 from pynchy.host.container_manager.mounts import build_volume_mounts
 from pynchy.plugins import get_plugin_manager
@@ -75,11 +75,9 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
     )
     (tmp_path / "groups" / "codex-group").mkdir(parents=True)
     configure_skill_activation_for(settings)
+    configure_learning_paths_for(settings)
 
-    with (
-        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-    ):
+    with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings):
         mounts = build_volume_mounts(
             _group(),
             is_admin=False,
@@ -111,10 +109,10 @@ def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> No
     )
     (tmp_path / "groups" / "codex-group").mkdir(parents=True)
     configure_skill_activation_for(settings)
+    configure_learning_paths_for(settings)
 
     with (
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
         patch("pynchy.host.container_manager.mounts.Path.home", return_value=host_home),
     ):
         build_volume_mounts(

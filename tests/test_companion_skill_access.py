@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pluggy
 import pytest
-from conftest import configure_skill_activation_for, make_settings
+from conftest import configure_learning_paths_for, configure_skill_activation_for, make_settings
 
 from pynchy.agent_home import (
     CompanionSkillAccess,
@@ -127,13 +126,9 @@ def test_workspace_tool_policy_applies_to_claude_and_codex_plugin_skills(
         },
     )
     configure_skill_activation_for(settings)
+    configure_learning_paths_for(settings)
 
-    with ExitStack() as stack:
-        for module in (
-            "pynchy.host.learning.paths",
-            "pynchy.host.orchestrator.workspace_config",
-        ):
-            stack.enter_context(patch(f"{module}.get_settings", return_value=settings))
+    with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings):
         prepare_agent_homes("blocked", plugin_manager)
         prepare_agent_homes("granted", plugin_manager)
 

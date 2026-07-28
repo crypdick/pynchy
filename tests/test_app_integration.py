@@ -120,18 +120,16 @@ def _patch_test_settings(tmp_path: Path):
     )
     with contextlib.ExitStack() as stack:
         # Patch docker_rm_force which spawns a real subprocess to remove
-        # containers — would hang in the test environment.  Must patch at both
-        # the canonical location (process) and the import site (session)
-        # because Python's from-import creates a separate reference.
+        # containers — would hang in the test environment. Patch each import
+        # site because Python's from-import creates a separate reference.
         stack.enter_context(
             patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        yield stack.enter_context(
-            patch("pynchy.host.orchestrator.app.ensure_agent_image_available")
-        )
+        stack.enter_context(patch("pynchy.host.orchestrator.app.docker_rm_force", _noop_docker_rm))
+        yield stack.enter_context(patch(f"{_CR_ORCH}._ensure_agent_image"))
 
 
 class FakeChannel(NullChannel):

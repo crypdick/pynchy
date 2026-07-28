@@ -382,30 +382,23 @@ class TestResolveAskUserAnswer:
         assert resolve_ask_user_answer(reply, questions) == expected
 
 
-@dataclass(frozen=True)
-class _Settings:
-    data_dir: Path
-
-
-def _use_pending_question_data_dir(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> None:
-    monkeypatch.setattr(pending_questions, "get_settings", lambda: _Settings(data_dir))
+def _use_pending_question_data_dir(data_dir: Path) -> None:
+    pending_questions.configure_pending_questions_ipc_base_dir(data_dir / "ipc")
 
 
 class TestFindPendingForJid:
-    def test_finds_matching_jid(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_finds_matching_jid(self, tmp_path: Path) -> None:
         question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
         question_dir.mkdir(parents=True)
         (question_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
-        _use_pending_question_data_dir(monkeypatch, tmp_path)
+        _use_pending_question_data_dir(tmp_path)
 
         result = pending_questions.find_pending_for_jid(CHAT_JID)
 
         assert result is not None
         assert result["request_id"] == REQUEST_ID
 
-    def test_ignores_nonmatching_and_error_files(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_ignores_nonmatching_and_error_files(self, tmp_path: Path) -> None:
         question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
         question_dir.mkdir(parents=True)
         (question_dir / "other.json").write_text(
@@ -414,18 +407,16 @@ class TestFindPendingForJid:
         error_dir = tmp_path / "ipc" / "errors" / "pending_questions"
         error_dir.mkdir(parents=True)
         (error_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
-        _use_pending_question_data_dir(monkeypatch, tmp_path)
+        _use_pending_question_data_dir(tmp_path)
 
         assert pending_questions.find_pending_for_jid(CHAT_JID) is None
 
-    def test_skips_corrupt_files_and_finds_later_match(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skips_corrupt_files_and_finds_later_match(self, tmp_path: Path) -> None:
         question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
         question_dir.mkdir(parents=True)
         (question_dir / "corrupt.json").write_text("{bad json")
         (question_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
-        _use_pending_question_data_dir(monkeypatch, tmp_path)
+        _use_pending_question_data_dir(tmp_path)
 
         result = pending_questions.find_pending_for_jid(CHAT_JID)
 

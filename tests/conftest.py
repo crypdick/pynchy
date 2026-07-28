@@ -1023,7 +1023,7 @@ def reset_settings(monkeypatch):
         def settings_source() -> Settings:
             return config_api.get_settings()
 
-        def resolve_workspace_config(folder: str, settings: Settings | None):
+        def resolve_workspace_config(folder: str, settings: Settings | None = None):
             return workspace_config.load_resolved_config(folder, settings=settings)
 
         def resolve_repositories(folder: str):

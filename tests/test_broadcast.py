@@ -85,19 +85,15 @@ def _patch_test_settings(tmp_path: Path):
         data_dir=tmp_path / "data",
     )
     with contextlib.ExitStack() as stack:
-        for mod in (
-            "pynchy.host.container_manager.credentials",
-            "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.app",
-        ):
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+        stack.enter_context(patch("pynchy.host.orchestrator.app.get_settings", return_value=s))
         stack.enter_context(
             patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
+        stack.enter_context(patch("pynchy.host.orchestrator.app.docker_rm_force", _noop_docker_rm))
+        stack.enter_context(patch(f"{_CR_ORCH}._ensure_agent_image"))
         yield
 
 

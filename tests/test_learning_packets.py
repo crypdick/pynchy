@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import make_settings
+from conftest import configure_learning_paths_for, make_settings
 
 from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.config.api import (
@@ -57,8 +57,8 @@ def _settings(
 
 @contextmanager
 def _patch_learning_settings(settings) -> Iterator[None]:
-    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
-        yield
+    configure_learning_paths_for(settings)
+    yield
 
 
 def _build_packet(settings, **kwargs):
