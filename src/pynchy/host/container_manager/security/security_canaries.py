@@ -100,34 +100,34 @@ class ApprovalMutationReplayCanary:
 
     async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
         clear_approval_receipts()
-        request = {"type": "schedule_task", "request_id": context.run_id, "prompt": "safe"}
+        request = {"type": "register_group", "request_id": context.run_id, "name": "safe"}
         mutation_token = issue_approval_receipt(
             action_id=guarded_action_id(context.run_id),
             workspace="security-canary",
-            operation="schedule_task",
+            operation="register_group",
             request_data=request,
         )
         mutated = {**request, "prompt": "changed", "_approval_receipt": str(mutation_token)}
         mutation = consume_approval_receipt(
             mutated,
             workspace="security-canary",
-            operation="schedule_task",
+            operation="register_group",
         )
         exact_token = issue_approval_receipt(
             action_id=guarded_action_id(context.run_id),
             workspace="security-canary",
-            operation="schedule_task",
+            operation="register_group",
             request_data=request,
         )
         exact = consume_approval_receipt(
             {**request, "_approval_receipt": str(exact_token)},
             workspace="security-canary",
-            operation="schedule_task",
+            operation="register_group",
         )
         replay = consume_approval_receipt(
             {**request, "_approval_receipt": str(exact_token)},
             workspace="security-canary",
-            operation="schedule_task",
+            operation="register_group",
         )
         return CanaryExercise(artifact=_ApprovalArtifact(mutation, exact, replay))
 

@@ -24,7 +24,6 @@ from pynchy.host.container_manager.ipc import (
 from pynchy.host.container_manager.ipc.events import IpcEventHandler
 from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
 from pynchy.host.container_manager.ipc.protocol import make_ipc_request
-from pynchy.state.tasks import get_all_tasks
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -482,15 +481,15 @@ class TestRequestFileProcessing:
         """Duplicate host-mutating request IDs should not execute twice."""
         ipc_dir = tmp_path / "ipc"
         request = make_ipc_request(
-            kind="schedule_task",
+            kind="register_group",
             request_id="req-mutate",
             source_group="admin-1",
             created_at="2026-07-07T12:00:00+00:00",
             payload={
-                "prompt": "hello",
-                "schedule_type": "once",
-                "schedule_value": "2026-07-07T12:30:00",
-                "targetGroup": "admin-1",
+                "jid": "ledger@g.us",
+                "name": "Ledger",
+                "folder": "ledger",
+                "trigger": "@pynchy",
             },
         )
         requests_dir = ipc_dir / "admin-1" / "requests"
@@ -515,9 +514,7 @@ class TestRequestFileProcessing:
             deps=deps,
         )
 
-        tasks = await get_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].prompt == "hello"
+        assert deps.workspaces()["ledger@g.us"].folder == "ledger"
         assert not first.exists()
         assert not second.exists()
         assert ledger_file.exists()

@@ -49,7 +49,7 @@ class TestValidateSignal:
 
     def test_no_signal_key_returns_none(self):
         """Data without a 'signal' key is not a signal (Tier 2 or legacy)."""
-        data = {"type": "schedule_task", "prompt": "do stuff"}
+        data = {"type": "schedule_host_job", "command": "do stuff"}
         assert validate_signal(data) is None
 
     def test_signal_none_returns_none(self):
@@ -78,7 +78,7 @@ class TestValidateSignal:
 
     def test_type_field_without_signal_returns_none(self):
         """A dict with 'type' but no 'signal' is not a signal (Tier 2 request)."""
-        data = {"type": "schedule_task"}
+        data = {"type": "schedule_host_job"}
         assert validate_signal(data) is None
 
     def test_all_registered_signal_types_are_valid(self):
@@ -105,7 +105,7 @@ class TestMakeSignal:
     def test_invalid_type_raises(self):
         """make_signal should reject non-signal types."""
         with pytest.raises(ValueError, match="Not a valid signal type"):
-            make_signal("schedule_task")
+            make_signal("schedule_host_job")
 
     def test_all_signal_types(self):
         """make_signal should work for all registered signal types."""
@@ -125,10 +125,10 @@ class TestParseIpcFile:
     def test_reads_valid_json(self, tmp_path: Path):
         """Should parse a well-formed JSON file."""
         f = tmp_path / "test.json"
-        f.write_text(json.dumps({"type": "schedule_task", "prompt": "hello"}))
+        f.write_text(json.dumps({"type": "schedule_host_job", "command": "hello"}))
         data = parse_ipc_file(f)
-        assert data["type"] == "schedule_task"
-        assert data["prompt"] == "hello"
+        assert data["type"] == "schedule_host_job"
+        assert data["command"] == "hello"
 
     def test_reads_signal_format(self, tmp_path: Path):
         """Should parse a signal-format file."""
@@ -161,10 +161,10 @@ class TestRequestEnvelope:
 
     def test_make_ipc_request_writes_required_envelope_fields(self):
         """Every request file should carry the versioned transport envelope."""
-        payload = {"prompt": "ship it", "targetGroup": "admin-1"}
+        payload = {"jid": "new@g.us", "name": "New", "folder": "new", "trigger": "@pynchy"}
 
         request = make_ipc_request(
-            kind="schedule_task",
+            kind="register_group",
             request_id="req-123",
             source_group="admin-1",
             created_at="2026-07-07T12:00:00+00:00",
@@ -175,7 +175,7 @@ class TestRequestEnvelope:
 
         assert request == {
             "schema_version": IPC_SCHEMA_VERSION,
-            "kind": "schedule_task",
+            "kind": "register_group",
             "request_id": "req-123",
             "source_group": "admin-1",
             "created_at": "2026-07-07T12:00:00+00:00",
@@ -232,7 +232,7 @@ class TestRequestEnvelope:
 
     def test_host_mutating_requests_require_idempotency_ledger(self):
         """Host-mutating request kinds should be claimed before dispatch."""
-        assert request_requires_idempotency_ledger("schedule_task") is True
+        assert request_requires_idempotency_ledger("schedule_host_job") is True
         assert request_requires_idempotency_ledger("register_group") is True
         assert request_requires_idempotency_ledger("sync_worktree_to_main") is True
 

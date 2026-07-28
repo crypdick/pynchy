@@ -867,7 +867,7 @@ class TestTemporalSchedulerRuntime:
         assert client.started_workflows[0][2]["id"].endswith("-resume-1")
 
     @pytest.mark.asyncio
-    async def test_resumed_task_progresses_without_cancelling_colliding_legacy_workflow(
+    async def test_resumed_task_does_not_cancel_a_different_task_with_colliding_workflow_id(
         self, monkeypatch, temporal_task
     ):
         temporal_task.id = "task/a"

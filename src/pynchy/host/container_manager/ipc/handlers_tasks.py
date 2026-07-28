@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves task handler callbacks at runtime.
@@ -10,6 +9,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
+from uuid import uuid4
 
 from croniter import croniter
 
@@ -20,24 +20,7 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
-from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
-from pynchy.scheduling.api import (
-    ScheduledTask,
-    SessionPolicy,
-)
-from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
-)
-
-
-@dataclass(frozen=True)
-class _ScheduledTaskRequest:
-    prompt: str
-    schedule_type: Literal["cron", "interval", "once"]
-    schedule_value: str
-    target_folder: GroupFolder
-    session_policy: SessionPolicy
 
 
 @dataclass(frozen=True)
@@ -70,113 +53,6 @@ def _validate_schedule_from_ipc(
         return
     if not croniter.is_valid(schedule_value):
         raise ValueError("invalid cron expression")
-
-
-async def _handle_schedule_task(
-    data: dict[str, Any],
-    source_group: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    deps: IpcDeps,
-) -> None:
-    receipt = await cop_gate_module.verify_approval_receipt(
-        "schedule_task", data, source_group, deps
-    )
-    if receipt is cop_gate_module.ReceiptVerification.INVALID:
-        return
-    if receipt is not cop_gate_module.ReceiptVerification.VALID:
-        prompt_preview = (data.get("prompt") or "")[:500]
-        summary = (
-            f"target={data.get('targetGroup')}, "
-            f"schedule={data.get('schedule_type')}:{data.get('schedule_value')}, "
-            f"prompt={prompt_preview}"
-        )
-        allowed = await cop_gate_module.cop_gate(
-            "schedule_task",
-            summary,
-            data,
-            source_group,
-            deps,
-        )
-        if not allowed:
-            return
-
-    request = _scheduled_task_request(data)
-    if request is None:
-        return
-
-    target_jid = _target_jid_for_folder(deps.workspaces(), request.target_folder)
-    if target_jid is None:
-        logger.warning(
-            "Cannot schedule task: target group not registered",
-            target_group=request.target_folder,
-        )
-        return
-
-    if not is_admin and request.target_folder != source_group:
-        logger.warning(
-            "Unauthorized schedule_task attempt blocked",
-            source_group=source_group,
-            target_folder=request.target_folder,
-        )
-        return
-
-    try:
-        _validate_schedule_from_ipc(request.schedule_type, request.schedule_value)
-    except (ValueError, TypeError, KeyError):
-        logger.warning(
-            "invalid schedule value",
-            schedule_type=request.schedule_type,
-            schedule_value=request.schedule_value,
-        )
-        return
-    task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
-
-    await _scheduled_work_store(deps).create_task(
-        ScheduledTask(
-            id=task_id,
-            group_folder=request.target_folder,
-            chat_jid=target_jid,
-            prompt=request.prompt,
-            schedule_type=request.schedule_type,
-            schedule_value=request.schedule_value,
-            session_policy=request.session_policy,
-            status="active",
-            created_at=datetime.now(UTC).isoformat(),
-            derived_thread_name=f"Scheduled | {task_id}",
-        )
-    )
-    logger.info(
-        "Task created via IPC",
-        task_id=task_id,
-        source_group=source_group,
-        target_folder=request.target_folder,
-        session_policy=request.session_policy,
-    )
-
-
-def _scheduled_task_request(data: dict[str, Any]) -> _ScheduledTaskRequest | None:
-    prompt = _required_str(data.get("prompt"))
-    schedule_value = _required_str(data.get("schedule_value"))
-    target_folder = _group_folder(data.get("targetGroup"))
-    if prompt is None or schedule_value is None or target_folder is None:
-        return None
-
-    parsed_schedule_type = _schedule_type(data.get("schedule_type"))
-    if parsed_schedule_type is None:
-        return None
-
-    return _ScheduledTaskRequest(
-        prompt=prompt,
-        schedule_type=parsed_schedule_type,
-        schedule_value=schedule_value,
-        target_folder=target_folder,
-        session_policy=_session_policy(data.get("context_mode")),
-    )
-
-
-def _session_policy(value: object) -> SessionPolicy:
-    """Translate tool-facing scheduling vocabulary at the IPC boundary."""
-    return SessionPolicy.CONTINUE if value == "group" else SessionPolicy.RESET_BEFORE_RUN
 
 
 def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
@@ -214,26 +90,9 @@ def _required_str(value: object) -> str | None:
     return None
 
 
-def _group_folder(value: object) -> GroupFolder | None:
-    parsed = _required_str(value)
-    if parsed is None:
-        return None
-    return GroupFolder(parsed)
-
-
 def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
         return value
-    return None
-
-
-def _target_jid_for_folder(
-    workspaces: dict[str, WorkspaceProfile],
-    target_folder: GroupFolder,
-) -> str | None:
-    for jid, profile in workspaces.items():
-        if profile.folder == target_folder:
-            return jid
     return None
 
 
@@ -282,7 +141,7 @@ async def _handle_schedule_host_job(
             schedule_value=request.schedule_value,
         )
         return
-    job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
+    job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid4().hex[:8]}"
     await _scheduled_work_store(deps).create_host_job(
         {
             "id": job_id,
@@ -427,7 +286,6 @@ async def _authorized_task_action(  # noqa: PLR0913, RUF100 - authorization need
             )
 
 
-register("schedule_task", _handle_schedule_task)
 register("schedule_host_job", _handle_schedule_host_job)
 register("pause_task", _handle_pause_task)
 register("resume_task", _handle_resume_task)
