@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import BaseModel, SecretStr
 
+import pynchy.config.api as config_api
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime
 from pynchy.config.api import (
@@ -33,6 +35,12 @@ from pynchy.config.api import (
 from pynchy.host.container_manager.api import AgentHomeMounts, RepoMountResolution
 from pynchy.host.container_manager.credentials import configure_workspace_environment
 from pynchy.host.container_manager.gateway import configure_gateway_runtime
+from pynchy.host.container_manager.ipc.handlers_approval import configure_approval_runtime
+from pynchy.host.container_manager.ipc.handlers_lifecycle import (
+    LifecycleRuntime,
+    configure_lifecycle_runtime,
+)
+from pynchy.host.container_manager.ipc.handlers_service import configure_service_runtime
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
@@ -44,7 +52,16 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopVerdict,
 )
-from pynchy.host.git_ops.api import GitSyncRuntime, configure_git_sync_runtime
+from pynchy.host.container_manager.security.gate import configure_security_resolution
+from pynchy.host.git_ops import repo
+from pynchy.host.git_ops.api import (
+    GitSyncRuntime,
+    configure_git_sync_runtime,
+    detect_main_branch,
+    host_create_pr_from_worktree,
+    redact_git_diagnostic,
+    run_git,
+)
 from pynchy.host.git_ops.utils import configure_git_default_cwd
 from pynchy.host.learning.api import (
     LearningPathsRuntime,
@@ -91,6 +108,7 @@ from pynchy.plugins.api import (
     InboundFetchResult,
     NewMessage,
 )
+from pynchy.plugins.integrations.api import get_active_matrix_route
 from pynchy.plugins.integrations.linear_accounts import (
     LinearAccountRuntime,
     configure_linear_account_runtime,
@@ -958,7 +976,37 @@ def reset_settings(monkeypatch):
             is_apple_runtime=False,
             container_is_running=lambda _name: False,
         )
-        configure_gateway_runtime(is_apple_container=False)
+
+        def settings_source() -> Settings:
+            return config_api.get_settings()
+
+        def resolve_workspace_config(folder: str, settings: Settings | None):
+            return workspace_config.load_resolved_config(folder, settings=settings)
+
+        def resolve_repositories(folder: str):
+            return repo.resolve_repos_for_group(folder)
+
+        configure_gateway_runtime(is_apple_container=False, get_settings=settings_source)
+        configure_security_resolution(
+            get_settings=settings_source,
+            resolve_workspace_config=resolve_workspace_config,
+        )
+        configure_approval_runtime(get_settings=settings_source)
+        configure_service_runtime(
+            get_settings=settings_source,
+            resolve_workspace_config=resolve_workspace_config,
+            active_matrix_route=get_active_matrix_route,
+        )
+        configure_lifecycle_runtime(
+            LifecycleRuntime(
+                settings=settings_source,
+                resolve_repos_for_group=resolve_repositories,
+                detect_main_branch=detect_main_branch,
+                host_create_pr_from_worktree=host_create_pr_from_worktree,
+                redact_git_diagnostic=redact_git_diagnostic,
+                run_git=run_git,
+            )
+        )
         configure_vault_mount_mirror(enabled=False)
         yield
 

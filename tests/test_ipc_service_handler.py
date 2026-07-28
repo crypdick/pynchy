@@ -242,8 +242,7 @@ async def test_named_linear_account_admits_stable_host_service_action(tmp_path):
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service."
-            "workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
     ):
@@ -296,7 +295,7 @@ async def test_raw_ipc_cannot_invoke_route_tool_omitted_by_runtime_policy(
             return_value=object(),
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
         patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"),
@@ -491,8 +490,7 @@ async def test_omitted_workspace_tool_fails_before_human_approval(tmp_path, regi
             return_value=catalog,
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service."
-            "workspace_config.load_resolved_config",
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
             return_value=resolved,
         ),
     ):

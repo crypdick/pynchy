@@ -23,11 +23,9 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any, cast
 
 from pynchy.agent_protocol.api import McpStartupFailure
-from pynchy.config.api import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
-)
 from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
@@ -137,13 +135,13 @@ class McpManager:
 
     def __init__(
         self,
-        settings: Settings,
+        settings: object,
         gateway: LiteLLMGateway,
         *,
         plugin_mcp_servers: dict[str, McpServerConfig] | None = None,
         plugin_trust_defaults: dict[str, ServiceTrustConfig] | None = None,
     ) -> None:
-        self._settings = settings
+        self._settings = cast("Any", settings)
         self._gateway = gateway
         # Plugin-provided MCP servers merge with personalized settings.
         # Config.toml always wins on name collision (same semantics as workspace specs).

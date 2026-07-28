@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves approval runtime annotations.
+)
 from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
-from pynchy.config.api import get_settings
 from pynchy.host.container_manager.ipc.approval_decision_context import (
     ApprovalDecision as _ApprovalDecision,
 )
@@ -54,7 +56,9 @@ from pynchy.host.container_manager.security.approval_binding import approval_bin
 from pynchy.host.container_manager.security.approved_ipc import execute_approved_ipc
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
+    ResolvedSecurityConfig,
     SecurityGate,
+    SecuritySettings,
     build_workspace_security,
     evaluate_host_action_policy,
 )
@@ -66,6 +70,30 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves runt
 from pynchy.workspace.api import (
     WorkspaceSecurity,  # noqa: TC001, RUF100 - beartype resolves contract annotations at runtime.
 )
+
+
+class ApprovalSettings(SecuritySettings, Protocol):
+    data_dir: Path
+
+    def resolved_workspace_config(self, group_folder: str) -> ResolvedSecurityConfig | None: ...
+
+
+def _unconfigured_settings() -> ApprovalSettings:
+    raise RuntimeError("Approval configuration has not been composed")
+
+
+_get_settings: Callable[[], ApprovalSettings] = _unconfigured_settings
+
+
+def configure_approval_runtime(*, get_settings: Callable[[], ApprovalSettings]) -> None:
+    """Bind the workspace policy source at host composition."""
+    global _get_settings  # noqa: PLW0603, RUF100 - one host process owns one configuration source.
+    _get_settings = get_settings
+
+
+def get_settings() -> ApprovalSettings:
+    """Return the composed configuration source for approval replay."""
+    return _get_settings()
 
 
 @dataclass(frozen=True)

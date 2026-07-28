@@ -9,83 +9,6 @@ count = 30
 reason = "Shared helpers must be narrowed or moved to their owning packages."
 
 [[violations]]
-importer = "pynchy.host.container_manager.gateway"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.gateway still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_approval"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_approval still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_lifecycle still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
-target_role = "git_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.git_ops.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_lifecycle still has runtime-import dependencies on the git_adapter role; Use a use-case-owned source-control port and wire the Git implementation at composition."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_service"
-target_role = "integration_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.plugins.integrations.api",
-]
-reason = "pynchy.host.container_manager.ipc.handlers_service still has runtime-import dependencies on the integration_adapter role; Use an integration-neutral application port instead of importing another concrete adapter."
-
-[[violations]]
 importer = "pynchy.host.container_manager.mcp.manager"
 target_role = "application"
 rule = "direction"
@@ -97,17 +20,6 @@ imports = [
 reason = "pynchy.host.container_manager.mcp.manager still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.mcp.manager"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.mcp.manager still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.mcp.resolution"
 target_role = "config"
 rule = "direction"
@@ -117,28 +29,6 @@ imports = [
   "pynchy.config.api",
 ]
 reason = "pynchy.host.container_manager.mcp.resolution still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.gate"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.api",
-]
-reason = "pynchy.host.container_manager.security.gate still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.security.gate"
-target_role = "config"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.config.api",
-]
-reason = "pynchy.host.container_manager.security.gate still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.git_ops.repo"

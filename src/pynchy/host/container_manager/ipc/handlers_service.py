@@ -8,24 +8,27 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 from __future__ import annotations
 
 import json as json_mod
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves service runtime annotations.
+)
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype resolves dataclass.
-from pynchy.config.api import McpTool, get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
+    ResolvedSecurityConfig,
     SecurityGate,
+    SecuritySettings,
     build_workspace_security,
     evaluate_host_action_policy,
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.host.orchestrator import api as workspace_config
 from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
@@ -36,7 +39,61 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves thes
     get_host_action_catalog,
     missing_workspace_tool,
 )
-from pynchy.plugins.integrations.api import get_active_matrix_route
+
+
+class ServiceSettings(SecuritySettings, Protocol):
+    pass
+
+
+@runtime_checkable
+class _McpRuntime(Protocol):
+    runtime: str
+
+
+@runtime_checkable
+class _McpTool(Protocol):
+    type: str
+    mcp: _McpRuntime
+
+
+def _unconfigured_settings() -> ServiceSettings:
+    raise RuntimeError("Service configuration has not been composed")
+
+
+def _unconfigured_resolved_config(
+    _source_group: str, _settings: SecuritySettings | None
+) -> ResolvedSecurityConfig | None:
+    raise RuntimeError("Service workspace resolution has not been composed")
+
+
+def _unconfigured_matrix_route(_source_group: str) -> object | None:
+    raise RuntimeError("Service route policy has not been composed")
+
+
+_get_settings: Callable[[], ServiceSettings] = _unconfigured_settings
+load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedSecurityConfig | None] = (
+    _unconfigured_resolved_config
+)
+get_active_matrix_route: Callable[[str], object | None] = _unconfigured_matrix_route
+
+
+def configure_service_runtime(
+    *,
+    get_settings: Callable[[], ServiceSettings],
+    resolve_workspace_config: Callable[
+        [str, SecuritySettings | None], ResolvedSecurityConfig | None
+    ],
+    active_matrix_route: Callable[[str], object | None],
+) -> None:
+    """Bind configuration and route policy sources at host composition."""
+    global _get_settings, load_resolved_config, get_active_matrix_route  # noqa: PLW0603, RUF100 - one host process owns these policy sources.
+    _get_settings = get_settings
+    load_resolved_config = resolve_workspace_config
+    get_active_matrix_route = active_matrix_route
+
+
+def get_settings() -> ServiceSettings:
+    return _get_settings()
 
 
 @dataclass(frozen=True)
@@ -97,7 +154,7 @@ def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate | None:
     if gate is not None:
         return gate
 
-    resolved = workspace_config.load_resolved_config(source_group)
+    resolved = load_resolved_config(source_group, None)
     if resolved is None:
         if get_active_matrix_route(source_group) is not None:
             return None
@@ -129,7 +186,7 @@ def _service_action_and_gate(
             {"error": f"Unknown service tool: {request.tool_name}"},
         )
         return None
-    resolved = workspace_config.load_resolved_config(source_group)
+    resolved = load_resolved_config(source_group, None)
     active_route = get_active_matrix_route(source_group)
     if active_route is not None and resolved is None:
         logger.warning(
@@ -261,7 +318,11 @@ async def _maybe_require_cop_approval(
     settings = get_settings()
 
     tool = settings.tools.get(request.tool_name)
-    if not isinstance(tool, McpTool) or tool.mcp.runtime not in ("script", "stdio"):
+    if (
+        not isinstance(tool, _McpTool)
+        or tool.type != "mcp"
+        or tool.mcp.runtime not in ("script", "stdio")
+    ):
         return True
 
     operation = f"script_mcp:{request.tool_name}"

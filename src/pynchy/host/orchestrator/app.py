@@ -14,6 +14,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves composi
     Awaitable,
     Callable,
     Coroutine,
+    Sequence,
 )
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves method annotations.
@@ -47,8 +48,22 @@ from pynchy.host.container_manager.credentials import (
     configure_workspace_environment,
     has_api_credentials,
 )
-from pynchy.host.container_manager.gateway import configure_gateway_runtime
-from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+from pynchy.host.container_manager.gateway import GatewaySettings, configure_gateway_runtime
+from pynchy.host.container_manager.ipc.handlers_approval import (
+    ApprovalSettings,
+    configure_approval_runtime,
+    process_approval_decision,
+)
+from pynchy.host.container_manager.ipc.handlers_lifecycle import (
+    LifecycleRuntime,
+    LifecycleSettings,
+    RepoContext,
+    configure_lifecycle_runtime,
+)
+from pynchy.host.container_manager.ipc.handlers_service import (
+    ServiceSettings,
+    configure_service_runtime,
+)
 from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
@@ -78,7 +93,14 @@ from pynchy.host.container_manager.security.approval import (
 )
 from pynchy.host.container_manager.security.audit import configure_security_audit_storage
 from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
-from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, resolve_security
+from pynchy.host.container_manager.security.gate import (
+    ResolvedSecurityConfig,
+    SecuritySettings,
+    configure_security_resolution,
+    create_gate,
+    destroy_gate,
+    resolve_security,
+)
 from pynchy.host.container_manager.session import (
     SessionDiedError,
     create_session,
@@ -90,16 +112,20 @@ from pynchy.host.git_ops.api import (
     GitSyncRuntime,
     configure_git_sync_runtime,
     count_unpushed_commits,
+    detect_main_branch,
     get_deploy_config_hash,
     get_head_sha,
     get_local_head_sha,
     get_repo_context,
+    host_create_pr_from_worktree,
     host_update_main,
     is_repo_dirty,
     needs_container_rebuild,
     needs_deploy,
+    redact_git_diagnostic,
     repo_container_path,
     repo_host_root,
+    resolve_repos_for_group,
     run_git,
 )
 from pynchy.host.git_ops.utils import configure_git_default_cwd
@@ -200,6 +226,7 @@ from pynchy.plugins.api import (  # noqa: TC001, RUF100 - beartype resolves app 
 )
 from pynchy.plugins.integrations.api import (
     create_linear_workspace_todo,
+    get_active_matrix_route,
     linear_workspace_boards,
     linear_workspace_enabled,
     reconcile_all_linear_work_items,
@@ -341,6 +368,50 @@ def _workspace_environment(
     if chrome_profiles:
         env_vars["PYNCHY_CHROME_PROFILES"] = ",".join(chrome_profiles)
     return env_vars
+
+
+def _resolve_security_workspace_config(
+    folder: str,
+    settings: SecuritySettings | None,
+) -> ResolvedSecurityConfig | None:
+    """Resolve container security from the exact configuration snapshot in use."""
+    return cast(
+        "ResolvedSecurityConfig | None",
+        load_resolved_config(
+            folder,
+            settings=cast("Settings | None", settings),
+        ),
+    )
+
+
+def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
+    """Wire container policy readers to the current host configuration."""
+    configure_gateway_runtime(
+        is_apple_container=is_apple_container,
+        get_settings=cast("Callable[[], GatewaySettings]", get_settings),
+    )
+    configure_security_resolution(
+        get_settings=cast("Callable[[], SecuritySettings]", get_settings),
+        resolve_workspace_config=_resolve_security_workspace_config,
+    )
+    configure_approval_runtime(get_settings=cast("Callable[[], ApprovalSettings]", get_settings))
+    configure_service_runtime(
+        get_settings=cast("Callable[[], ServiceSettings]", get_settings),
+        resolve_workspace_config=_resolve_security_workspace_config,
+        active_matrix_route=get_active_matrix_route,
+    )
+    configure_lifecycle_runtime(
+        LifecycleRuntime(
+            settings=cast("Callable[[], LifecycleSettings]", get_settings),
+            resolve_repos_for_group=cast(
+                "Callable[[str], Sequence[RepoContext]]", resolve_repos_for_group
+            ),
+            detect_main_branch=detect_main_branch,
+            host_create_pr_from_worktree=host_create_pr_from_worktree,
+            redact_git_diagnostic=redact_git_diagnostic,
+            run_git=run_git,
+        )
+    )
 
 
 async def _prepare_host_direct_mcp_servers(
@@ -713,7 +784,7 @@ class PynchyApp(ThreadRouting):
             is_apple_runtime=runtime.name == "apple",
             container_is_running=lambda name: name in runtime.list_running_containers(prefix=name),
         )
-        configure_gateway_runtime(is_apple_container=runtime.name == "apple")
+        _configure_container_policy_runtime(is_apple_container=runtime.name == "apple")
         configure_vault_mount_mirror(enabled=runtime.name == "apple")
         configure_cop_gateway(
             model=settings.security.cop_model or settings.agent.model,

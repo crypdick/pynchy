@@ -10,11 +10,14 @@ container workers use the same IPC/MCP lookup contract.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves security resolution annotations.
+    Callable,
+    Mapping,
+    Sequence,
+)
+from typing import Any, Protocol, runtime_checkable
 
-import pynchy.config.api as pynchy_config
 from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
-from pynchy.host.orchestrator import api as workspace_config
 from pynchy.plugins.api import (
     ApprovalMode,
     ApprovalTrigger,
@@ -22,6 +25,7 @@ from pynchy.plugins.api import (
     HostActionDescriptor,
 )
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceSecurity,
 )
@@ -29,6 +33,71 @@ from pynchy.workspace.api import (
 # ---------------------------------------------------------------------------
 # SecurityGate
 # ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class SecurityToolConfig(Protocol):
+    type: str
+    public_source: bool
+    secret_data: bool
+    public_sink: bool
+    dangerous_writes: bool
+
+
+@runtime_checkable
+class ResolvedSecurityConfig(Protocol):
+    @property
+    def tools(self) -> Sequence[str]: ...
+
+    @property
+    def contains_secrets(self) -> bool: ...
+
+    @property
+    def cop_active(self) -> bool: ...
+
+    @property
+    def capabilities(self) -> Mapping[str, CapabilityRule]: ...
+
+
+@runtime_checkable
+class SecuritySettings(Protocol):
+    @property
+    def tools(self) -> Mapping[str, object]: ...
+
+
+def _unconfigured_settings() -> SecuritySettings:
+    raise RuntimeError("Security configuration has not been composed")
+
+
+def _unconfigured_resolved_config(
+    _source_group: str, _settings: SecuritySettings | None
+) -> ResolvedSecurityConfig | None:
+    raise RuntimeError("Security workspace resolution has not been composed")
+
+
+_get_settings: Callable[[], SecuritySettings] = _unconfigured_settings
+load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedSecurityConfig | None] = (
+    _unconfigured_resolved_config
+)
+
+
+def configure_security_resolution(
+    *,
+    get_settings: Callable[[], SecuritySettings],
+    resolve_workspace_config: Callable[
+        [str, SecuritySettings | None], ResolvedSecurityConfig | None
+    ],
+) -> None:
+    """Bind the security policy projection at host composition."""
+    global _get_settings, load_resolved_config  # noqa: PLW0603, RUF100 - one host process owns these policy sources.
+    _get_settings = get_settings
+    load_resolved_config = resolve_workspace_config
+
+
+def _security_tool(tool: object) -> SecurityToolConfig | None:
+    if not isinstance(tool, SecurityToolConfig) or tool.type == "workspace":
+        return None
+    return tool
 
 
 class SecurityGate:
@@ -204,8 +273,8 @@ def destroy_gate(source_group: str, invocation_ts: float) -> None:
 
 def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceSecurity:
     """Resolve security from selected tools and workspace secret state."""
-    s = pynchy_config.get_settings()
-    resolved = workspace_config.load_resolved_config(source_group, settings=s)
+    s = _get_settings()
+    resolved = load_resolved_config(source_group, s)
     contains_secrets = resolved.contains_secrets if resolved is not None else False
 
     del is_admin
@@ -216,8 +285,8 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
 
 def build_workspace_security(
-    settings: pynchy_config.Settings,
-    resolved: pynchy_config.ResolvedWorkspaceConfig,
+    settings: SecuritySettings,
+    resolved: ResolvedSecurityConfig,
 ) -> WorkspaceSecurity:
     """Build dispatch-equivalent security from an already resolved workspace."""
 
@@ -225,8 +294,8 @@ def build_workspace_security(
     integration_services: dict[str, list[ServiceTrustConfig]] = {}
     tools = settings.tools
     for tool_name in resolved.tools:
-        tool = tools.get(tool_name)
-        if tool is None or isinstance(tool, pynchy_config.WorkspaceTool):
+        tool = _security_tool(tools.get(tool_name))
+        if tool is None:
             continue
         trust = ServiceTrustConfig(
             public_source=tool.public_source,
