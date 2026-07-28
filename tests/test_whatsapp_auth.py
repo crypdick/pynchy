@@ -7,9 +7,16 @@ import importlib
 import sys
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from unittest.mock import Mock
 
 import pytest
+from conftest import make_settings
+
+from pynchy import __main__ as cli
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _install_module(name: str, *, package: bool = False) -> ModuleType:
@@ -231,3 +238,20 @@ def test_main_turns_keyboard_interrupt_into_a_cancelled_authentication_message(
 
     assert exited.value.code == 1
     assert capsys.readouterr().out == "\nAuthentication cancelled.\n"
+
+
+def test_whatsapp_auth_cli_uses_the_configured_credential_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    authenticate = Mock()
+    monkeypatch.setattr(
+        "pynchy.config.api.get_settings",
+        lambda: make_settings(data_dir=tmp_path / "credentials"),
+    )
+    monkeypatch.setattr(auth, "main", authenticate)
+
+    cli.whatsapp_auth()
+
+    assert (tmp_path / "credentials").is_dir()
+    authenticate.assert_called_once_with(str(tmp_path / "credentials" / "neonize.db"))
