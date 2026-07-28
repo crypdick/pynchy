@@ -1,17 +1,17 @@
 """Built-in notebook execution MCP server plugin."""
 
-from pynchy.plugins.integrations.notebook_server._execution import (
+from ._execution import (
     KernelSession as KernelSession,
 )
-from pynchy.plugins.integrations.notebook_server._formats import (
+from ._formats import (
     load_notebook,
     notebook_path,
     parse_qmd,
     save_notebook,
     serialize_qmd,
 )
-from pynchy.plugins.integrations.notebook_server._output import outputs_for_agent, save_cell_images
-from pynchy.plugins.integrations.notebook_server._plugin import (
+from ._output import outputs_for_agent, save_cell_images
+from ._plugin import (
     NotebookServerPlugin as NotebookServerPlugin,
 )
 

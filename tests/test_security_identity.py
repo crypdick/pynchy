@@ -20,11 +20,11 @@ def _clear_receipts() -> None:
 
 
 def test_payload_hash_is_canonical_and_excludes_only_receipt() -> None:
-    first = {"type": "schedule_task", "request_id": "a1", "nested": {"b": 2, "a": 1}}
+    first = {"type": "register_group", "request_id": "a1", "nested": {"b": 2, "a": 1}}
     reordered = {
         "nested": {"a": 1, "b": 2},
         "request_id": "a1",
-        "type": "schedule_task",
+        "type": "register_group",
         "_approval_receipt": "transport-only",
     }
 
@@ -36,9 +36,9 @@ def test_payload_hash_is_canonical_and_excludes_only_receipt() -> None:
 @pytest.mark.parametrize(
     ("workspace", "operation", "mutation"),
     [
-        ("other", "schedule_task", None),
-        ("admin", "register_group", None),
-        ("admin", "schedule_task", ("prompt", "changed")),
+        ("other", "register_group", None),
+        ("admin", "schedule_host_job", None),
+        ("admin", "register_group", ("name", "changed")),
     ],
 )
 def test_receipt_rejects_scope_or_payload_mismatch(
@@ -46,11 +46,11 @@ def test_receipt_rejects_scope_or_payload_mismatch(
     operation: str,
     mutation: tuple[str, str] | None,
 ) -> None:
-    request = {"type": "schedule_task", "request_id": "a1", "prompt": "safe"}
+    request = {"type": "register_group", "request_id": "a1", "name": "safe"}
     receipt = issue_approval_receipt(
         action_id=guarded_action_id("a1"),
         workspace="admin",
-        operation="schedule_task",
+        operation="register_group",
         request_data=request,
     )
     replay = {**request, "_approval_receipt": str(receipt)}
@@ -64,21 +64,21 @@ def test_receipt_rejects_scope_or_payload_mismatch(
 
 
 def test_receipt_is_single_use() -> None:
-    request = {"type": "schedule_task", "request_id": "a1", "prompt": "safe"}
+    request = {"type": "register_group", "request_id": "a1", "name": "safe"}
     receipt = issue_approval_receipt(
         action_id=guarded_action_id("a1"),
         workspace="admin",
-        operation="schedule_task",
+        operation="register_group",
         request_data=request,
     )
 
     first = {**request, "_approval_receipt": str(receipt)}
     second = {**request, "_approval_receipt": str(receipt)}
     assert (
-        consume_approval_receipt(first, workspace="admin", operation="schedule_task")
+        consume_approval_receipt(first, workspace="admin", operation="register_group")
         is ReceiptVerification.VALID
     )
     assert (
-        consume_approval_receipt(second, workspace="admin", operation="schedule_task")
+        consume_approval_receipt(second, workspace="admin", operation="register_group")
         is ReceiptVerification.INVALID
     )

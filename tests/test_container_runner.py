@@ -1024,6 +1024,22 @@ class TestMountBuilding:
         assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
         assert skill_mount.readonly is False
 
+    def test_scheduled_agent_mounts_only_its_automation_memory(self, tmp_path: Path):
+        memory_dir = tmp_path / "automation-memory/job-security"
+        memory_dir.mkdir(parents=True)
+        with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
+            mounts = build_volume_mounts(
+                TEST_GROUP,
+                is_admin=False,
+                automation_memory_dir=memory_dir,
+            )
+
+        memory_mount = next(
+            mount for mount in mounts if mount.container_path == "/workspace/automation-memory"
+        )
+        assert memory_mount.host_path == str(memory_dir)
+        assert memory_mount.readonly is False
+
     def test_learning_enabled_mounts_vault_readwrite(self, tmp_path: Path):
         vault = tmp_path / "vault"
         vault.mkdir()

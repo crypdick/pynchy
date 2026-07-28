@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path  # noqa: TC003 - beartype resolves runtime annotations.
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
@@ -52,7 +53,17 @@ def _pre_run_prompt(task: ScheduledTask, result: ShellResult, command: str) -> s
     return "\n".join(parts)
 
 
-async def prepare_config_job(task: ScheduledTask) -> tuple[ScheduledTask | None, str | None]:
+def _job_env(automation_memory_dir: Path | None) -> dict[str, str]:
+    env = {"PYNCHY_SCHEDULED_JOB": "1"}
+    if automation_memory_dir is not None:
+        env["PYNCHY_AUTOMATION_MEMORY_DIR"] = str(automation_memory_dir)
+    return env
+
+
+async def prepare_config_job(
+    task: ScheduledTask,
+    automation_memory_dir: Path | None = None,
+) -> tuple[ScheduledTask | None, str | None]:
     """Run an agent config job's host gate before creating its thread."""
     if task.config_job_name is None:
         return task, None
@@ -64,7 +75,7 @@ async def prepare_config_job(task: ScheduledTask) -> tuple[ScheduledTask | None,
         task.config_job_pre_run_command,
         cwd=task.config_job_pre_run_cwd,
         timeout_seconds=task.config_job_pre_run_timeout_seconds or 900,
-        env={"PYNCHY_SCHEDULED_JOB": "1"},
+        env=_job_env(automation_memory_dir),
     )
     if result.returncode == 0 and parse_wake_agent_gate(result.stdout) is False:
         return None, "Skipped: wakeAgent=false"
@@ -97,6 +108,7 @@ def _deterministic_job_output(job_name: str, result: ShellResult) -> str:
 async def run_deterministic_config_job(
     task: ScheduledTask,
     deps: ConfigJobExecutionDeps,
+    automation_memory_dir: Path | None = None,
 ) -> DeterministicJobRun | None:
     """Run one workspace-owned host command without invoking an agent."""
     if task.config_job_name is None:
@@ -109,7 +121,7 @@ async def run_deterministic_config_job(
         task.config_job_command,
         cwd=task.config_job_cwd,
         timeout_seconds=task.config_job_timeout_seconds or 900,
-        env={"PYNCHY_SCHEDULED_JOB": "1"},
+        env=_job_env(automation_memory_dir),
     )
     if result.returncode == 0 and parse_wake_agent_gate(result.stdout) is False:
         return DeterministicJobRun(result="Skipped: wakeAgent=false", error=None)

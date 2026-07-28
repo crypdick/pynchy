@@ -6,7 +6,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves callback annota
     Awaitable,
     Callable,
 )
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
+from pathlib import Path  # beartype resolves annotations at runtime.
 from typing import Any, Protocol, runtime_checkable
 
 import pluggy  # noqa: TC002 - beartype resolves annotations at runtime.
@@ -145,6 +145,11 @@ async def run_host_execution(  # noqa: PLR0913 - mirrors the shared agent-runner
                 group_folder=group.folder,
                 operations=operations,
                 codex_home=codex_home,
+                automation_memory_dir=(
+                    Path(input_data.automation_memory_dir)
+                    if input_data.automation_memory_dir is not None
+                    else None
+                ),
             ),
             queue=deps.queue,
             target=RuntimeTarget.from_workspace(group),

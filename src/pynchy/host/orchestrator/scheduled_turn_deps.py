@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves annotations.
@@ -41,6 +42,7 @@ class ScheduledTurnDeps(Protocol):
         input_source: str = "user",
         turn_id: str | None = None,
         resume_session_id: str | None = None,
+        automation_memory_dir: Path | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(

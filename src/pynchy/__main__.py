@@ -118,6 +118,7 @@ def _build() -> None:
     )
     from pynchy.plugins.runtimes.cleanup import (  # noqa: PLC0415 - runtime cleanup is build-command specific.
         cleanup_runtime_build_state,
+        cleanup_runtime_builder,
     )
     from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415 - runtime probing is build-command specific.
         configure_runtime_override,
@@ -147,6 +148,8 @@ def _build() -> None:
         )
     finally:
         build_state_cleaned = cleanup_runtime_build_state(runtime)
+    if result.returncode != 0:
+        cleanup_runtime_builder(runtime)
     if result.returncode == 0 and not build_state_cleaned:
         _stderr_line("Error: Could not clean container build state after the build")
         sys.exit(1)

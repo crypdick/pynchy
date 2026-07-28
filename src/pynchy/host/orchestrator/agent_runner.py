@@ -14,6 +14,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves container-opera
     Callable,
 )
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003 - beartype resolves public runner annotations.
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
@@ -412,6 +413,7 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
     input_source: str = "user",
     turn_id: str | None = None,
     resume_session_id: str | None = None,
+    automation_memory_dir: Path | None = None,
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
 
@@ -444,6 +446,9 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
             extra_system_notices=extra_system_notices,
             input_source=input_source,
             is_scheduled_task=is_scheduled_task,
+            automation_memory_dir=(
+                str(automation_memory_dir) if automation_memory_dir is not None else None
+            ),
             repo_access_override=repo_access_override,
             runtime=runtime,
         )
@@ -483,6 +488,11 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
         )
 
     session = cast("AgentSession | None", operations.get_session(GroupFolder(group.folder)))
+    if session is not None and session.is_alive and automation_memory_dir is not None:
+        # A scheduled occurrence needs its task-owned mount and environment even
+        # when this durable thread previously started an interactive worker.
+        await operations.destroy_session(group.folder)
+        session = None
 
     pre_container_ms = (time.monotonic() - run_agent_start) * 1000
     is_warm = session is not None and session.is_alive

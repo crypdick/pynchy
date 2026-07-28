@@ -47,7 +47,6 @@ SIGNAL_TYPES = frozenset(
 # Tier 2: Data-carrying IPC types (Deputy mediation planned)
 TIER2_TYPES = frozenset(
     {
-        "schedule_task",
         "schedule_host_job",
         "deploy",
         "register_group",

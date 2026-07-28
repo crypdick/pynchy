@@ -320,7 +320,6 @@ Some IPC operations change what code runs on the host machine. These are **host-
 | `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The committed `base...HEAD` patch |
 | `register_group` | Creates new workspace | Group config |
 | `create_periodic_agent` | Creates persistent agent | Agent name, profile, schedule, prompt |
-| `schedule_task` | Schedules future execution | Task prompt and target |
 | `schedule_host_job` | Schedules host command | Command and schedule |
 | Script-type MCP tools | Runs host subprocess | Tool arguments |
 

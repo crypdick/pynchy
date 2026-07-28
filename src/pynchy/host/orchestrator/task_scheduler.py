@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path  # noqa: TC003 - beartype resolves scheduler annotations.
 from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
@@ -64,7 +65,7 @@ from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
-_config_job_run_locks: dict[str, asyncio.Lock] = {}
+_task_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None
 
 _scheduler_startup_lock = asyncio.Lock()
@@ -207,6 +208,7 @@ async def _finish_scheduled_agent_run(  # noqa: PLR0913 - scheduler completion n
     error: str | None,
     turn_id: str | None = None,
 ) -> TurnOutcome:
+    deps.sync_automation_memory(task.id)
     outcome = await classify_scheduled_agent_outcome(deps, task.id, result=result, error=error)
     logger.info(
         "Task completed",
@@ -247,6 +249,7 @@ async def resume_interrupted_scheduled_turn(
     deps: SchedulerDependencies,
     turn: InFlightTurn,
     group: WorkspaceProfile,
+    automation_memory_dir: Path | None = None,
 ) -> TurnOutcome:
     """Resume a claimed scheduled agent turn and finish its scheduler bookkeeping."""
     try:
@@ -260,6 +263,7 @@ async def resume_interrupted_scheduled_turn(
             group=group,
             idle_enabled=True,
             idle_timeout=deps.scheduler_runtime.idle_timeout,
+            automation_memory_dir=automation_memory_dir,
             resume_turn=turn,
         )
     )
@@ -294,15 +298,18 @@ async def run_scheduled_agent(
     occurrence_id: str | None = None,
 ) -> TurnOutcome:
     """Execute a single scheduled agent task via the unified run_agent path."""
-    if task.config_job_name is None:
-        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
-
     # Temporal BUFFER_ONE serializes normal schedule overlap durably. This
     # process-local lock also serializes duplicate/manual activity delivery so
-    # every execution stays in the task's one derived thread.
-    lock = _config_job_run_locks.setdefault(task.id, asyncio.Lock())
+    # every execution stays in the task's one memory directory and derived thread.
+    lock = _task_run_locks.setdefault(task.id, asyncio.Lock())
     async with lock:
-        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
+        with deps.automation_memory_dir(task.id) as memory_dir:
+            return await _run_scheduled_agent(
+                task,
+                deps,
+                occurrence_id=occurrence_id,
+                automation_memory_dir=memory_dir,
+            )
 
 
 async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal outcomes.
@@ -310,6 +317,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
     deps: SchedulerDependencies,
     *,
     occurrence_id: str | None,
+    automation_memory_dir: Path | None,
 ) -> TurnOutcome:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
@@ -358,7 +366,13 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
                 turn_id=interrupted_turn.turn_id,
             )
             return TurnOutcome.COMPLETED
-        return await resume_interrupted_scheduled_turn(task, deps, interrupted_turn, group)
+        return await resume_interrupted_scheduled_turn(
+            task,
+            deps,
+            interrupted_turn,
+            group,
+            automation_memory_dir,
+        )
 
     resolved_occurrence = occurrence_id or f"direct:{task.id}:{start_time.isoformat()}"
     task = await apply_scheduled_session_policy(
@@ -385,7 +399,11 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
         logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
         return TurnOutcome.PAUSED
 
-    deterministic = await run_deterministic_config_job(task, cast("ConfigJobExecutionDeps", deps))
+    deterministic = await run_deterministic_config_job(
+        task,
+        cast("ConfigJobExecutionDeps", deps),
+        automation_memory_dir,
+    )
     if deterministic is not None:
         return await _finish_scheduled_agent_run(
             task,
@@ -395,7 +413,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
             error=deterministic.error,
         )
 
-    prepared_task, skipped_result = await prepare_config_job(task)
+    prepared_task, skipped_result = await prepare_config_job(task, automation_memory_dir)
     if prepared_task is None:
         return await _finish_scheduled_agent_run(
             task,
@@ -417,6 +435,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
             group=group,
             idle_enabled=True,
             idle_timeout=deps.scheduler_runtime.idle_timeout,
+            automation_memory_dir=automation_memory_dir,
             on_started=on_started,
         )
     )

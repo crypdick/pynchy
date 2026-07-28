@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from temporalio import activity
 
 from pynchy.host.orchestrator.scheduler_deps import (
     ConfigHostCronJob,  # noqa: TC001 - beartype resolves config host-job annotations at runtime.
+    SchedulerDependencies,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
@@ -24,9 +25,6 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 from pynchy.utils import ShellResult, log_shell_result, run_shell_command
-
-if TYPE_CHECKING:
-    from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
 
 
 def _resolve_job_cwd(cwd: str | None, project_root: Path) -> str:
@@ -54,8 +52,10 @@ async def run_database_host_job(job_id: str) -> str:
         _record_activity_result(job_id, "skipped")
         return "skipped"
 
+    scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
     try:
-        await _run_database_host_job(job)
+        with scheduler_deps.automation_memory_dir(job.id) as memory_dir:
+            await _run_database_host_job(job, memory_dir, scheduler_deps)
     except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(job_id, "error", str(exc))
         raise
@@ -74,9 +74,13 @@ async def run_config_host_cron_job(job_name: str) -> str:
         return "skipped"
 
     try:
-        await _run_config_host_cron_job(
-            job_name, job, scheduler_deps.scheduler_runtime.project_root
-        )
+        with scheduler_deps.automation_memory_dir(f"host-cron-{job_name}") as memory_dir:
+            await _run_config_host_cron_job(
+                job_name,
+                job,
+                scheduler_deps.scheduler_runtime.project_root,
+                memory_dir,
+            )
     except Exception as exc:  # allow: exception-handling; record activity failure.
         _record_activity_result(job_name, "error", str(exc))
         raise
@@ -85,7 +89,10 @@ async def run_config_host_cron_job(job_name: str) -> str:
 
 
 async def _run_config_host_cron_job(
-    job_name: str, job: ConfigHostCronJob, project_root: Path
+    job_name: str,
+    job: ConfigHostCronJob,
+    project_root: Path,
+    automation_memory_path: Path | None,
 ) -> None:
     """Run a config-backed host cron job and surface shell failures to Temporal."""
     command_cwd = _resolve_job_cwd(job.cwd, project_root)
@@ -99,14 +106,18 @@ async def _run_config_host_cron_job(
         job.command,
         cwd=command_cwd,
         timeout_seconds=job.timeout_seconds or 600,
+        env=_automation_memory_env(automation_memory_path),
     )
     if not (job.quiet_on_success is True and result.returncode == 0):
         log_shell_result(result, label="Config host cron job", job=job_name)
     _raise_for_failed_command(result, job_name)
 
 
-async def _run_database_host_job(job: HostJob) -> None:
-    scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
+async def _run_database_host_job(
+    job: HostJob,
+    automation_memory_path: Path | None,
+    scheduler_deps: SchedulerDependencies,
+) -> None:
     command_cwd = _resolve_job_cwd(job.cwd, scheduler_deps.scheduler_runtime.project_root)
     logger.info(
         "Running database host job",
@@ -120,11 +131,19 @@ async def _run_database_host_job(job: HostJob) -> None:
         job.command,
         cwd=command_cwd,
         timeout_seconds=job.timeout_seconds,
+        env=_automation_memory_env(automation_memory_path),
     )
     log_shell_result(result, label="Database host job", job_id=job.id)
     _raise_for_failed_command(result, job.id)
 
+    scheduler_deps.sync_automation_memory(job.id)
     await record_host_job_completion(job.id, completed=job.schedule_type == "once")
+
+
+def _automation_memory_env(path: Path | None) -> dict[str, str] | None:
+    if path is None:
+        return None
+    return {"PYNCHY_AUTOMATION_MEMORY_DIR": str(path)}
 
 
 def _raise_for_failed_command(result: ShellResult, job_identifier: str) -> None:

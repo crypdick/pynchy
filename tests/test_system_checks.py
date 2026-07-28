@@ -71,7 +71,6 @@ class TestEnsureContainerSystemRunning:
         """Happy path: image exists, no orphaned containers."""
         image_inspect = MagicMock(returncode=0)
         events: list[str] = []
-        mock_runtime.cleanup_builder.side_effect = lambda: events.append("builder")
         mock_runtime.prune_images.side_effect = lambda **_kwargs: events.append("images") or True
 
         def inspect_image(*_args, **_kwargs):
@@ -90,9 +89,9 @@ class TestEnsureContainerSystemRunning:
             )
 
         mock_runtime.ensure_running.assert_called_once()
-        mock_runtime.cleanup_builder.assert_called_once()
+        mock_runtime.cleanup_builder.assert_not_called()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
-        assert events[:3] == ["builder", "images", "inspect"]
+        assert events[:2] == ["images", "inspect"]
         assert run.call_args.kwargs["timeout"] == 30
 
     def test_image_missing_builds(self, mock_runtime, tmp_path):
@@ -116,7 +115,7 @@ class TestEnsureContainerSystemRunning:
             ensure_agent_image_available(project_root=tmp_path, image=_AGENT_IMAGE)
 
         mock_runtime.ensure_running.assert_called_once()
-        assert mock_runtime.cleanup_builder.call_count == 2
+        mock_runtime.cleanup_builder.assert_not_called()
         assert mock_runtime.prune_images.call_count == 2
         assert run.call_args_list[1].args[0] == [
             sys.executable,
@@ -224,7 +223,7 @@ class TestEnsureContainerSystemRunning:
             ensure_agent_image_available(project_root=tmp_path, image=_AGENT_IMAGE)
 
         assert run.call_count == 2
-        mock_runtime.cleanup_builder.assert_called_once()
+        mock_runtime.cleanup_builder.assert_not_called()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
 
     def test_orphaned_agent_containers_reaped(self, mock_runtime):

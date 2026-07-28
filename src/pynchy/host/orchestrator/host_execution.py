@@ -156,6 +156,7 @@ def host_agent_env_vars(
     group_folder: str,
     operations: HostRuntimeOperations,
     codex_home: Path | None = None,
+    automation_memory_dir: Path | None = None,
 ) -> dict[str, str]:
     env = operations.build_agent_environment(
         is_admin=is_admin,
@@ -169,6 +170,8 @@ def host_agent_env_vars(
     env["PYNCHY_IPC_DIR"] = str(operations.sessions_root.parent / "ipc" / group_folder)
     if codex_home is not None:
         env["CODEX_HOME"] = str(codex_home)
+    if automation_memory_dir is not None:
+        env["PYNCHY_AUTOMATION_MEMORY_DIR"] = str(automation_memory_dir)
     personalization_skills = operations.project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME
     personalization_skills.mkdir(parents=True, exist_ok=True)
     env["PYNCHY_SKILLS_ROOT"] = str(personalization_skills)

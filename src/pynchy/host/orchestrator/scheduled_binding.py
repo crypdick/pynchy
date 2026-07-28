@@ -90,7 +90,7 @@ class ScheduledBindingDeps(Protocol):
 def _task_thread_name(task: ScheduledTask) -> str:
     if task.derived_thread_name is not None and task.derived_thread_name.strip():
         return task.derived_thread_name
-    return f"Scheduled | {task.id}"[:100]
+    raise ScheduledTaskOwnershipError("Scheduled task lacks a managed thread name")
 
 
 def _is_linear_task(task: ScheduledTask) -> bool:

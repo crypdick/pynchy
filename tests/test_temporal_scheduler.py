@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -158,6 +158,12 @@ class NullSchedulerDeps:
     @property
     def workspaces(self):
         return self.groups
+
+    def automation_memory_dir(self, _task_id: str):
+        return nullcontext(None)
+
+    def sync_automation_memory(self, _task_id: str) -> None:
+        pass
 
     async def broadcast_to_channels(self, jid, event) -> None: ...
 
@@ -867,7 +873,7 @@ class TestTemporalSchedulerRuntime:
         assert client.started_workflows[0][2]["id"].endswith("-resume-1")
 
     @pytest.mark.asyncio
-    async def test_resumed_task_progresses_without_cancelling_colliding_legacy_workflow(
+    async def test_resumed_task_does_not_cancel_a_different_task_with_colliding_workflow_id(
         self, monkeypatch, temporal_task
     ):
         temporal_task.id = "task/a"

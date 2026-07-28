@@ -299,7 +299,7 @@ The Cop examines the payload of each host-mutating operation (the diff being mer
 - Pull-request publication (`sync_worktree_to_main`)
 - Workspace registration (`register_group`)
 - Periodic agent creation (`create_periodic_agent`)
-- Task scheduling (`schedule_task`, `schedule_host_job`)
+- Host-job scheduling (`schedule_host_job`)
 - Script-type MCP tool calls (auto-classified — any MCP with `type = "script"`)
 
 **What's not covered:** Docker-type MCPs (isolated in their own container), URL-type MCPs (remote, no host access), and deploy (just restarts with existing code).

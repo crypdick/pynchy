@@ -26,14 +26,6 @@ fi
 cleanup_runtime_build_state() {
     local cleanup_failed=0
 
-    if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_KEEP_APPLE_BUILDER:-}" != "1" ]; then
-        echo "Cleaning Apple Container builder..."
-        if ! $RUNTIME builder rm --force; then
-            echo "Failed to remove Apple Container builder." >&2
-            cleanup_failed=1
-        fi
-    fi
-
     if [ "${PYNCHY_PRUNE_IMAGES:-1}" != "0" ]; then
         echo "Pruning dangling container images..."
         if [ "$RUNTIME" = "docker" ]; then
@@ -50,9 +42,20 @@ cleanup_runtime_build_state() {
     return "$cleanup_failed"
 }
 
+cleanup_failed_apple_builder() {
+    if [ "$RUNTIME" = "container" ]; then
+        echo "Cleaning failed Apple Container builder..."
+        $RUNTIME builder stop || true
+        $RUNTIME builder rm --force || true
+    fi
+}
+
 cleanup_runtime_build_state_on_exit() {
     local build_status=$?
     local cleanup_status=0
+    if [ "$build_status" -ne 0 ]; then
+        cleanup_failed_apple_builder
+    fi
     if ! cleanup_runtime_build_state; then
         echo "Container build-state cleanup failed." >&2
         cleanup_status=1

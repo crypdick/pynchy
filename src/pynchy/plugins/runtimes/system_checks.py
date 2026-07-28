@@ -21,6 +21,7 @@ from pynchy.plugins.api import (
 from pynchy.plugins.runtimes.cleanup import (
     OrphanReapingRuntime,
     cleanup_runtime_build_state,
+    cleanup_runtime_builder,
     reap_orphaned_agent_containers,
 )
 from pynchy.plugins.runtimes.detection import get_runtime
@@ -88,6 +89,7 @@ def _ensure_agent_image_available(runtime: object, *, project_root: Path, image:
         finally:
             cleanup_runtime_build_state(runtime)
         if build.returncode != 0:
+            cleanup_runtime_builder(runtime)
             raise RuntimeError(_CONTAINER_BUILD_FAILED_ERROR.format(image=image))
 
 
