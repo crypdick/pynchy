@@ -346,11 +346,8 @@ def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
     return result
 
 
-async def _pause_orphaned_tasks(
-    specs: dict[str, WorkspaceSpec], desired_job_task_ids: set[str]
-) -> None:
+async def _pause_orphaned_tasks(desired_job_task_ids: set[str]) -> None:
     """Pause config-owned job tasks without a matching config declaration."""
-    del specs
     all_tasks = await get_all_tasks()
     for task in all_tasks:
         if task.status != "active":
@@ -365,6 +362,19 @@ async def _pause_orphaned_tasks(
             task_id=task.id,
             folder=task.group_folder,
         )
+
+
+async def reconcile_automation_jobs(
+    workspaces: dict[str, WorkspaceProfile],
+    settings: Settings,
+) -> None:
+    """Reconcile file-backed agent jobs without changing workspace topology."""
+    desired_job_task_ids = await reconcile_agent_jobs(
+        workspaces,
+        settings,
+        lambda folder: load_resolved_config(folder, settings=settings),
+    )
+    await _pause_orphaned_tasks(desired_job_task_ids)
 
 
 async def _remove_orphaned_workspaces(
@@ -499,8 +509,7 @@ async def reconcile_workspaces(
     if thread_actions:
         logger.info("Workspace child threads reconciled", count=len(thread_actions))
 
-    desired_job_task_ids = await reconcile_agent_jobs(workspaces, s, load_resolved_config)
-    await _pause_orphaned_tasks(specs, desired_job_task_ids)
+    await reconcile_automation_jobs(workspaces, s)
     await _remove_orphaned_workspaces(
         specs,
         workspaces,
