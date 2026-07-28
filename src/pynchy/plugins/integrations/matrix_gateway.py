@@ -47,7 +47,11 @@ from pynchy.plugins.api import (
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime, _validate_portal
+from pynchy.plugins.integrations.matrix_connection import (
+    MatrixConnectionOperations,
+    MatrixConnectionRuntime,
+    _validate_portal,
+)
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayError,
     MatrixRouteGateway,
@@ -84,6 +88,7 @@ class MatrixGatewayRuntime:
     routes: tuple[ResolvedMatrixRoute, ...]
     connections: tuple[MatrixConnectionRuntimeOptions, ...]
     get_control_thread_jid: Callable[[ConversationId], Awaitable[ChatJid | None]]
+    connection_operations: MatrixConnectionOperations
 
 
 @dataclass
@@ -371,6 +376,7 @@ class MatrixGatewayPlugin:
                 ),
                 poll_interval_seconds=connection.poll_interval_seconds,
                 state_dir=matrix_connection_state_dir(runtime.data_dir, connection_name),
+                operations=runtime.connection_operations,
             )
             for connection in runtime.connections
             if any(route.connection_name == connection.name for route in runtime.routes)

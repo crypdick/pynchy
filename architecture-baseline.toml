@@ -403,25 +403,3 @@ imports = [
   "pynchy.config.api",
 ]
 reason = "pynchy.host.orchestrator.workspace_threads still has runtime-import dependencies on the config role; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_connection"
-target_role = "application"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.host.orchestrator.api",
-]
-reason = "pynchy.plugins.integrations.matrix_connection still has runtime-import dependencies on the application role; Introduce or narrow a use-case-owned port instead of importing a private application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.integrations.matrix_connection"
-target_role = "state_adapter"
-rule = "direction"
-kind = "runtime-import"
-count = 1
-imports = [
-  "pynchy.state.api",
-]
-reason = "pynchy.plugins.integrations.matrix_connection still has runtime-import dependencies on the state_adapter role; Use the declared state API or a use-case-owned persistence port when transaction ownership requires inversion."

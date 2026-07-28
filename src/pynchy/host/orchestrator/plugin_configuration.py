@@ -23,7 +23,11 @@ from pynchy.config.api import (  # noqa: TC001, RUF100 - beartype resolves compo
     tool_process_environment,
 )
 from pynchy.conversation.api import (  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    ConversationClaimId,
     ConversationId,
+    ConversationSubject,
+    ExternalDeliveryIdentity,
+    routed_conversation_folder,
 )
 from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.host.container_manager.mcp.google_canaries import (
@@ -33,18 +37,28 @@ from pynchy.host.container_manager.mcp.google_canaries import (
 from pynchy.host.container_manager.security.security_canaries import (
     register_security_canary_scenarios,
 )
-from pynchy.host.orchestrator.api import resolve_workspace_placement, static_workspace_folder
+from pynchy.host.orchestrator.api import (
+    ConversationControlRequest,
+    ConversationWorkspaceContext,
+    RuntimeWorkspaceRestriction,
+    ensure_conversation_workspace,
+    register_runtime_workspace_restriction,
+    resolve_workspace_placement,
+    static_workspace_folder,
+    unregister_runtime_workspace_restriction,
+)
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )
 from pynchy.identifiers import (
     ChatJid,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
+    GroupFolder,
 )
 from pynchy.integration_contracts import (
     is_matrix_connection,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
 )
-from pynchy.plugins.api import ComputerUseRouterConfig
+from pynchy.plugins.api import ComputerUseRouterConfig, ConnectionRuntimeContext
 from pynchy.plugins.integrations.api import linear_account_for_workspace
 from pynchy.plugins.integrations.caldav import (
     CalDAVRuntime,
@@ -125,6 +139,12 @@ from pynchy.plugins.integrations.marketplace_health import (
     MarketplaceHealthRuntime,
     configure_marketplace_health_runtime,
 )
+from pynchy.plugins.integrations.matrix_connection import (
+    MatrixConnectionOperations,
+    MatrixPendingDelivery,
+    MatrixRouteControl,
+    matrix_route_subject,
+)
 from pynchy.plugins.integrations.matrix_gateway import (
     MatrixConnectionRuntimeOptions,
     MatrixGatewayRuntime,
@@ -149,6 +169,8 @@ from pynchy.state.api import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
     WorkItemTransitionResolution,
+    admit_conversation_delivery,
+    admit_external_delivery_receipt,
     apply_conversation_control_state,
     begin_webhook_effect,
     begin_work_item_transition,
@@ -158,6 +180,7 @@ from pynchy.state.api import (
     cancel_task_and_checkpoint,
     cancel_work_item_execution,
     cancel_work_item_execution_if_lifecycle_current,
+    claim_next_conversation_delivery,
     confirm_webhook_effect,
     conversation_control_state_matches,
     create_task_if_absent,
@@ -169,6 +192,7 @@ from pynchy.state.api import (
     get_conversation_control_binding,
     get_conversation_control_by_thread,
     get_conversation_for_subject_key,
+    get_external_provider_cursor,
     get_in_flight_turn_for_group,
     get_latest_unresolved_work_item_transition,
     get_task_by_id,
@@ -177,23 +201,30 @@ from pynchy.state.api import (
     get_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
+    list_pending_conversation_ids,
     list_work_item_executions,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
+    release_conversation_delivery_claim,
     resolve_conversation,
     resolve_work_item_transition,
     resolve_work_item_transition_if_lifecycle_current,
     resume_once_task_after_unclaimed_scheduled_turn,
+    set_external_provider_cursor,
     store_event,
     update_task,
 )
 from pynchy.utils import filtered_process_environment
 from pynchy.workspace.api import (
+    CapabilityRule,
     WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves composition callback annotations at runtime.
 )
 
 if TYPE_CHECKING:
     import pluggy
+
+    from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
+    from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRoute
 
 
 def configure_computer_use_plugins(
@@ -499,6 +530,89 @@ def configure_marketplace_health_plugin(
         plugin.configure(runtime)
 
 
+def _matrix_connection_operations() -> MatrixConnectionOperations:
+    """Bind Matrix delivery and routed-workspace operations at composition."""
+
+    async def admit_delivery(
+        identity: ExternalDeliveryIdentity,
+        subject: ConversationSubject,
+        workspace: GroupFolder,
+        payload: dict[str, object],
+    ) -> None:
+        await admit_conversation_delivery(identity, subject, workspace, payload=payload)
+
+    async def ensure_route_control(
+        context: ConnectionRuntimeContext,
+        route: ResolvedMatrixRoute,
+        _assertion: MatrixPortalAssertion,
+    ) -> MatrixRouteControl:
+        parent = next(
+            (
+                profile
+                for profile in context.workspaces().values()
+                if profile.folder == route.workspace
+            ),
+            None,
+        )
+        if parent is None:
+            raise ValueError(f"Matrix route {route.name!r} workspace is not registered")
+        conversation = await resolve_conversation(
+            matrix_route_subject(route), GroupFolder(route.workspace)
+        )
+        folder = routed_conversation_folder(route.workspace, conversation.id)
+        register_runtime_workspace_restriction(
+            folder,
+            RuntimeWorkspaceRestriction(
+                parent_workspace=route.workspace,
+                tools=route.tools,
+                capabilities={
+                    capability: CapabilityRule(decision=decision)
+                    for capability, decision in route.capabilities.items()
+                },
+            ),
+        )
+        ensured = await ensure_conversation_workspace(
+            ConversationWorkspaceContext(
+                channels=context.channels,
+                workspaces=context.workspaces,
+                register_workspace=context.register_workspace,
+                unregister_workspace=context.unregister_workspace,
+                bind_session=context.bind_session,
+            ),
+            ConversationControlRequest(
+                conversation_id=conversation.id,
+                parent_workspace=GroupFolder(route.workspace),
+                parent_jid=ChatJid(parent.jid),
+                title=route.control_title,
+            ),
+        )
+        return MatrixRouteControl(conversation.id, ensured.control.binding.thread_jid)
+
+    async def claim_delivery(
+        conversation_id: ConversationId, claim_id: ConversationClaimId
+    ) -> MatrixPendingDelivery | None:
+        delivery = await claim_next_conversation_delivery(conversation_id, claim_id)
+        if delivery is None:
+            return None
+        return MatrixPendingDelivery(str(delivery.identity.delivery_id), delivery.payload)
+
+    async def conversation_exists(conversation_id: ConversationId) -> bool:
+        return await get_conversation(conversation_id) is not None
+
+    return MatrixConnectionOperations(
+        get_cursor=get_external_provider_cursor,
+        set_cursor=set_external_provider_cursor,
+        admit_receipt=admit_external_delivery_receipt,
+        admit_delivery=admit_delivery,
+        ensure_route_control=ensure_route_control,
+        list_pending_conversation_ids=list_pending_conversation_ids,
+        claim_delivery=claim_delivery,
+        release_delivery_claim=release_conversation_delivery_claim,
+        conversation_exists=conversation_exists,
+        unregister_workspace_restriction=unregister_runtime_workspace_restriction,
+    )
+
+
 def configure_matrix_gateway_plugin(settings: Settings) -> None:
     """Inject Matrix routes and state paths selected by host configuration."""
     routes = tuple(
@@ -542,6 +656,7 @@ def configure_matrix_gateway_plugin(settings: Settings) -> None:
                 if is_matrix_connection(connection)
             ),
             get_control_thread_jid=_matrix_control_thread_jid,
+            connection_operations=_matrix_connection_operations(),
         )
     )
 

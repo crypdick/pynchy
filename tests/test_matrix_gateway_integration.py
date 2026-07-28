@@ -7,7 +7,7 @@ import subprocess  # noqa: S404 - tests construct completed local process fixtur
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from conftest import make_settings
@@ -22,6 +22,7 @@ from pynchy.identifiers import ChatJid
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import ApprovalTrigger, HostActionAccess
 from pynchy.plugins.integrations import matrix_gateway
+from pynchy.plugins.integrations.matrix_connection import MatrixConnectionOperations
 from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixGatewayClient,
     MatrixGatewayError,
@@ -120,6 +121,21 @@ def _handlers():
     return {str(action.tool_name): action.handler for action in registration.actions}
 
 
+def _connection_operations() -> MatrixConnectionOperations:
+    return MatrixConnectionOperations(
+        get_cursor=AsyncMock(return_value=None),
+        set_cursor=AsyncMock(),
+        admit_receipt=AsyncMock(),
+        admit_delivery=AsyncMock(),
+        ensure_route_control=AsyncMock(),
+        list_pending_conversation_ids=AsyncMock(return_value=()),
+        claim_delivery=AsyncMock(return_value=None),
+        release_delivery_claim=AsyncMock(),
+        conversation_exists=AsyncMock(return_value=True),
+        unregister_workspace_restriction=Mock(),
+    )
+
+
 def _resolve_matrix_routes(settings) -> tuple[ResolvedMatrixRoute, ...]:
     routes = tuple(
         MatrixRouteInput(
@@ -167,6 +183,7 @@ def _configure_matrix_gateway_runtime(settings) -> None:
                 if isinstance(connection, MatrixConnectionConfig)
             ),
             get_control_thread_jid=AsyncMock(return_value=ChatJid(_CONTROL)),
+            connection_operations=_connection_operations(),
         )
     )
 

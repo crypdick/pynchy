@@ -7,6 +7,12 @@ import hashlib
 import json
 import os
 import secrets
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Matrix operation annotations.
+    Awaitable,
+    Callable,
+    Iterable,
+)
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves Matrix runtime annotations at runtime.
@@ -25,14 +31,6 @@ from pynchy.conversation.api import (
     ExternalProvider,
     ExternalRoute,
     routed_conversation_folder,
-)
-from pynchy.host.orchestrator.api import (
-    ConversationControlRequest,
-    ConversationWorkspaceContext,
-    RuntimeWorkspaceRestriction,
-    ensure_conversation_workspace,
-    register_runtime_workspace_restriction,
-    unregister_runtime_workspace_restriction,
 )
 from pynchy.identifiers import (
     ChatJid,
@@ -61,19 +59,7 @@ from pynchy.plugins.integrations.matrix_route_registry import (
 from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001, RUF100 - beartype resolves runtime route annotations.
     ResolvedMatrixRoute,
 )
-from pynchy.state.api import (
-    admit_conversation_delivery,
-    admit_external_delivery_receipt,
-    claim_next_conversation_delivery,
-    get_conversation,
-    get_external_provider_cursor,
-    list_pending_conversation_ids,
-    release_conversation_delivery_claim,
-    resolve_conversation,
-    set_external_provider_cursor,
-)
 from pynchy.utils import create_background_task
-from pynchy.workspace.api import CapabilityRule
 
 if TYPE_CHECKING:
     from asyncio import Task
@@ -81,11 +67,53 @@ if TYPE_CHECKING:
 _PROVIDER = ExternalProvider("matrix")
 
 
+@dataclass(frozen=True, slots=True)
+class MatrixPendingDelivery:
+    """Sanitized delivery data admitted by the durable conversation store."""
+
+    delivery_id: str
+    payload: dict[str, object] | None
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixRouteControl:
+    """The routed conversation identity and its durable control thread."""
+
+    conversation_id: ConversationId
+    control_thread_jid: ChatJid
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixConnectionOperations:
+    """Host-owned state and workspace operations for one Matrix poller."""
+
+    get_cursor: Callable[[str, str], Awaitable[str | None]]
+    set_cursor: Callable[[str, str, str], Awaitable[None]]
+    admit_receipt: Callable[[ExternalDeliveryReceipt], Awaitable[object]]
+    admit_delivery: Callable[
+        [ExternalDeliveryIdentity, ConversationSubject, GroupFolder, dict[str, object]],
+        Awaitable[None],
+    ]
+    ensure_route_control: Callable[
+        [ConnectionRuntimeContext, ResolvedMatrixRoute, MatrixPortalAssertion],
+        Awaitable[MatrixRouteControl],
+    ]
+    list_pending_conversation_ids: Callable[
+        [ExternalProvider, ExternalRoute], Awaitable[Iterable[ConversationId]]
+    ]
+    claim_delivery: Callable[
+        [ConversationId, ConversationClaimId], Awaitable[MatrixPendingDelivery | None]
+    ]
+    release_delivery_claim: Callable[[ConversationClaimId], Awaitable[object]]
+    conversation_exists: Callable[[ConversationId], Awaitable[bool]]
+    unregister_workspace_restriction: Callable[[str], None]
+
+
 def _route_identity(route: ResolvedMatrixRoute) -> ExternalRoute:
     return ExternalRoute(f"{route.connection_name}:{route.name}")
 
 
-def _subject(route: ResolvedMatrixRoute) -> ConversationSubject:
+def matrix_route_subject(route: ResolvedMatrixRoute) -> ConversationSubject:
     return ConversationSubject(
         namespace=ConversationSubjectNamespace(
             f"matrix:{route.connection.expected_user_id}:{route.connection_name}:{route.name}:room"
@@ -118,13 +146,14 @@ def _validate_portal(
 class MatrixConnectionRuntime:
     """Poll one owner identity and route its configured rooms fail closed."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, RUF100 - Matrix runtime binds explicit provider dependencies.
         self,
         connection_name: str,
         routes: tuple[ResolvedMatrixRoute, ...],
         *,
         poll_interval_seconds: float,
         state_dir: Path,
+        operations: MatrixConnectionOperations,
         client: MatrixConnectionGateway | None = None,
     ) -> None:
         if not routes:
@@ -133,6 +162,7 @@ class MatrixConnectionRuntime:
         self._connection_name = connection_name
         self._routes = routes
         self._poll_interval_seconds = poll_interval_seconds
+        self._operations = operations
         if client is None:
             command_env = routes[0].connection.gateway_command_env
             command = os.environ.get(command_env)
@@ -153,7 +183,7 @@ class MatrixConnectionRuntime:
         """Stop polling without deleting durable receipts or cursor state."""
         self._ready = False
         for folder in clear_active_matrix_connection(self._connection_name):
-            unregister_runtime_workspace_restriction(folder)
+            self._operations.unregister_workspace_restriction(folder)
         if self._task is None:
             return
         self._task.cancel()
@@ -181,7 +211,7 @@ class MatrixConnectionRuntime:
 
     async def poll_once(self) -> None:
         """Admit one provider page, commit its cursor, and wake queued routes."""
-        since = await get_external_provider_cursor("matrix", self._connection_name)
+        since = await self._operations.get_cursor("matrix", self._connection_name)
         batch = await asyncio.to_thread(
             self._client.sync,
             since=since,
@@ -197,7 +227,7 @@ class MatrixConnectionRuntime:
             _validate_portal(route, assertion)
             await self._ensure_route_control(route, assertion)
         await self._admit_batch(batch, assertions)
-        await set_external_provider_cursor("matrix", self._connection_name, batch.next_batch)
+        await self._operations.set_cursor("matrix", self._connection_name, batch.next_batch)
         await self._wake_pending_routes()
 
     async def _admit_batch(
@@ -224,7 +254,7 @@ class MatrixConnectionRuntime:
                 delivery_id=ExternalDeliveryId(event.event_id),
             )
             received_at = datetime.now(UTC).isoformat()
-            await admit_external_delivery_receipt(
+            await self._operations.admit_receipt(
                 ExternalDeliveryReceipt(
                     identity=identity,
                     payload_sha256=hashlib.sha256(
@@ -237,11 +267,11 @@ class MatrixConnectionRuntime:
                 continue
             # Link the delivery even when the receipt already existed. A crash
             # between those two durable writes must recover on provider replay.
-            await admit_conversation_delivery(
+            await self._operations.admit_delivery(
                 identity,
-                _subject(route),
+                matrix_route_subject(route),
                 GroupFolder(route.workspace),
-                payload=payload,
+                payload,
             )
 
     @staticmethod
@@ -267,60 +297,24 @@ class MatrixConnectionRuntime:
         route: ResolvedMatrixRoute,
         assertion: MatrixPortalAssertion,
     ) -> ConversationId:
-        context = self._require_context()
-        parent = next(
-            (
-                profile
-                for profile in context.workspaces().values()
-                if profile.folder == route.workspace
-            ),
-            None,
+        control = await self._operations.ensure_route_control(
+            self._require_context(), route, assertion
         )
-        if parent is None:
-            raise ValueError(f"Matrix route {route.name!r} workspace is not registered")
-        conversation = await resolve_conversation(_subject(route), GroupFolder(route.workspace))
-        folder = routed_conversation_folder(route.workspace, conversation.id)
-        capabilities = {
-            capability: CapabilityRule(decision=decision)
-            for capability, decision in route.capabilities.items()
-        }
-        register_runtime_workspace_restriction(
-            folder,
-            RuntimeWorkspaceRestriction(
-                parent_workspace=route.workspace,
-                tools=route.tools,
-                capabilities=capabilities,
-            ),
-        )
-        ensured = await ensure_conversation_workspace(
-            ConversationWorkspaceContext(
-                channels=context.channels,
-                workspaces=context.workspaces,
-                register_workspace=context.register_workspace,
-                unregister_workspace=context.unregister_workspace,
-                bind_session=context.bind_session,
-            ),
-            ConversationControlRequest(
-                conversation_id=conversation.id,
-                parent_workspace=GroupFolder(route.workspace),
-                parent_jid=ChatJid(parent.jid),
-                title=route.control_title,
-            ),
-        )
+        folder = routed_conversation_folder(route.workspace, control.conversation_id)
         bind_active_matrix_route(
             ActiveMatrixRoute(
                 workspace_folder=folder,
-                conversation_id=conversation.id,
-                control_thread_jid=ensured.control.binding.thread_jid,
+                conversation_id=control.conversation_id,
+                control_thread_jid=control.control_thread_jid,
                 route=route,
                 portal=assertion,
             )
         )
-        return conversation.id
+        return control.conversation_id
 
     async def _wake_pending_routes(self) -> None:
         for route in self._routes:
-            for conversation_id in await list_pending_conversation_ids(
+            for conversation_id in await self._operations.list_pending_conversation_ids(
                 _PROVIDER, _route_identity(route)
             ):
                 await self._wake_one(conversation_id, route)
@@ -331,18 +325,18 @@ class MatrixConnectionRuntime:
         route: ResolvedMatrixRoute,
     ) -> None:
         claim_id = ConversationClaimId(f"matrix_{secrets.token_urlsafe(18)}")
-        delivery = await claim_next_conversation_delivery(conversation_id, claim_id)
+        delivery = await self._operations.claim_delivery(conversation_id, claim_id)
         if delivery is None:
             return
         payload = delivery.payload or {}
         body = payload.get("body")
         sender = payload.get("sender")
         if not isinstance(body, str) or not isinstance(sender, str):
-            await release_conversation_delivery_claim(claim_id)
+            await self._operations.release_delivery_claim(claim_id)
             raise TypeError("Matrix delivery lost its sanitized message payload")
         active = await self._active_route_for_conversation(conversation_id, route)
         message = NewMessage(
-            id=str(delivery.identity.delivery_id),
+            id=delivery.delivery_id,
             chat_jid=active.control_thread_jid,
             sender=sender,
             sender_name=sender,
@@ -360,10 +354,10 @@ class MatrixConnectionRuntime:
         try:
             await self._require_context().ingest_message(active.control_thread_jid, message)
         except asyncio.CancelledError:
-            await release_conversation_delivery_claim(claim_id)
+            await self._operations.release_delivery_claim(claim_id)
             raise
         except Exception:  # noqa: BLE001, RUF100 - ingestion is the provider delivery boundary.
-            await release_conversation_delivery_claim(claim_id)
+            await self._operations.release_delivery_claim(claim_id)
             raise
 
     async def _active_route_for_conversation(
@@ -377,10 +371,9 @@ class MatrixConnectionRuntime:
         )
         _validate_portal(route, assertion)
         await self._ensure_route_control(route, assertion)
-        conversation = await get_conversation(conversation_id)
-        if conversation is None:
+        if not await self._operations.conversation_exists(conversation_id):
             raise RuntimeError("Matrix delivery references a missing conversation")
-        folder = routed_conversation_folder(route.workspace, conversation.id)
+        folder = routed_conversation_folder(route.workspace, conversation_id)
         active = get_active_matrix_route(folder)
         if active is None:
             raise RuntimeError("Matrix route reconciliation did not produce an active binding")
