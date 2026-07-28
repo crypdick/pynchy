@@ -1,0 +1,327 @@
+"""Tests for the container runner."""
+
+from __future__ import annotations
+
+from contextvars import ContextVar
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from pynchy.agent_protocol.api import (
+    ContainerInput,
+    ContainerOutput,
+)
+from pynchy.conversation.models import (
+    ControlSurface,
+    Conversation,
+    ConversationControlBinding,
+    ConversationId,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
+from pynchy.host.orchestrator.agent_runner import (
+    PreContainerSetupRequest,
+    build_admin_system_notices,
+    pre_container_setup,
+    session_tracking_output_handler,
+)
+from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
+from pynchy.identifiers import (
+    ChatJid,
+    GroupFolder,
+    SessionId,
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,
+)
+from tests.container_runner_support import (
+    _AgentRunnerDeps,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+TEST_GROUP = WorkspaceProfile(
+    jid="test@g.us",
+    name="Test Group",
+    folder="test-group",
+    trigger="@pynchy",
+    added_at="2024-01-01T00:00:00.000Z",
+)
+
+TEST_INPUT = ContainerInput(
+    messages=[
+        {
+            "message_type": "user",
+            "sender": "user@s.whatsapp.net",
+            "sender_name": "User",
+            "content": "Hello",
+            "timestamp": "2024-01-01T00:00:00.000Z",
+            "metadata": None,
+        }
+    ],
+    group_folder="test-group",
+    chat_jid="test@g.us",
+    is_admin=False,
+)
+
+
+_CR_CREDS = "pynchy.host.container_manager.credentials"
+_CR_ORCH = "pynchy.host.container_manager.orchestrator"
+_GATEWAY = "pynchy.host.container_manager.gateway"
+
+
+_SETTINGS_MODULES = [
+    "pynchy.host.orchestrator.workspace_config",
+]
+
+_test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=None)
+
+
+class TestAgentRunnerPreContainerHelpers:
+    @pytest.mark.asyncio
+    async def test_terminal_control_blocks_preflight_before_side_effects(self):
+        deps = _AgentRunnerDeps()
+        deps.session_cleared.add("project__thread_conversation-conv_terminal")
+        conversation_id = ConversationId("conv_terminal")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("project"),
+            parent_jid=ChatJid("discord:channel:project"),
+            thread_jid=ChatJid("discord:channel:terminal"),
+            title="Terminal issue",
+            updated_at="2026-07-27T00:00:00+00:00",
+            closed=True,
+        )
+        conversation = Conversation(
+            id=conversation_id,
+            workspace=GroupFolder("project"),
+            subject=ConversationSubject(
+                namespace=ConversationSubjectNamespace("linear:org:issue"),
+                key=ConversationSubjectKey("issue-terminal"),
+            ),
+            session_id=None,
+            created_at="2026-07-27T00:00:00+00:00",
+            updated_at="2026-07-27T00:00:00+00:00",
+            control_closed=True,
+        )
+        taint = AsyncMock()
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation",
+                new_callable=AsyncMock,
+                return_value=conversation,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.mark_session_security_taint",
+                taint,
+            ),
+            pytest.raises(ConversationControlClosedError, match="conv_terminal"),
+        ):
+            await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    runtime=deps.agent_execution_runtime,
+                    group=WorkspaceProfile(
+                        jid="discord:channel:terminal",
+                        name="Terminal issue",
+                        folder="project__thread_conversation-conv_terminal",
+                        trigger="@Pynchy",
+                    ),
+                    chat_jid="discord:channel:terminal",
+                    messages=[{"content": "stale run"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="external:linear",
+                    is_scheduled_task=False,
+                    repo_access_override=None,
+                )
+            )
+
+        taint.assert_not_awaited()
+        assert deps.session_cleared == {"project__thread_conversation-conv_terminal"}
+
+    @pytest.mark.asyncio
+    async def test_session_tracking_output_handler_records_session(self):
+        deps = _AgentRunnerDeps()
+        on_output = AsyncMock()
+        conversation_id = ConversationId("conv_opaque-id-")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("admin"),
+            parent_jid=ChatJid("discord:channel:parent"),
+            thread_jid=ChatJid("discord:channel:thread"),
+            title="Opaque conversation",
+            updated_at="2026-07-23T23:40:00+00:00",
+        )
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:thread-1"},
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ) as persist,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ) as update_checkpoint,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ) as get_binding,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
+        ):
+            handler = session_tracking_output_handler(
+                deps,
+                "admin__thread_conversation-conv_opaque-id",
+                "discord:channel:thread",
+                on_output,
+            )
+            await handler(output)
+
+        assert deps.sessions == {"admin__thread_conversation-conv_opaque-id": "codex:thread-1"}
+        persist.assert_awaited_once()
+        get_binding.assert_awaited_once_with(ChatJid("discord:channel:thread"))
+        persist_conversation.assert_awaited_once_with(
+            conversation_id,
+            SessionId("codex:thread-1"),
+        )
+        update_checkpoint.assert_awaited_once_with(
+            "admin__thread_conversation-conv_opaque-id",
+            "codex:thread-1",
+        )
+        on_output.assert_awaited_once_with(output)
+
+    @pytest.mark.asyncio
+    async def test_session_tracking_output_handler_skips_unbound_chat(self):
+        deps = _AgentRunnerDeps()
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:thread-1"},
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
+        ):
+            handler = session_tracking_output_handler(
+                deps,
+                "admin",
+                "discord:channel:admin",
+                None,
+            )
+            await handler(output)
+
+        persist_conversation.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_scheduled_session_tracks_durable_runtime_and_checkpoint(self):
+        deps = _AgentRunnerDeps()
+        conversation_id = ConversationId("conv_scheduled-thread")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("project"),
+            parent_jid=ChatJid("discord:channel:project"),
+            thread_jid=ChatJid("discord:channel:linear-thread"),
+            title="Scheduled issue",
+            updated_at="2026-07-25T23:00:00+00:00",
+        )
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:scheduled-thread"},
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ) as persist,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ) as update_checkpoint,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ) as get_binding,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
+        ):
+            handler = session_tracking_output_handler(
+                deps,
+                "project__thread_discord-channel-linear-thread",
+                "discord:channel:linear-thread",
+                None,
+            )
+            await handler(output)
+
+        assert deps.sessions == {
+            "project__thread_discord-channel-linear-thread": "codex:scheduled-thread"
+        }
+        persist.assert_awaited_once_with(
+            GroupFolder("project__thread_discord-channel-linear-thread"),
+            SessionId("codex:scheduled-thread"),
+        )
+        get_binding.assert_awaited_once_with(ChatJid("discord:channel:linear-thread"))
+        persist_conversation.assert_awaited_once_with(
+            conversation_id,
+            SessionId("codex:scheduled-thread"),
+        )
+        update_checkpoint.assert_awaited_once_with(
+            "project__thread_discord-channel-linear-thread",
+            "codex:scheduled-thread",
+        )
+
+    def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
+        notices = build_admin_system_notices(
+            is_admin=True,
+            repo_dirty=True,
+            unpushed_commits=2,
+        )
+
+        assert any("uncommitted local changes" in notice for notice in notices)
+        assert any("haven't been pushed" in notice for notice in notices)
+        assert notices[-1].startswith("Consider whether to address")

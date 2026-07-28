@@ -2,28 +2,3 @@
 # entry once split below the 600-logical-line test budget.
 [files]
 "tests/conftest.py" = 929
-"tests/live/test_channel_parity.py" = 674
-"tests/test_action_intents.py" = 609
-"tests/test_agent_runner.py" = 710
-"tests/test_app_integration.py" = 748
-"tests/test_container_runner.py" = 3273
-"tests/test_conversation_routing.py" = 867
-"tests/test_discord_channel.py" = 996
-"tests/test_gateway.py" = 655
-"tests/test_group_queue.py" = 772
-"tests/test_ipc_auth.py" = 673
-"tests/test_ipc_bash_security.py" = 654
-"tests/test_linear_decision_inbox.py" = 999
-"tests/test_linear_integration.py" = 711
-"tests/test_linear_webhooks.py" = 2110
-"tests/test_linear_work_items.py" = 764
-"tests/test_mcp_port_allocation.py" = 784
-"tests/test_mcp_proxy.py" = 688
-"tests/test_message_handler.py" = 2379
-"tests/test_runtime_harness.py" = 912
-"tests/test_state.py" = 1954
-"tests/test_status.py" = 929
-"tests/test_task_scheduler.py" = 2164
-"tests/test_temporal_scheduler.py" = 2161
-"tests/test_webhook_lifecycle.py" = 850
-"tests/test_workspace_reconcile.py" = 829
