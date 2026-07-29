@@ -4,5 +4,8 @@ schema_version = 1
 enabled = false
 schedule = "0 9 * * 1"
 workspace = "pynchy"
-prompt_file = "weekly-review.md"
+prompt = """
+Review the previous week, summarize the most important outcomes, and identify
+the three highest-leverage priorities for the coming week.
+"""
 display_name = "Weekly review"

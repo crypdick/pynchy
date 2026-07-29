@@ -43,15 +43,18 @@ from pynchy.config.api import (
     automation_projection,
     configuration_source_digest,
     get_settings,
+    load_prompt_catalog,
     load_runtime_candidate,
     mutate_config_toml,
     parse_chat_ref,
     publish_settings,
+    read_prompt,
     reset_settings,
     resolve_tool_access,
     restart_fingerprint,
     runtime_policy_changes,
     tool_process_environment,
+    validate_settings_mapping,
 )
 from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves scheduled-binding annotations.
     Conversation,
@@ -120,6 +123,7 @@ from pynchy.host.container_manager.security.approval import (
     list_pending_approvals,
 )
 from pynchy.host.container_manager.security.audit import configure_security_audit_storage
+from pynchy.host.container_manager.security.cop import configure_cop_prompt_provider
 from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
 from pynchy.host.container_manager.security.gate import (
     ResolvedSecurityConfig,
@@ -285,6 +289,8 @@ from pynchy.identifiers import (
 )
 from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves app annotations at runtime.
     LinearPlanReviewAdmission,
+    LinearPlanReviewRequest,
+    LinearPlanReviewResult,
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
@@ -471,15 +477,32 @@ def _resolve_mcp_workspace_config(
     )
 
 
+def _read_selected_prompts(names: list[str]) -> str | None:
+    if not names:
+        return None
+    settings = get_settings()
+    return load_prompt_catalog(
+        default_prompts=settings.project_root / "data/defaults/prompts",
+        personalized_prompts=settings.project_root / "data/personalization/prompts",
+    ).compose(names)
+
+
+def _read_current_prompt(field: str) -> str:
+    settings = get_settings()
+    return read_prompt(getattr(settings.prompts, field), settings.project_root)
+
+
 def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     """Wire container policy readers to the current host configuration."""
     configure_workspace_config_runtime(
         WorkspaceConfigRuntime(
             get_settings=get_settings,
+            read_prompts=_read_selected_prompts,
             parse_workspace_config=WorkspaceConfig.model_validate,
             apply_tool_access=apply_tool_access,
             resolve_tool_access=resolve_tool_access,
             mutate_config_toml=mutate_config_toml,
+            validate_settings_mapping=validate_settings_mapping,
             reset_settings=reset_settings,
         )
     )
@@ -1133,6 +1156,7 @@ class PynchyApp(ThreadRouting):
             model=settings.security.cop_model or settings.agent.model,
             wire_api=settings.security.cop_wire_api,
         )
+        configure_cop_prompt_provider(_read_current_prompt)
 
     @property
     def message_broadcaster(self) -> MessageBroadcaster:
@@ -1353,9 +1377,19 @@ class PynchyApp(ThreadRouting):
         await output_handler.broadcast_agent_input(self, chat_jid, messages, source=source)
 
     run_agent = agent_runner.run_agent
-    review_linear_plan = linear_plan_review.review_linear_plan
     automation_memory_dir = staticmethod(automation_memory_dir)
     sync_automation_memory = staticmethod(sync_automation_memory)
+
+    async def review_linear_plan(
+        self,
+        request: LinearPlanReviewRequest,
+    ) -> LinearPlanReviewResult:
+        """Run one plan review with the current configured reviewer prompt."""
+        return await linear_plan_review.review_linear_plan(
+            self,
+            request,
+            _read_current_prompt("plan_freshness"),
+        )
 
     def emit(self, event: Event) -> None:
         self.event_bus.emit(event)
@@ -1526,7 +1560,11 @@ class PynchyApp(ThreadRouting):
                 result_future.cancel()
                 raise
 
-        return await run_host_learning_review(packet, run_agent_via_queue)
+        return await run_host_learning_review(
+            packet,
+            run_agent_via_queue,
+            _read_current_prompt("learning"),
+        )
 
     async def reconcile_linear_work_items(self) -> int | None:
         """Reconcile managed Linear work when at least one board is configured."""

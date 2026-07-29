@@ -106,18 +106,17 @@ def _write_runtime_tree(root: Path, *, personalized: str = "") -> Path:
 
 def _write_automation(root: Path, *, prompt: str = "initial prompt") -> Path:
     automations = root / "data/personalization/automations"
-    automations.mkdir()
-    prompt_path = automations / "prompt.md"
-    prompt_path.write_text(prompt, encoding="utf-8")
-    (automations / "weekly.toml").write_text(
+    automations.mkdir(exist_ok=True)
+    automation_path = automations / "weekly.toml"
+    automation_path.write_text(
         "schema_version = 1\n"
         "\n[job]\n"
         'workspace = "test"\n'
         'schedule = "0 9 * * 1"\n'
-        'prompt_file = "prompt.md"\n',
+        f'prompt = """{prompt}"""\n',
         encoding="utf-8",
     )
-    return prompt_path
+    return automation_path
 
 
 def test_runtime_candidate_preserves_dotenv_and_environment_precedence(
@@ -382,7 +381,7 @@ async def test_automation_prompt_change_reconciles_without_restart(
     publish_settings(published)
     applied_hash = restart_fingerprint(published)
     before = automation_projection(published)
-    prompt_path.write_text("updated prompt", encoding="utf-8")
+    _write_automation(tmp_path, prompt="updated prompt")
 
     candidate = load_runtime_candidate()
     assert restart_fingerprint(candidate) == applied_hash

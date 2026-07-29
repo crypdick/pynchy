@@ -26,17 +26,25 @@ planned actions without changing a channel or runtime registration.
 Use `scopes` when many logical owners share one visible category:
 
 ```toml
-[workspaces.relationships]
+# data/personalization/workspaces/relationships.toml
+schema_version = 1
+
+[workspace]
 profiles = ["relationships"]
 
-[[workspaces.relationships.scopes]]
+[[workspace.scopes]]
 workspace = "fam"
 profiles = ["fam"]
+```
 
-[workspaces.admin]
+```toml
+# data/personalization/workspaces/admin.toml
+schema_version = 1
+
+[workspace]
 profiles = ["admin"]
 
-[[workspaces.admin.scopes]]
+[[workspace.scopes]]
 workspace = "pynchy-dev"
 profiles = ["pynchy-dev"]
 ```
@@ -48,11 +56,12 @@ never grants a semantic child the category's broader policy.
 
 ## Config Merging
 
-Workspace specs come from plugins and layered `pynchy.toml` settings. When both define the same workspace folder, **personalized config wins**.
+Workspace specs come from plugins and layered workspace documents. When both
+define the same workspace folder, **personalized config wins**.
 
 ```
 Plugin provides:   workspace + profile config
-User overrides:    [workspaces.same-folder] in data/personalization/pynchy.toml
+User overrides:    data/personalization/workspaces/same-folder.toml
 Result:            Personalized config takes priority
 ```
 
@@ -62,7 +71,7 @@ This lets plugins provide sensible defaults while users retain full control.
 
 Scheduled-task definitions and run evidence live in the database, but the **source of truth is the personalization tree** (and plugin specs). Temporal owns future fire times, delayed one-shots, retries, and execution state. On every startup, `reconcile_workspaces()` syncs the declared config into the database:
 
-1. Merges plugin specs with layered `pynchy.toml` workspaces
+1. Merges plugin specs with layered `workspaces/*.toml` documents
 2. Creates chat groups for workspaces missing database entries
 3. Creates or updates scheduled tasks from `automations/*.toml`
 4. Creates channel aliases across messaging platforms
@@ -93,7 +102,7 @@ For file-backed jobs, the reconciler compares the database row against the autom
 
 Each scheduled run resolves the target workspace's current effective model. To
 change a schedule or prompt, edit its automation file. To change a repo mount
-or model override, edit `data/personalization/pynchy.toml`. Pynchy applies each
+or model override, edit the workspace TOML. Pynchy applies each
 valid edit using the [field-specific configuration refresh
 mechanism](../usage/personalization.md#apply-configuration-changes). No manual
 database edits are required.
@@ -103,6 +112,8 @@ database edits are required.
 | Field | Type | Description |
 |-------|------|-------------|
 | `profiles` | `list[str]` | Profile names from `[profiles.*]`, applied in order |
+| `soul` | `str` | Optional `souls/*` prompt ID; defaults to `[prompts].default_soul` |
+| `pipeline` | `str` | Optional named pipeline; defaults to `[prompts].default_pipeline` |
 | `model` | `str` | Optional model override; takes precedence over profile and global agent models |
 | `threads` | `list[table]` | Durable child threads; add `workspace` and `profiles` for a semantic policy owner |
 | `scopes` | `list[table]` | Semantic policy owners physically placed below this root without a static child thread |

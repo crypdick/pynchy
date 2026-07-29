@@ -16,9 +16,9 @@ _JOB_AT_ERROR = "job at must be an ISO datetime"
 _JOB_SHAPE_ERROR = "jobs require exactly one of schedule, interval_minutes, or at"
 _HOST_JOB_COMMAND_ERROR = "host jobs require command"
 _HOST_JOB_SCHEDULE_ERROR = "host jobs require schedule"
-_HOST_JOB_PROMPT_ERROR = "host jobs cannot set prompt or prompt_file"
+_HOST_JOB_PROMPT_ERROR = "host jobs cannot set prompt"
 _AGENT_JOB_COMMAND_ERROR = "agent jobs cannot set command"
-_AGENT_JOB_PROMPT_ERROR = "agent jobs require prompt or prompt_file"
+_AGENT_JOB_PROMPT_ERROR = "agent jobs require prompt"
 _HOST_JOB_PRE_RUN_ERROR = "host jobs cannot set pre-run fields"
 
 
@@ -37,7 +37,6 @@ class JobConfig(_StrictModel):
     # NOTE: Update docs/usage/scheduled-tasks.md § Agent Tasks if target semantics change.
     workspace: str | None = None
     prompt: str | None = None
-    prompt_file: str | None = None
     command: str | None = None
     cwd: str | None = None
     timeout_seconds: int | None = None
@@ -136,7 +135,7 @@ class JobConfig(_StrictModel):
             raise ValueError(_HOST_JOB_COMMAND_ERROR)
         if self.schedule is None:
             raise ValueError(_HOST_JOB_SCHEDULE_ERROR)
-        if self.prompt is not None or self.prompt_file is not None:
+        if self.prompt is not None:
             raise ValueError(_HOST_JOB_PROMPT_ERROR)
         if any(
             value is not None
@@ -152,7 +151,7 @@ class JobConfig(_StrictModel):
     def _validate_deterministic_shape(self) -> JobConfig:
         if self.command is None:
             raise ValueError("deterministic workspace jobs require command")
-        if self.prompt is not None or self.prompt_file is not None:
+        if self.prompt is not None:
             raise ValueError("deterministic workspace jobs cannot set prompts")
         if any(
             value is not None
@@ -168,7 +167,7 @@ class JobConfig(_StrictModel):
     def _validate_agent_shape(self) -> JobConfig:
         if self.command is not None:
             raise ValueError(_AGENT_JOB_COMMAND_ERROR)
-        if (self.prompt is None) == (self.prompt_file is None):
+        if self.prompt is None:
             raise ValueError(_AGENT_JOB_PROMPT_ERROR)
         if self.pre_run_command is None and (
             self.pre_run_cwd is not None or self.pre_run_timeout_seconds is not None

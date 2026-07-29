@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from conftest import make_container_runtime_operations
 
 from pynchy.agent_protocol.api import ContainerOutput
+from pynchy.config.api import read_prompt
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.linear_plan_review import review_linear_plan
 from pynchy.linear_plan_types import (
@@ -71,6 +73,10 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
             updated_at="2026-07-26T20:00:00Z",
             public_source=True,
         ),
+        read_prompt(
+            "reviewers/plan-freshness",
+            Path(__file__).parents[1],
+        ),
     )
 
     assert result.decision is LinearPlanReviewDecision.AMEND
@@ -78,10 +84,10 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
     assert deps.reviewer_group is not None
     assert deps.reviewer_group.jid == "linear-plan-review:issue-1"
     assert deps.input_source == "external:hidden_plan_review"
-    assert deps.system_notices is not None
-    assert "do not delegate to subagents" in deps.system_notices[0]
+    assert deps.system_notices is None
     assert deps.review_prompt is not None
     normalized_prompt = " ".join(deps.review_prompt.split())
+    assert "do not delegate to subagents" in normalized_prompt
     assert "HEAD or SHA movement alone is not evidence" in normalized_prompt
     assert "implementation worker owns those adaptations" in normalized_prompt
     assert "not reasons for another human approval cycle" in normalized_prompt

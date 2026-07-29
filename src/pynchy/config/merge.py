@@ -24,7 +24,6 @@ def _deduplicate(items: list[str]) -> list[str]:
 class ResolvedWorkspaceConfig:
     """Fully resolved config after expanding and merging selected profiles."""
 
-    prompts: list[str]
     skills: list[str]
     tools: list[str]
     repo: list[str]
@@ -35,13 +34,14 @@ class ResolvedWorkspaceConfig:
     contains_secrets: bool
     model_reasoning_effort: str | None = None
     cop_active: bool = True
+    soul: str | None = None
+    pipeline: str | None = None
     denied_skills: list[str] = field(default_factory=list)
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
 def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspaceConfig:
     """Merge profiles in already-expanded composition order."""
-    prompts: list[str] = []
     skills: list[str] = []
     denied_skills: list[str] = []
     tools: list[str] = []
@@ -55,7 +55,6 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     capabilities: dict[str, CapabilityRule] = {}
 
     for profile in profiles:
-        prompts.extend(profile.prompts)
         skills.extend(profile.skills)
         denied_skills.extend(profile.denied_skills)
         tools.extend(profile.tools)
@@ -78,7 +77,6 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         )
 
     return ResolvedWorkspaceConfig(
-        prompts=_deduplicate(prompts),
         skills=_deduplicate(skills),
         denied_skills=_deduplicate(denied_skills),
         tools=_deduplicate(tools),

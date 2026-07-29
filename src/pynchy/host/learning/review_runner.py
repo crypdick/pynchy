@@ -19,7 +19,11 @@ _LEARNING_PATHS_UNAVAILABLE_ERROR = (
 _LEARNING_REVIEWER_RESULT_ERROR = "learning reviewer returned {result!r}"
 
 
-async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> str:
+async def run_learning_review(
+    packet: LearningPacket,
+    run_agent: RunAgent,
+    reviewer_prompt: str,
+) -> str:
     """Run the hidden reviewer agent for one learning packet."""
     if not should_review(packet):
         return "skipped"
@@ -46,7 +50,7 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
             is_admin=False,
         ),
         reviewer_jid,
-        [{"role": "user", "content": build_review_prompt(packet, paths)}],
+        [{"role": "user", "content": build_review_prompt(packet, paths, reviewer_prompt)}],
         on_output=on_output,
         extra_system_notices=None,
         is_scheduled_task=True,

@@ -14,7 +14,7 @@ See docs/plans/2026-02-24-host-mutating-cop-design.md
 from __future__ import annotations
 
 import json as _json
-from collections.abc import (  # noqa: TC003 - beartype resolves Cop context loader annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -25,18 +25,27 @@ from pynchy.host.container_manager.security.cop_client import (
     CopGatewayUnavailableError,
     request_inspection,
 )
-from pynchy.host.container_manager.security.cop_prompts import (
-    BASH_SYSTEM_PROMPT,
-    INBOUND_SYSTEM_PROMPT,
-    OUTBOUND_SYSTEM_PROMPT,
-    TAINT_SYSTEM_PROMPT,
-)
 from pynchy.logger import logger
 from pynchy.redaction import RedactionSession
 from pynchy.security_context import (  # noqa: TC001 - beartype resolves Cop context loader annotations at runtime.
     RecentSecurityContext,
     SecurityExecutionAuthority,
 )
+
+CopPromptProvider = Callable[[str], str]
+
+
+def _unconfigured_prompt_provider(_field: str) -> str:
+    raise RuntimeError("Cop prompts have not been composed")
+
+
+_prompt_provider: CopPromptProvider = _unconfigured_prompt_provider
+
+
+def configure_cop_prompt_provider(provider: CopPromptProvider) -> None:
+    """Bind live prompt resolution at host composition."""
+    global _prompt_provider  # noqa: PLW0603 - one host process owns Cop configuration.
+    _prompt_provider = provider
 
 
 class CopContextAvailability(StrEnum):
@@ -152,6 +161,10 @@ class CopCommandRisk:
     secret_tainted: bool
 
 
+def _configured_prompt(field: str) -> str:
+    return _prompt_provider(field)
+
+
 async def inspect_outbound(
     operation: str,
     payload_summary: str,
@@ -165,7 +178,7 @@ async def inspect_outbound(
             (e.g., the git diff, the task prompt, the group config)
     """
     return await _inspect(
-        system_prompt=OUTBOUND_SYSTEM_PROMPT,
+        system_prompt=_configured_prompt("cop_outbound"),
         user_content=_action_review_content(
             operation,
             payload_summary,
@@ -186,7 +199,7 @@ async def inspect_inbound(
         content: The untrusted content to inspect
     """
     return await _inspect(
-        system_prompt=INBOUND_SYSTEM_PROMPT,
+        system_prompt=_configured_prompt("cop_inbound"),
         user_content=f"Source: {source}\n\nContent:\n{content[:5000]}",
         context=f"inbound:{source}",
     )
@@ -205,7 +218,7 @@ async def inspect_bash(
     context = f"bash:{command[:100]}"
     try:
         result = await request_inspection(
-            system_prompt=BASH_SYSTEM_PROMPT,
+            system_prompt=_configured_prompt("cop_bash"),
             user_content=_command_review_content(command, inspection_context, risk),
         )
         verdict = _parse_command_verdict(result)
@@ -242,7 +255,7 @@ async def inspect_secret_taint(
     context = f"secret-taint:{tool_name}"
     try:
         result = await request_inspection(
-            system_prompt=TAINT_SYSTEM_PROMPT,
+            system_prompt=_configured_prompt("cop_taint"),
             user_content=_taint_review_content(tool_name, candidates),
         )
         verdict = _parse_taint_verdict(result)

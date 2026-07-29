@@ -38,10 +38,6 @@ from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
 )
-from pynchy.plugins.integrations.linear_work_item_prompts import (
-    EXECUTION_CONTRACT,
-    FOLLOW_UPS_CONTRACT,
-)
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
     acquire_work_item_lease,
@@ -242,13 +238,12 @@ async def _task_for_issue(
         context = fence_untrusted_content(context, source="linear-decision-inbox")
     is_follow_up = admission.status == FOLLOW_UPS_STATUS
     task_prefix = "linear-follow-ups" if is_follow_up else "linear-execute"
-    contract = FOLLOW_UPS_CONTRACT if is_follow_up else EXECUTION_CONTRACT
     input_kind = "follow-ups" if is_follow_up else "authorized"
     return ScheduledTask(
         id=admission.task_id or f"{task_prefix}-{issue.identifier.lower()}-{digest}",
         group_folder=workspace.folder,
         chat_jid=workspace.jid,
-        prompt=f"{contract}\n\n{context}",
+        prompt=context,
         schedule_type="once",
         schedule_value=occurred_at,
         session_policy=SessionPolicy.CONTINUE,

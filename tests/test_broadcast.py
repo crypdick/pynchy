@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -24,9 +25,6 @@ from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.plugins.api import NewMessage
 from pynchy.state import get_chat_history, store_message
 from pynchy.workspace.api import WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
@@ -80,7 +78,7 @@ async def _seed_message(app: PynchyApp, msg: NewMessage) -> None:
 def _patch_test_settings(tmp_path: Path):
     """Patch settings accessors and container helpers for test isolation."""
     s = make_settings(
-        project_root=tmp_path,
+        project_root=Path(__file__).parents[1],
         groups_dir=tmp_path / "groups",
         data_dir=tmp_path / "data",
     )

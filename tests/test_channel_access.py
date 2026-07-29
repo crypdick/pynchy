@@ -51,7 +51,6 @@ class TestResolveChannelConfig:
         with patch("pynchy.config.access.get_settings", return_value=make_settings()):
             result = resolve_channel_config("nonexistent")
 
-        assert result.prompts == []
         assert result.skills == []
         assert result.tools == []
         assert result.repo == []
@@ -62,10 +61,9 @@ class TestResolveChannelConfig:
     def test_selected_profiles_are_composed(self):
         settings = make_settings(
             profiles={
-                "base": ProfileConfig(prompts=["base"], repo=["owner/base"]),
+                "base": ProfileConfig(repo=["owner/base"]),
                 "admin": ProfileConfig(
                     includes=["base"],
-                    prompts=["admin"],
                     repo=["owner/admin"],
                     is_admin=True,
                     contains_secrets=True,
@@ -77,7 +75,6 @@ class TestResolveChannelConfig:
         with patch("pynchy.config.access.get_settings", return_value=settings):
             result = resolve_channel_config("ops")
 
-        assert result.prompts == ["base", "admin"]
         assert result.repo == ["owner/base", "owner/admin"]
         assert result.is_admin is True
         assert result.contains_secrets is True

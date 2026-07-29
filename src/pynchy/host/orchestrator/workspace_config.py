@@ -1,7 +1,7 @@
 """Workspace configuration — reads layered personalization via Settings.
 
-Workspaces are defined in [workspaces.<name>] sections of pynchy.toml.
-Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
+Workspaces are defined in workspaces/<name>.toml documents.
+Runtime creation (e.g. via IPC) writes the corresponding workspace document.
 """
 
 from __future__ import annotations
@@ -21,6 +21,9 @@ import tomlkit
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
+from pynchy.host.orchestrator.pipeline_context import (
+    prompt_ids_for_context as _prompt_ids_for_context,
+)
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
     resolve_display_name,
@@ -57,19 +60,23 @@ def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
 @dataclass(frozen=True)
 class WorkspaceConfigRuntime:
     get_settings: Callable[[], Any]
+    read_prompts: Callable[[list[str]], str | None]
     parse_workspace_config: Callable[[object], Any]
     apply_tool_access: Callable[..., tuple[Any, Any]]
     resolve_tool_access: Callable[..., Any]
     mutate_config_toml: Callable[..., object]
+    validate_settings_mapping: Callable[[dict[str, Any]], Any]
     reset_settings: Callable[[], None]
 
 
 _runtime = WorkspaceConfigRuntime(
     get_settings=_unconfigured_runtime,
+    read_prompts=_unconfigured_runtime,
     parse_workspace_config=_unconfigured_runtime,
     apply_tool_access=_unconfigured_runtime,
     resolve_tool_access=_unconfigured_runtime,
     mutate_config_toml=_unconfigured_runtime,
+    validate_settings_mapping=_unconfigured_runtime,
     reset_settings=_unconfigured_runtime,
 )
 
@@ -82,6 +89,10 @@ def configure_workspace_config_runtime(runtime: WorkspaceConfigRuntime) -> None:
 
 def get_settings() -> Settings:
     return cast("Settings", _runtime.get_settings())
+
+
+def read_prompts(names: list[str]) -> str | None:
+    return _runtime.read_prompts(names)
 
 
 def apply_tool_access(
@@ -210,7 +221,7 @@ def load_workspace_config(
 ) -> WorkspaceConfig | None:
     """Read workspace config for a group from Settings.
 
-    Returns None if the group has no configured [workspaces.<name>] section.
+    Returns None if the group has no configured workspace document or plugin spec.
     """
     runtime_restriction = _runtime_restrictions.get(group_folder)
     if conversation_id_from_folder(group_folder) is not None and runtime_restriction is None:
@@ -311,6 +322,20 @@ def load_resolved_config(
     if resolved is None:
         return None
     return apply_tool_access(effective_settings.tools, resolved)[0]
+
+
+def prompt_ids_for_context(
+    resolved: ResolvedWorkspaceConfig | None,
+    input_source: str,
+    *,
+    settings: Settings | None = None,
+) -> tuple[str, ...]:
+    """Return the selected soul and role prompt for one agent context."""
+    return _prompt_ids_for_context(
+        resolved,
+        input_source,
+        settings=settings or get_settings(),
+    )
 
 
 def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:
@@ -524,27 +549,23 @@ async def reconcile_workspaces(
 
 
 def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
-    """Programmatically add a workspace to personalized settings using tomlkit.
+    """Programmatically write one versioned workspace declaration."""
+    if Path(folder).name != folder or not folder or folder.startswith("."):
+        raise ValueError(f"Invalid workspace name: {folder!r}")
+    data = config.model_dump(exclude_none=True, exclude_defaults=True)
+    candidate = get_settings().model_dump(mode="python")
+    candidate["workspaces"][folder] = data
+    _runtime.validate_settings_mapping(candidate)
 
-    Preserves existing comments and formatting. Creates [workspaces.<folder>]
-    section. Resets the settings cache so next get_settings() picks it up.
-    """
-    toml_path = Path("data/personalization/pynchy.toml")
-
-    def _mutate(doc: tomlkit.TOMLDocument) -> None:
-        if "workspaces" not in doc:
-            doc.add("workspaces", tomlkit.table(is_super_table=True))
-
-        ws_table = tomlkit.table()
-        data = config.model_dump(exclude_none=True, exclude_defaults=True)
-        for key, value in data.items():
-            ws_table.add(key, value)
-
-        cast("Any", doc["workspaces"])[folder] = ws_table
-
-    mutate_config_toml(toml_path, _mutate)
-
-    # Reset so next get_settings() re-reads the file
+    workspace_path = Path("data/personalization/workspaces") / f"{folder}.toml"
+    workspace_path.parent.mkdir(parents=True, exist_ok=True)
+    doc = tomlkit.document()
+    doc.add("schema_version", tomlkit.item(1))
+    workspace_table = tomlkit.table()
+    for key, value in data.items():
+        workspace_table.add(key, value)
+    doc.add("workspace", workspace_table)
+    workspace_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
     reset_settings()
 
 

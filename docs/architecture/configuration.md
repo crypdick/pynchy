@@ -28,13 +28,17 @@ Scalar and list values replace the lower layer. Pydantic validates the composed
 mapping only after the merge, so a higher layer can extend a mapping declared
 by a lower layer without copying the entire section.
 
-Automations, prompts, and skills use identity-aware composition instead of a generic
-directory overlay:
+Automations, workspaces, pipelines, prompts, and skills use identity-aware
+composition instead of a generic directory overlay:
 
 - An automation's identity is its TOML filename. The personalized document
   replaces a same-named default document.
-- A prompt's identity is its Markdown basename. The personalized file replaces
-  a same-named default prompt.
+- A workspace or pipeline's identity is its TOML filename. Definitions cannot
+  collide across defaults, personalization, or inline settings.
+- A prompt's identity is its scoped relative path without `.md`, such as
+  `souls/default`. Prompt IDs cannot collide across defaults and
+  personalization; operators select a differently named prompt instead of
+  shadowing a default.
 - A skill's identity is its directory and frontmatter name. Personalized skills
   can replace public defaults but cannot shadow code-coupled core or plugin
   skills.

@@ -274,7 +274,6 @@ async def test_raw_ipc_cannot_invoke_route_tool_omitted_by_runtime_policy(
     settings = _make_settings()
     settings.data_dir = tmp_path
     resolved = ResolvedWorkspaceConfig(
-        prompts=[],
         skills=[],
         tools=[],
         repo=[],
@@ -467,7 +466,6 @@ async def test_omitted_workspace_tool_fails_before_human_approval(tmp_path, regi
     settings = _make_settings()
     settings.data_dir = tmp_path
     resolved = ResolvedWorkspaceConfig(
-        prompts=[],
         skills=[],
         tools=[],
         repo=[],
@@ -511,7 +509,6 @@ async def test_approved_replay_rejects_tool_removed_from_workspace_profile():
     action = _make_action_catalog("computer_use").action_for("computer_use")
     assert action is not None
     resolved = ResolvedWorkspaceConfig(
-        prompts=[],
         skills=[],
         tools=[],
         repo=[],

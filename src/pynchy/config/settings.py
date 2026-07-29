@@ -50,6 +50,10 @@ from pynchy.config.models import (
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
+from pynchy.config.prompts import (
+    PipelineConfig,
+    PromptConfig,
+)
 from pynchy.config.scheduler_models import (
     CanaryConfig,
     CommandWordsConfig,
@@ -161,6 +165,8 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     learning: LearningConfig = LearningConfig()
     repos: ReposConfig = Field(default_factory=ReposConfig)
+    prompts: PromptConfig = Field(default_factory=PromptConfig)
+    pipelines: dict[str, PipelineConfig] = Field(default_factory=dict)
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
     workspace_migrations: dict[str, WorkspaceMigrationConfig] = Field(default_factory=dict)
@@ -307,6 +313,8 @@ class Settings(BaseSettings):
         resolved = merge_workspace_profiles([self.profiles[name] for name in profile_names])
         return replace(
             resolved,
+            soul=workspace.soul or self.prompts.default_soul,
+            pipeline=workspace.pipeline or self.prompts.default_pipeline,
             model=workspace.model if workspace.model is not None else resolved.model,
             model_reasoning_effort=workspace.model_reasoning_effort,
         )
@@ -319,10 +327,13 @@ class Settings(BaseSettings):
         semantic = semantic_workspace_configs(self.workspaces).get(workspace_name)
         if semantic is None:
             return None
-        _parent, thread = semantic
+        parent, thread = semantic
+        parent_config = self.workspaces[parent]
         return WorkspaceConfig.model_validate(
             {
                 "profiles": thread.profiles,
+                "soul": thread.soul or parent_config.soul,
+                "pipeline": thread.pipeline or parent_config.pipeline,
                 "model": thread.model,
                 "model_reasoning_effort": thread.model_reasoning_effort,
             }

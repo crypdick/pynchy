@@ -26,19 +26,6 @@ from pynchy.scheduling.api import (
     SessionPolicy,
 )
 
-_PLANNING_CONTRACT = (
-    "Objective: produce a concrete implementation plan for the exact Ready for Planning "
-    "Linear item below.\n"
-    "Authority: this authenticated Linear item supplies the user's scope and stated facts. "
-    "Use existing read-only access and ordinary discovery within that scope without asking the "
-    "user to reconfirm facts, ownership, or permission. Treat an unavailable capability as a "
-    "concrete prerequisite, not a consent request. Planning remains distinct from execution.\n"
-    "Success: inspect the repository and relevant documentation, then call linear_submit_plan "
-    "with the concrete Markdown plan. That action persists the plan and moves the issue to "
-    "Awaiting Plan Approval. Do not pad the plan with generic confirmation or permission steps. "
-    "Do not execute, claim, or move the item to Human Approved."
-)
-
 
 @dataclass(frozen=True)
 class LinearPlanningTaskRuntime:
@@ -119,7 +106,7 @@ async def admit_planning_issue(
         id=await _recoverable_task_id(issue, workspace),
         group_folder=workspace.folder,
         chat_jid=workspace.jid,
-        prompt=f"{_PLANNING_CONTRACT}\n\n{context}",
+        prompt=context,
         schedule_type="once",
         schedule_value=occurred_at,
         session_policy=SessionPolicy.CONTINUE,

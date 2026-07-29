@@ -338,13 +338,9 @@ class OpenAIAgentCore:
             context_manager = cast("AbstractAsyncContextManager[MCPServer]", server)
             await self._mcp_stack.enter_async_context(context_manager)
 
-        # Build system instructions
-        instructions = (
-            "You are a helpful assistant running inside a container. "
-            "You have shell access and can edit files."
-        )
-        if self.config.system_prompt_append:
-            instructions += "\n\n" + self.config.system_prompt_append
+        if not self.config.system_prompt_append:
+            raise ValueError("OpenAI core requires a resolved Pynchy prompt context")
+        instructions = self.config.system_prompt_append
 
         model = self.config.extra.get("model", "openai/gpt-5.5")
         self._model_primary = model

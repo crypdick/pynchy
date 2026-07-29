@@ -20,6 +20,10 @@ from pynchy.host.orchestrator.config_job_execution import (
     run_deterministic_config_job,
 )
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.pipeline_review import (
+    PipelineReviewHostDeps,
+    run_configured_pipeline_reviews,
+)
 from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
 from pynchy.host.orchestrator.scheduled_failure_policy import (
@@ -271,12 +275,19 @@ async def resume_interrupted_scheduled_turn(
     )
     if agent_run.terminal_outcome is not None:
         return agent_run.terminal_outcome
+    result, error = await run_configured_pipeline_reviews(
+        task,
+        cast("PipelineReviewHostDeps", deps),
+        group,
+        result=agent_run.result,
+        error=agent_run.error,
+    )
     outcome = await _finish_scheduled_agent_run(
         task,
         deps,
         start_time=start_time,
-        result=agent_run.result,
-        error=agent_run.error,
+        result=result,
+        error=error,
         turn_id=agent_run.turn_id,
     )
     if outcome is TurnOutcome.COMPLETED:
@@ -453,11 +464,18 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
             turn_id=agent_run.turn_id,
         )
         return TurnOutcome.RETRY
+    result, error = await run_configured_pipeline_reviews(
+        task,
+        cast("PipelineReviewHostDeps", deps),
+        group,
+        result=agent_run.result,
+        error=agent_run.error,
+    )
     return await _finish_scheduled_agent_run(
         task,
         deps,
         start_time=start_time,
-        result=agent_run.result,
-        error=agent_run.error,
+        result=result,
+        error=error,
         turn_id=agent_run.turn_id,
     )

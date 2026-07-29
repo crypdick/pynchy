@@ -21,6 +21,14 @@
 # Codex CLI only. The selected model and account must support the effort.
 # model_reasoning_effort = "ultra"
 
+# Prompt IDs are scoped paths without .md. Create new IDs under
+# prompts/souls/, prompts/executors/, or prompts/reviewers/; defaults cannot
+# be shadowed.
+# [prompts]
+# default_soul = "souls/my-soul"
+# default_executor = "executors/my-executor"
+# default_pipeline = "my-pipeline"
+
 # Exact, case-insensitive commands that freeze unfinished work for later resumption.
 # [commands.pause]
 # aliases = ["stop", "pause"]
@@ -185,15 +193,14 @@
 # enabled = false
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Profiles, Workspaces, and Jobs
+# Profiles and Jobs
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles compose with `includes = [...]`; workspaces select profiles by name.
-# List fields (prompts, skills, tools, repo) are unioned in composition order.
+# List fields (skills, tools, repo) are unioned in composition order.
 # Scalar fields such as model use later-profile-wins semantics. A workspace-level
 # model overrides its resolved profile model and the global [agent] model.
 
 # [profiles.pynchy-admin]
-# prompts = ["pynchy-admin-ops"]
 # skills = ["core", "ops"]
 # tools = ["browser"]
 # repo = ["crypdick/pynchy"]
@@ -220,23 +227,13 @@
 # includes = ["pynchy-worker", "unrestricted-computer-use"]
 
 # [profiles.pynchy-worker]
-# prompts = ["pynchy-code-improver"]
 # skills = ["core"]
 # tools = []
 # repo = ["crypdick/pynchy"]
 # is_admin = false
 # contains_secrets = false  # pragma: allowlist secret
 
-# Each [workspaces.<name>] selects one or more composable profiles.
-
-[workspaces.pynchy]
-
-# [workspaces.admin]
-# profiles = ["pynchy-admin"]
-
-# [workspaces.code-improver]
-# profiles = ["pynchy-worker"]
-# model = "chatgpt/gpt-5.3-codex-spark"
+# Each workspaces/<name>.toml file selects profiles, a soul, and a pipeline.
 
 # CLEAN ROOM POLICY: Admin workspaces cannot select tools with public_source = true.
 # Tools default to public_source = true unless configured otherwise.
@@ -264,9 +261,7 @@
 # image = "pynchy-mcp-gcal:latest"
 # port = 3000
 
-# Example workspace selecting the profile:
-# [workspaces.research]
-# profiles = ["mycompany-worker"]
+# A workspaces/research.toml file can select this profile.
 
 # Host-only Google Workspace actions through Gog. Gog's OAuth home and client
 # credentials stay on the host and are never mounted into agent containers.
@@ -441,25 +436,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles (reusable workspace config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
-# Profiles bundle prompts, skills, tools, repos, and reusable model choices.
-# Workspaces select profiles with `profiles = ["<name>"]` and may set `model`
-# for a workspace-local override. Effective config follows profile composition order.
+# Profiles bundle skills, tools, repos, and reusable model choices. Workspace
+# files select profiles and may set `model` for a local override.
 #
-# List fields (prompts, skills, tools, repo) are unioned across profiles.
+# List fields (skills, tools, repo) are unioned across profiles.
 # Scalar fields such as model use later-profile-wins semantics before a workspace
 # model override takes precedence.
 #
-# Prompts resolve from personalization first, then public defaults:
-# "base" -> data/personalization/prompts/base.md -> data/defaults/prompts/base.md.
-
 # [profiles.pynchy-dev]
-# prompts = ["pynchy-admin-ops", "pynchy-code-improver"]
 # skills = ["core", "ops"]
 # tools = ["playwright"]
 # repo = ["owner/repo"]
 # model = "chatgpt/gpt-5.3-codex"
 
 # [profiles.ray-bench]
-# prompts = ["ray-bench"]
 # repo = ["owner/ray-bench"]
 # tools = ["notebook"]

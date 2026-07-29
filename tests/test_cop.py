@@ -10,6 +10,7 @@ from unittest.mock import ANY, AsyncMock, patch
 import pytest
 
 from pynchy import state
+from pynchy.config.api import get_settings, read_prompt
 from pynchy.host.container_manager.security.cop import (
     CopCommandDecision,
     CopCommandRisk,
@@ -17,6 +18,7 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopTaintCandidate,
     CopTaintDecision,
+    configure_cop_prompt_provider,
     inspect_bash,
     inspect_inbound,
     inspect_outbound,
@@ -26,6 +28,15 @@ from pynchy.host.container_manager.security.cop import (
 from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
 
 API_DOWN_MESSAGE = "API down"
+
+
+@pytest.fixture(autouse=True)
+def _configured_cop_prompts() -> None:
+    def provider(field: str) -> str:
+        settings = get_settings()
+        return read_prompt(getattr(settings.prompts, field), settings.project_root)
+
+    configure_cop_prompt_provider(provider)
 
 
 @dataclass(frozen=True)

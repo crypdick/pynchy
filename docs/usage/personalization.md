@@ -46,10 +46,15 @@ data/personalization/
 ├── pynchy.toml
 ├── litellm.yaml
 ├── automations/
-│   ├── weekly-review.toml
-│   └── weekly-review.md
+│   └── weekly-review.toml
+├── workspaces/
+│   └── admin.toml
+├── pipelines/
+│   └── research.toml
 ├── prompts/
-│   └── my-workspace-prompt.md
+│   ├── souls/
+│   ├── executors/
+│   └── reviewers/
 └── skills/
     └── my-skill/
         └── SKILL.md
@@ -82,7 +87,7 @@ required by the changed fields:
 | Change | Application |
 |---|---|
 | Profile `skills` or `denied_skills`; learning review limits; container query timeout | Refresh before the next turn |
-| Profile prompts, model, repositories, execution mode, working directory, or security policy | Pause affected workspace queues, replace their sessions, then resume queued work |
+| Selected souls, pipelines, prompt files, profile model, repositories, execution mode, working directory, or security policy | Pause affected workspace queues, replace their sessions, then resume queued work |
 | Global reasoning effort, learning vault mounts, blocked mount patterns, or container image, memory, and idle timeout | Replace every registered workspace session |
 | Tools, admin status, profile composition or identity, [workspace topology](../superpowers/future-work/workspace-topology-hot-reconciliation.md), connections, plugins, repositories, queue policy, secrets, and other host infrastructure | Restart the host |
 
@@ -103,13 +108,16 @@ schema_version = 1
 [job]
 schedule = "0 9 * * 1"
 workspace = "admin"
-prompt_file = "weekly-review.md"
+prompt = """
+Review the previous week, summarize the important outcomes, and identify the
+three highest-leverage priorities for the coming week.
+"""
 display_name = "Weekly review"
 ```
 
-Relative `prompt_file` paths resolve from the automation file's directory. A
-personalized automation replaces a same-named public default automation as one
-unit. Do not also declare the same ID under `[jobs]` in `pynchy.toml`.
+Agent jobs require an inline `prompt`. Host and deterministic jobs reject it.
+A personalized automation replaces a same-named public default automation as
+one unit. Do not also declare the same ID under `[jobs]` in `pynchy.toml`.
 
 Runtime schedule state and run evidence remain in SQLite and Temporal. The
 automation file is the desired-state declaration, not an execution log.
@@ -142,10 +150,10 @@ sources above. Obsidian is a memory store, not a skill source.
 
 ## Prompts
 
-Prompt names select Markdown files by basename. Pynchy reads a personalized
-file from `prompts/<name>.md` when present; otherwise it reads the public
-baseline in `data/defaults/prompts/`. A personalized file replaces, rather than
-extends, a same-named default.
+Prompt IDs select a unique Markdown file under `prompts/souls/`,
+`prompts/executors/`, or `prompts/reviewers/`. Defaults and personalization
+cannot declare the same ID. See [Prompts and pipelines](prompts.md) for prompt
+selection, pipeline files, and workspace-specific soul overrides.
 
 ## Validate in CI
 
