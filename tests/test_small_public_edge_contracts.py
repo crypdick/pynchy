@@ -19,7 +19,12 @@ from pynchy.host.container_manager.ipc.ledger import claim_request_for_execution
 from pynchy.host.container_manager.ipc.protocol import IpcRequestEnvelope, make_ipc_request
 from pynchy.plugins.channels.discord.api import DiscordChannel
 from pynchy.plugins.integrations.linear_board_mutations import apply_workspace_todo_move
-from pynchy.plugins.integrations.linear_board_payloads import LinearBoardPayloadError
+from pynchy.plugins.integrations.linear_board_payloads import (
+    LinearBoardPayloadError,
+    nodes,
+    normalize_status,
+    payload_entity,
+)
 
 
 def test_empty_discord_channel_name_is_rejected():
@@ -127,3 +132,14 @@ async def test_linear_board_move_fails_when_provider_rejects_update():
 
     effect.fail.assert_awaited_once_with()
     confirm.assert_not_awaited()
+
+
+def test_linear_board_payload_helpers_fail_closed_on_incomplete_payloads():
+    with pytest.raises(LinearBoardPayloadError, match="Unknown todo status"):
+        normalize_status("not-a-status")
+    with pytest.raises(LinearBoardPayloadError, match="did not include projects"):
+        nodes({}, "projects")
+    with pytest.raises(LinearBoardPayloadError, match=r"did not include projects.nodes"):
+        nodes({"projects": {}}, "projects")
+    with pytest.raises(LinearBoardPayloadError, match="did not include project"):
+        payload_entity({"projectCreate": {"success": True}}, "projectCreate", "project")
