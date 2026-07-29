@@ -60,6 +60,29 @@ def test_catalog_rejects_blank_action_surface_values():
     )
 
 
+def test_catalog_rejects_invalid_canary_declarations():
+    errors = validate_action_specs(
+        (
+            ActionSpec(
+                ActionId("task.create"),
+                "tasks",
+                "Create a task.",
+                EvidenceRequirement.HERMETIC_AND_AGENTIC,
+                canary_scenario="not-a-valid-scenario",
+            ),
+            ActionSpec(
+                ActionId("task.update"),
+                "tasks",
+                "Update a task.",
+                canary_scenario="chat.round.trip",
+            ),
+        )
+    )
+
+    assert "task.create: invalid canary scenario: 'not-a-valid-scenario'" in errors
+    assert "task.update: hermetic-only action cannot declare a canary scenario" in errors
+
+
 def test_hermetic_coverage_reports_missing_and_unknown_actions():
     specs = (
         ActionSpec(ActionId("task.create"), "tasks", "Create a task."),
