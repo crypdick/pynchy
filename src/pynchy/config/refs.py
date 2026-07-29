@@ -16,21 +16,6 @@ class ChatRef(ConnectionRef):
     chat: str
 
 
-def parse_connection_ref(ref: str | None) -> ConnectionRef | None:
-    """Parse ``connection.<platform>.<name>`` into a ConnectionRef."""
-    if not ref:
-        return None
-    parts = ref.split(".")
-    if len(parts) < 3:
-        return None
-    if parts[0] != "connection":
-        return None
-    platform, name = parts[1], parts[2]
-    if not platform or not name:
-        return None
-    return ConnectionRef(platform=platform, name=name)
-
-
 def parse_chat_ref(ref: str | None) -> ChatRef | None:
     """Parse ``connection.<platform>.<name>.chat.<chat>`` into a ChatRef."""
     if not ref:
