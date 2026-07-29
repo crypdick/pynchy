@@ -22,7 +22,11 @@ from pynchy.plugins.integrations.linear_mutation_effects import (
     LinearWebhookEffectAttempt,
 )
 from pynchy.plugins.integrations.linear_plan_admission import review_approved_plan
-from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
+from pynchy.plugins.integrations.linear_planning_tasks import (
+    LinearPlanningTaskRuntime,
+    admit_planning_issue,
+    configure_linear_planning_task_runtime,
+)
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
 from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue
 from pynchy.state.work_item_rows import row_to_transition
@@ -99,6 +103,44 @@ async def test_linear_planning_admission_requires_configuration(monkeypatch) -> 
             observed_at=datetime(2026, 7, 29, tzinfo=UTC),
             public_source=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_linear_planning_admission_keeps_trusted_source_unfenced(monkeypatch) -> None:
+    issue = DecisionIssue(
+        id="issue-1",
+        identifier="SYN-1",
+        title="Plan this",
+        url="https://linear.app/issue/SYN-1",
+        description="",
+        updated_at="2026-07-29T00:00:00Z",
+        state_id="ready",
+        project_id="project-1",
+    )
+    workspace = WorkspaceProfile(jid="group@g.us", name="Project", folder="project", trigger="@Bot")
+    configure_linear_planning_task_runtime(
+        LinearPlanningTaskRuntime(get_all_tasks=AsyncMock(return_value=[]))
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_planning_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value="conversation-1"),
+    )
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_planning_tasks.ensure_task_active",
+        AsyncMock(side_effect=lambda task, *, observed_at: (task, True)),
+    )
+
+    task = await admit_planning_issue(
+        issue,
+        workspace,
+        observed_at=datetime(2026, 7, 29, tzinfo=UTC),
+        public_source=False,
+    )
+
+    assert task is not None
+    assert task.input_source == "trusted:linear:ready_for_planning"
+    assert "untrusted_external_content" not in task.prompt
 
 
 @pytest.mark.asyncio
