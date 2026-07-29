@@ -5,6 +5,8 @@ from __future__ import annotations
 import stat
 from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import aiohttp
@@ -26,8 +28,19 @@ from pynchy.host.orchestrator.http_control import (
     start_control_plane_sites,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
 TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105 - synthetic bearer fixture, not a credential.
 PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104 - test data for explicit public-bind policy.
+
+
+@pytest.fixture
+def short_unix_socket_root() -> Iterator[Path]:
+    """Yield a short root for tests that bind a real Unix socket."""
+    with TemporaryDirectory(prefix="pynchy-control-", dir="/tmp") as root:
+        yield Path(root).resolve()
 
 
 async def _discard_audit(
@@ -52,13 +65,15 @@ def _runtime(server: ServerConfig, *, project_root: Path) -> ControlPlaneRuntime
     )
 
 
-def test_default_runtime_binds_loopback_and_enables_unix_socket(tmp_path: Path) -> None:
-    runtime = _runtime(ServerConfig(), project_root=tmp_path)
+def test_default_runtime_binds_loopback_and_enables_unix_socket(
+    short_unix_socket_root: Path,
+) -> None:
+    runtime = _runtime(ServerConfig(), project_root=short_unix_socket_root)
 
     assert runtime.bind_host == "127.0.0.1"
     assert runtime.public_bind is False
     assert runtime.remote_auth_required is False
-    assert runtime.unix_socket == tmp_path / "data" / "pynchy.sock"
+    assert runtime.unix_socket == short_unix_socket_root / "data" / "pynchy.sock"
     assert runtime.unix_socket_bind is not None
 
 
@@ -89,13 +104,13 @@ def test_each_remote_posture_requires_authentication(
 
 
 def test_public_runtime_accepts_strong_environment_token(
-    tmp_path: Path,
+    short_unix_socket_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYNCHY_CONTROL_TOKEN", TEST_TOKEN)
     server = ServerConfig(host=PUBLIC_BIND_TEST_HOST, allow_public_bind=True)
 
-    runtime = _runtime(server, project_root=tmp_path)
+    runtime = _runtime(server, project_root=short_unix_socket_root)
 
     assert runtime.public_bind is True
     assert runtime.remote_auth_required is True
@@ -318,9 +333,9 @@ class TestRemoteRateLimit(AioHTTPTestCase):
 
 @pytest.mark.asyncio
 async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
-    tmp_path: Path,
+    short_unix_socket_root: Path,
 ) -> None:
-    socket_path = tmp_path / "control.sock"
+    socket_path = short_unix_socket_root / "control.sock"
     audit = AsyncMock()
     runtime = ControlPlaneRuntime(
         bind_host="127.0.0.1",
