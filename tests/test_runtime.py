@@ -122,6 +122,44 @@ class TestDetectRuntime:
             r = detect_runtime()
         assert r.name == "docker"
 
+    def test_darwin_returns_unavailable_apple_when_docker_is_unavailable(self):
+        apple = FakePluginRuntime(name="apple", available=False)
+        docker = FakePluginRuntime(name="docker", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is apple
+
+    def test_linux_uses_first_runtime_when_none_are_available(self):
+        first = FakePluginRuntime(name="podman", available=False)
+        second = FakePluginRuntime(name="nerdctl", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[first, second],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "linux"
+            assert detect_runtime() is first
+
+    def test_darwin_falls_back_when_only_custom_runtime_is_unavailable(self):
+        custom = FakePluginRuntime(name="podman", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[custom],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is custom
+
     def test_unknown_runtime_override_falls_back_to_docker(self):
         docker = _docker_plugin()
         with (
