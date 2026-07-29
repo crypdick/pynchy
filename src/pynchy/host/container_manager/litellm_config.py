@@ -18,12 +18,35 @@ _LITELLM_SETTINGS_TYPE_ERROR = "LiteLLM config litellm_settings must be a mappin
 
 
 @dataclass(frozen=True)
+class ResponseModelRoute:
+    """One selected Responses alias and its safe canary target."""
+
+    model: str
+    route_count: int
+    canary_model: str | None
+
+
+@dataclass(frozen=True)
+class PreparedLiteLLMConfig:
+    """Generated LiteLLM config plus its active Responses-mode routes."""
+
+    path: Path
+    response_routes: tuple[ResponseModelRoute, ...]
+
+
+@dataclass(frozen=True)
 class LiteLLMConfigPreparer:
     """Prepare the mounted LiteLLM config from the user-managed source file."""
 
     required_models: tuple[str, ...] = ()
+    required_response_models: tuple[str, ...] = ()
 
-    def prepare(self, config_path: Path, output_dir: Path, env: dict[str, str]) -> Path:
+    def prepare(
+        self,
+        config_path: Path,
+        output_dir: Path,
+        env: dict[str, str],
+    ) -> PreparedLiteLLMConfig:
         config_text = config_path.read_text(encoding="utf-8")
         config = yaml.safe_load(config_text)
 
@@ -33,16 +56,21 @@ class LiteLLMConfigPreparer:
                 output_dir,
                 config_text,
                 self.required_models,
+                self.required_response_models,
             )
         if "model_list" not in config:
-            if self.required_models:
+            if self.required_models or self.required_response_models:
                 return _copy_unvalidated_config(
                     config_path,
                     output_dir,
                     config_text,
                     self.required_models,
+                    self.required_response_models,
                 )
-            return _write_filtered_config(output_dir, config)
+            return PreparedLiteLLMConfig(
+                path=_write_filtered_config(output_dir, config),
+                response_routes=(),
+            )
 
         model_list = _model_list(config)
         kept, removed_reasons = _filter_model_list(model_list, env)
@@ -50,7 +78,15 @@ class LiteLLMConfigPreparer:
         _log_filter_result(original_count=len(model_list), remaining=len(kept))
         _require_usable_routes(config_path, kept, removed_reasons)
         _validate_required_models(self.required_models, kept)
-        return _write_filtered_config(output_dir, config)
+        response_routes = response_model_routes(
+            kept,
+            required_models=self.required_response_models,
+        )
+        _validate_required_response_models(self.required_response_models, response_routes)
+        return PreparedLiteLLMConfig(
+            path=_write_filtered_config(output_dir, config),
+            response_routes=response_routes,
+        )
 
 
 def _copy_unvalidated_config(
@@ -58,14 +94,21 @@ def _copy_unvalidated_config(
     output_dir: Path,
     config_text: str,
     required_models: tuple[str, ...],
-) -> Path:
+    required_response_models: tuple[str, ...],
+) -> PreparedLiteLLMConfig:
     if required_models:
         models = ", ".join(required_models)
         msg = f"LiteLLM config does not declare model_list for required model(s): {models}"
         raise RuntimeError(msg)
+    if required_response_models:
+        models = ", ".join(required_response_models)
+        msg = (
+            f"LiteLLM config does not declare model_list for required Responses model(s): {models}"
+        )
+        raise RuntimeError(msg)
     out = output_dir / "litellm_config.yaml"
     out.write_text(config_text, encoding="utf-8")
-    return out
+    return PreparedLiteLLMConfig(path=out, response_routes=())
 
 
 def _model_list(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -167,6 +210,71 @@ def _validate_required_models(
     msg = (
         "Configured agent model route(s) missing from enabled LiteLLM model_list: "
         f"{missing_text}. Enabled model_name values: {enabled_text or '<none>'}"
+    )
+    raise RuntimeError(msg)
+
+
+def response_model_routes(
+    model_list: list[dict[str, Any]],
+    *,
+    required_models: tuple[str, ...] = (),
+) -> tuple[ResponseModelRoute, ...]:
+    """Return every launchable Responses alias with its deployment count."""
+    route_counts: dict[str, int] = {}
+    for entry in model_list:
+        if not _is_responses_route(entry):
+            continue
+        model = entry.get("model_name")
+        if isinstance(model, str) and model:
+            route_counts[model] = route_counts.get(model, 0) + 1
+    return tuple(
+        ResponseModelRoute(
+            model=model,
+            route_count=route_count,
+            canary_model=_response_canary_model(model, required_models),
+        )
+        for model, route_count in route_counts.items()
+    )
+
+
+def _is_responses_route(entry: dict[str, Any]) -> bool:
+    model_info = entry.get("model_info")
+    return isinstance(model_info, dict) and model_info.get("mode") == "responses"
+
+
+def _response_canary_model(model: str, required_models: tuple[str, ...]) -> str | None:
+    """Return a concrete canary model, never a provider wildcard literal."""
+    if not model.endswith("/*"):
+        return model
+    return next(
+        (
+            required_model
+            for required_model in dict.fromkeys(required_models)
+            if _model_route_matches(required_model, model)
+        ),
+        None,
+    )
+
+
+def _validate_required_response_models(
+    required_models: tuple[str, ...],
+    response_routes: tuple[ResponseModelRoute, ...],
+) -> None:
+    if not required_models:
+        return
+    available = tuple(route.model for route in response_routes)
+    missing = [
+        model
+        for model in dict.fromkeys(required_models)
+        if not any(_model_route_matches(model, configured_name) for configured_name in available)
+    ]
+    if not missing:
+        return
+    missing_text = ", ".join(missing)
+    available_text = ", ".join(sorted(available))
+    msg = (
+        "Configured Responses model route(s) missing from enabled LiteLLM model_list: "
+        f"{missing_text}. Responses model_name values: {available_text or '<none>'}"
     )
     raise RuntimeError(msg)
 

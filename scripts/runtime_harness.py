@@ -284,6 +284,7 @@ def _generated_litellm_config(spec: RuntimeSpec) -> str:
         "      api_key: os.environ/PYNCHY_DETERMINISTIC_API_KEY\n"
         "    model_info:\n"
         "      id: pynchy-deterministic\n"
+        "      mode: responses\n"
         "\n"
         "router_settings:\n"
         "  num_retries: 0\n"
@@ -671,12 +672,16 @@ def is_runtime_ready(status: object) -> bool:
     temporal = status.get("temporal")
     if not all(isinstance(value, dict) for value in (service, gateway, temporal)):
         return False
+    responses = gateway.get("responses")
+    if not isinstance(responses, dict):
+        return False
     return (
         service.get("status") == "ok"
         and gateway.get("litellm_container") == "running"
         and gateway.get("postgres_container") == "running"
         and gateway.get("ready") is True
         and gateway.get("database") == "connected"
+        and responses.get("state") == "available"
         and temporal.get("cluster_healthy") is True
         and temporal.get("worker_running") is True
     )

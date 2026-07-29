@@ -75,7 +75,10 @@ class DeterministicOpenAIServer(ThreadingHTTPServer):
         request = {
             "response_id": response_id,
             "previous_response_id": payload.get("previous_response_id"),
+            "model": payload.get("model"),
             "input": payload.get("input"),
+            "stream": payload.get("stream"),
+            "max_output_tokens": payload.get("max_output_tokens"),
         }
         with self._response_requests_lock:
             self._response_requests.append(request)

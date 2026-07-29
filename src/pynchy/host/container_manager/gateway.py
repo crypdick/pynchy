@@ -212,6 +212,21 @@ def _required_litellm_models(
     return ()
 
 
+def _required_litellm_response_models(
+    *,
+    agent_core: str,
+    models: tuple[str, ...],
+    cop_model: str,
+    cop_wire_api: str,
+) -> tuple[str, ...]:
+    """Return selected model aliases whose configured routes must support Responses."""
+    # Claude CLI uses LiteLLM's Messages API, while OpenAI and Codex send
+    # Responses requests through their configured model aliases.
+    direct_models = models if agent_core in {"openai", "codex"} else ()
+    cop_models = (cop_model,) if cop_wire_api == "responses" else ()
+    return tuple(dict.fromkeys((*direct_models, *cop_models)))
+
+
 def collect_plugin_mcp_servers(
     plugin_manager: pluggy.PluginManager | None,
 ) -> tuple[dict[str, McpServerConfig], dict[str, ServiceTrustConfig]]:
@@ -265,6 +280,11 @@ async def start_gateway(
         logger.info("Using LiteLLM gateway mode", config=s.gateway.litellm_config)
         if not s.gateway.master_key:
             raise ValueError(_GATEWAY_MASTER_KEY_REQUIRED_ERROR)
+        from pynchy.host.container_manager.security.cop_client import (  # noqa: PLC0415 - Cop transport composition resolves before gateway startup.
+            get_cop_gateway_config,
+        )
+
+        cop_model, cop_wire_api = get_cop_gateway_config()
         gateway: LiteLLMGateway | BuiltinGateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,
             port=s.gateway.port,
@@ -276,6 +296,12 @@ async def start_gateway(
             required_models=_required_litellm_models(
                 agent_core=s.agent.default_core,
                 models=s.configured_agent_models(),
+            ),
+            required_response_models=_required_litellm_response_models(
+                agent_core=s.agent.default_core,
+                models=s.configured_agent_models(),
+                cop_model=cop_model,
+                cop_wire_api=cop_wire_api,
             ),
             ui_credentials=LiteLLMGatewayCredentials(
                 ui_username=s.gateway.ui_username,

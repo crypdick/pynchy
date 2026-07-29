@@ -393,7 +393,7 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
 
 
 async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
-    """Gateway health — Docker inspect + HTTP health check.
+    """Gateway health — Docker/readiness checks plus cached Responses availability.
 
     Args:
         deps: Runtime state and container-status operation.
@@ -403,6 +403,8 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
         "mode": info.get("mode", "unknown"),
         "redaction": info.get("redaction", "unknown"),
     }
+    if isinstance(info.get("responses"), dict):
+        result["responses"] = info["responses"]
 
     if info.get("mode") != "litellm":
         return result
