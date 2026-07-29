@@ -30,7 +30,7 @@ jobs:
 
       - run: uv run --with mkdocs-material --with mkdocs-include-markdown-plugin --with mkdocs-git-revision-date-localized-plugin --with mkdocs-minify-plugin --with mkdocs-awesome-pages-plugin mkdocs build --strict
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
