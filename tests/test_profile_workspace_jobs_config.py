@@ -73,6 +73,11 @@ def test_enabled_canary_requires_a_target_profile() -> None:
         CanaryConfig(enabled=True, target_profile=" ")
 
 
+def test_canary_rejects_an_invalid_schedule() -> None:
+    with pytest.raises(ValidationError, match="Invalid cron expression"):
+        CanaryConfig(schedule="not a cron expression")
+
+
 @pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])
 def test_profile_prompt_names_must_be_safe_identifiers(name: str) -> None:
     with pytest.raises(ValidationError, match="prompt names"):
