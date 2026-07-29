@@ -82,6 +82,27 @@ class TestObserverPluginRuntimeTypes:
 
         assert attach_observers(plugin_manager, EventBus()) == []
 
+    def test_attach_observers_ignores_discovery_failure(self):
+        plugin_manager = MagicMock()
+        plugin_manager.hook.pynchy_observer.side_effect = RuntimeError("broken plugin")
+
+        assert attach_observers(plugin_manager, EventBus()) == []
+
+    def test_attach_observers_isolates_subscription_failure(self):
+        class BrokenObserver:
+            name = "broken"
+
+            def subscribe(self, _event_bus):
+                raise RuntimeError("broken subscription")
+
+            async def close(self):
+                return None
+
+        plugin_manager = MagicMock()
+        plugin_manager.hook.pynchy_observer.return_value = [BrokenObserver()]
+
+        assert attach_observers(plugin_manager, EventBus()) == []
+
     def test_builtin_sqlite_observer_is_configured_and_attached(self):
         """Startup composition should attach the registered SQLite observer."""
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
