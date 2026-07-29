@@ -18,12 +18,17 @@ from pynchy.discord import (
 from pynchy.host.container_manager.ipc.ledger import claim_request_for_execution
 from pynchy.host.container_manager.ipc.protocol import IpcRequestEnvelope, make_ipc_request
 from pynchy.plugins.channels.discord.api import DiscordChannel
+from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_board_mutations import apply_workspace_todo_move
 from pynchy.plugins.integrations.linear_board_payloads import (
     LinearBoardPayloadError,
     nodes,
     normalize_status,
     payload_entity,
+)
+from pynchy.plugins.integrations.linear_board_resources import (
+    load_team_resources,
+    reconcile_workflow_state_position,
 )
 
 
@@ -143,3 +148,49 @@ def test_linear_board_payload_helpers_fail_closed_on_incomplete_payloads():
         nodes({"projects": {}}, "projects")
     with pytest.raises(LinearBoardPayloadError, match="did not include project"):
         payload_entity({"projectCreate": {"success": True}}, "projectCreate", "project")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("team", "message"),
+    [
+        (None, "did not include team"),
+        (
+            {"projects": {"nodes": []}, "states": {"nodes": []}},
+            "did not include pageInfo",
+        ),
+        (
+            {"projects": {"nodes": [], "pageInfo": []}, "states": {"nodes": []}},
+            "did not include pageInfo",
+        ),
+        (
+            {"projects": {"nodes": [], "pageInfo": {}}, "states": {"nodes": []}},
+            "missing boolean hasNextPage",
+        ),
+        (
+            {
+                "projects": {"nodes": [], "pageInfo": {"hasNextPage": True}},
+                "states": {"nodes": []},
+            },
+            "missing endCursor",
+        ),
+    ],
+)
+async def test_linear_resource_loading_rejects_incomplete_pagination(
+    team: object, message: str
+) -> None:
+    client = MagicMock()
+    client.query = AsyncMock(return_value={"team": team})
+
+    with pytest.raises(LinearBoardError, match=message):
+        await load_team_resources(client, "team-1")
+
+
+@pytest.mark.asyncio
+async def test_linear_workflow_state_reconciliation_requires_an_id() -> None:
+    class NoQueryClient:
+        async def query(self, _query: str, **_variables: object) -> dict[str, object]:
+            raise AssertionError("provider query should not run")
+
+    with pytest.raises(LinearBoardError, match="workflow state did not include an ID"):
+        await reconcile_workflow_state_position(NoQueryClient(), {}, position=1.0)
