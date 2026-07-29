@@ -454,3 +454,23 @@ class TestExecuteDirectCommand:
         deps.broadcast_host_message.assert_awaited_once()
         host_text = deps.broadcast_host_message.call_args[0][1]
         assert "timed out" in host_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_command_start_failure_sends_host_message(self, tmp_path):
+        group = _make_group()
+        deps = _make_deps()
+        deps.direct_command_workdir.return_value = tmp_path / "groups" / group.folder
+
+        with patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell:
+            mock_shell.return_value = ShellResult(
+                returncode=None,
+                stdout="",
+                stderr="",
+                start_error="working directory is unavailable",
+            )
+            await execute_direct_command(deps, "g@g.us", group, _make_message("!pwd"), "pwd")
+
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "g@g.us", "❌ Command failed: working directory is unavailable"
+        )
+        deps.record_direct_command_output.assert_not_awaited()
