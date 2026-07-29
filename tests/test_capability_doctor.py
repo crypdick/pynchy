@@ -121,6 +121,7 @@ def test_doctor_without_a_socket_uses_loopback_tcp(monkeypatch, capsys, tmp_path
 
 
 def test_doctor_reports_an_invalid_capability_response(monkeypatch, capsys, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", Mock(return_value=_Response([])))
 
     monkeypatch.setattr(
