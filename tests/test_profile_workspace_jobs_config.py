@@ -218,7 +218,13 @@ def test_workspace_scopes_keep_policy_separate_from_discord_parent() -> None:
             },
             "admin": {
                 "profiles": ["relationships"],
-                "scopes": [{"workspace": "pynchy-dev", "profiles": ["pynchy-dev"]}],
+                "scopes": [
+                    {
+                        "workspace": "pynchy-dev",
+                        "profiles": ["pynchy-dev"],
+                        "model_reasoning_effort": "medium",
+                    }
+                ],
             },
         },
         jobs={
@@ -234,6 +240,10 @@ def test_workspace_scopes_keep_policy_separate_from_discord_parent() -> None:
             },
         },
     )
+
+    resolved = settings.resolved_workspace_config("pynchy-dev")
+    assert resolved is not None
+    assert resolved.model_reasoning_effort == "medium"
 
     fam = settings.resolved_workspace_config("fam")
     pynchy_dev = settings.resolved_workspace_config("pynchy-dev")

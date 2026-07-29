@@ -114,15 +114,24 @@ behind the gateway.
 ### Reasoning effort
 
 For the Codex CLI core, set `model_reasoning_effort` under `[agent]` to select
-the effort for every Pynchy-managed Codex session. Pynchy writes this setting
-to each session's generated Codex configuration, so host-level Codex settings
-do not affect those sessions.
+the default effort for Pynchy-managed Codex sessions. Set it on a workspace or
+semantic workspace when that workspace needs a different effort. Dynamic
+threads and scheduled jobs inherit their target workspace's resolved effort.
+Pynchy writes the resolved setting to each session's generated Codex
+configuration, so host-level Codex settings don't affect those sessions.
 
 ```toml
 [agent]
 default_core = "codex"
 model = "gpt-5.6-terra"
 model_reasoning_effort = "ultra"
+```
+
+```toml
+[workspaces.security-fixer]
+profiles = ["code"]
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
 ```
 
 GPT-5.6 Terra supports `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`

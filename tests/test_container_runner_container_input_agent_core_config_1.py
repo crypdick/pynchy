@@ -210,6 +210,32 @@ class TestContainerInputAgentCoreConfig:
         assert result.is_scheduled_task is True
         assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
+    def test_workspace_reasoning_effort_overrides_global_effort(self):
+        settings = make_settings(
+            agent=AgentConfig(
+                model="gpt-5.6-terra",
+                model_reasoning_effort="ultra",
+            ),
+            profiles={"code": ProfileConfig()},
+            workspaces={
+                TEST_GROUP.folder: WorkspaceConfig(
+                    profiles=["code"],
+                    model_reasoning_effort="medium",
+                )
+            },
+        )
+
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
+        ):
+            result = build_container_input(
+                [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+            )
+
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model_reasoning_effort"] == "medium"
+
     @pytest.mark.asyncio
     async def test_scheduled_repo_override_avoids_unselected_workspace_repo(self, tmp_path: Path):
         """A public scheduled run provisions only its explicit repository scope."""

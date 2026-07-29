@@ -232,6 +232,10 @@ async def test_pure_skill_policy_change_publishes_without_restart(
             ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED,
         ),
         (
+            '[workspaces.test]\nmodel_reasoning_effort = "medium"\n',
+            ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED,
+        ),
+        (
             "[container]\ntimeout_ms = 123000\n",
             ConfigRefreshStatus.REFRESHED,
         ),

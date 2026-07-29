@@ -448,6 +448,7 @@ class RepoConfig(_StrictModel):
 class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
     model: str | None = None
+    model_reasoning_effort: CodexModelReasoningEffort | None = None
     chat: ValidatedChatRef | None = None
 
     threads: list[WorkspaceThreadConfig] = Field(default_factory=list)
