@@ -38,6 +38,7 @@ from pynchy.host.orchestrator import (
     http_server,
     job_sources,
     plugin_configuration,
+    routed_workspace_policy,
     service_installer,
     startup_handler,
     status,
@@ -335,9 +336,8 @@ async def _setup_channels(app: PynchyApp) -> None:
 
 async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     """Reconcile worktrees and workspaces, returning live Linear board identities."""
-    s = get_settings()
-
-    repo_groups = workspace_config.get_repo_access_groups(s.workspace_names())
+    await routed_workspace_policy.restore_routed_workspace_policy_owners(app.workspaces.values())
+    repo_groups = workspace_config.get_repo_access_groups(get_settings().workspace_names())
 
     await asyncio.to_thread(
         reconcile_worktrees_at_startup,
