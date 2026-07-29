@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypeGuard
 from unittest.mock import patch
 
 import pluggy
 import pytest
 
-from pynchy.plugins import get_plugin_manager
+from pynchy.plugins import collect_hook_results, get_plugin_manager
 from pynchy.plugins.api import AgentCoreSpec
 
 
@@ -265,3 +266,74 @@ class TestPluginErrors:
         assert isinstance(skill_paths, list)
         assert channels == []
         assert workspace_specs == []
+
+
+class TestPluginRegistryContracts:
+    def test_collect_hook_results_filters_invalid_and_none_results(self) -> None:
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class ValidContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return AgentCoreSpec(name="valid", module="m", class_name="Valid")
+
+        class EmptyContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return None
+
+        class InvalidContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {"not": "an AgentCoreSpec"}
+
+        def is_agent_core(value: object) -> TypeGuard[AgentCoreSpec]:
+            return isinstance(value, AgentCoreSpec)
+
+        pm = get_plugin_manager()
+        pm.register(ValidContribution(), name="valid-contribution")
+        pm.register(EmptyContribution(), name="empty-contribution")
+        pm.register(InvalidContribution(), name="invalid-contribution")
+
+        results = collect_hook_results(
+            "pynchy_agent_core_info",
+            is_agent_core,
+            "agent core",
+            pm=pm,
+        )
+
+        assert [item.name for item in results if item.name == "valid"] == ["valid"]
+
+    def test_collect_hook_results_isolates_hook_failures(self) -> None:
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class Broken:
+            @hookimpl
+            def pynchy_workspace_spec(self):
+                raise RuntimeError("broken plugin")
+
+        pm = get_plugin_manager()
+        pm.register(Broken(), name="broken")
+
+        assert (
+            collect_hook_results(
+                "pynchy_workspace_spec",
+                lambda value: isinstance(value, dict),
+                "workspace",
+                pm=pm,
+            )
+            == []
+        )
+
+    def test_plugin_manager_drops_class_entrypoint_registrations(self) -> None:
+        class InvalidClassPlugin:
+            pass
+
+        def discover(manager: pluggy.PluginManager, _project_name: str) -> int:
+            manager.register(InvalidClassPlugin, name="invalid-class")
+            return 1
+
+        with patch.object(pluggy.PluginManager, "load_setuptools_entrypoints", discover):
+            pm = get_plugin_manager()
+
+        assert pm.get_plugin("invalid-class") is None
