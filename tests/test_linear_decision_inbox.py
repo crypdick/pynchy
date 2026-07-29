@@ -292,7 +292,7 @@ async def test_stale_plan_is_replaced_without_acquiring_a_lease() -> None:
     ]
 
 
-async def test_plan_review_error_returns_issue_to_awaiting_approval() -> None:
+async def test_failed_plan_reviewer_returns_issue_to_awaiting_approval() -> None:
     client = _DecisionClient()
     issue = client.issues_by_state["state-approved"][0]
     issue["description"] = (
@@ -301,12 +301,7 @@ async def test_plan_review_error_returns_issue_to_awaiting_approval() -> None:
         "Implement the approved change.\n"
         "<!-- pynchy.plan:end -->"
     )
-    reviewer = AsyncMock(
-        return_value=LinearPlanReviewResult(
-            LinearPlanReviewDecision.ERROR,
-            "RuntimeError: plan reviewer failed",
-        )
-    )
+    reviewer = AsyncMock(side_effect=RuntimeError("plan reviewer failed"))
 
     created = await reconcile_linear_decision_inbox(
         client,
