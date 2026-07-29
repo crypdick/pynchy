@@ -13,8 +13,10 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 )
 from pynchy.state import (
     WorkItemClaimConflictError,
+    cancel_work_item_execution,
     clear_in_flight_turn,
     get_active_work_item_execution,
+    get_unfinished_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     mark_work_item_delivery_delivered_for_turn,
@@ -365,6 +367,8 @@ async def test_blocked_work_can_be_reauthorized_for_a_new_attempt(
     assert blocked["result"]["work_item"]["status"] == "blocked"
     assert approved["result"]["issue"]["state"]["name"] == "Human Approved"
     assert retried.attempt == 2
+    await cancel_work_item_execution(retried.id, blocker="test completed")
+    assert await get_unfinished_work_item_execution("issue-1") is None
 
 
 async def test_blocked_linked_work_requires_durable_blocker_evidence(

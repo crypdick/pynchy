@@ -120,6 +120,50 @@ async def test_done_state_completes_and_retires_exact_runtime(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_superseded_execution_is_not_reconciled(monkeypatch) -> None:
+    old_execution = replace(
+        _execution(),
+        status=WorkItemExecutionStatus.AWAITING_REVIEW,
+    )
+    current_execution = replace(
+        _execution(),
+        id="execution-2",
+        attempt=2,
+        status=WorkItemExecutionStatus.COMPLETED,
+    )
+    retire = AsyncMock()
+    cancel = AsyncMock()
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=AsyncMock(return_value=[old_execution, current_execution]),
+            cancel_execution=cancel,
+            retire_execution=retire,
+        )
+    )
+    complete = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.complete_reviewed_work_item",
+        complete,
+    )
+
+    retired = await reconcile_provider_work_item_state(
+        _Client(
+            {
+                "id": "issue-1",
+                "updatedAt": "2026-07-29T01:00:00Z",
+                "state": _state("Done"),
+            }
+        ),
+        {"pynchy": _board()},
+    )
+
+    assert retired == 0
+    complete.assert_not_awaited()
+    cancel.assert_not_awaited()
+    retire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_deauthorized_state_cancels_without_changing_provider() -> None:
     execution = _execution()
     cancelled = replace(execution, status=WorkItemExecutionStatus.CANCELLED)
