@@ -215,6 +215,29 @@ async def test_group_allowlist_allows_registered_workspace_channel():
     )
 
 
+async def test_registered_workspace_still_respects_disabled_group_policy():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1"),
+            group_policy="disabled",
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
+    )
+
+
+async def test_registered_workspace_still_respects_disabled_channel():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1"),
+            group_policy="allowlist",
+            chat={"g1": {"channels": {"c1": {"enabled": False}}}},
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
+    )
+
+
 async def test_registered_workspace_never_bypasses_configured_member_or_role_auth():
     registered = {"discord:channel:runtime-thread": object()}
     for member_policy in (
