@@ -16,6 +16,8 @@ from pynchy.plugins.integrations.linear_boards import (
     move_workspace_todo,
     provision_workspace_board,
     reconcile_workspace_boards,
+    require_todo_states,
+    require_workspace_project,
     select_team,
 )
 
@@ -194,6 +196,46 @@ class TestSelectTeam:
 
         with pytest.raises(LinearBoardError, match="cannot see any teams"):
             await select_team(client, team_key=None)
+
+
+def test_read_only_board_resolution_rejects_missing_workflow_state() -> None:
+    with pytest.raises(LinearBoardError, match="missing workflow states"):
+        require_todo_states(
+            [{"name": spec.name} for spec in LINEAR_TODO_STATUSES.values()][:-1],
+            "code-improver",
+        )
+
+
+def test_read_only_board_resolution_rejects_missing_project() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+    with pytest.raises(LinearBoardError, match="has not been provisioned"):
+        require_workspace_project([], workspace)
+
+
+def test_read_only_board_resolution_rejects_duplicate_projects() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+    description = f"pynchy.workspace={workspace.folder}"
+
+    with pytest.raises(LinearBoardError, match="Duplicate Linear projects"):
+        require_workspace_project(
+            [
+                {"id": "project-one", "description": description},
+                {"id": "project-two", "description": description},
+            ],
+            workspace,
+        )
+
+
+def test_read_only_board_resolution_requires_duplicate_project_ids() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+    description = f"pynchy.workspace={workspace.folder}"
+
+    with pytest.raises(LinearBoardError, match="did not include an ID"):
+        require_workspace_project(
+            [{"description": description}, {"id": "project-two", "description": description}],
+            workspace,
+        )
 
 
 class TestEnsureWorkspaceBoard:
