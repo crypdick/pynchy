@@ -491,7 +491,7 @@ def reset_settings(monkeypatch):
         def resolve_workspace_config(folder: str, settings: Settings | None = None):
             return workspace_config.load_resolved_config(folder, settings=settings)
 
-        def resolve_repositories(folder: str):
+        def resolve_repositories(folder: str, _turn_id: str | None = None):
             return repo.resolve_repos_for_group(folder)
 
         repo.configure_repo_runtime(
@@ -573,7 +573,7 @@ def reset_settings(monkeypatch):
         configure_lifecycle_runtime(
             LifecycleRuntime(
                 settings=settings_source,
-                resolve_repos_for_group=resolve_repositories,
+                resolve_publication_repos=resolve_repositories,
                 detect_main_branch=detect_main_branch,
                 host_create_pr_from_worktree=host_create_pr_from_worktree,
                 redact_git_diagnostic=redact_git_diagnostic,

@@ -30,6 +30,7 @@ class AgentToolRuntime:
     ipc_dir: Path
     service_request_timeout_seconds: float = 300.0
     ask_user_timeout_seconds: float = 1800.0
+    turn_id: str = ""
 
     @classmethod
     def from_environment(cls) -> AgentToolRuntime:
@@ -40,6 +41,7 @@ class AgentToolRuntime:
             is_admin=os.environ.get("PYNCHY_IS_ADMIN") == "1",
             is_scheduled_task=os.environ.get("PYNCHY_IS_SCHEDULED_TASK") == "1",
             ipc_dir=Path(os.environ.get("PYNCHY_IPC_DIR", "/workspace/ipc")),
+            turn_id=os.environ.get("PYNCHY_TURN_ID", ""),
         )
 
 

@@ -10,9 +10,8 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
-from typing import Any, NoReturn, Protocol
+from typing import Any, NoReturn, Protocol, runtime_checkable
 
-from pynchy.conversation.api import parent_workspace_name
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
@@ -29,10 +28,16 @@ class LifecycleSettings(Protocol):
     data_dir: Path
 
 
+@runtime_checkable
 class RepoContext(Protocol):
-    slug: str
-    root: Path
-    worktrees_dir: Path
+    @property
+    def slug(self) -> str: ...
+
+    @property
+    def root(self) -> Path: ...
+
+    @property
+    def worktrees_dir(self) -> Path: ...
 
 
 class _GitResult(Protocol):
@@ -41,11 +46,15 @@ class _GitResult(Protocol):
     stdout: str
 
 
+class PublicationRepositoryError(RuntimeError):
+    """The host cannot safely identify repository worktrees to publish."""
+
+
 def _unconfigured_settings() -> LifecycleSettings:
     raise RuntimeError("Lifecycle configuration has not been composed")
 
 
-def _unconfigured_repos(_source_group: str) -> Sequence[RepoContext]:
+def _unconfigured_repos(_source_group: str, _turn_id: str | None = None) -> Sequence[RepoContext]:
     raise RuntimeError("Lifecycle repository resolution has not been composed")
 
 
@@ -54,7 +63,7 @@ def _unconfigured_git(*_args: object, **_kwargs: object) -> NoReturn:
 
 
 _get_settings: Callable[[], LifecycleSettings] = _unconfigured_settings
-_resolve_repos_for_group: Callable[[str], Sequence[RepoContext]] = _unconfigured_repos
+_resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]] = _unconfigured_repos
 detect_main_branch: Callable[..., str] = _unconfigured_git
 host_create_pr_from_worktree: Callable[..., dict[str, Any]] = _unconfigured_git
 redact_git_diagnostic: Callable[[str], str] = _unconfigured_git
@@ -64,7 +73,7 @@ run_git: Callable[..., _GitResult] = _unconfigured_git
 @dataclass(frozen=True)
 class LifecycleRuntime:
     settings: Callable[[], LifecycleSettings]
-    resolve_repos_for_group: Callable[[str], Sequence[RepoContext]]
+    resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]]
     detect_main_branch: Callable[..., str]
     host_create_pr_from_worktree: Callable[..., dict[str, Any]]
     redact_git_diagnostic: Callable[[str], str]
@@ -73,11 +82,11 @@ class LifecycleRuntime:
 
 def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
     """Bind settings and source-control operations at host composition."""
-    global _get_settings, _resolve_repos_for_group  # noqa: PLW0603 - one host process owns these composed operations.
+    global _get_settings, _resolve_publication_repos  # noqa: PLW0603 - one host process owns these composed operations.
     global detect_main_branch, host_create_pr_from_worktree  # noqa: PLW0603 - one host process owns these composed operations.
     global redact_git_diagnostic, run_git  # noqa: PLW0603 - one host process owns these composed operations.
     _get_settings = runtime.settings
-    _resolve_repos_for_group = runtime.resolve_repos_for_group
+    _resolve_publication_repos = runtime.resolve_publication_repos
     detect_main_branch = runtime.detect_main_branch
     host_create_pr_from_worktree = runtime.host_create_pr_from_worktree
     redact_git_diagnostic = runtime.redact_git_diagnostic
@@ -86,11 +95,6 @@ def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
 
 def get_settings() -> LifecycleSettings:
     return _get_settings()
-
-
-def _publication_worktree_group(source_group: str) -> str:
-    """Use the parent workspace worktree for routed conversation runtimes."""
-    return parent_workspace_name(source_group) or source_group
 
 
 def _aggregate_publication_results(
@@ -245,7 +249,18 @@ async def _handle_sync_worktree_to_main(
         )
         return
 
-    repo_contexts = _resolve_repos_for_group(source_group)
+    raw_turn_id = data.get("turn_id")
+    turn_id = raw_turn_id if isinstance(raw_turn_id, str) and raw_turn_id else None
+    try:
+        repo_contexts = _resolve_publication_repos(source_group, turn_id)
+    except PublicationRepositoryError as exc:
+        message = f"Publication blocked: {exc}"
+        write_ipc_response(
+            result_dir / f"{request_id}.json",
+            {"success": False, "message": message},
+        )
+        logger.warning("sync_worktree_to_main: repository selection blocked", group=source_group)
+        return
     if not repo_contexts:
         write_ipc_response(
             result_dir / f"{request_id}.json",
@@ -254,12 +269,10 @@ async def _handle_sync_worktree_to_main(
         logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
         return
 
-    worktree_group = _publication_worktree_group(source_group)
-
     if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary, required_human_reason = await asyncio.to_thread(
             _publication_patch_context,
-            worktree_group,
+            source_group,
             repo_contexts,
         )
         allowed = await cop_gate_module.cop_gate(
@@ -288,7 +301,7 @@ async def _handle_sync_worktree_to_main(
     for repo_ctx in repo_contexts:
         repo_result = await asyncio.to_thread(
             host_create_pr_from_worktree,
-            worktree_group,
+            source_group,
             repo_ctx,
         )
         publication_results.append((repo_ctx, repo_result))

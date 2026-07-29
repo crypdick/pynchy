@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -14,6 +14,7 @@ from pynchy.agent_protocol.api import (
     ContainerInput,
     ContainerOutput,
 )
+from pynchy.conversation.api import conversation_id_from_folder
 from pynchy.host.orchestrator.codex_rollouts import (
     CodexRolloutInspectionError as _CodexRolloutInspectionError,
 )
@@ -35,6 +36,59 @@ CodexRolloutInspectionError = _CodexRolloutInspectionError
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
+class HostExecutionCwdError(RuntimeError):
+    """The direct-host process cannot start from a safe working directory."""
+
+
+@dataclass(frozen=True)
+class HostExecutionCwd:
+    """Prepared direct-host working directory and agent-facing notices."""
+
+    path: Path
+    notices: tuple[str, ...] = ()
+    repo_access: str | None = None
+
+
+@dataclass(frozen=True)
+class RoutedHostRoute:
+    """Host-owned source repository binding for one routed host turn."""
+
+    repo_access: str
+    turn_id: str
+
+
+_active_routed_host_repos: dict[str, RoutedHostRoute] = {}
+
+
+def bind_active_routed_host_repo(group_folder: str, repo_access: str, turn_id: str) -> None:
+    """Associate an active routed host turn with its repository and turn identity."""
+    _active_routed_host_repos[group_folder] = RoutedHostRoute(repo_access, turn_id)
+
+
+def clear_active_routed_host_repo(group_folder: str, repo_access: str, turn_id: str) -> None:
+    """Remove a routed host repository association when its turn completes."""
+    if _active_routed_host_repos.get(group_folder) == RoutedHostRoute(repo_access, turn_id):
+        _active_routed_host_repos.pop(group_folder, None)
+
+
+def active_routed_host_repo(group_folder: str) -> RoutedHostRoute | None:
+    """Return the host-owned identity for an active routed host turn."""
+    return _active_routed_host_repos.get(group_folder)
+
+
+class RoutedHostCwdResolver(Protocol):
+    """Composition-owned resolver for a routed host conversation's source tree."""
+
+    def __call__(
+        self,
+        group_folder: str,
+        source_cwd: Path,
+        repo_accesses: Sequence[str],
+        *,
+        recovered: bool,
+    ) -> HostExecutionCwd: ...
+
+
 @dataclass
 class HostRuntimeOperations:
     """Host-runtime capabilities selected by the application composition root."""
@@ -46,6 +100,7 @@ class HostRuntimeOperations:
     gateway_port: int
     prepare_host_codex_home: Callable[[str, object | None], Path]
     host_learning_vault: Callable[[str], Path | None]
+    resolve_routed_host_cwd: RoutedHostCwdResolver
 
 
 @runtime_checkable
@@ -102,13 +157,28 @@ def codex_thread_exists_in_host_runtime(
     return rollout_exists(codex_home or _codex_home(), thread_id)
 
 
-def host_execution_cwd(group_folder: str) -> Path | None:
+def host_execution_cwd(
+    group_folder: str,
+    operations: HostRuntimeOperations,
+    *,
+    repo_accesses: Sequence[str],
+    recovered: bool,
+) -> HostExecutionCwd | None:
+    """Prepare host CWD, isolating only stable repository-backed routed conversations."""
     resolved = workspace_config.load_resolved_config(group_folder)
     if resolved is None or resolved.execution_mode != "host":
         return None
     if not resolved.cwd:
         return None
-    return Path(resolved.cwd).expanduser()
+    source_cwd = Path(resolved.cwd).expanduser()
+    if conversation_id_from_folder(group_folder) is None or not repo_accesses:
+        return HostExecutionCwd(source_cwd)
+    return operations.resolve_routed_host_cwd(
+        group_folder,
+        source_cwd,
+        repo_accesses,
+        recovered=recovered,
+    )
 
 
 def host_codex_home(group_folder: str, operations: HostRuntimeOperations) -> Path:

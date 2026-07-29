@@ -19,7 +19,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves composition cal
 )
 from dataclasses import replace
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves method annotations.
+from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
 from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
@@ -56,9 +56,10 @@ from pynchy.config.api import (
     tool_process_environment,
     validate_settings_mapping,
 )
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves scheduled-binding annotations.
+from pynchy.conversation.api import (
     Conversation,
     ConversationId,
+    conversation_id_from_folder,
 )
 from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager.api import (
@@ -81,6 +82,7 @@ from pynchy.host.container_manager.ipc.handlers_approval import (
 from pynchy.host.container_manager.ipc.handlers_lifecycle import (
     LifecycleRuntime,
     LifecycleSettings,
+    PublicationRepositoryError,
     RepoContext,
     configure_lifecycle_runtime,
 )
@@ -144,6 +146,7 @@ from pynchy.host.git_ops.api import (
     GitSyncRuntime,
     RepoSettings,
     ResolvedRepoWorkspace,
+    RoutedHostWorktreeError,
     check_local_head_drift,
     check_origin_drift,
     configure_git_sync_runtime,
@@ -171,6 +174,7 @@ from pynchy.host.git_ops.api import (
     repo_container_path,
     repo_host_root,
     resolve_repos_for_group,
+    resolve_routed_host_worktree_cwd,
     run_git,
 )
 from pynchy.host.git_ops.utils import configure_git_default_cwd
@@ -575,12 +579,48 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
         resolve_workspace_config=_resolve_security_workspace_config,
         active_matrix_route=get_active_matrix_route,
     )
+
+    def resolve_publication_repos(folder: str, turn_id: str | None) -> Sequence[RepoContext]:
+        """Select host-authorized repositories for an active publication request."""
+        route = host_execution.active_routed_host_repo(folder)
+        if route is not None:
+            if turn_id != route.turn_id:
+                raise PublicationRepositoryError(
+                    "Routed host publication does not match the active turn."
+                )
+            try:
+                repo_context = get_repo_context(route.repo_access)
+            except ValueError as exc:
+                raise PublicationRepositoryError(
+                    "Routed host turn selected an unavailable repository."
+                ) from exc
+            if repo_context is None:
+                raise PublicationRepositoryError(
+                    "Routed host turn selected an unavailable repository."
+                )
+            return (repo_context,)
+
+        resolved = load_resolved_config(folder)
+        if resolved is None and conversation_id_from_folder(folder) is not None:
+            raise PublicationRepositoryError(
+                "Routed publication has no active workspace configuration."
+            )
+        if (
+            resolved is None
+            or resolved.execution_mode != "host"
+            or not resolved.cwd
+            or conversation_id_from_folder(folder) is None
+        ):
+            return resolve_repos_for_group(folder)
+
+        raise PublicationRepositoryError(
+            "Routed host turn is no longer active; refusing to publish a stale request."
+        )
+
     configure_lifecycle_runtime(
         LifecycleRuntime(
             settings=cast("Callable[[], LifecycleSettings]", get_settings),
-            resolve_repos_for_group=cast(
-                "Callable[[str], Sequence[RepoContext]]", resolve_repos_for_group
-            ),
+            resolve_publication_repos=resolve_publication_repos,
             detect_main_branch=detect_main_branch,
             host_create_pr_from_worktree=host_create_pr_from_worktree,
             redact_git_diagnostic=redact_git_diagnostic,
@@ -802,6 +842,38 @@ class PynchyApp(ThreadRouting):
             paths = resolve_learning_paths(folder)
             return prepare_full_vault_host_root(paths) if paths is not None else None
 
+        def resolve_routed_host_cwd(
+            group_folder: str,
+            source_cwd: Path,
+            repo_accesses: Sequence[str],
+            *,
+            recovered: bool,
+        ) -> host_execution.HostExecutionCwd:
+            try:
+                repo_contexts = tuple(
+                    repo_ctx
+                    for slug in repo_accesses
+                    if (repo_ctx := get_repo_context(slug)) is not None
+                )
+            except ValueError as exc:
+                raise host_execution.HostExecutionCwdError(
+                    "Routed host turn selected malformed repository access."
+                ) from exc
+            try:
+                resolved = resolve_routed_host_worktree_cwd(
+                    group_folder,
+                    source_cwd,
+                    repo_contexts,
+                    recovered=recovered,
+                )
+            except RoutedHostWorktreeError as exc:
+                raise host_execution.HostExecutionCwdError(str(exc)) from exc
+            return host_execution.HostExecutionCwd(
+                resolved.cwd,
+                resolved.notices,
+                resolved.repo_access,
+            )
+
         self.host_runtime_operations = host_execution.HostRuntimeOperations(
             build_agent_environment=build_agent_env_vars,
             prepare_mcp=_prepare_host_direct_mcp_servers,
@@ -810,6 +882,7 @@ class PynchyApp(ThreadRouting):
             gateway_port=settings.gateway.port,
             prepare_host_codex_home=prepare_host_codex_home,
             host_learning_vault=host_learning_vault,
+            resolve_routed_host_cwd=resolve_routed_host_cwd,
         )
         self.ask_user_runtime_operations = AskUserRuntimeOperations(
             has_live_session=_has_live_container_session,

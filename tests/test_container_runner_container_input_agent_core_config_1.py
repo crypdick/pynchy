@@ -525,3 +525,107 @@ class TestContainerInputAgentCoreConfig:
             "host-agent-runner",
             input_data.invocation_ts,
         )
+
+    @pytest.mark.asyncio
+    async def test_host_worktree_preparation_failure_does_not_start_host_process(self):
+        group = WorkspaceProfile(
+            jid="routed@g.us",
+            name="Routed Host Group",
+            folder="host__thread_conversation-conv_failed",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _AgentRunnerDeps()
+        deps.broadcast_host_message = AsyncMock()
+        ctx = self._ctx("legacy-session")
+        ctx.is_admin = True
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.agent_core_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._session_model_mismatch",
+                return_value=True,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._host_execution_cwd",
+                side_effect=host_execution.HostExecutionCwdError("legacy parent is ahead of main"),
+            ) as host_execution_cwd,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._run_host_execution",
+                new_callable=AsyncMock,
+            ) as run_host_execution,
+        ):
+            result = await run_agent(deps, group, "chat", [{"content": "resume"}])
+
+        assert result == "error"
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "chat",
+            "Host execution blocked: legacy parent is ahead of main",
+        )
+        assert host_execution_cwd.call_args.kwargs["recovered"] is True
+        run_host_execution.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_host_execution_clears_active_routed_repository_after_failure(
+        self, tmp_path: Path
+    ):
+        group = WorkspaceProfile(
+            jid="routed@g.us",
+            name="Routed Host Group",
+            folder="host__thread_conversation-conv_active",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        repo_access = "owner/scheduled-override"
+        deps = _AgentRunnerDeps()
+        ctx = self._ctx()
+        ctx.repo_access = repo_access
+        ctx.repo_accesses = [repo_access]
+
+        def run_host_execution(*_args: object, **_kwargs: object) -> str:
+            route = host_execution.active_routed_host_repo(group.folder)
+            assert route is not None
+            assert route.repo_access == repo_access
+            assert route.turn_id == ctx.turn_id
+            raise RuntimeError("host runner failed")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ) as pre_container_setup,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._host_execution_cwd",
+                return_value=host_execution.HostExecutionCwd(tmp_path, repo_access=repo_access),
+            ) as host_execution_cwd,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._run_host_execution",
+                side_effect=run_host_execution,
+            ),
+            pytest.raises(RuntimeError, match="host runner failed"),
+        ):
+            await run_agent(
+                deps,
+                group,
+                "chat",
+                [{"content": "run"}],
+                is_scheduled_task=True,
+                repo_access_override=repo_access,
+            )
+
+        assert pre_container_setup.await_args.args[0].repo_access_override == repo_access
+        assert host_execution_cwd.call_args.kwargs["repo_accesses"] == [repo_access]
+        assert host_execution.active_routed_host_repo(group.folder) is None
