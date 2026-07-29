@@ -5,13 +5,16 @@ from __future__ import annotations
 from collections.abc import (
     Mapping,  # noqa: TC003 - config validation annotations resolve at runtime.
 )
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
 
 class _StrictWorkspaceLayoutModel(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+type _CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 
 
 class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
@@ -27,6 +30,7 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
     workspace: str | None = None
     profiles: list[str] = []
     model: str | None = None
+    model_reasoning_effort: _CodexModelReasoningEffort | None = None
 
     @field_validator("name")
     @classmethod
@@ -48,8 +52,12 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
 
     @model_validator(mode="after")
     def validate_semantic_workspace_shape(self) -> WorkspaceThreadConfig:
-        if self.workspace is None and (self.profiles or self.model is not None):
-            raise ValueError("workspace thread profiles and model require workspace")
+        if self.workspace is None and (
+            self.profiles or self.model is not None or self.model_reasoning_effort is not None
+        ):
+            raise ValueError(
+                "workspace thread profiles, model, and model reasoning effort require workspace"
+            )
         if self.workspace is not None and not self.profiles:
             raise ValueError("semantic workspace threads require profiles")
         return self
@@ -61,6 +69,7 @@ class WorkspaceScopeConfig(_StrictWorkspaceLayoutModel):
     workspace: str
     profiles: list[str]
     model: str | None = None
+    model_reasoning_effort: _CodexModelReasoningEffort | None = None
 
     @field_validator("workspace")
     @classmethod

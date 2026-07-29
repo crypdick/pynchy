@@ -33,6 +33,7 @@ class ResolvedWorkspaceConfig:
     cwd: str | None
     is_admin: bool
     contains_secrets: bool
+    model_reasoning_effort: str | None = None
     cop_active: bool = True
     denied_skills: list[str] = field(default_factory=list)
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
@@ -83,6 +84,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         tools=_deduplicate(tools),
         repo=_deduplicate(repo),
         model=model,
+        model_reasoning_effort=None,
         execution_mode=execution_mode,
         cwd=cwd,
         is_admin=is_admin,
