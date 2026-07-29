@@ -79,6 +79,7 @@ async def complete_reviewed_work_item(
         if transition is None or transition.target_status != "done":
             return None
     elif execution.status in {
+        WorkItemExecutionStatus.CLAIMING,
         WorkItemExecutionStatus.IN_PROGRESS,
         WorkItemExecutionStatus.AWAITING_REVIEW,
         WorkItemExecutionStatus.FOLLOW_UPS,

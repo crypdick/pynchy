@@ -142,6 +142,8 @@ class McpInstance:
     tool_environment: dict[str, str] = field(default_factory=dict)
     last_activity: float = 0.0  # monotonic timestamp
     process: subprocess.Popen[bytes] | None = None  # tracked subprocess (for type=script/stdio)
+    process_marker: str | None = None
+    process_record_path: Path | None = None
 
     @property
     def endpoint_url(self) -> str:
