@@ -264,18 +264,21 @@ class ContainerSession:
         """Stop the container and clean up resources."""
         self._cancel_idle_timer()
         self._dead = True
-        self._destroy_security_gate()
 
         # Write close sentinel
         with contextlib.suppress(OSError):
             write_ipc_close_sentinel(self.group_folder)
 
-        # Stop the container
-        if self.proc and self.proc.returncode is None:
-            await graceful_stop(self.proc, self.container_name)
+        try:
+            # Stop the container
+            if self.proc and self.proc.returncode is None:
+                await graceful_stop(self.proc, self.container_name)
 
-        # Force remove (handles cases where graceful stop didn't clean up)
-        await docker_rm_force(self.container_name)
+            # Force remove (handles cases where graceful stop didn't clean up)
+            await docker_rm_force(self.container_name)
+        finally:
+            # IPC requests can still arrive while the worker is draining.
+            self._destroy_security_gate()
 
         # Cancel background tasks
         for task in (self._proc_monitor_task, self._runtime_monitor_task, self._stderr_task):
