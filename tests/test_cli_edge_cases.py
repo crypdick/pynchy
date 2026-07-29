@@ -153,6 +153,27 @@ def test_validate_personalization_cli_prints_the_validated_summary(
     )
 
 
+def test_validate_personalization_cli_reports_invalid_input(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "personalization"
+    monkeypatch.setattr(sys, "argv", ["pynchy", "validate-personalization", str(path)])
+    monkeypatch.setattr(
+        "pynchy.config.api.validate_personalization_tree",
+        Mock(side_effect=ValueError("invalid personalization")),
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 1
+    assert capsys.readouterr().err == (
+        "Personalization validation failed: invalid personalization\n"
+    )
+
+
 def test_prune_cli_reports_when_nothing_is_removed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -213,6 +234,35 @@ def test_doctor_reports_an_empty_capability_snapshot(
 
     assert exited.value.code == 0
     assert capsys.readouterr().out == "No configured workspace capability snapshots.\n"
+
+
+def test_doctor_skips_empty_setup_hints_but_renders_recovery_hints(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    payload = {
+        "workspace": "personal",
+        "capabilities": [
+            {
+                "id": "chat.send",
+                "status": "unavailable",
+                "setup_hint": "",
+                "recovery_hint": "Retry the connection.",
+            }
+        ],
+    }
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", Mock(return_value=payload))
+    monkeypatch.setattr(sys, "argv", ["pynchy", "doctor"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 0
+    assert capsys.readouterr().out == (
+        "Capabilities for personal:\n"
+        "  [unavailable] chat.send\n"
+        "    recover: Retry the connection.\n"
+    )
 
 
 def test_fetch_control_payload_uses_bearer_auth_for_tcp_requests(
