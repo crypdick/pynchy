@@ -1,0 +1,95 @@
+"""Behavior contracts for the shared Docker helper surface."""
+
+from __future__ import annotations
+
+import asyncio
+import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
+from unittest.mock import AsyncMock
+
+import pytest
+from aiohttp import web
+
+from pynchy.host.container_manager import docker
+
+
+def _result(*, returncode: int = 0, stdout: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess([], returncode, stdout, "")
+
+
+def test_docker_available_follows_path_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(docker.shutil, "which", lambda _name: None)
+    assert docker.docker_available() is False
+
+    monkeypatch.setattr(docker.shutil, "which", lambda _name: "/usr/bin/docker")
+    assert docker.docker_available() is True
+
+
+@pytest.mark.asyncio
+async def test_docker_image_and_network_are_created_only_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_docker = AsyncMock(
+        side_effect=[_result(returncode=1), _result(), _result(returncode=1), _result()]
+    )
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    await docker.ensure_image("example/image:latest")
+    await docker.ensure_network("pynchy-test")
+
+    assert run_docker.await_args_list[0].args == ("image", "inspect", "example/image:latest")
+    assert run_docker.await_args_list[1].args == ("pull", "example/image:latest")
+    assert run_docker.await_args_list[1].kwargs["command_timeout_seconds"] == 300
+    assert run_docker.await_args_list[2].args == ("network", "inspect", "pynchy-test")
+    assert run_docker.await_args_list[3].args == ("network", "create", "pynchy-test")
+
+
+@pytest.mark.asyncio
+async def test_docker_container_helpers_report_status_and_clean_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_docker = AsyncMock(
+        side_effect=[
+            _result(stdout="true\n"),
+            _result(stdout="false\n"),
+            _result(),
+            _result(),
+            _result(),
+        ]
+    )
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    assert await docker.is_container_running("running") is True
+    assert await docker.is_container_running("stopped") is False
+    await docker.remove_container("stale")
+    await docker.stop_container("active", stop_timeout_seconds=9)
+
+    assert run_docker.await_args_list[2].args == ("rm", "-f", "stale")
+    assert run_docker.await_args_list[3].args == ("stop", "-t", "9", "active")
+    assert run_docker.await_args_list[4].args == ("rm", "-f", "active")
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_accepts_an_http_endpoint() -> None:
+    async def healthy(_request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
+        return web.Response(status=200)
+
+    app = web.Application()
+    app.router.add_get("/health", healthy)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        sockets = site._server.sockets
+        port = sockets[0].getsockname()[1]
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="test-http",
+                url=f"http://127.0.0.1:{port}/health",
+                health_timeout_seconds=1.0,
+                poll_interval=0.01,
+            )
+        )
+    finally:
+        await runner.cleanup()
