@@ -239,6 +239,18 @@ def test_gog_client_builds_reviewed_read_and_draft_commands(tmp_path: Path) -> N
     assert all("--readonly" in command for command in readonly_commands)
 
 
+def test_gog_client_builds_send_draft_command(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    completed = subprocess.CompletedProcess([], 0, "{}", "")
+
+    with patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=completed):
+        assert client.gmail_send_draft(draft_id="draft-1") == "{}"
+
+
 @pytest.mark.parametrize(
     ("outcome", "message"),
     [
@@ -294,6 +306,21 @@ def test_gog_client_rejects_invalid_provider_json(
         client.gmail_search(query="Ada", limit=1)
 
 
+def test_gog_client_rejects_oversized_provider_output(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    result = subprocess.CompletedProcess([], 0, "x" * 2_000_001, "")
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=result),
+        pytest.raises(gog.GogError, match="safe output limit"),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
 def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: Path) -> None:
     unconfigured = gog.GogClient(
         config=gog.GogConfig(),
@@ -308,8 +335,33 @@ def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: P
 
     with pytest.raises(gog.GogError, match="account"):
         unconfigured.gmail_search(query="Ada", limit=1)
+    with pytest.raises(gog.GogError, match="oauth_client_path"):
+        unconfigured.setup_start()
     with pytest.raises(gog.GogError, match="credentials"):
         missing_credentials.setup_start()
+
+
+@pytest.mark.asyncio
+async def test_gog_executable_probe_checks_explicit_paths(tmp_path: Path) -> None:
+    executable = tmp_path / "gog"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+
+    gog.configure_gog_runtime(
+        gog.GogRuntime(
+            config=gog.GogConfig(command=str(executable), account="you@example.com"),
+            home=tmp_path,
+            oauth_client_path=None,
+            workspace_enables_gog=lambda _workspace: True,
+        )
+    )
+    action = gog.GOG_HOST_ACTIONS.action_for("gog_gmail_search")
+    assert action is not None
+    assert action.capability.probe is not None
+
+    result = await action.capability.probe(CapabilityProbeContext("workspace"))
+
+    assert result.status is ProbeStatus.READY
 
 
 @pytest.mark.asyncio
