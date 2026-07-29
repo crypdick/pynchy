@@ -18,7 +18,9 @@ from pynchy.state import (
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     mark_work_item_delivery_delivered_for_turn,
+    resolve_work_item_transition,
 )
+from pynchy.work_items.api import WorkItemExecutionStatus, WorkItemTransitionStatus
 from tests.linear_work_items_support import (
     Lifecycle,
     _begin_turn,
@@ -111,6 +113,36 @@ async def test_host_lease_persists_before_moving_to_in_progress(
     assert execution.attempt == 1
     assert lifecycle.state.issue["state"]["name"] == "In Progress"
     assert await get_active_work_item_execution("issue-1") is not None
+
+
+@pytest.mark.parametrize(
+    ("issue", "error", "message"),
+    [
+        ({"url": "https://linear.app/example/issue/PYN-1", "state": {}}, ValueError, "identifier"),
+        (
+            {"identifier": "PYN-1", "url": "https://linear.app/example/issue/PYN-1"},
+            TypeError,
+            "state",
+        ),
+    ],
+)
+async def test_transition_resolution_rejects_incomplete_provider_issue(
+    lifecycle: Lifecycle,
+    issue: dict[str, object],
+    error: type[Exception],
+    message: str,
+) -> None:
+    await _lease(lifecycle)
+    transition = await get_work_item_transition_by_request("lease-1")
+    assert transition is not None
+
+    with pytest.raises(error, match=message):
+        await resolve_work_item_transition(
+            transition=transition,
+            execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+            transition_status=WorkItemTransitionStatus.SUCCEEDED,
+            issue=issue,
+        )
 
 
 async def test_host_lease_requires_human_approved(lifecycle: Lifecycle) -> None:
