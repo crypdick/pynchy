@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 # allow: file-length - one composition root keeps plugin wiring and lifecycle ownership explicit.
+from collections.abc import (  # noqa: TC003 - beartype resolves callback annotations at startup.
+    Awaitable,
+    Callable,
+)
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -222,8 +226,6 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     import pluggy
 
     from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
