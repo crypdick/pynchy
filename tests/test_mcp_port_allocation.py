@@ -89,6 +89,50 @@ class TestMcpServerConfig:
         with pytest.raises(ValueError, match="Stdio MCP servers require HTTP transport"):
             McpServerConfig(type="stdio", command="npx", port=8000)
 
+    @pytest.mark.parametrize(
+        ("config", "message"),
+        [
+            pytest.param(
+                {"type": "docker", "port": 8000},
+                "Docker MCP servers require 'image'",
+                id="docker-image",
+            ),
+            pytest.param(
+                {"type": "docker", "image": "example"},
+                "Docker MCP servers require 'port'",
+                id="docker-port",
+            ),
+            pytest.param(
+                {"type": "url"},
+                "URL MCP servers require 'url'",
+                id="url",
+            ),
+            pytest.param(
+                {"type": "script", "port": 8000},
+                "Script MCP servers require 'command'",
+                id="script-command",
+            ),
+            pytest.param(
+                {"type": "script", "command": "run"},
+                "Script MCP servers require 'port'",
+                id="script-port",
+            ),
+            pytest.param(
+                {"type": "stdio", "port": 8000, "transport": "http"},
+                "Stdio MCP servers require 'command'",
+                id="stdio-command",
+            ),
+            pytest.param(
+                {"type": "stdio", "command": "run", "transport": "http"},
+                "Stdio MCP servers require 'port'",
+                id="stdio-port",
+            ),
+        ],
+    )
+    def test_mcp_server_rejects_incomplete_runtime_configuration(self, config, message):
+        with pytest.raises(ValueError, match=message):
+            McpServerConfig(**config)
+
 
 class TestDockerLifecycleHelpers:
     def _stub_docker_lifecycle(self, monkeypatch) -> tuple[AsyncMock, AsyncMock]:
