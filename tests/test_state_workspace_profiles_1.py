@@ -502,3 +502,8 @@ async def test_late_work_item_transition_cannot_revive_cancelled_execution() -> 
 
     assert resolved.status is WorkItemExecutionStatus.CANCELLED
     assert resolved.blocker == "terminal callback"
+
+
+async def test_cancelling_unknown_work_item_execution_fails() -> None:
+    with pytest.raises(ValueError, match="execution does not exist"):
+        await cancel_work_item_execution("missing-execution", blocker="terminal callback")
