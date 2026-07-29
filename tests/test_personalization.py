@@ -11,6 +11,7 @@ from pynchy.config.api import (
     Settings,
     load_layered_settings_mapping,
     repository_settings_sources,
+    validate_litellm_model_names,
     validate_personalization_tree,
     validate_settings_mapping,
 )
@@ -189,3 +190,54 @@ def test_rejects_symlinks_inside_personalized_skills(tmp_path: Path) -> None:
 
     with pytest.raises(PersonalizationError, match="cannot contain symlinks"):
         validate_personalization_tree(tmp_path, personalization)
+
+
+def test_requires_an_existing_personalization_repository(tmp_path: Path) -> None:
+    _write_tree(tmp_path)
+
+    with pytest.raises(PersonalizationError, match="Personalization repository is missing"):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=tmp_path / "missing-personalization",
+            require_personalization=True,
+        )
+
+
+def test_rejects_automation_with_missing_prompt_file(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    automations = personalization / "automations"
+    automations.mkdir()
+    (automations / "weekly.toml").write_text(
+        "schema_version = 1\n"
+        "\n[job]\n"
+        'workspace = "pynchy"\n'
+        'schedule = "0 9 * * 1"\n'
+        'prompt_file = "missing.md"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="references missing prompt file"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_personalization_override_of_convention_owned_litellm_path(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        '[gateway]\nlitellm_config = "elsewhere.yaml"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(PersonalizationError, match="convention-owned"):
+        validate_personalization_tree(tmp_path, personalization)
+
+
+def test_litellm_model_routes_allow_wildcards_and_reject_missing_models(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    litellm = personalization / "litellm.yaml"
+    litellm.write_text(
+        "model_list:\n  - model_name: openai/*\n    litellm_params:\n      model: openai/gpt-5\n",
+        encoding="utf-8",
+    )
+
+    validate_litellm_model_names(litellm, ("openai/gpt-5",))
+    with pytest.raises(PersonalizationError, match="missing from LiteLLM"):
+        validate_litellm_model_names(litellm, ("anthropic/claude",))
