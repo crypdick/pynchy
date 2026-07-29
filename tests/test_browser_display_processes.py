@@ -70,6 +70,27 @@ def test_browser_vnc_repair_uses_resolved_executables(monkeypatch: pytest.Monkey
     assert [command[0] for command in commands] == ["/opt/bin/x11vnc", "/opt/bin/websockify"]
 
 
+def test_browser_requires_an_existing_explicit_chrome_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    missing = tmp_path / "missing-chrome"
+    monkeypatch.setenv("CHROME_PATH", str(missing))
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        browser.chrome_path()
+
+
+def test_browser_prefers_explicit_chrome_path_over_system_discovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    chrome = tmp_path / "chrome"
+    chrome.touch()
+    monkeypatch.setenv("CHROME_PATH", str(chrome))
+    monkeypatch.setattr(browser, "_detect_chrome", lambda: "/system/chrome")
+
+    assert browser.chrome_path() == str(chrome)
+
+
 @pytest.mark.action("social.x.session.setup")
 async def test_x_session_setup_uses_resolved_display_executables(
     monkeypatch: pytest.MonkeyPatch,
