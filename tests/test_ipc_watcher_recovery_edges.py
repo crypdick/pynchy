@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest_helpers import NullIpcDeps
 
+from pynchy.host.container_manager.ipc.approval_recovery import (
+    sweep_host_approval_decisions,
+)
 from pynchy.host.container_manager.ipc.watcher import (
     process_ipc_message_file,
     process_ipc_request_file,
@@ -36,6 +39,34 @@ async def test_recovery_returns_zero_when_ipc_root_cannot_be_read(recover, tmp_p
         ),
     ):
         assert await recover(tmp_path / "ipc", NullIpcDeps()) == 0
+
+
+async def test_approval_recovery_ignores_missing_decision_directory(tmp_path: Path):
+    approval_root = tmp_path / "approval"
+    (approval_root / "group").mkdir(parents=True)
+
+    with patch(
+        "pynchy.host.container_manager.security.approval.approval_state_root",
+        return_value=approval_root,
+    ):
+        assert await sweep_host_approval_decisions(NullIpcDeps()) == 0
+
+
+async def test_approval_recovery_ignores_unreadable_decision_queue(tmp_path: Path):
+    approval_root = tmp_path / "approval"
+    (approval_root / "group" / "approval_decisions").mkdir(parents=True)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.security.approval.approval_state_root",
+            return_value=approval_root,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_recovery._json_files_in_dir",
+            side_effect=OSError("unreadable"),
+        ),
+    ):
+        assert await sweep_host_approval_decisions(NullIpcDeps()) == 0
 
 
 @pytest.mark.parametrize("processor", [process_ipc_message_file, process_ipc_request_file])
