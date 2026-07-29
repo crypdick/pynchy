@@ -8,3 +8,9 @@ such as deployment verification, preserving useful logs before teardown, cleanin
 resources, and updating or unblocking related issues. If blocked, create a Linear issue
 for the blocker, link it to this work item, and record the handoff before moving this item
 to Blocked.
+
+Work directly unless independent parallel research will materially shorten the critical
+path. Use at most two bounded subagents for the entire item, never ask them to delegate
+again, and pass only the context each subtask needs. Run focused checks while the diff is
+changing, then one broad repository gate after it is stable; do not repeat unchanged
+checks. Use at most one independent review pass and fix concrete findings directly.
