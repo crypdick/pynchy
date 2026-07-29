@@ -11,6 +11,7 @@ from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
 from pynchy.identifiers import RuntimeId
 from pynchy.plugins.integrations.playwright_browser import PlaywrightBrowserPlugin
+from pynchy.plugins.integrations.x_integration import XIntegrationPlugin
 
 
 @dataclass
@@ -57,3 +58,14 @@ def test_playwright_plugin_returns_no_skill_path_when_directory_is_absent(
     )
 
     assert PlaywrightBrowserPlugin().pynchy_skill_paths() == []
+
+
+def test_x_plugin_returns_no_skill_path_when_directory_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._plugin.Path.is_dir",
+        lambda _path: False,
+    )
+
+    assert XIntegrationPlugin().pynchy_skill_paths() == []
