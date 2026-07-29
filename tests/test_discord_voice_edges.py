@@ -71,6 +71,84 @@ async def test_voice_state_ignores_discord_connection_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_voice_state_uses_already_loaded_opus(monkeypatch):
+    channel = _configured_voice_channel()
+    release = asyncio.Event()
+    release.set()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), release)
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _voice_channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice.opus.is_loaded", lambda: True)
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.voice_client.received_listener is not None
+
+
+@pytest.mark.asyncio
+async def test_voice_input_ignores_empty_and_invalid_decoded_frames(monkeypatch):
+    channel = _configured_voice_channel()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+
+    class InvalidPacketError(Exception):
+        pass
+
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice.opus.OpusError", InvalidPacketError)
+
+    class Decoder:
+        def decode(self, packet: bytes, **_kwargs: bool) -> bytes:
+            if packet == b"invalid":
+                raise InvalidPacketError("invalid packet")
+            return b""
+
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._new_opus_decoder", Decoder)
+    listener = voice_client.received_listener
+    assert listener is not None
+    listener("unknown", b"empty")
+    listener("42", b"invalid")
+    listener("42", b"empty")
+
+
+@pytest.mark.asyncio
+async def test_voice_input_without_transcriber_discards_completed_turn(monkeypatch):
+    channel = _configured_voice_channel()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+
+    class Decoder:
+        def decode(self, packet: bytes, **_kwargs: bool) -> bytes:
+            return b"\xe8\x03" if packet == b"speech" else b"\x00\x00"
+
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._new_opus_decoder", Decoder)
+    listener = voice_client.received_listener
+    assert listener is not None
+    listener("42", b"speech")
+    for _ in range(30):
+        listener("42", b"silence")
+    await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_voice_manager_rejoins_configured_room_on_ready(monkeypatch):
+    channel = _configured_voice_channel()
+    release = asyncio.Event()
+    release.set()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), release)
+    channel.find_configured_channel = AsyncMock(return_value=voice_channel)  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _voice_channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    await channel.voice.on_ready()
+
+    assert voice_channel.connect_calls == 1
+    channel.find_configured_channel.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_voice_session_stops_cleanly_and_suppresses_disconnect_failure(monkeypatch):
     channel = _configured_voice_channel()
     voice_client = await _activate_voice_session(channel, monkeypatch)
