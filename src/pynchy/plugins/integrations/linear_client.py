@@ -165,7 +165,7 @@ class LinearClient:
         if team_id:
             data = await self.query(
                 """
-                query ListTeamIssues($first: Int!, $teamId: String!) {
+                query ListTeamIssues($first: Int!, $teamId: ID!) {
                   issues(first: $first, filter: { team: { id: { eq: $teamId } } }) {
                     nodes {
                       id identifier title url priority createdAt updatedAt
