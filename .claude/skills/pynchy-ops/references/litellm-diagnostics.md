@@ -6,7 +6,7 @@ Set `KEY` through an approved secret mechanism in the current shell. Do not echo
 
 ## Routine proxy and database readiness
 
-Use authenticated `/health/readiness` for routine proxy and database liveness.
+Use authenticated `/health/readiness` for routine proxy and database liveness. It proves proxy and database readiness only; it does not prove a configured model can serve a request.
 
 ```bash
 curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
@@ -14,7 +14,7 @@ curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
   http://localhost:4000/health/readiness
 ```
 
-Do not use `/health` as a routine check. Pynchy's status collector documents that endpoint as performing provider model calls, which can make it provider-shape-sensitive.
+Do not use `/health` as a routine check. It can perform provider model calls and emit raw diagnostic structures, so it is excluded from routine diagnostics.
 
 ## Model configuration inspection
 
@@ -71,25 +71,28 @@ Run this only after readiness succeeds and only with a configured model name. It
 ```bash
 (
   CANARY_MODEL="<configured-model>"
-  CANARY_BODY="$(mktemp)"
-  trap 'rm -f "$CANARY_BODY"' EXIT
 
-  CANARY_STATUS="$(
-    curl --fail --silent --show-error --no-buffer \
-      --connect-timeout 2 --max-time 15 \
-      --output "$CANARY_BODY" --write-out "%{http_code}" \
-      -H "Authorization: Bearer $KEY" \
-      -H "Accept: text/event-stream" \
-      -H "Content-Type: application/json" \
-      --data "{\"model\":\"$CANARY_MODEL\",\"input\":\"Reply with OK.\",\"stream\":true,\"max_output_tokens\":8}" \
-      http://localhost:4000/v1/responses
-  )" &&
-  test "$CANARY_STATUS" = "200" &&
-  awk '{ sub(/\r$/, "") } NF { last = $0 } END { exit (last == "data: [DONE]") ? 0 : 1 }' "$CANARY_BODY"
+  curl --silent --show-error --no-buffer \
+    --connect-timeout 2 --max-time 15 \
+    --write-out "\n__PYNCHY_CANARY_STATUS__:%{http_code}\n" \
+    -H "Authorization: Bearer $KEY" \
+    -H "Accept: text/event-stream" \
+    -H "Content-Type: application/json" \
+    --data "{\"model\":\"$CANARY_MODEL\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\".\"}]}],\"stream\":true,\"max_output_tokens\":1}" \
+    http://localhost:4000/v1/responses |
+    awk '
+      { sub(/\r$/, "") }
+      /^__PYNCHY_CANARY_STATUS__:/ {
+        status = substr($0, length("__PYNCHY_CANARY_STATUS__:") + 1)
+        next
+      }
+      NF { terminal_done = ($0 == "data: [DONE]") }
+      END { exit (status == "200" && terminal_done) ? 0 : 1 }
+    '
 )
 ```
 
-Require HTTP 200 and `data: [DONE]` as the final nonempty SSE line. Use `/v1/model/info` to select a configured model; do not turn this canary into a retry loop.
+Require HTTP 200 and `data: [DONE]` as the final nonempty SSE line. The stream parser retains only the status and terminal marker; it never writes SSE data to disk or output. Use `/v1/model/info` to select a configured model; do not turn this canary into a retry loop.
 
 ## SYN-94 `stream_disconnected` correlation
 
@@ -142,7 +145,7 @@ A "zombie deployment" occurs when `litellm_config.yaml` references an env var th
 - Retries burn attempts on the dead deployment before failing over
 - `usage-based-routing` keeps picking the dead deployment because it has zero usage
 
-**Pynchy's fix**: At startup, `gateway.py:_prepare_config()` filters the config before mounting it into LiteLLM. Model entries whose `api_key` env var is unset or matches a placeholder pattern (`...`, `YOUR_`, `CHANGE_ME`, etc.) are removed. Check pynchy logs for warnings like:
+**Pynchy's fix**: At startup, Pynchy filters the generated LiteLLM config before mounting it. Model entries whose `api_key` env var is unset or matches a placeholder pattern (`...`, `YOUR_`, `CHANGE_ME`, etc.) are removed. Check Pynchy logs for warnings like:
 
 ```
 Removing model entry with placeholder api_key  model_id=anthropic-employee2  var=ANTHROPIC_TOKEN_EMPLOYEE2

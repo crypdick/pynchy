@@ -459,7 +459,12 @@ def test_server_returns_a_patch_delete_probe() -> None:
 def test_server_records_a_deterministic_response_chain() -> None:
     """The harness can distinguish a warm chained turn from a static fake response."""
     with _server() as base_url:
-        cold_payload = {"model": "pynchy-deterministic", "input": "cold marker"}
+        cold_payload = {
+            "model": "caller-selected-model",
+            "input": "cold marker",
+            "stream": False,
+            "max_output_tokens": 1,
+        }
         cold_status, cold_response = _json_request(base_url, "/v1/responses", cold_payload)
         duplicate_status, duplicate_response = _json_request(
             base_url, "/v1/responses", cold_payload
@@ -468,9 +473,11 @@ def test_server_records_a_deterministic_response_chain() -> None:
             base_url,
             "/v1/responses",
             {
-                "model": "pynchy-deterministic",
+                "model": "caller-selected-model",
                 "input": "warm marker",
                 "previous_response_id": cold_response["id"],
+                "stream": False,
+                "max_output_tokens": 2,
             },
         )
         audit = _json_get(base_url, "/__pynchy_runtime__/response-requests")
@@ -483,17 +490,26 @@ def test_server_records_a_deterministic_response_chain() -> None:
             {
                 "response_id": cold_response["id"],
                 "previous_response_id": None,
+                "model": "caller-selected-model",
                 "input": "cold marker",
+                "stream": False,
+                "max_output_tokens": 1,
             },
             {
                 "response_id": duplicate_response["id"],
                 "previous_response_id": None,
+                "model": "caller-selected-model",
                 "input": "cold marker",
+                "stream": False,
+                "max_output_tokens": 1,
             },
             {
                 "response_id": warm_response["id"],
                 "previous_response_id": cold_response["id"],
+                "model": "caller-selected-model",
                 "input": "warm marker",
+                "stream": False,
+                "max_output_tokens": 2,
             },
         ]
     }

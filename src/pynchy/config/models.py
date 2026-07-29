@@ -117,6 +117,11 @@ CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ul
 CopWireApi = Literal["messages", "responses"]
 
 CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104 - agent containers must reach the host gateway through the configured container_host.
+# Keep production on the deterministic runtime's tested LiteLLM digest.
+_DEFAULT_LITELLM_IMAGE = (
+    "ghcr.io/berriai/litellm@"
+    "sha256:9c1f1889774a973ce650f712ace6753a9b6dd1182d25d837b858dbcac6ea3056"
+)
 
 
 def _default_repos_root() -> Path:
@@ -192,7 +197,7 @@ class GatewayConfig(_StrictModel):
     host: str = CONTAINER_REACHABLE_BIND_HOST  # bind address
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
     litellm_config: str | None = None  # convention-wired personalized source path
-    litellm_image: str = "ghcr.io/berriai/litellm:main-latest"
+    litellm_image: str = _DEFAULT_LITELLM_IMAGE
     postgres_image: str = "postgres:17-alpine"
     master_key: SecretStr | None = None  # LiteLLM master key (required for LiteLLM mode)
     ui_username: str | None = None  # LiteLLM UI login username

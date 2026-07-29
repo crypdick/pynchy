@@ -47,6 +47,7 @@ from pynchy.host.container_manager.litellm_config import (
     PLACEHOLDER_RE,
     LiteLLMConfigPreparer,
 )
+from pynchy.host.container_manager.litellm_responses import LiteLLMResponsesAvailability
 from pynchy.logger import logger
 from pynchy.redaction import (
     GatewayRedactionPosture,
@@ -181,14 +182,20 @@ class LiteLLMGateway:
         data_dir: Path,
         master_key: str,
         required_models: tuple[str, ...] = (),
+        required_response_models: tuple[str, ...] = (),
         ui_credentials: LiteLLMGatewayCredentials | None = None,
     ) -> None:
         self.port = port
         self.container_host = container_host
         self.key: str = master_key
         self._required_models = tuple(dict.fromkeys(required_models))
+        self._required_response_models = tuple(dict.fromkeys(required_response_models))
         self._ui_credentials = ui_credentials or LiteLLMGatewayCredentials()
-        self._config_preparer = LiteLLMConfigPreparer(required_models=self._required_models)
+        self._config_preparer = LiteLLMConfigPreparer(
+            required_models=self._required_models,
+            required_response_models=self._required_response_models,
+        )
+        self._responses = LiteLLMResponsesAvailability(port=port, key=master_key)
 
         self._config_path = Path(config_path).resolve()
         self._image = image
@@ -223,6 +230,16 @@ class LiteLLMGateway:
     def required_models(self) -> tuple[str, ...]:
         """Return model aliases this gateway is configured to serve."""
         return self._required_models
+
+    @property
+    def required_response_models(self) -> tuple[str, ...]:
+        """Return selected aliases that must support LiteLLM's Responses API."""
+        return self._required_response_models
+
+    @property
+    def responses_status(self) -> dict[str, object]:
+        """Return cached, sanitized Responses availability without blocking on a probe."""
+        return self._responses.status
 
     @property
     def _database_url(self) -> str:
@@ -419,11 +436,13 @@ class LiteLLMGateway:
         # mutating container-runtime state. A missing required dependency must
         # not leave a network, database, or partial gateway container behind.
         env = resolve_litellm_environment(self._config_path)
-        filtered_config = self._config_preparer.prepare(
+        prepared_config = self._config_preparer.prepare(
             self._config_path,
             self._data_dir,
             env,
         )
+        filtered_config = prepared_config.path
+        self._responses.set_routes(prepared_config.response_routes)
         phoenix_env = self._phoenix_env_vars(filtered_config, env)
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
@@ -486,16 +505,21 @@ class LiteLLMGateway:
                 headers={"Authorization": f"Bearer {self.key}"},
             )
         )
+        # HTTP and IPC status surfaces publish only after gateway startup finishes,
+        # so this initial snapshot cannot race a status-triggered refresh.
+        await self._responses.refresh()
 
         logger.info(
-            "LiteLLM gateway ready",
+            "LiteLLM proxy and database ready",
             port=self.port,
             container_url=self.base_url,
             container=self._litellm_container,
+            responses_state=self._responses.state,
         )
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
+        await self._responses.stop()
         await asyncio.gather(
             stop_container(self._litellm_container),
             stop_container(self._postgres_container),
