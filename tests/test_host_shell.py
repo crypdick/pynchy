@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pynchy.host.orchestrator.host_shell import run_shell_command
+from pynchy.host.orchestrator import host_shell
+from pynchy.host.orchestrator.host_shell import ShellResult, log_shell_result, run_shell_command
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -93,3 +94,49 @@ class TestRunShellCommand:
         with pytest.raises(asyncio.CancelledError):
             await command_task
         await _wait_for_process_exit(child_pid)
+
+    @pytest.mark.asyncio
+    async def test_returns_completed_command_output(self, tmp_path: Path):
+        result = await run_shell_command(
+            "printf output; printf error >&2; exit 3",
+            cwd=str(tmp_path),
+            timeout_seconds=1,
+        )
+
+        assert result == ShellResult(returncode=3, stdout="output", stderr="error")
+
+    @pytest.mark.asyncio
+    async def test_returns_start_error_without_raising(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        async def fail_to_start(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(0)
+            raise OSError("shell unavailable")
+
+        monkeypatch.setattr(host_shell.asyncio, "create_subprocess_shell", fail_to_start)
+
+        result = await run_shell_command("echo ignored", cwd=str(tmp_path))
+
+        assert result.start_error == "shell unavailable"
+
+
+@pytest.mark.parametrize(
+    ("result", "message"),
+    [
+        (ShellResult(None, "", "", start_error="missing shell"), "failed to start"),
+        (ShellResult(None, "", "", timed_out=True), "command timed out"),
+        (ShellResult(0, "done", ""), "command completed"),
+        (ShellResult(1, "", "failed"), "command failed"),
+    ],
+)
+def test_log_shell_result_reports_each_outcome(
+    caplog: pytest.LogCaptureFixture,
+    result: ShellResult,
+    message: str,
+) -> None:
+    with caplog.at_level("INFO"):
+        log_shell_result(result, label="test", workspace="demo")
+
+    assert message in caplog.text
