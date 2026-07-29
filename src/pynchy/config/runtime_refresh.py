@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -17,6 +18,29 @@ from pynchy.config.personalization import (
     validate_personalization_tree,
 )
 from pynchy.config.settings import Settings
+
+_LIVE_PROFILE_FIELDS = frozenset(
+    {
+        "prompts",
+        "skills",
+        "denied_skills",
+        "repo",
+        "model",
+        "execution_mode",
+        "cwd",
+        "contains_secrets",
+        "cop_active",
+        "capabilities",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePolicyChanges:
+    """Live policy changes after resolving every registered workspace."""
+
+    affected_workspaces: tuple[str, ...]
+    live_changed: bool
 
 
 def load_runtime_candidate() -> Settings:
@@ -37,8 +61,24 @@ def restart_fingerprint(settings: Settings) -> str:
     """Hash settings that still require a process restart."""
     payload = settings.model_dump(mode="python")
     for profile in payload["profiles"].values():
-        profile.pop("skills", None)
-        profile.pop("denied_skills", None)
+        for field in _LIVE_PROFILE_FIELDS:
+            profile.pop(field, None)
+    for workspace in payload["workspaces"].values():
+        workspace.pop("model", None)
+        workspace.pop("model_reasoning_effort", None)
+        for thread in workspace["threads"]:
+            thread.pop("model", None)
+            thread.pop("model_reasoning_effort", None)
+        for scope in workspace["scopes"]:
+            scope.pop("model", None)
+            scope.pop("model_reasoning_effort", None)
+    payload["agent"].pop("model_reasoning_effort", None)
+    for field in ("image", "timeout_ms", "memory_mb", "idle_timeout_ms"):
+        payload["container"].pop(field, None)
+    for field in ("enabled", "review_after_turn", "max_attempts", "packet_max_chars"):
+        payload["learning"].pop(field, None)
+    payload["learning"].pop("obsidian", None)
+    payload["security"].pop("blocked_patterns", None)
     for name in _automation_names(settings.project_root):
         payload["jobs"].pop(name, None)
     payload["__restart_sources__"] = _restart_source_projection(settings.project_root)
@@ -60,6 +100,37 @@ def skill_policy_projection(
     )
 
 
+def runtime_policy_changes(
+    published: Settings,
+    candidate: Settings,
+    workspace_folders: tuple[str, ...],
+) -> RuntimePolicyChanges:
+    """Classify live drift and the registered runtimes that need replacement."""
+    global_retirement = _global_retirement_projection(published) != _global_retirement_projection(
+        candidate
+    )
+    affected = tuple(
+        sorted(
+            workspace_folders
+            if global_retirement
+            else (
+                folder
+                for folder in workspace_folders
+                if _workspace_retirement_projection(published, folder)
+                != _workspace_retirement_projection(candidate, folder)
+            )
+        )
+    )
+    live_changed = bool(affected) or global_retirement
+    live_changed = live_changed or (
+        skill_policy_projection(published) != skill_policy_projection(candidate)
+    )
+    live_changed = live_changed or (
+        _next_turn_projection(published) != _next_turn_projection(candidate)
+    )
+    return RuntimePolicyChanges(affected, live_changed)
+
+
 def automation_projection(settings: Settings) -> tuple[tuple[str, object], ...]:
     """Return the live-refreshable file-backed automation policy."""
     projection = []
@@ -72,6 +143,51 @@ def automation_projection(settings: Settings) -> tuple[tuple[str, object], ...]:
             value["prompt_content"] = Path(job.prompt_file).read_text(encoding="utf-8")
         projection.append((name, _fingerprint_value(value)))
     return tuple(projection)
+
+
+def _workspace_retirement_projection(
+    settings: Settings,
+    workspace_folder: str,
+) -> object:
+    resolved = settings.resolved_workspace_config(workspace_folder)
+    if resolved is None:
+        return None
+    return (
+        tuple(resolved.prompts),
+        tuple(resolved.repo),
+        resolved.model,
+        resolved.model_reasoning_effort,
+        resolved.execution_mode,
+        resolved.cwd,
+        resolved.contains_secrets,
+        resolved.cop_active,
+        tuple((name, rule.decision) for name, rule in sorted(resolved.capabilities.items())),
+    )
+
+
+def _global_retirement_projection(settings: Settings) -> object:
+    learning = settings.learning
+    return (
+        settings.agent.model_reasoning_effort,
+        learning.enabled,
+        learning.obsidian.vault_root,
+        learning.obsidian.mount_path,
+        learning.obsidian.default_profile_root,
+        learning.obsidian.memory_dir_name,
+        tuple(settings.security.blocked_patterns),
+        settings.container.image,
+        settings.container.memory_mb,
+        settings.container.idle_timeout_ms,
+    )
+
+
+def _next_turn_projection(settings: Settings) -> object:
+    return (
+        settings.learning.review_after_turn,
+        settings.learning.max_attempts,
+        settings.learning.packet_max_chars,
+        settings.container.timeout_ms,
+    )
 
 
 def configuration_source_digest(project_root: Path) -> str:

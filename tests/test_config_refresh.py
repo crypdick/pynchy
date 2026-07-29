@@ -13,6 +13,7 @@ import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import (
     ProfileConfig,
     Settings,
+    WorkspaceConfig,
     automation_projection,
     configuration_source_digest,
     get_settings,
@@ -20,7 +21,7 @@ from pynchy.config.api import (
     publish_settings,
     repository_settings_sources,
     restart_fingerprint,
-    skill_policy_projection,
+    runtime_policy_changes,
 )
 from pynchy.host.orchestrator.api import (
     ConfigRefreshRuntime,
@@ -29,6 +30,17 @@ from pynchy.host.orchestrator.api import (
     refresh_host_config,
 )
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
+from pynchy.identifiers import GroupFolder, SessionId
+from pynchy.state.api import (
+    get_session,
+    get_session_security_taint,
+    get_workspace_profile,
+    init_test_database,
+    mark_session_security_taint,
+    set_session,
+    set_workspace_profile,
+)
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class _ConfigRefreshApp(app_module.PynchyApp):
@@ -58,9 +70,12 @@ def _enable_runtime_sources(monkeypatch: pytest.MonkeyPatch):
             get_settings=get_settings,
             load_runtime_candidate=load_runtime_candidate,
             restart_fingerprint=lambda candidate: restart_fingerprint(cast("Settings", candidate)),
-            skill_policy_projection=lambda candidate: skill_policy_projection(
-                cast("Settings", candidate)
+            runtime_policy_changes=lambda published, candidate, folders: runtime_policy_changes(
+                cast("Settings", published),
+                cast("Settings", candidate),
+                folders,
             ),
+            workspace_folders=lambda: ("test",),
         )
     )
     with repository_settings_sources(enabled=True):
@@ -171,7 +186,12 @@ async def test_source_change_during_load_defers_publication(
             get_settings=get_settings,
             load_runtime_candidate=lambda: candidate,
             restart_fingerprint=lambda value: restart_fingerprint(cast("Settings", value)),
-            skill_policy_projection=lambda value: skill_policy_projection(cast("Settings", value)),
+            runtime_policy_changes=lambda published, value, folders: runtime_policy_changes(
+                cast("Settings", published),
+                cast("Settings", value),
+                folders,
+            ),
+            workspace_folders=lambda: ("test",),
         )
     )
 
@@ -201,6 +221,47 @@ async def test_pure_skill_policy_change_publishes_without_restart(
     assert get_settings() is not published
     assert get_settings().profiles["base"].skills == ["beta"]
     assert get_settings().profiles["base"].denied_skills == ["alpha"]
+    assert restart_fingerprint(get_settings()) == applied_hash
+
+
+@pytest.mark.parametrize(
+    ("personalized", "status"),
+    [
+        (
+            "[profiles.base]\ncontains_secrets = true\n",
+            ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED,
+        ),
+        (
+            '[workspaces.test]\nmodel_reasoning_effort = "medium"\n',
+            ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED,
+        ),
+        (
+            "[container]\ntimeout_ms = 123000\n",
+            ConfigRefreshStatus.REFRESHED,
+        ),
+        (
+            '[container]\nimage = "pynchy-agent:next"\n',
+            ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED,
+        ),
+    ],
+)
+async def test_live_runtime_policy_change_uses_weakest_safe_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    personalized: str,
+    status: ConfigRefreshStatus,
+) -> None:
+    config_path = _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    published = load_runtime_candidate()
+    publish_settings(published)
+    applied_hash = restart_fingerprint(published)
+    config_path.write_text(personalized, encoding="utf-8")
+
+    result = await refresh_host_config(applied_hash)
+
+    assert result.status is status
+    assert get_settings() is not published
     assert restart_fingerprint(get_settings()) == applied_hash
 
 
@@ -249,6 +310,25 @@ def test_profile_identity_changes_remain_restart_sensitive(
     assert restart_fingerprint(added) != baseline
     assert restart_fingerprint(removed) != baseline
     assert restart_fingerprint(renamed) != baseline
+
+
+def test_runtime_policy_change_targets_only_resolved_consumers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    published = load_runtime_candidate()
+    published.profiles["other"] = ProfileConfig()
+    published.workspaces["other"] = WorkspaceConfig(profiles=["other"])
+    candidate = published.model_copy(deep=True)
+    candidate.profiles["base"].contains_secrets = True
+
+    changes = runtime_policy_changes(published, candidate, ("test", "other"))
+
+    assert changes.affected_workspaces == ("test",)
+    assert changes.live_changed is True
+    assert restart_fingerprint(candidate) == restart_fingerprint(published)
 
 
 def test_restart_fingerprint_covers_raw_restart_owned_sources(
@@ -324,15 +404,9 @@ async def test_automation_candidate_waits_for_startup_and_publishes_after_reconc
     candidate = load_runtime_candidate()
     readiness = StartupReadiness()
     previous_runtime = object()
-    candidate_runtime = object()
     app = _ConfigRefreshApp(readiness, previous_runtime)
     calls: list[str] = []
 
-    monkeypatch.setattr(
-        app_module,
-        "_scheduler_runtime_config",
-        lambda _settings: candidate_runtime,
-    )
     monkeypatch.setattr(
         app_module,
         "reconcile_automation_jobs",
@@ -353,6 +427,7 @@ async def test_automation_candidate_waits_for_startup_and_publishes_after_reconc
     task = asyncio.create_task(
         app.apply_config_candidate(
             candidate,
+            affected_workspaces=(),
             reconcile_automations=True,
         )
     )
@@ -363,7 +438,7 @@ async def test_automation_candidate_waits_for_startup_and_publishes_after_reconc
     await task
 
     assert calls == ["jobs", "schedules", "publish", "publish-scheduler"]
-    assert app.scheduler_runtime is candidate_runtime
+    assert app.scheduler_runtime is not previous_runtime
 
 
 async def test_failed_automation_reconciliation_keeps_published_snapshot(
@@ -392,8 +467,68 @@ async def test_failed_automation_reconciliation_keeps_published_snapshot(
     with pytest.raises(RuntimeError, match="Temporal unavailable"):
         await app.apply_config_candidate(
             candidate,
+            affected_workspaces=(),
             reconcile_automations=True,
         )
 
     publish.assert_not_called()
     assert app.scheduler_runtime is previous_runtime
+
+
+async def test_affected_workspace_retires_session_without_clearing_security_taint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    published = load_runtime_candidate()
+    publish_settings(published)
+    config_path.write_text(
+        "[profiles.base]\ncontains_secrets = true\n",
+        encoding="utf-8",
+    )
+    candidate = load_runtime_candidate()
+    await init_test_database()
+
+    profile = WorkspaceProfile(
+        jid="test@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+    )
+    await set_workspace_profile(profile)
+    await set_session(GroupFolder("test"), SessionId("provider-session"))
+    await mark_session_security_taint(GroupFolder("test"), secret_tainted=True)
+
+    readiness = StartupReadiness()
+    readiness.mark_ready()
+    app = _ConfigRefreshApp(readiness, object())
+    app.workspaces = {profile.jid: profile}
+    app.sessions = {"test": "provider-session"}
+    app.session_cleared = set()
+    app.plugin_manager = object()
+    app.queue = Mock(
+        pause_runtime_policy=AsyncMock(),
+        destroy_runtime_session=AsyncMock(),
+        resume_runtime_policy=Mock(),
+    )
+    monkeypatch.setattr(app_module, "prepare_context_reset", AsyncMock())
+    monkeypatch.setattr(app_module.temporal_scheduler, "publish_scheduler_config", Mock())
+
+    await app.apply_config_candidate(
+        candidate,
+        affected_workspaces=("test",),
+        reconcile_automations=False,
+    )
+
+    app.queue.pause_runtime_policy.assert_awaited_once()
+    app.queue.destroy_runtime_session.assert_awaited_once()
+    app.queue.resume_runtime_policy.assert_called_once()
+    assert await get_session(GroupFolder("test")) is None
+    assert (await get_session_security_taint(GroupFolder("test"))).secret_tainted is True
+    stored = await get_workspace_profile(profile.jid)
+    assert stored is not None
+    assert stored.security.contains_secrets is True
+    assert app.sessions == {}
+    assert app.session_cleared == {"test"}
+    assert get_settings() is candidate

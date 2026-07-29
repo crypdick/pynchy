@@ -29,6 +29,7 @@ from pynchy.state import (
     resolve_work_item_transition,
     set_last_group_sync,
     set_workspace_profile,
+    set_workspace_profiles,
     store_chat_metadata,
     update_host_job,
     update_task,
@@ -39,6 +40,7 @@ from pynchy.work_items.api import (
     WorkItemTransitionStatus,
 )
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -88,6 +90,7 @@ class TestWorkspaceProfiles:
             },
             contains_secrets=True,
             cop_active=False,
+            capabilities={"repo.write": CapabilityRule(decision="needs_human")},
         )
         profile = WorkspaceProfile(
             jid="secure@g.us",
@@ -103,6 +106,7 @@ class TestWorkspaceProfiles:
         assert result is not None
         assert result.security.contains_secrets is True
         assert result.security.cop_active is False
+        assert result.security.capabilities["repo.write"].decision == "needs_human"
         assert "email" in result.security.services
         assert result.security.services["email"].public_source is True
         assert result.security.services["email"].dangerous_writes is True
@@ -191,6 +195,31 @@ class TestWorkspaceProfiles:
         result = await get_workspace_profile("admin-1@g.us")
         assert result is not None
         assert result.is_admin is True
+
+    async def test_workspace_profile_batch_is_atomic(self):
+        original = WorkspaceProfile(
+            jid="one@g.us",
+            name="One",
+            folder="one",
+            trigger="@Pynchy",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_workspace_profile(original)
+
+        with pytest.raises(ValueError, match="already owned by workspace"):
+            await set_workspace_profiles(
+                (
+                    replace(original, name="Changed"),
+                    WorkspaceProfile(
+                        jid="one@g.us",
+                        name="Conflict",
+                        folder="other",
+                        trigger="@Pynchy",
+                    ),
+                )
+            )
+
+        assert await get_all_workspace_profiles() == {original.jid: original}
 
     async def test_workspace_profile_defaults_security_on_missing(self):
         """If security_profile column is NULL, defaults are used."""

@@ -475,7 +475,7 @@ async def _admit_human_approved_issue(
             context,
             "🔎 Rechecking the approved plan against the current checkout.",
         )
-        if not await review_approved_plan(
+        reviewed_issue = await review_approved_plan(
             context.client,
             context.review_plan,
             workspace=workspace.folder,
@@ -487,7 +487,8 @@ async def _admit_human_approved_issue(
             description=issue.description,
             updated_at=issue.updated_at,
             public_source=context.public_source,
-        ):
+        )
+        if reviewed_issue is None:
             await _report_plan_review_status(
                 issue,
                 workspace,
@@ -495,6 +496,10 @@ async def _admit_human_approved_issue(
                 "⚠️ Plan check did not admit work. See Linear for the updated plan or error.",
             )
             return None
+        refreshed_issue = DecisionIssue.from_payload(reviewed_issue)
+        if refreshed_issue is None:
+            raise ValueError("Reviewed Linear issue no longer belongs to a project")
+        issue = refreshed_issue
         await _report_plan_review_status(
             issue,
             workspace,

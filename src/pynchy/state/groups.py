@@ -14,6 +14,7 @@ else:
 
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.workspace.api import (
+    CapabilityRule,
     ContainerConfig,
     ServiceTrustConfig,
     WorkspaceProfile,
@@ -50,6 +51,10 @@ def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
                 services=services,
                 contains_secrets=sec_data["contains_secrets"],
                 cop_active=sec_data.get("cop_active", True),
+                capabilities={
+                    name: CapabilityRule(decision=value["decision"])
+                    for name, value in sec_data.get("capabilities", {}).items()
+                },
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
             raise ValueError(_CORRUPT_SECURITY_PROFILE_ERROR.format(folder=row["folder"])) from exc
@@ -81,33 +86,15 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
 
     Validates the profile before saving. Raises ValueError if validation fails.
     """
-    errors = profile.validate()
-    if errors:
-        raise ValueError(_INVALID_WORKSPACE_PROFILE_ERROR.format(errors="; ".join(errors)))
-
-    security_data = _security_data(profile)
-
     async with atomic_write() as db:
-        jid_cursor = await db.execute(
-            "SELECT folder FROM registered_groups WHERE jid = ?",
-            (profile.jid,),
-        )
-        jid_row = await jid_cursor.fetchone()
-        if jid_row is not None and jid_row["folder"] != profile.folder:
-            raise ValueError(
-                f"Chat JID {profile.jid!r} is already owned by workspace {jid_row['folder']!r}"
-            )
-        folder_cursor = await db.execute(
-            "SELECT jid FROM registered_groups WHERE folder = ?",
-            (profile.folder,),
-        )
-        folder_row = await folder_cursor.fetchone()
-        if folder_row is not None and folder_row["jid"] != profile.jid:
-            raise ValueError(
-                f"Workspace {profile.folder!r} is already bound to chat JID "
-                f"{folder_row['jid']!r}; use explicit rebind"
-            )
-        await _upsert_workspace_profile(db, profile, security_data)
+        await _validate_and_upsert_workspace_profile(db, profile)
+
+
+async def set_workspace_profiles(profiles: tuple[WorkspaceProfile, ...]) -> None:
+    """Atomically publish multiple workspace runtime profiles."""
+    async with atomic_write() as db:
+        for profile in profiles:
+            await _validate_and_upsert_workspace_profile(db, profile)
 
 
 async def rebind_workspace_profile(profile: WorkspaceProfile) -> str | None:
@@ -151,7 +138,40 @@ def _security_data(profile: WorkspaceProfile) -> dict[str, object]:
         },
         "contains_secrets": profile.security.contains_secrets,
         "cop_active": profile.security.cop_active,
+        "capabilities": {
+            name: {"decision": rule.decision}
+            for name, rule in profile.security.capabilities.items()
+        },
     }
+
+
+async def _validate_and_upsert_workspace_profile(
+    db: Connection,
+    profile: WorkspaceProfile,
+) -> None:
+    errors = profile.validate()
+    if errors:
+        raise ValueError(_INVALID_WORKSPACE_PROFILE_ERROR.format(errors="; ".join(errors)))
+    jid_cursor = await db.execute(
+        "SELECT folder FROM registered_groups WHERE jid = ?",
+        (profile.jid,),
+    )
+    jid_row = await jid_cursor.fetchone()
+    if jid_row is not None and jid_row["folder"] != profile.folder:
+        raise ValueError(
+            f"Chat JID {profile.jid!r} is already owned by workspace {jid_row['folder']!r}"
+        )
+    folder_cursor = await db.execute(
+        "SELECT jid FROM registered_groups WHERE folder = ?",
+        (profile.folder,),
+    )
+    folder_row = await folder_cursor.fetchone()
+    if folder_row is not None and folder_row["jid"] != profile.jid:
+        raise ValueError(
+            f"Workspace {profile.folder!r} is already bound to chat JID "
+            f"{folder_row['jid']!r}; use explicit rebind"
+        )
+    await _upsert_workspace_profile(db, profile, _security_data(profile))
 
 
 async def _upsert_workspace_profile(

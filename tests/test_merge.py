@@ -57,6 +57,18 @@ def test_later_profile_model_wins() -> None:
     assert result.model == "specialized-model"
 
 
+def test_later_execution_context_wins() -> None:
+    result = merge_workspace_profiles(
+        [
+            _profile(execution_mode="host", cwd="/srv/base"),
+            _profile(execution_mode="container", cwd="/workspace/project"),
+        ]
+    )
+
+    assert result.execution_mode == "container"
+    assert result.cwd == "/workspace/project"
+
+
 def test_boolean_privilege_fields_or_across_profiles() -> None:
     result = merge_workspace_profiles(
         [

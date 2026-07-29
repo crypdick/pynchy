@@ -10,6 +10,7 @@ from conftest import make_settings
 from pynchy.config.api import (
     ChannelOverrideConfig,
     ConnectionChatConfig,
+    MatrixConnectionConfig,
     OwnerConfig,
     ProfileConfig,
     Settings,
@@ -28,10 +29,14 @@ SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
 
 
-def _message(sender: str, sender_name: str = "User") -> NewMessage:
+def _message(
+    sender: str,
+    sender_name: str = "User",
+    chat_jid: str = "slack:C123",
+) -> NewMessage:
     return NewMessage(
         id=f"msg-{sender}",
-        chat_jid="slack:C123",
+        chat_jid=chat_jid,
         sender=sender,
         sender_name=sender_name,
         content="hello",
@@ -203,6 +208,16 @@ class TestResolveAllowedUsers:
         )
         assert result == set()
 
+    def test_owner_uses_configured_slack_identity_for_other_platforms(self):
+        result = resolve_allowed_users(
+            ["owner"],
+            {},
+            OwnerConfig(slack="U04OWNER"),
+            channel_plugin_name="connection.matrix.primary",
+        )
+
+        assert result == {"slack:U04OWNER"}
+
 
 class TestIsUserAllowed:
     def test_wildcard_allows_everyone(self):
@@ -257,6 +272,13 @@ class TestIsUserAllowed:
 
 
 class TestFilterAllowedMessages:
+    def test_rejects_a_non_string_channel_plugin_name(self):
+        with (
+            pytest.warns(UserWarning, match="violates type hint"),
+            pytest.raises(TypeError, match="channel_plugin_name"),
+        ):
+            filter_allowed_messages([], object(), 1)  # type: ignore[arg-type]
+
     def test_filters_non_admin_messages_by_connection_security(self):
         settings = make_settings(
             connections={
@@ -322,6 +344,26 @@ class TestFilterAllowedMessages:
 
         assert filtered == messages
 
+    def test_matrix_connection_bypasses_sender_allowlists(self):
+        settings = make_settings(
+            connections={
+                "matrix": MatrixConnectionConfig(expected_user_id="@pynchy:example.test"),
+            }
+        )
+        group = WorkspaceProfile(
+            jid="matrix:!room:example.test",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "matrix")
+
+        assert filtered == messages
+
     def test_chat_security_overrides_connection_security(self):
         settings = make_settings(
             connections={
@@ -350,6 +392,61 @@ class TestFilterAllowedMessages:
             filtered = filter_allowed_messages(messages, group, "synapse")
 
         assert [msg.sender for msg in filtered] == ["U04CHAT"]
+
+    def test_matching_chat_without_security_falls_back_to_connection_policy(self):
+        settings = make_settings(
+            connections={
+                "slack": SlackConnectionConfig(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04CONNECTION"]),
+                    chat={"slack:C123": ConnectionChatConfig()},
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages([_message("U04CONNECTION")], group, "slack")
+
+        assert [message.sender for message in filtered] == ["U04CONNECTION"]
+
+    def test_chat_security_matches_a_non_slack_jid_suffix(self):
+        settings = make_settings(
+            connections={
+                "phone": WhatsAppConnectionConfig(
+                    security=ChannelOverrideConfig(allowed_users=["whatsapp:blocked"]),
+                    chat={
+                        "ignored": ConnectionChatConfig(),
+                        "123@s.whatsapp.net": ConnectionChatConfig(
+                            security=ChannelOverrideConfig(allowed_users=["whatsapp:allowed"])
+                        ),
+                    },
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="whatsapp:123@s.whatsapp.net",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        message = _message(
+            "allowed",
+            chat_jid="whatsapp:123@s.whatsapp.net",
+        )
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages([message], group, "phone")
+
+        assert filtered == [message]
 
 
 class TestChannelOverrideConfig:

@@ -16,16 +16,20 @@ def agent_core_config(
 ) -> dict[str, Any] | None:
     """Return the configured model and reasoning effort for an agent invocation."""
     resolved_model = model
+    resolved_reasoning_effort = model_reasoning_effort
     if group_folder is not None:
         resolved = workspace_config.load_resolved_config(group_folder)
-        if resolved is not None and resolved.model:
-            resolved_model = resolved.model
+        if resolved is not None:
+            if resolved.model:
+                resolved_model = resolved.model
+            if resolved.model_reasoning_effort:
+                resolved_reasoning_effort = resolved.model_reasoning_effort
 
     result: dict[str, Any] = {}
     if resolved_model:
         result["model"] = resolved_model
-    if model_reasoning_effort:
-        result["model_reasoning_effort"] = model_reasoning_effort
+    if resolved_reasoning_effort:
+        result["model_reasoning_effort"] = resolved_reasoning_effort
     return result or None
 
 

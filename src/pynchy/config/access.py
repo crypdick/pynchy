@@ -185,8 +185,6 @@ def _connection_config(channel_plugin_name: str | None) -> ConnectionConfig | No
 
 
 def _chat_security(connection: ConnectionConfig, chat_jid: str) -> ChannelOverrideConfig | None:
-    if connection.type == "matrix":
-        return None
     for chat_name, chat_cfg in connection.chat.items():
         if not _chat_name_matches_jid(chat_name, chat_jid):
             continue
