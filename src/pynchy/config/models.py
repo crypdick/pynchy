@@ -156,7 +156,6 @@ class ContainerConfig(_StrictModel):
     # Agent containers must fit alongside host services on the deployment
     # machine. Full test suites scale their xdist workers to this cgroup cap.
     memory_mb: Annotated[int, Field(gt=0, le=2048)] = 2048
-    max_output_size: int = 10485760  # 10MB
     # Idle reclamation starts only after a query completes.
     idle_timeout_ms: int = 900000  # 15 minutes
     orphan_reap_age_ms: int = 604800000  # 7 days
@@ -254,13 +253,11 @@ class LearningConfig(_StrictModel):
     review_after_turn: bool = True
     max_attempts: int = 3
     packet_max_chars: int = 12_000
-    skill_max_bytes: int = 200_000
     obsidian: ObsidianLearningConfig = ObsidianLearningConfig()
 
     @field_validator(
         "max_attempts",
         "packet_max_chars",
-        "skill_max_bytes",
     )
     @classmethod
     def validate_positive_operational_knobs(cls, v: float | int) -> float | int:
