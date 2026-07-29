@@ -541,3 +541,39 @@ def test_oauth_commands_have_fixed_services_and_read_only_drive_scope(tmp_path: 
     for command in auth_commands:
         assert command[command.index("--services") + 1] == "gmail,contacts,docs,sheets,drive"
         assert command[command.index("--drive-scope") + 1] == "readonly"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "gog_gmail_search",
+        "gog_gmail_get",
+        "gog_gmail_create_draft",
+        "gog_gmail_send_draft",
+        "gog_gmail_send",
+        "gog_contacts_search",
+        "gog_docs_read",
+        "gog_docs_export",
+        "gog_sheets_get",
+        "gog_sheets_update",
+        "gog_setup_complete",
+    ],
+)
+async def test_gog_handlers_return_validation_errors_for_incomplete_arguments(
+    tool_name: str,
+) -> None:
+    result = await _handler(tool_name)({"source_group": "workspace"})
+
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_gog_setup_start_returns_a_safe_client_error() -> None:
+    with patch(
+        "pynchy.plugins.integrations.gog._handlers.create_gog_client",
+        side_effect=gog.GogError("credentials unavailable"),
+    ):
+        result = await _handler("gog_setup_start")({"source_group": "workspace"})
+
+    assert result == {"error": "Gog setup could not start: credentials unavailable"}
