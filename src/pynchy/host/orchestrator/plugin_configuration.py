@@ -155,9 +155,13 @@ from pynchy.plugins.integrations.matrix_gateway import (
     MatrixGatewayRuntime,
     configure_matrix_gateway_runtime,
 )
+from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001 - beartype resolves Matrix callback annotations at runtime.
+    MatrixPortalAssertion,
+)
 from pynchy.plugins.integrations.matrix_route_resolution import (
     MatrixRouteInput,
     MatrixWorkspacePolicy,
+    ResolvedMatrixRoute,
     resolve_matrix_routes,
 )
 from pynchy.plugins.integrations.operational_canaries import (
@@ -227,9 +231,6 @@ from pynchy.workspace.api import (
 
 if TYPE_CHECKING:
     import pluggy
-
-    from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
-    from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRoute
 
 
 def configure_computer_use_plugins(
