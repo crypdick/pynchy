@@ -50,6 +50,10 @@ async def test_duplicate_revision_is_rejected_while_pending_and_after_boot() -> 
     )
 
 
+async def test_empty_deployment_state_has_no_effective_revision() -> None:
+    assert await get_deployment_state() == DeploymentState(applied=None, pending=None)
+
+
 @pytest.mark.parametrize(
     ("target", "expected_kind"),
     [
