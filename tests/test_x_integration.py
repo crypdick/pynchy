@@ -51,11 +51,16 @@ class _FakeLocator:
 
 class _FakePage:
     def __init__(
-        self, *, visible: tuple[bool, ...] = (), navigation_error: str | None = None
+        self,
+        *,
+        visible: tuple[bool, ...] = (),
+        navigation_error: str | None = None,
+        selector_error: str | None = None,
     ) -> None:
         self.calls: list[tuple[str, str, str | None]] = []
         self._visible = iter(visible)
         self._navigation_error = navigation_error
+        self._selector_error = selector_error
 
     def locator(self, selector: str) -> _FakeLocator:
         locator = _FakeLocator(selector, self.calls)
@@ -72,6 +77,10 @@ class _FakePage:
 
     async def wait_for_timeout(self, _milliseconds: int) -> None:
         return None
+
+    async def wait_for_selector(self, _selector: str, **_kwargs: object) -> None:
+        if self._selector_error:
+            raise RuntimeError(self._selector_error)
 
 
 def _handler(tool_name: str) -> Callable[[dict[str, Any]], Any]:
@@ -256,6 +265,89 @@ async def test_x_post_uses_the_configured_persistent_browser(
 
 
 @pytest.mark.asyncio
+async def test_x_session_setup_reports_existing_login_without_vnc(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    page = _FakePage(visible=(True,))
+    profile_path = tmp_path / "x-profile"
+    closed, launches = _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=True))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result == {
+        "result": {
+            "status": "ok",
+            "message": f"Already logged in to X. Profile saved at {profile_path}",
+        }
+    }
+    assert launches == [{"headless": False}]
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_x_session_setup_waits_for_login_and_reports_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_path = tmp_path / "x-profile"
+    page = _FakePage(visible=(False,), selector_error="timed out")
+    _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=False))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result == {"error": "Login not completed within 1s. Try again with a longer timeout."}
+
+
+@pytest.mark.asyncio
+async def test_x_session_setup_saves_completed_login_and_surfaces_setup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_path = tmp_path / "x-profile"
+    page = _FakePage(visible=(False,))
+    _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=False))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result["result"]["profile_dir"] == str(profile_path)
+    assert "novnc_url" not in result["result"]
+
+    def fail_setup() -> None:
+        raise RuntimeError("display missing")
+
+    monkeypatch.setitem(action_globals, "ensure_xvfb", fail_setup)
+    assert await _handler("setup_x_session")({}) == {"error": "display missing"}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("data", "page", "expected"),
     [
@@ -286,6 +378,35 @@ async def test_x_actions_surface_input_and_navigation_failures(
         result = await _handler("x_post")(data)
 
     assert result == {"error": expected}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "data"),
+    [
+        ("x_reply", {"tweet_url": "123", "content": "reply"}),
+        ("x_retweet", {"tweet_url": "123"}),
+        ("x_quote", {"tweet_url": "123", "comment": "quote"}),
+    ],
+)
+async def test_x_actions_surface_navigation_failures_for_all_tweet_actions(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+    data: dict[str, str],
+) -> None:
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value="bad nav")
+    )
+
+    assert await handler(data) == {"error": "bad nav"}
 
 
 @pytest.mark.asyncio
