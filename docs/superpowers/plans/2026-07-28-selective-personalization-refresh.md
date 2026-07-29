@@ -19,7 +19,7 @@
 
 ## Scope
 
-This plan hot-reloads only these personalized fields:
+This superseded plan proposed hot reload for only these personalized fields:
 
 ```toml
 [profiles.<name>]
@@ -27,24 +27,26 @@ skills = [...]
 denied_skills = [...]
 ```
 
-The profile name and every other `pynchy.toml` field remain restart-sensitive. A profile addition, deletion, or rename therefore still restarts Pynchy, even when that profile contains only skill fields.
+Profile addition, deletion, or rename remains restart-sensitive, even when the
+profile contains only skill fields. For the current field matrix, see
+[Affected-workspace runtime policy refresh](../future-work/workspace-runtime-policy-refresh.md).
 
 Skill file content under `data/personalization/skills/` and prompt content already refresh without a restart. This plan does not change those paths.
 
-Every other personalization change remains restart-sensitive. The follow-up
-work is split into bounded design briefs:
+The bounded follow-up work has these outcomes:
 
 - [Automation hot reconciliation](../future-work/automation-hot-reconciliation.md)
-  covers agent jobs, host cron jobs, and Temporal schedules.
+  implements live updates for agent jobs, host cron jobs, and Temporal
+  schedules.
 - [Workspace topology hot reconciliation](../future-work/workspace-topology-hot-reconciliation.md)
-  covers workspace registrations, threads, profile assignments, and removals.
+  remains future work for workspace registrations, threads, profile
+  assignments, admin identity, and removals.
 - [Affected-workspace runtime policy refresh](../future-work/workspace-runtime-policy-refresh.md)
-  classifies remaining workspace policy by whether it can refresh before the
-  next turn, requires affected-session retirement, or must retain a host
-  restart.
+  implements next-turn refresh and affected-session retirement while retaining
+  host restarts for process-wide policy.
 
-These briefs are not implementation plans. Promote one to a dated plan only
-after its entry criteria are resolved.
+The topology brief remains not implementation-ready. Promote it to a dated plan
+only after its entry criteria are resolved.
 
 ## File map
 

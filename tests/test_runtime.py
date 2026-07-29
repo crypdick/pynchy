@@ -110,6 +110,15 @@ class TestDockerRuntime:
     def test_satisfies_orphan_reaping_contract(self):
         assert isinstance(DockerContainerRuntime(), OrphanReapingRuntime)
 
+    def test_reports_cli_availability(self):
+        runtime = DockerContainerRuntime()
+        with patch(
+            "pynchy.plugins.runtimes.docker_runtime.runtime.shutil.which",
+            side_effect=("/usr/bin/docker", None),
+        ):
+            assert runtime.is_available() is True
+            assert runtime.is_available() is False
+
     def test_parses_docker_ndjson_format(self):
         rt = DockerContainerRuntime()
         ndjson = "\n".join(
@@ -212,6 +221,69 @@ class TestDockerRuntime:
             mock_sys.platform = "linux"
             with pytest.raises(RuntimeError, match="systemctl"):
                 rt.ensure_running()
+
+    def test_docker_not_running_on_macos_starts_desktop_then_retries(self):
+        runtime = DockerContainerRuntime()
+        unavailable = subprocess.CalledProcessError(1, "docker")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run",
+                side_effect=[unavailable, MagicMock(), MagicMock()],
+            ) as run,
+            patch("pynchy.plugins.runtimes.docker_runtime.runtime.sys") as system,
+        ):
+            system.platform = "darwin"
+            runtime.ensure_running()
+
+        assert run.call_args_list[1].args[0] == ["open", "-a", "Docker"]
+        assert run.call_args_list[2].args[0] == ["docker", "info"]
+
+    def test_docker_desktop_start_failure_has_actionable_error(self):
+        runtime = DockerContainerRuntime()
+        unavailable = subprocess.CalledProcessError(1, "docker")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run",
+                side_effect=[unavailable, FileNotFoundError()],
+            ),
+            patch("pynchy.plugins.runtimes.docker_runtime.runtime.sys") as system,
+        ):
+            system.platform = "darwin"
+            with pytest.raises(RuntimeError, match="Install from"):
+                runtime.ensure_running()
+
+    def test_docker_desktop_timeout_has_actionable_error(self):
+        runtime = DockerContainerRuntime()
+        unavailable = subprocess.CalledProcessError(1, "docker")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run",
+                side_effect=[unavailable, MagicMock(), *([unavailable] * 30)],
+            ),
+            patch("pynchy.plugins.runtimes.docker_runtime.runtime.sys") as system,
+            patch("pynchy.plugins.runtimes.docker_runtime.runtime.time.sleep"),
+        ):
+            system.platform = "darwin"
+            with pytest.raises(RuntimeError, match="within 60s"):
+                runtime.ensure_running()
+
+    @pytest.mark.parametrize(
+        ("force", "returncode", "expected_args", "expected_result"),
+        [
+            (True, 0, ["docker", "rm", "-f", "old"], True),
+            (False, 1, ["docker", "rm", "old"], False),
+        ],
+    )
+    def test_remove_container_returns_cli_success(
+        self, force, returncode, expected_args, expected_result
+    ):
+        runtime = DockerContainerRuntime()
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as run:
+            run.return_value.returncode = returncode
+
+            assert runtime.remove_container("old", force=force) is expected_result
+
+        assert run.call_args.args[0] == expected_args
 
 
 class TestAppleRuntime:

@@ -22,9 +22,11 @@ does not describe the full policy.
 The following changes stay with their dedicated reconciliation work:
 
 - workspace, thread, profile-assignment, chat-binding, and migration changes:
-  [Workspace topology hot reconciliation](workspace-topology-hot-reconciliation.md);
+  [Workspace topology hot reconciliation](workspace-topology-hot-reconciliation.md)
+  (future work);
 - jobs and automation files:
-  [Automation hot reconciliation](automation-hot-reconciliation.md); and
+  [Automation hot reconciliation](automation-hot-reconciliation.md)
+  (implemented); and
 - connections, routes, plugins, channel policy, server and gateway
   infrastructure, scheduler and worker settings, global queue policy, secrets,
   and repository checkout definitions: host restart.
