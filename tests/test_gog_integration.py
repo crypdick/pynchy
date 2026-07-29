@@ -251,6 +251,22 @@ def test_gog_client_builds_send_draft_command(tmp_path: Path) -> None:
         assert client.gmail_send_draft(draft_id="draft-1") == "{}"
 
 
+def test_gog_client_omits_optional_docs_tab(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    completed = subprocess.CompletedProcess([], 0, "{}", "")
+
+    with patch(
+        "pynchy.plugins.integrations.gog._client.subprocess.run", return_value=completed
+    ) as run:
+        assert client.docs_read(document_id="doc-1", tab=None) == "{}"
+
+    assert "--tab" not in run.call_args.args[0]
+
+
 @pytest.mark.parametrize(
     ("outcome", "message"),
     [
