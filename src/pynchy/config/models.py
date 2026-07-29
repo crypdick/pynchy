@@ -12,7 +12,7 @@ from typing import Annotated, Literal, NewType
 from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
 from pynchy.config.caldav import CalDAVConfig
-from pynchy.config.refs import parse_chat_ref, parse_connection_ref
+from pynchy.config.refs import parse_chat_ref
 from pynchy.config.workspace_layout import (
     WorkspaceScopeConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
     WorkspaceThreadConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
@@ -33,7 +33,6 @@ from pynchy.integration_contracts import (  # noqa: TC001 - Pydantic resolves Ma
 # downstream code that reads these fields gets a type that can't be confused with an
 # arbitrary str. Both are NewTypes over str, so they remain assignable wherever a
 # plain str ref is expected (string interpolation, config round-trip, cascade merge).
-ConnectionRefStr = NewType("ConnectionRefStr", str)
 ChatRefStr = NewType("ChatRefStr", str)
 ProfileName = NewType("ProfileName", str)
 ToolName = NewType("ToolName", str)
@@ -43,7 +42,6 @@ PromptName = NewType("PromptName", str)
 # TODO(config-schema-cutover): propagate these semantic names through host/runtime
 # call sites as the remaining config plumbing adopts workspace/tool identity types.
 
-CONNECTION_REF_MESSAGE = "command_center.connection must be connection.<platform>.<name>"
 CONNECTION_NAME_MESSAGE = "command_center.connection must be a [connections.<name>] name"
 CHAT_REF_MESSAGE = "chat must be connection.<platform>.<name>.chat.<chat>"
 CONFIG_NAME_MESSAGE = "config names must not be empty"
@@ -66,12 +64,6 @@ STDIO_MCP_COMMAND_MESSAGE = "Stdio MCP tools require 'command'"
 STDIO_MCP_PORT_MESSAGE = "Stdio MCP tools require 'port'"
 STDIO_MCP_TRANSPORT_MESSAGE = "Stdio MCP tools require HTTP transport"
 ENV_NAME_MESSAGE = "tool environment names must use shell variable syntax"
-
-
-def _validated_connection_ref(v: str) -> ConnectionRefStr:
-    if parse_connection_ref(v) is None:
-        raise ValueError(CONNECTION_REF_MESSAGE)
-    return ConnectionRefStr(v)
 
 
 def _validated_connection_name(v: str) -> str:
@@ -113,7 +105,6 @@ def _validated_env_name(v: str) -> str:
 # AfterValidator runs after Pydantic coerces the input to str; for Optional fields it
 # is skipped on None. The validator returns the NewType so the field's static type
 # carries the parse result — no downstream re-validation.
-ValidatedConnectionRef = Annotated[ConnectionRefStr, AfterValidator(_validated_connection_ref)]
 ValidatedConnectionName = Annotated[str, AfterValidator(_validated_connection_name)]
 ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
 ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
