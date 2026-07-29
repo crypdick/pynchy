@@ -11,8 +11,18 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from pynchy.config.errors import PersonalizationError
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
+)
+from pynchy.config.models import (
+    WorkspaceConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
+)
+from pynchy.config.prompts import (
+    PipelineConfig,
+    PipelineDocument,
+    PromptConfig,
+    load_prompt_catalog,
 )
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 
@@ -20,7 +30,9 @@ DEFAULTS_RELATIVE_DIR = Path("data/defaults")
 SETTINGS_FILENAME = "pynchy.toml"
 LITELLM_FILENAME = "litellm.yaml"
 AUTOMATIONS_DIRNAME = "automations"
+PIPELINES_DIRNAME = "pipelines"
 PROMPTS_DIRNAME = "prompts"
+WORKSPACES_DIRNAME = "workspaces"
 _INLINE_SECRET_KEYS = frozenset(
     {
         "access_token",
@@ -34,10 +46,6 @@ _INLINE_SECRET_KEYS = frozenset(
 )
 
 
-class PersonalizationError(ValueError):
-    """Raised when a personalization tree cannot be loaded safely."""
-
-
 class AutomationDocument(BaseModel):
     """One versioned automation declaration."""
 
@@ -45,6 +53,15 @@ class AutomationDocument(BaseModel):
 
     schema_version: Literal[1]
     job: JobConfig
+
+
+class WorkspaceDocument(BaseModel):
+    """One versioned workspace declaration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1]
+    workspace: WorkspaceConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +151,32 @@ def load_layered_settings_mapping(
                 f"Automation filenames collide with [jobs] entries: {joined}"
             )
         merged["jobs"] = {**configured_jobs, **automations}
+
+    workspaces = _load_workspace_layers(paths)
+    if workspaces:
+        configured_workspaces = merged.get("workspaces", {})
+        if not isinstance(configured_workspaces, dict):
+            raise PersonalizationError("The top-level workspaces setting must be a mapping")
+        _reject_name_collisions(
+            "Workspace filenames",
+            configured_workspaces,
+            workspaces,
+        )
+        merged["workspaces"] = {**configured_workspaces, **workspaces}
+
+    pipelines = _load_pipeline_layers(paths)
+    if pipelines:
+        configured_pipelines = merged.get("pipelines", {})
+        if not isinstance(configured_pipelines, dict):
+            raise PersonalizationError("The top-level pipelines setting must be a mapping")
+        _reject_name_collisions(
+            "Pipeline filenames",
+            configured_pipelines,
+            pipelines,
+        )
+        merged["pipelines"] = {**configured_pipelines, **pipelines}
+
+    _validate_prompt_configuration(merged, paths)
 
     if paths.personalization.is_dir():
         _wire_litellm_config(merged, paths.litellm_config, required=require_personalization)
@@ -226,6 +269,120 @@ def _load_automation_layers(paths: PersonalizationPaths) -> dict[str, dict[str, 
     return {**defaults, **personalized}
 
 
+def _load_workspace_layers(paths: PersonalizationPaths) -> dict[str, dict[str, Any]]:
+    defaults = _load_workspaces(paths.defaults / WORKSPACES_DIRNAME)
+    personalized = _load_workspaces(paths.personalization / WORKSPACES_DIRNAME)
+    _reject_name_collisions("Workspace files", defaults, personalized)
+    return {**defaults, **personalized}
+
+
+def _load_workspaces(directory: Path) -> dict[str, dict[str, Any]]:
+    if not directory.is_dir():
+        return {}
+    workspaces: dict[str, dict[str, Any]] = {}
+    for path in sorted(directory.glob("*.toml")):
+        name = _document_name(path, "workspace")
+        try:
+            document = WorkspaceDocument.model_validate(
+                tomllib.loads(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
+            raise PersonalizationError(f"Invalid workspace {path}: {exc}") from exc
+        workspaces[name] = document.workspace.model_dump(exclude_none=True)
+    return workspaces
+
+
+def _load_pipeline_layers(paths: PersonalizationPaths) -> dict[str, dict[str, Any]]:
+    defaults = _load_pipelines(paths.defaults / PIPELINES_DIRNAME)
+    personalized = _load_pipelines(paths.personalization / PIPELINES_DIRNAME)
+    _reject_name_collisions("Pipeline files", defaults, personalized)
+    return {**defaults, **personalized}
+
+
+def _load_pipelines(directory: Path) -> dict[str, dict[str, Any]]:
+    if not directory.is_dir():
+        return {}
+    pipelines: dict[str, dict[str, Any]] = {}
+    for path in sorted(directory.glob("*.toml")):
+        name = _document_name(path, "pipeline")
+        try:
+            document = PipelineDocument.model_validate(
+                tomllib.loads(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
+            raise PersonalizationError(f"Invalid pipeline {path}: {exc}") from exc
+        pipelines[name] = document.pipeline.model_dump()
+    return pipelines
+
+
+def _document_name(path: Path, kind: str) -> str:
+    name = path.stem
+    if not name or name.startswith("."):
+        raise PersonalizationError(f"Invalid {kind} filename: {path.name}")
+    return name
+
+
+def _reject_name_collisions(
+    label: str,
+    left: Mapping[str, object],
+    right: Mapping[str, object],
+) -> None:
+    collisions = sorted(set(left) & set(right))
+    if collisions:
+        raise PersonalizationError(f"{label} must be globally unique: {', '.join(collisions)}")
+
+
+def _validate_prompt_configuration(
+    settings: Mapping[str, Any],
+    paths: PersonalizationPaths,
+) -> None:
+    catalog = load_prompt_catalog(
+        default_prompts=paths.default_prompts,
+        personalized_prompts=paths.personalized_prompts,
+    )
+    if not catalog.content and "prompts" not in settings and "pipelines" not in settings:
+        return
+    try:
+        prompts = PromptConfig.model_validate(settings.get("prompts", {}))
+        pipelines = {
+            name: PipelineConfig.model_validate(value)
+            for name, value in dict(settings.get("pipelines", {})).items()
+        }
+    except (TypeError, ValueError) as exc:
+        raise PersonalizationError(f"Invalid prompt configuration: {exc}") from exc
+
+    required = {
+        value for field, value in prompts.model_dump().items() if field != "default_pipeline"
+    }
+    for pipeline in pipelines.values():
+        for stage in pipeline.stages:
+            required.add(stage.executor)
+            required.update(stage.reviewers)
+
+    workspaces = settings.get("workspaces", {})
+    if isinstance(workspaces, Mapping):
+        for workspace in workspaces.values():
+            if isinstance(workspace, Mapping) and isinstance(workspace.get("soul"), str):
+                required.add(workspace["soul"])
+
+    missing = sorted(required - set(catalog.content))
+    if missing:
+        raise PersonalizationError(f"Required prompt IDs do not resolve: {', '.join(missing)}")
+
+    selected_pipelines = {prompts.default_pipeline}
+    if isinstance(workspaces, Mapping):
+        selected_pipelines.update(
+            workspace["pipeline"]
+            for workspace in workspaces.values()
+            if isinstance(workspace, Mapping) and isinstance(workspace.get("pipeline"), str)
+        )
+    unknown_pipelines = sorted(selected_pipelines - set(pipelines))
+    if unknown_pipelines:
+        raise PersonalizationError(
+            f"Selected pipeline names do not resolve: {', '.join(unknown_pipelines)}"
+        )
+
+
 def _load_automations(directory: Path) -> dict[str, dict[str, Any]]:
     if not directory.is_dir():
         return {}
@@ -241,15 +398,6 @@ def _load_automations(directory: Path) -> dict[str, dict[str, Any]]:
         except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
             raise PersonalizationError(f"Invalid automation {path}: {exc}") from exc
         job = document.job.model_dump(exclude_none=True)
-        if prompt_file := job.get("prompt_file"):
-            prompt_path = Path(str(prompt_file))
-            if not prompt_path.is_absolute():
-                prompt_path = (path.parent / prompt_path).resolve()
-            if not prompt_path.is_file():
-                raise PersonalizationError(
-                    f"Automation {path} references missing prompt file: {prompt_path}"
-                )
-            job["prompt_file"] = str(prompt_path)
         automations[name] = job
     return automations
 

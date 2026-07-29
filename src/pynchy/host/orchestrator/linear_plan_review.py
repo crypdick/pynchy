@@ -32,54 +32,6 @@ from pynchy.workspace.api import (
 )
 
 _REVIEWER_RESULT_ERROR = "Plan reviewer did not return one valid JSON decision"
-_REVIEW_SYSTEM_NOTICE = (
-    "This is one bounded plan-freshness check. Work directly and do not delegate "
-    "to subagents or start parallel investigations."
-)
-_REVIEW_PROMPT = """\
-You are Pynchy's independent Linear plan-freshness reviewer. Work read-only.
-Inspect the current repositories and relevant documentation, then decide whether
-the already approved plan remains sane at the current repository state.
-
-Use your judgment. Return proceed when the approved intent, scope, and acceptance
-criteria remain valid, even if implementation needs minor adaptations for current
-code. The implementation worker owns those adaptations. Renames, moved code,
-nearby refactors, and non-conflicting changes are not reasons for another human
-approval cycle.
-
-Repository HEAD or SHA movement alone is not evidence that a plan is stale.
-Inspect the relevant diff. Return amend with a complete updated plan when minor
-drift makes the plan text inaccurate but does not change its approved intent,
-scope, or acceptance criteria. The host applies that amendment and proceeds
-without another approval cycle.
-
-Request replanning only when drift invalidates a specific plan assumption and
-materially changes scope, architecture, requirements, acceptance criteria, or
-another decision that requires human approval. Escalate major product or
-technical tradeoffs back to the human instead of guessing.
-
-When replanning, do the planning now. The replacement must contain concrete,
-directly executable implementation and verification steps based on the current
-state you inspected. Never return instructions to rerun this review, investigate
-freshness, or create, rebuild, or replace the plan later.
-
-Do not edit files, call mutating tools, publish work, or modify external systems.
-Return exactly one JSON object and no Markdown:
-
-{"decision":"proceed","reason":"brief evidence-based explanation"}
-
-or:
-
-{"decision":"amend","reason":"brief evidence-based explanation",\
-"plan":"complete amended Markdown plan"}
-
-or:
-
-{"decision":"replan","reason":"brief evidence-based explanation",\
-"plan":"complete replacement Markdown plan"}
-
-Current Linear issue:
-"""
 
 
 @runtime_checkable
@@ -126,7 +78,7 @@ def _reviewer_profile(request: LinearPlanReviewRequest) -> WorkspaceProfile:
     )
 
 
-def _review_prompt(request: LinearPlanReviewRequest) -> str:
+def _review_prompt(request: LinearPlanReviewRequest, reviewer_prompt: str) -> str:
     issue = {
         "id": request.issue_id,
         "identifier": request.identifier,
@@ -135,7 +87,10 @@ def _review_prompt(request: LinearPlanReviewRequest) -> str:
         "updated_at": request.updated_at,
         "description": request.description,
     }
-    return f"{_REVIEW_PROMPT}\n{json.dumps(issue, ensure_ascii=False, indent=2)}"
+    return (
+        f"{reviewer_prompt}\n\n"
+        f"Current Linear issue:\n{json.dumps(issue, ensure_ascii=False, indent=2)}"
+    )
 
 
 def _parse_result(raw: str) -> LinearPlanReviewResult:
@@ -164,6 +119,7 @@ def _parse_result(raw: str) -> LinearPlanReviewResult:
 async def _run_queued_review(
     deps: PlanReviewDeps,
     request: LinearPlanReviewRequest,
+    reviewer_prompt: str,
 ) -> LinearPlanReviewResult:
     group = _reviewer_profile(request)
 
@@ -180,9 +136,9 @@ async def _run_queued_review(
             result = await deps.run_agent(
                 group,
                 group.jid,
-                [{"role": "user", "content": _review_prompt(request)}],
+                [{"role": "user", "content": _review_prompt(request, reviewer_prompt)}],
                 on_output=on_output,
-                extra_system_notices=[_REVIEW_SYSTEM_NOTICE],
+                extra_system_notices=None,
                 is_scheduled_task=True,
                 repo_access_override=None,
                 input_source=(
@@ -213,6 +169,7 @@ async def _run_queued_review(
 async def review_linear_plan(
     deps: PlanReviewDeps,
     request: LinearPlanReviewRequest,
+    reviewer_prompt: str,
 ) -> LinearPlanReviewResult:
     """Run one isolated hidden reviewer and return a fail-closed typed result."""
     if not any(profile.folder == request.workspace for profile in deps.workspaces.values()):
@@ -220,4 +177,4 @@ async def review_linear_plan(
             decision=LinearPlanReviewDecision.ERROR,
             reason="Plan reviewer could not resolve the owning workspace",
         )
-    return await _run_queued_review(deps, request)
+    return await _run_queued_review(deps, request, reviewer_prompt)

@@ -50,6 +50,14 @@ from pynchy.config.personalization import (
     validate_personalization_tree,
 )
 from pynchy.config.profiles import CapabilityTomlConfig
+from pynchy.config.prompts import (
+    PipelineConfig,
+    PipelineStageConfig,
+    PromptCatalog,
+    PromptConfig,
+    load_prompt_catalog,
+    read_prompt,
+)
 from pynchy.config.refs import parse_chat_ref
 from pynchy.config.runtime_refresh import (
     RuntimePolicyChanges,
@@ -123,8 +131,12 @@ __all__ = [
     "OwnerConfig",
     "PersonalizationError",
     "PersonalizationPaths",
+    "PipelineConfig",
+    "PipelineStageConfig",
     "PluginConfig",
     "ProfileConfig",
+    "PromptCatalog",
+    "PromptConfig",
     "QueueConfig",
     "RepoConfig",
     "ReposConfig",
@@ -152,12 +164,14 @@ __all__ = [
     "get_settings",
     "is_user_allowed",
     "load_layered_settings_mapping",
+    "load_prompt_catalog",
     "load_runtime_candidate",
     "merge_workspace_profiles",
     "mutate_config_toml",
     "parse_chat_ref",
     "parse_settings_toml",
     "publish_settings",
+    "read_prompt",
     "repository_settings_sources",
     "reset_settings",
     "resolve_allowed_users",

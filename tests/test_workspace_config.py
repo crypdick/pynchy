@@ -13,7 +13,14 @@ from conftest import make_settings
 from pydantic import ValidationError
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import (
+    BuiltinTool,
+    PipelineConfig,
+    PipelineStageConfig,
+    ProfileConfig,
+    PromptConfig,
+    WorkspaceConfig,
+)
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
@@ -24,6 +31,7 @@ from pynchy.host.orchestrator.workspace_config import (
     get_repo_access_groups,
     load_resolved_config,
     load_workspace_config,
+    prompt_ids_for_context,
     reconcile_workspaces,
     register_runtime_workspace_restriction,
     update_profile_skill_policy,
@@ -143,18 +151,70 @@ class TestLoadResolvedConfig:
     def test_resolves_selected_profiles(self):
         s = _settings_with_workspaces(
             profiles={
-                "base": ProfileConfig(repo=["owner/base"], prompts=["base"]),
+                "base": ProfileConfig(repo=["owner/base"]),
                 "dev": ProfileConfig(includes=["base"], repo=["owner/dev"], is_admin=True),
             },
-            workspaces={"dev": WorkspaceConfig(profiles=["dev"])},
+            workspaces={
+                "dev": WorkspaceConfig(
+                    profiles=["dev"],
+                    soul="souls/default",
+                    pipeline="software-delivery",
+                )
+            },
         )
         with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
             resolved = load_resolved_config("dev")
 
         assert resolved is not None
-        assert resolved.prompts == ["base"]
         assert resolved.repo == ["owner/base", "owner/dev"]
         assert resolved.is_admin is True
+        assert resolved.soul == "souls/default"
+        assert resolved.pipeline == "software-delivery"
+
+    def test_selects_executor_from_workspace_pipeline_stage(self):
+        s = make_settings(
+            prompts=PromptConfig(default_pipeline="direct"),
+            pipelines={
+                "direct": PipelineConfig(
+                    stages=[
+                        PipelineStageConfig(
+                            name="interactive",
+                            executor="executors/default",
+                        )
+                    ]
+                ),
+                "delivery": PipelineConfig(
+                    stages=[
+                        PipelineStageConfig(
+                            name="interactive",
+                            executor="executors/default",
+                        ),
+                        PipelineStageConfig(
+                            name="planning",
+                            executor="executors/planning",
+                        ),
+                    ]
+                ),
+            },
+            workspaces={
+                "dev": WorkspaceConfig(
+                    soul="souls/default",
+                    pipeline="delivery",
+                )
+            },
+        )
+
+        resolved = s.resolved_workspace_config("dev")
+        assert prompt_ids_for_context(
+            resolved,
+            "external:linear:ready_for_planning",
+            settings=s,
+        ) == ("souls/default", "executors/default", "executors/planning")
+        assert prompt_ids_for_context(
+            resolved,
+            "hidden:pipeline-review:reviewers/security",
+            settings=s,
+        ) == ("souls/default", "reviewers/security")
 
     def test_runtime_restrictions_cannot_weaken_parent_capabilities(self):
         s = _settings_with_workspaces(
@@ -231,11 +291,16 @@ class TestAddWorkspaceToToml:
 [profiles.worker]
 """
         )
+        monkeypatch.setattr(
+            workspace_config,
+            "get_settings",
+            lambda: _settings_with_workspaces(profiles={"worker": ProfileConfig()}),
+        )
 
         with pytest.raises(ValueError, match="unknown profile"):
             add_workspace_to_toml("daily", WorkspaceConfig(profiles=["missing"]))
 
-        assert "workspaces.daily" not in toml_path.read_text()
+        assert not (tmp_path / "data/personalization/workspaces/daily.toml").exists()
 
     def test_writes_workspace_profiles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -250,11 +315,19 @@ class TestAddWorkspaceToToml:
 is_admin = true
 """
         )
+        monkeypatch.setattr(
+            workspace_config,
+            "get_settings",
+            lambda: _settings_with_workspaces(
+                profiles={"pynchy-dev": ProfileConfig(is_admin=True)}
+            ),
+        )
 
         add_workspace_to_toml("discord-admin", WorkspaceConfig(profiles=["pynchy-dev"]))
 
-        data = tomllib.loads(toml_path.read_text())
-        assert data["workspaces"]["discord-admin"]["profiles"] == ["pynchy-dev"]
+        workspace_path = tmp_path / "data/personalization/workspaces/discord-admin.toml"
+        data = tomllib.loads(workspace_path.read_text())
+        assert data["workspace"]["profiles"] == ["pynchy-dev"]
 
 
 def test_update_profile_skill_policy_persists_grants_and_denials(tmp_path, monkeypatch):

@@ -14,7 +14,6 @@ class TestProfileConfigDefaults:
     def test_default_fields(self):
         cfg = ProfileConfig()
         assert cfg.includes == []
-        assert cfg.prompts == []
         assert cfg.skills == []
         assert cfg.denied_skills == []
         assert cfg.tools == []
@@ -41,19 +40,14 @@ class TestProfileConfigFieldsSet:
 
     def test_multiple_fields_tracked(self):
         cfg = ProfileConfig(
-            prompts=["base"],
             skills=["code"],
             contains_secrets=True,
         )
-        assert cfg.model_fields_set == {"prompts", "skills", "contains_secrets"}
+        assert cfg.model_fields_set == {"skills", "contains_secrets"}
 
 
 class TestProfileConfigListFields:
     """Union list fields accept current schema values."""
-
-    def test_prompts_accepts_list(self):
-        cfg = ProfileConfig(prompts=["safety", "code-style"])
-        assert cfg.prompts == ["safety", "code-style"]
 
     def test_includes_accepts_list(self):
         cfg = ProfileConfig(includes=["base", "dev"])

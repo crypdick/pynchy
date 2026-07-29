@@ -33,7 +33,6 @@ def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
     settings = _settings(
         profiles={
             "admin": ProfileConfig(
-                prompts=["base"],
                 skills=["pynchy", "browser"],
                 tools=["shell"],
                 repo="crypdick/pynchy",
@@ -78,10 +77,13 @@ def test_canary_rejects_an_invalid_schedule() -> None:
         CanaryConfig(schedule="not a cron expression")
 
 
-@pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])
-def test_profile_prompt_names_must_be_safe_identifiers(name: str) -> None:
-    with pytest.raises(ValidationError, match="prompt names"):
-        ProfileConfig(prompts=[name])
+@pytest.mark.parametrize(
+    "name",
+    ["../secret", "nested/prompt", "souls/Uppercase", "souls/has space"],
+)
+def test_workspace_soul_ids_must_be_scoped_safe_identifiers(name: str) -> None:
+    with pytest.raises(ValidationError, match="prompt IDs"):
+        WorkspaceConfig(soul=name)
 
 
 def test_legacy_sandbox_sections_are_rejected() -> None:
@@ -203,7 +205,7 @@ def test_agent_job_targets_configured_workspace() -> None:
                 enabled=True,
                 schedule="0 8 * * *",
                 workspace="admin",
-                prompt_file="prompts/daily-triage.md",
+                prompt="Triage today's work.",
             )
         }
     )
@@ -211,7 +213,7 @@ def test_agent_job_targets_configured_workspace() -> None:
     job = settings.jobs["daily-triage"]
     assert job.workspace == "admin"
     assert job.schedule == "0 8 * * *"
-    assert job.prompt_file == "prompts/daily-triage.md"
+    assert job.prompt == "Triage today's work."
     assert job.memory is True
 
 
@@ -471,8 +473,8 @@ def test_host_job_is_selected_by_workspace_magic_word() -> None:
     assert job.quiet_on_success is True
 
 
-def test_agent_job_requires_prompt_or_prompt_file() -> None:
-    with pytest.raises(ValidationError, match="agent jobs require prompt or prompt_file"):
+def test_agent_job_requires_prompt() -> None:
+    with pytest.raises(ValidationError, match="agent jobs require prompt"):
         JobConfig(enabled=True, schedule="0 8 * * *", workspace="admin")
 
 

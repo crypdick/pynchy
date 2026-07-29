@@ -22,9 +22,11 @@ public_sink = false
 dangerous_writes = false
 
 [profiles.marketplace-poller]
-prompts = ["marketplace-health"]
 tools = ["marketplace-health"]
 ```
+
+Select a marketplace executor from the workspace's named pipeline. See
+[Prompts and pipelines](../usage/prompts.md).
 
 The action ledger must contain a top-level `pending` object. The projection
 counts entries whose `status` equals `pending` or `awaiting_reply`; a missing
@@ -38,9 +40,9 @@ It does not list, fetch, or flag messages.
 
 ## Use the projection
 
-The `marketplace-health` prompt directs the agent to call
+The selected marketplace executor should direct the agent to call
 `marketplace_health_snapshot` instead of trying host-only paths from inside its
-container. Keep that prompt assigned anywhere the tool is enabled so learned
+container. Keep that executor selected anywhere the tool is enabled so learned
 skills with host-local commands cannot bypass the projection.
 
 The tool returns only this shape:

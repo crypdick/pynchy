@@ -105,40 +105,20 @@ def _has_review_signal(packet: LearningPacket, text: str, normalized: str) -> bo
     return bool(packet.loaded_skills and len(normalized) >= _MIN_REVIEW_TEXT_CHARS // 2)
 
 
-def build_review_prompt(packet: LearningPacket, paths: LearningPaths) -> str:
+def build_review_prompt(
+    packet: LearningPacket,
+    paths: LearningPaths,
+    reviewer_prompt: str,
+) -> str:
     """Build the hidden reviewer instruction prompt for one learning packet."""
     packet_payload = json.dumps(asdict(packet), ensure_ascii=False, indent=2, sort_keys=True)
     return (
-        "You are Pynchy's hidden learning reviewer. Inspect the captured "
-        "turn and update the mounted Obsidian vault only when the "
-        "conversation contains durable, factual learning.\n\n"
-        "Vault namespace and placement policy:\n"
-        "- The mounted vault root is the global memory namespace.\n"
+        f"{reviewer_prompt}\n\n"
+        "Runtime paths:\n"
         f"- Mounted vault root: {paths.vault_mount_path}\n"
-        "- Use existing folder organization first.\n"
-        "- Use the profile fallback memory path only when no repo, machine, "
-        "subject, or other existing folder clearly fits.\n"
         f"- Profile fallback memory path: {paths.mounted_memory_root}\n"
-        "- Keep notes small and factual; update existing notes when that is "
-        "cleaner than adding new ones.\n"
-        "- If nothing durable was learned, make no filesystem changes.\n\n"
-        "Memory note policy:\n"
-        "- Memory notes are folder-governed; they should not depend on "
-        "semantic frontmatter.\n"
-        "- Do not invent semantic frontmatter requirements for memory notes.\n"
-        "- Prefer a concise note in the strongest existing semantic folder "
-        "over a broad catch-all note.\n\n"
-        "Learned skill policy:\n"
-        "- Create and update learned skills in the personalization skill registry.\n"
         f"- Personalization skill registry: {PERSONALIZATION_SKILLS_CONTAINER_PATH}\n"
-        "- Never author skills in a session `.claude/skills` or `.codex/skills` directory.\n"
-        "- Learned skills are shared across profiles. A profile receives one only "
-        "when its `skills` selection names that skill. Use Pynchy's existing "
-        "`SKILL.md` skill format.\n"
-        "- Create or update a learned skill only for repeatable workflows, "
-        "not one-off facts.\n\n"
-        "Review the packet below. Make the smallest filesystem changes that "
-        "preserve durable learning.\n\n"
+        "\nCaptured packet:\n\n"
         "```json\n"
         f"{packet_payload}\n"
         "```\n"

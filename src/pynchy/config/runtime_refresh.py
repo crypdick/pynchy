@@ -21,7 +21,6 @@ from pynchy.config.settings import Settings
 
 _LIVE_PROFILE_FIELDS = frozenset(
     {
-        "prompts",
         "skills",
         "denied_skills",
         "repo",
@@ -64,6 +63,8 @@ def restart_fingerprint(settings: Settings) -> str:
         for field in _LIVE_PROFILE_FIELDS:
             profile.pop(field, None)
     for workspace in payload["workspaces"].values():
+        workspace.pop("soul", None)
+        workspace.pop("pipeline", None)
         workspace.pop("model", None)
         workspace.pop("model_reasoning_effort", None)
         for thread in workspace["threads"]:
@@ -73,6 +74,8 @@ def restart_fingerprint(settings: Settings) -> str:
             scope.pop("model", None)
             scope.pop("model_reasoning_effort", None)
     payload["agent"].pop("model_reasoning_effort", None)
+    payload.pop("prompts", None)
+    payload.pop("pipelines", None)
     for field in ("image", "timeout_ms", "memory_mb", "idle_timeout_ms"):
         payload["container"].pop(field, None)
     for field in ("enabled", "review_after_turn", "max_attempts", "packet_max_chars"):
@@ -139,8 +142,6 @@ def automation_projection(settings: Settings) -> tuple[tuple[str, object], ...]:
         if job is None:
             continue
         value = job.model_dump(mode="python")
-        if job.prompt_file is not None:
-            value["prompt_content"] = Path(job.prompt_file).read_text(encoding="utf-8")
         projection.append((name, _fingerprint_value(value)))
     return tuple(projection)
 
@@ -153,7 +154,8 @@ def _workspace_retirement_projection(
     if resolved is None:
         return None
     return (
-        tuple(resolved.prompts),
+        resolved.soul,
+        resolved.pipeline,
         tuple(resolved.repo),
         resolved.model,
         resolved.model_reasoning_effort,
@@ -178,6 +180,11 @@ def _global_retirement_projection(settings: Settings) -> object:
         settings.container.image,
         settings.container.memory_mb,
         settings.container.idle_timeout_ms,
+        _fingerprint_value(settings.prompts.model_dump()),
+        _fingerprint_value(
+            {name: pipeline.model_dump() for name, pipeline in sorted(settings.pipelines.items())}
+        ),
+        _prompt_source_projection(settings.project_root),
     )
 
 
@@ -242,6 +249,25 @@ def _automation_names(project_root: Path) -> set[str]:
         if directory.is_dir():
             names.update(path.stem for path in directory.glob("*.toml"))
     return names
+
+
+def _prompt_source_projection(project_root: Path) -> tuple[tuple[str, str], ...]:
+    sources: list[tuple[str, str]] = []
+    for directory in (
+        project_root / "data/defaults/prompts",
+        project_root / "data/personalization/prompts",
+    ):
+        if not directory.is_dir():
+            continue
+        sources.extend(
+            (
+                path.relative_to(project_root).as_posix(),
+                _restart_file_digest(path),
+            )
+            for path in sorted(directory.rglob("*.md"))
+            if path.is_file()
+        )
+    return tuple(sources)
 
 
 def _restart_file_digest(path: Path) -> str:

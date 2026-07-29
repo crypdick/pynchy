@@ -248,6 +248,15 @@ def _patch_settings(
     secret_overrides: dict[str, str] | None = None,
 ):
     """Patch get_settings() across all container_runner submodules."""
+    if tmp_path is not None:
+        prompt_root = tmp_path / "data/defaults/prompts"
+        (prompt_root / "souls").mkdir(parents=True, exist_ok=True)
+        (prompt_root / "executors").mkdir(exist_ok=True)
+        (prompt_root / "souls/default.md").write_text("Test soul.", encoding="utf-8")
+        (prompt_root / "executors/default.md").write_text(
+            "Test executor.",
+            encoding="utf-8",
+        )
     overrides = _settings_overrides(
         tmp_path=tmp_path,
         learning=learning,

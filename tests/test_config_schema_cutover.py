@@ -65,7 +65,6 @@ def test_new_schema_parses_minimal_config() -> None:
         default_core = "codex"
 
         [profiles.base]
-        prompts = ["base"]
         skills = ["python"]
         tools = ["shell", "linear", "caldav"]
         repo = "owner/project"
@@ -294,7 +293,6 @@ def test_profiles_compose_in_order_with_union_fields_and_last_scalar_wins() -> N
         {
             "profiles": {
                 "base": {
-                    "prompts": ["base", "shared"],
                     "skills": ["python"],
                     "tools": ["shell"],
                     "repo": "owner/base",
@@ -302,7 +300,6 @@ def test_profiles_compose_in_order_with_union_fields_and_last_scalar_wins() -> N
                 },
                 "research": {
                     "includes": ["base"],
-                    "prompts": ["shared", "research"],
                     "skills": ["web", "python"],
                     "tools": ["search", "shell"],
                     "repo": ["owner/base", "owner/research"],
@@ -310,14 +307,19 @@ def test_profiles_compose_in_order_with_union_fields_and_last_scalar_wins() -> N
                     "contains_secrets": True,
                 },
                 "admin": {
-                    "prompts": ["admin"],
                     "skills": ["ops"],
                     "tools": ["deploy"],
                     "repo": "owner/admin",
                     "is_admin": True,
                 },
             },
-            "workspaces": {"engineering": {"profiles": ["research", "admin"]}},
+            "workspaces": {
+                "engineering": {
+                    "profiles": ["research", "admin"],
+                    "soul": "souls/default",
+                    "pipeline": "software-delivery",
+                }
+            },
             "tools": {
                 "shell": {"type": "builtin", "name": "shell", "public_source": False},
                 "search": {"type": "builtin", "name": "search", "public_source": False},
@@ -329,13 +331,14 @@ def test_profiles_compose_in_order_with_union_fields_and_last_scalar_wins() -> N
     resolved = settings.resolved_workspace_config("engineering")
 
     assert resolved is not None
-    assert resolved.prompts == ["base", "shared", "research", "admin"]
     assert resolved.skills == ["python", "web", "ops"]
     assert resolved.tools == ["shell", "search", "deploy"]
     assert resolved.repo == ["owner/base", "owner/research", "owner/admin"]
     assert resolved.model == "research-model"
     assert resolved.is_admin is True
     assert resolved.contains_secrets is True
+    assert resolved.soul == "souls/default"
+    assert resolved.pipeline == "software-delivery"
 
 
 def test_shared_included_profiles_apply_once_without_overwriting_later_scalars() -> None:

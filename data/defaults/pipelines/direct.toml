@@ -1,0 +1,5 @@
+schema_version = 1
+
+[[pipeline.stages]]
+name = "interactive"
+executor = "executors/default"

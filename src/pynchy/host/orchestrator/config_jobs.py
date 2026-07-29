@@ -25,7 +25,7 @@ type JobConfig = Any
 type ResolvedWorkspaceConfig = Any
 type Settings = Any
 
-_JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt or prompt_file"
+_JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt"
 _JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
 
 
@@ -37,13 +37,9 @@ def _job_task_id(job_name: str) -> str:
 
 def _job_prompt(job_name: str, settings: Settings) -> str:
     job = settings.jobs[job_name]
-    if job.prompt is not None:
-        return cast("str", job.prompt)
-    prompt_file = job.prompt_file
-    if prompt_file is None:
+    if job.prompt is None:
         raise ValueError(_JOB_PROMPT_REQUIRED_ERROR.format(job_name=job_name))
-    path = settings.project_root / prompt_file
-    return cast("str", path.read_text())
+    return cast("str", job.prompt)
 
 
 def _job_schedule(

@@ -5,6 +5,17 @@ name = "pynchy"
 trigger_aliases = ["ghost"]
 default_core = "openai"
 
+[prompts]
+default_soul = "souls/default"
+default_executor = "executors/default"
+default_pipeline = "software-delivery"
+cop_inbound = "reviewers/cop-inbound"
+cop_outbound = "reviewers/cop-outbound"
+cop_bash = "reviewers/cop-bash"
+cop_taint = "reviewers/cop-taint"
+learning = "reviewers/learning"
+plan_freshness = "reviewers/plan-freshness"
+
 [commands.pause]
 aliases = ["stop", "pause"]
 

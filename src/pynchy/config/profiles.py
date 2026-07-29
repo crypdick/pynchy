@@ -8,7 +8,6 @@ from pydantic import Field, field_validator
 
 from pynchy.config.models import (
     ValidatedProfileName,
-    ValidatedPromptName,
     ValidatedRepoSlug,
     ValidatedToolName,
     _StrictModel,
@@ -25,7 +24,6 @@ class ProfileConfig(_StrictModel):
     """Composable workspace profile config."""
 
     includes: list[ValidatedProfileName] = Field(default_factory=list)
-    prompts: list[ValidatedPromptName] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     denied_skills: list[str] = Field(default_factory=list)
     tools: list[ValidatedToolName] = Field(default_factory=list)

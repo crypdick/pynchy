@@ -1,0 +1,17 @@
+schema_version = 1
+
+[[pipeline.stages]]
+name = "interactive"
+executor = "executors/default"
+
+[[pipeline.stages]]
+name = "planning"
+executor = "executors/planning"
+
+[[pipeline.stages]]
+name = "delivery"
+executor = "executors/delivery"
+
+[[pipeline.stages]]
+name = "follow-up"
+executor = "executors/follow-up"

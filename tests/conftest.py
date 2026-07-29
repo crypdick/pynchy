@@ -27,6 +27,7 @@ from pynchy.config.api import (
     repository_settings_sources,
     resolve_tool_access,
     tool_process_environment,
+    validate_settings_mapping,
 )
 from pynchy.config.api import (
     reset_settings as reset_config_settings,
@@ -478,6 +479,15 @@ def reset_settings(monkeypatch):
         def settings_source() -> Settings:
             return config_api.get_settings()
 
+        def read_prompts(names: list[str]) -> str | None:
+            if not names:
+                return None
+            settings = settings_source()
+            return config_api.load_prompt_catalog(
+                default_prompts=settings.project_root / "data/defaults/prompts",
+                personalized_prompts=settings.project_root / "data/personalization/prompts",
+            ).compose(names)
+
         def resolve_workspace_config(folder: str, settings: Settings | None = None):
             return workspace_config.load_resolved_config(folder, settings=settings)
 
@@ -491,10 +501,12 @@ def reset_settings(monkeypatch):
         workspace_config.configure_workspace_config_runtime(
             workspace_config.WorkspaceConfigRuntime(
                 get_settings=settings_source,
+                read_prompts=read_prompts,
                 parse_workspace_config=WorkspaceConfig.model_validate,
                 apply_tool_access=apply_tool_access,
                 resolve_tool_access=resolve_tool_access,
                 mutate_config_toml=mutate_config_toml,
+                validate_settings_mapping=validate_settings_mapping,
                 reset_settings=reset_config_settings,
             )
         )

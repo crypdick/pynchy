@@ -17,7 +17,6 @@ from pynchy.agent_protocol.api import (
 from pynchy.conversation.api import new_turn_id
 from pynchy.host.orchestrator.api import resolve_agent_core, resolve_container_timeout
 from pynchy.host.orchestrator.conversation_control import ConversationControlClosedError
-from pynchy.host.orchestrator.prompt_loading import read_prompts
 from pynchy.identifiers import (
     ChatJid,
     GroupFolder,
@@ -180,14 +179,19 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         )
     else:
         taint = await get_session_security_taint(folder)
-    is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
-        resolved_pre_container_context(
-            request.deps,
-            request.group.folder,
-            is_admin=request.group.is_admin,
-            repo_access_override=request.repo_access_override,
-            runtime=request.runtime,
-        )
+    (
+        is_admin,
+        repo_access,
+        repo_accesses,
+        system_prompt_append,
+        executor_turn_context,
+        session_id,
+    ) = resolved_pre_container_context(
+        request.deps,
+        request.group.folder,
+        is_admin=request.group.is_admin,
+        repo_access_override=request.repo_access_override,
+        input_source=request.input_source,
     )
     await request.deps.broadcast_agent_input(
         request.chat_jid, request.messages, source=request.input_source
@@ -207,6 +211,11 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
     access = workspace_config.load_resolved_tool_access(request.group.folder)
     system_notices = merged_system_notices(
         [
+            *(
+                [f"Executor context for this turn:\n{executor_turn_context}"]
+                if request.is_scheduled_task
+                else []
+            ),
             *request.deps.admin_repo_notices(
                 request.group.folder, is_admin=is_admin, repo_access=repo_access
             ),
@@ -247,19 +256,26 @@ def resolved_pre_container_context(
     *,
     is_admin: bool,
     repo_access_override: str | None,
-    runtime: AgentExecutionRuntime,
-) -> tuple[bool, str | None, list[str], str | None, str | None]:
+    input_source: str,
+) -> tuple[bool, str | None, list[str], str | None, str, str | None]:
     resolved = workspace_config.load_resolved_config(group_folder)
     resolved_repos = list(resolved.repo) if resolved else []
     repo_accesses = [repo_access_override] if repo_access_override is not None else resolved_repos
     repo_access = repo_accesses[0] if repo_accesses else None
-    system_prompt_append = read_prompts(
-        resolved.prompts if resolved else [],
-        personalized_prompts=runtime.project_root / "data" / "personalization" / "prompts",
-        default_prompts=runtime.project_root / "data" / "defaults" / "prompts",
-    )
+    prompt_ids = workspace_config.prompt_ids_for_context(resolved, input_source)
+    system_prompt_append = workspace_config.read_prompts(list(prompt_ids))
+    executor_turn_context = workspace_config.read_prompts(list(prompt_ids[1:]))
+    if executor_turn_context is None:
+        raise RuntimeError("Selected executor prompt did not produce content")
     session_id = deps.sessions.get(group_folder)
-    return is_admin, repo_access, repo_accesses, system_prompt_append, session_id
+    return (
+        is_admin,
+        repo_access,
+        repo_accesses,
+        system_prompt_append,
+        executor_turn_context,
+        session_id,
+    )
 
 
 async def write_container_snapshots(

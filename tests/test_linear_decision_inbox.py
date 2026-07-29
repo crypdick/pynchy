@@ -91,9 +91,8 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert task.input_source == "external:linear:authorized"
     assert task.session_policy is SessionPolicy.CONTINUE
     assert task.derived_thread_name == "[SYN-3] Execute an approved task"
-    assert "Objective:" in task.prompt
-    assert "Authority:" in task.prompt
-    assert "Success:" in task.prompt
+    assert '"issue_id": "issue-execute"' in task.prompt
+    assert '"identifier": "SYN-3"' in task.prompt
     assert "linear_claim_work_item" not in task.prompt
     assert len(await get_all_tasks()) == 1
 
@@ -377,13 +376,8 @@ async def test_reconcile_recovers_ready_planning_without_execution_authority() -
     task = created[0]
     assert task.id.startswith("linear-plan-syn-89-")
     assert task.input_source == "external:linear:ready_for_planning"
-    assert "linear_submit_plan" in task.prompt
-    assert "Awaiting Plan Approval" in task.prompt
-    assert "supplies the user's scope and stated facts" in task.prompt
-    assert "without asking the user to reconfirm" in task.prompt
-    assert "not a consent request" in task.prompt
-    assert "Do not pad the plan with generic confirmation or permission steps" in task.prompt
-    assert "Do not execute" in task.prompt
+    assert '"issue_id": "issue-plan"' in task.prompt
+    assert '"observed_state": "ready_for_planning"' in task.prompt
     assert duplicate == []
     assert await get_active_work_item_execution("issue-plan") is None
 
@@ -475,7 +469,7 @@ async def test_reconcile_reactivates_a_quiet_ready_planning_task() -> None:
     task = await get_task_by_id("linear-ready-for-planning-syn-89-existing")
     assert task is not None
     assert task.status == "active"
-    assert "linear_submit_plan" in task.prompt
+    assert '"issue_id": "issue-plan"' in task.prompt
 
 
 async def test_private_account_keeps_authorized_context_trusted() -> None:
@@ -521,7 +515,7 @@ async def test_reconcile_admits_follow_up_work_without_a_second_approval_lease()
     follow_up_tasks = [task for task in created if task.id.startswith("linear-follow-ups-")]
     assert len(follow_up_tasks) == 1
     assert follow_up_tasks[0].input_source == "trusted:linear:follow-ups"
-    assert "preserve useful logs before teardown" in follow_up_tasks[0].prompt
+    assert '"issue_id": "issue-follow-up"' in follow_up_tasks[0].prompt
     assert await get_active_work_item_execution("issue-follow-up") is None
     assert duplicate == []
 

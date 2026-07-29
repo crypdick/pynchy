@@ -13,7 +13,6 @@ scalar such as `model`.
 
 ```toml
 [profiles.project-worker]
-prompts = ["base", "project-worker"]
 skills = ["core", "code-review"]
 tools = ["browser", "gdrive.personal"]
 repo = ["owner/project"]
@@ -30,16 +29,27 @@ Tool declarations own their required environment and companion skills. A
 profile selects the tool; it does not grant credentials by naming a skill.
 See [Tool access and secrets](tool-access.md).
 
-## Bind a Workspace to a Chat
+## Create a workspace file
 
-Select the profile from a workspace and set `chat` when the workspace targets
-an existing configured channel or direct message:
+Create one `workspaces/*.toml` file for each workspace. The filename forms the
+workspace name. Select profiles, a soul, and a named pipeline:
 
 ```toml
-[workspaces.project]
+# data/personalization/workspaces/project.toml
+schema_version = 1
+
+[workspace]
 profiles = ["project-worker"]
+soul = "souls/default"
+pipeline = "software-delivery"
 chat = "connection.discord.mybot.chat.community.channels.project"
 ```
+
+Omit `soul` or `pipeline` to inherit the global selection. See
+[Prompts and pipelines](prompts.md) for the prompt and pipeline file formats.
+
+Set `chat` when the workspace targets an existing configured channel or direct
+message.
 
 Chat references follow this shape:
 
@@ -65,7 +75,7 @@ the policy boundary at the parent workspace instead of copying profiles into
 every conversation.
 
 ```toml
-[workspaces.relationships]
+[workspace]
 profiles = ["relationships"]
 threads = [
   { name = "family" },
@@ -117,7 +127,7 @@ A workspace can override the resolved profile model without duplicating the
 rest of the profile:
 
 ```toml
-[workspaces.project-fast]
+[workspace]
 profiles = ["project-worker"]
 model = "gpt-5.5-mini"
 ```

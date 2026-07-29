@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from conftest import configure_learning_paths_for, make_settings
 
-from pynchy.config.api import LearningConfig, ObsidianLearningConfig
+from pynchy.config.api import LearningConfig, ObsidianLearningConfig, read_prompt
 from pynchy.host.learning.api import run_learning_review
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
 from pynchy.learning_packets import LearningPacket
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _packet(
@@ -58,8 +55,13 @@ def _paths(tmp_path: Path) -> LearningPaths:
     )
 
 
+def _reviewer_prompt() -> str:
+    return read_prompt("reviewers/learning", Path(__file__).parents[1])
+
+
 def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> None:
-    prompt = build_review_prompt(_packet(), _paths(tmp_path))
+    prompt = build_review_prompt(_packet(), _paths(tmp_path), _reviewer_prompt())
+    normalized = " ".join(prompt.split())
 
     for snippet in (
         "/workspace/vault",
@@ -82,7 +84,7 @@ def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> No
         "folder-governed",
         "Pynchy's existing `SKILL.md` skill format",
     ):
-        assert snippet in prompt
+        assert " ".join(snippet.split()) in normalized
 
 
 def test_should_review_skips_short_casual_turn_without_learning_signal() -> None:
@@ -144,6 +146,7 @@ async def test_hidden_learning_review_skips_low_signal_packet() -> None:
     result = await run_learning_review(
         _packet(messages=[{"role": "user", "content": "thanks!"}], final_answer="You're welcome."),
         run_agent,
+        _reviewer_prompt(),
     )
 
     assert result == "skipped"
@@ -167,7 +170,7 @@ async def test_hidden_learning_review_runs_reviewer_with_a_scoped_workspace(tmp_
         return "success"
 
     run_agent = AsyncMock(side_effect=successful_agent)
-    result = await run_learning_review(_packet(), run_agent)
+    result = await run_learning_review(_packet(), run_agent, _reviewer_prompt())
 
     assert result == "completed"
     workspace, reviewer_jid, messages = run_agent.await_args.args
@@ -181,7 +184,7 @@ async def test_hidden_learning_review_runs_reviewer_with_a_scoped_workspace(tmp_
 @pytest.mark.asyncio
 async def test_hidden_learning_review_rejects_unavailable_paths() -> None:
     with pytest.raises(RuntimeError, match="learning paths unavailable"):
-        await run_learning_review(_packet(), AsyncMock())
+        await run_learning_review(_packet(), AsyncMock(), _reviewer_prompt())
 
 
 @pytest.mark.asyncio
@@ -197,4 +200,8 @@ async def test_hidden_learning_review_raises_when_reviewer_fails(tmp_path: Path)
     )
 
     with pytest.raises(RuntimeError, match="learning reviewer returned 'error'"):
-        await run_learning_review(_packet(), AsyncMock(return_value="error"))
+        await run_learning_review(
+            _packet(),
+            AsyncMock(return_value="error"),
+            _reviewer_prompt(),
+        )

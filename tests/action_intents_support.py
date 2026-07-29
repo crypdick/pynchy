@@ -251,7 +251,6 @@ async def _write_matrix_approval(
 
 def _resolved_matrix_workspace(*, tools: list[str] | None = None) -> ResolvedWorkspaceConfig:
     return ResolvedWorkspaceConfig(
-        prompts=[],
         skills=[],
         tools=tools if tools is not None else ["matrix_route_read", "matrix_route_send"],
         repo=[],

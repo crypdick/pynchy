@@ -94,19 +94,16 @@ def test_each_automation_file_becomes_a_job_and_personalization_replaces_default
         'workspace = "pynchy"\nprompt = "default"\n',
         encoding="utf-8",
     )
-    (personal_automations / "prompt.md").write_text("personal prompt", encoding="utf-8")
     (personal_automations / "weekly.toml").write_text(
         'schema_version = 1\n[job]\nschedule = "0 10 * * 1"\n'
-        'workspace = "pynchy"\nprompt_file = "prompt.md"\n',
+        'workspace = "pynchy"\nprompt = "personal prompt"\n',
         encoding="utf-8",
     )
 
     settings = validate_settings_mapping(validate_personalization_tree(tmp_path, personalization))
 
     assert settings.jobs["weekly"].schedule == "0 10 * * 1"
-    assert settings.jobs["weekly"].prompt_file == str(
-        (personal_automations / "prompt.md").resolve()
-    )
+    assert settings.jobs["weekly"].prompt == "personal prompt"
 
 
 def test_requires_personalization_settings_and_litellm_files(tmp_path: Path) -> None:
@@ -203,7 +200,7 @@ def test_requires_an_existing_personalization_repository(tmp_path: Path) -> None
         )
 
 
-def test_rejects_automation_with_missing_prompt_file(tmp_path: Path) -> None:
+def test_rejects_removed_automation_prompt_file_field(tmp_path: Path) -> None:
     _, personalization = _write_tree(tmp_path)
     automations = personalization / "automations"
     automations.mkdir()
@@ -216,7 +213,7 @@ def test_rejects_automation_with_missing_prompt_file(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(PersonalizationError, match="references missing prompt file"):
+    with pytest.raises(PersonalizationError, match="prompt_file"):
         load_layered_settings_mapping(tmp_path, personalization_root=personalization)
 
 

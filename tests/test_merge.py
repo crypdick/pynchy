@@ -16,9 +16,8 @@ def _profile(**kwargs) -> ProfileConfig:
 def test_union_fields_merge_in_profile_order() -> None:
     result = merge_workspace_profiles(
         [
-            _profile(prompts=["base"], skills=["python"], tools=["shell"], repo="owner/base"),
+            _profile(skills=["python"], tools=["shell"], repo="owner/base"),
             _profile(
-                prompts=["research"],
                 skills=["web"],
                 tools=["search"],
                 repo="owner/research",
@@ -26,7 +25,6 @@ def test_union_fields_merge_in_profile_order() -> None:
         ]
     )
 
-    assert result.prompts == ["base", "research"]
     assert result.skills == ["python", "web"]
     assert result.tools == ["shell", "search"]
     assert result.repo == ["owner/base", "owner/research"]
@@ -35,12 +33,11 @@ def test_union_fields_merge_in_profile_order() -> None:
 def test_union_fields_are_deduplicated_with_first_occurrence_order() -> None:
     result = merge_workspace_profiles(
         [
-            _profile(prompts=["base", "shared"], skills=["python"], tools=["shell"]),
-            _profile(prompts=["shared", "extra"], skills=["python", "web"], tools=["shell"]),
+            _profile(skills=["python"], tools=["shell"]),
+            _profile(skills=["python", "web"], tools=["shell"]),
         ]
     )
 
-    assert result.prompts == ["base", "shared", "extra"]
     assert result.skills == ["python", "web"]
     assert result.tools == ["shell"]
 
@@ -97,7 +94,6 @@ def test_empty_profile_sequence_resolves_to_empty_defaults() -> None:
     result = merge_workspace_profiles([])
 
     assert result == ResolvedWorkspaceConfig(
-        prompts=[],
         skills=[],
         tools=[],
         repo=[],
