@@ -81,6 +81,14 @@ def test_prune_migration_backups_rejects_nonpositive_keep(tmp_path: Path) -> Non
         prune_migration_backups(tmp_path, keep=0)
 
 
+def test_prune_migration_backups_rejects_a_file_path(tmp_path: Path) -> None:
+    backups = tmp_path / "migration-backups"
+    backups.write_text("not a directory")
+
+    with pytest.raises(NotADirectoryError):
+        prune_migration_backups(backups)
+
+
 def test_cli_prune_migration_backups_defaults_to_dry_run(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

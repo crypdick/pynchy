@@ -89,3 +89,12 @@ def test_receipt_is_single_use() -> None:
         consume_approval_receipt(second, workspace="admin", operation="register_group")
         is ReceiptVerification.INVALID
     )
+
+
+def test_receipt_rejects_a_non_string_token() -> None:
+    request = {"type": "register_group", "request_id": "a1", "_approval_receipt": 42}
+
+    assert (
+        consume_approval_receipt(request, workspace="admin", operation="register_group")
+        is ReceiptVerification.INVALID
+    )
