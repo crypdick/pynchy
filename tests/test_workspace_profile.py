@@ -117,6 +117,17 @@ def test_workspace_profile_validation_basic():
     assert any("folder" in e for e in errors)
 
 
+def test_workspace_profile_requires_a_trigger():
+    profile = WorkspaceProfile(
+        jid="test@g.us",
+        name="Test",
+        folder="test",
+        trigger="",
+    )
+
+    assert profile.validate() == ["Workspace trigger is required"]
+
+
 def test_workspace_profile_validates_and_builds_its_runtime_target():
     profile = WorkspaceProfile(
         jid="slack:C123",

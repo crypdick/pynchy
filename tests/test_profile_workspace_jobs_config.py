@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config.api import (
+    CanaryConfig,
     JobConfig,
     ProfileConfig,
     SchedulerConfig,
@@ -65,6 +66,11 @@ def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
 def test_scheduler_rejects_non_positive_polling_intervals(interval: dict[str, int]) -> None:
     with pytest.raises(ValidationError, match="scheduler intervals must be positive"):
         SchedulerConfig(**interval)
+
+
+def test_enabled_canary_requires_a_target_profile() -> None:
+    with pytest.raises(ValidationError, match="target_profile is required"):
+        CanaryConfig(enabled=True, target_profile=" ")
 
 
 @pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])
