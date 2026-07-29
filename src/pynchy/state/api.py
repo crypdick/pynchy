@@ -122,6 +122,7 @@ from pynchy.state.groups import (
     get_workspace_profile,
     rebind_workspace_profile,
     set_workspace_profile,
+    set_workspace_profiles,
 )
 from pynchy.state.host_jobs import (
     create_host_job,
@@ -179,7 +180,10 @@ from pynchy.state.outbound import (
     record_outbound,
     record_outbound_deliveries,
 )
-from pynchy.state.runtime_session_recovery import clear_runtime_session_references
+from pynchy.state.runtime_session_recovery import (
+    clear_runtime_session_references,
+    clear_runtime_session_references_batch,
+)
 from pynchy.state.security_context import load_recent_security_context
 from pynchy.state.sessions import (
     SessionSecurityTaint,
@@ -341,6 +345,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_outbound",
     "record_outbound_deliveries",
     "clear_runtime_session_references",
+    "clear_runtime_session_references_batch",
     # events
     "store_event",
     "RecentSecurityContext",
@@ -476,4 +481,5 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_workspace_profile",
     "rebind_workspace_profile",
     "set_workspace_profile",
+    "set_workspace_profiles",
 ]

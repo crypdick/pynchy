@@ -52,10 +52,12 @@ from pynchy.config.personalization import (
 from pynchy.config.profiles import CapabilityTomlConfig
 from pynchy.config.refs import parse_chat_ref
 from pynchy.config.runtime_refresh import (
+    RuntimePolicyChanges,
     automation_projection,
     configuration_source_digest,
     load_runtime_candidate,
     restart_fingerprint,
+    runtime_policy_changes,
     skill_policy_projection,
 )
 from pynchy.config.scheduler_models import SchedulerConfig
@@ -128,6 +130,7 @@ __all__ = [
     "ReposConfig",
     "ResolvedToolAccess",
     "ResolvedWorkspaceConfig",
+    "RuntimePolicyChanges",
     "SchedulerConfig",
     "SecretsConfig",
     "SecurityConfig",
@@ -161,6 +164,7 @@ __all__ = [
     "resolve_channel_config",
     "resolve_tool_access",
     "restart_fingerprint",
+    "runtime_policy_changes",
     "skill_policy_projection",
     "static_workspace_name",
     "tool_process_environment",

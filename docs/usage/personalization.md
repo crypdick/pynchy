@@ -73,6 +73,24 @@ Keep API keys, tokens, and passwords in the root `.env`, not in the
 personalization repository. Environment overrides use `__` between nested
 fields, such as `GATEWAY__MASTER_KEY`.
 
+## Apply configuration changes
+
+The host sync loop validates the complete candidate before applying any
+personalized configuration change. Pynchy then uses the strongest mechanism
+required by the changed fields:
+
+| Change | Application |
+|---|---|
+| Profile `skills` or `denied_skills`; learning review limits; container query timeout | Refresh before the next turn |
+| Profile prompts, model, repositories, execution mode, working directory, or security policy | Pause affected workspace queues, replace their sessions, then resume queued work |
+| Global reasoning effort, learning vault mounts, blocked mount patterns, or container image, memory, and idle timeout | Replace every registered workspace session |
+| Tools, admin status, profile composition or identity, workspace topology, connections, plugins, repositories, queue policy, secrets, and other host infrastructure | Restart the host |
+
+A mixed edit uses the strongest class and never partially publishes weaker
+changes. Session replacement preserves messages, conversation-control state,
+queued work, and sticky security taint. Unaffected workspace queues continue
+running. Changes to `.env` remain restart-sensitive.
+
 ## Automations
 
 Each direct `automations/*.toml` file declares one automation. Its filename

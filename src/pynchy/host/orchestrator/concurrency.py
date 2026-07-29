@@ -62,6 +62,8 @@ class GroupQueue:
         self._active_count = 0
         self._waiting_groups: deque[RuntimeId] = deque()
         self._process_messages_fn: Callable[[str], Awaitable[TurnOutcome]] | None = None
+        self._policy_paused: set[RuntimeId] = set()
+        self._policy_boundaries: dict[RuntimeId, asyncio.Event] = {}
         self._shutting_down = False
 
     def set_process_messages_fn(self, fn: Callable[[str], Awaitable[TurnOutcome]]) -> None:
@@ -78,6 +80,10 @@ class GroupQueue:
             return
 
         state = self._registry.bind(target)
+
+        if target.id in self._policy_paused:
+            state.pending_messages = True
+            return
 
         if state.active:
             state.pending_messages = True
@@ -141,6 +147,10 @@ class GroupQueue:
                 task_id=task.id,
             )
             return False
+
+        if target.id in self._policy_paused:
+            state.pending_tasks.append(task)
+            return True
 
         if state.active:
             state.pending_tasks.append(task)
@@ -244,7 +254,11 @@ class GroupQueue:
         )
 
     def release_host_process(self, lease: HostProcessLease) -> bool:
-        return self._processes.release_host_process(lease)
+        pending = self._processes.release_host_process(lease)
+        state = self._registry.get(lease.runtime_id)
+        if lease.runtime_id in self._policy_paused and state is not None and not state.active:
+            self._policy_boundaries[lease.runtime_id].set()
+        return pending
 
     def defer_interrupt_until_tool_result(self, runtime_id: RuntimeId) -> None:
         self._processes.defer_interrupt_until_tool_result(runtime_id)
@@ -307,6 +321,56 @@ class GroupQueue:
 
     async def destroy_runtime_session(self, runtime_id: RuntimeId) -> None:
         await self._processes.destroy_runtime_session(runtime_id)
+
+    def is_runtime_policy_paused(self, runtime_id: RuntimeId) -> bool:
+        """Return whether policy publication currently blocks this runtime."""
+        return runtime_id in self._policy_paused
+
+    async def pause_runtime_policy(self, targets: tuple[RuntimeTarget, ...]) -> None:
+        """Block admissions and wait for each runtime's current turn boundary."""
+        runtime_ids = tuple(target.id for target in targets)
+        duplicate = self._policy_paused.intersection(runtime_ids)
+        if duplicate:
+            raise RuntimeError(f"Runtime policy refresh already active for {sorted(duplicate)!r}")
+
+        events: list[asyncio.Event] = []
+        registered: list[RuntimeId] = []
+        try:
+            for target in targets:
+                event = self._pause_runtime_target(target)
+                registered.append(target.id)
+                events.append(event)
+            await asyncio.gather(*(event.wait() for event in events))
+        except BaseException:
+            self.resume_runtime_policy(tuple(registered))
+            raise
+
+    def _pause_runtime_target(self, target: RuntimeTarget) -> asyncio.Event:
+        state = self._registry.bind(target)
+        event = asyncio.Event()
+        self._policy_paused.add(target.id)
+        self._policy_boundaries[target.id] = event
+        if not state.active:
+            event.set()
+        return event
+
+    def resume_runtime_policy(self, runtime_ids: tuple[RuntimeId, ...]) -> None:
+        """Resume admissions after publishing one coherent policy."""
+        for runtime_id in runtime_ids:
+            self._policy_paused.discard(runtime_id)
+            self._policy_boundaries.pop(runtime_id, None)
+            while runtime_id in self._waiting_groups:
+                self._waiting_groups.remove(runtime_id)
+            state = self._registry.get(runtime_id)
+            if state is None or state.active:
+                continue
+            if self._active_count < self._policy.max_concurrent:
+                self._start_next_pending(runtime_id)
+            elif (
+                state.pending_messages or state.pending_tasks
+            ) and runtime_id not in self._waiting_groups:
+                self._waiting_groups.append(runtime_id)
+        self._drain_waiting()
 
     async def stop_active_process_for_control(self, runtime_id: RuntimeId) -> None:
         await self._processes.stop_active_process_for_control(runtime_id)
@@ -459,6 +523,8 @@ class GroupQueue:
         Returns True if work was started, False if the runtime has nothing pending.
         """
         state = self._registry.require(runtime_id)
+        if runtime_id in self._policy_paused:
+            return False
 
         if state.pending_messages:
             state.active = True
@@ -491,6 +557,11 @@ class GroupQueue:
         If nothing is pending for this runtime, drain the global waiting queue.
         """
         if self._shutting_down:
+            return
+
+        if runtime_id in self._policy_paused:
+            self._policy_boundaries[runtime_id].set()
+            self._drain_waiting()
             return
 
         if not self._start_next_pending(runtime_id):
