@@ -283,6 +283,9 @@ from pynchy.identifiers import (
     RuntimeId,
     SessionId,
 )
+from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves app annotations at runtime.
+    LinearPlanReviewAdmission,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     # beartype resolves app annotations at runtime.
@@ -345,7 +348,6 @@ from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc.deps import IpcDeps
-    from pynchy.linear_plan_types import LinearPlanReviewAdmission
 
 from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
     LearningPacket,

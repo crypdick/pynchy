@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.plugins.integrations.linear_decision_inbox import (
     process_linear_plan_review_admission,
@@ -21,6 +22,31 @@ from tests.linear_decision_inbox_support import (
 )
 
 pytest_plugins = ("tests.linear_decision_inbox_support",)
+
+
+async def test_app_accepts_runtime_linear_plan_review_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    task = object()
+    admit = AsyncMock(return_value=task)
+    start = AsyncMock()
+    monkeypatch.setattr("pynchy.host.orchestrator.app.admit_linear_plan_review", admit)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.app.temporal_scheduler.start_scheduled_agent_task_workflow",
+        start,
+    )
+    admission = LinearPlanReviewAdmission(
+        workspace="beta",
+        issue_id="issue-execute",
+        identifier="SYN-3",
+        updated_at="2026-07-28T12:00:00Z",
+        public_source=True,
+    )
+
+    assert await app.process_linear_plan_review_admission(admission) is True
+    admit.assert_awaited_once()
+    start.assert_awaited_once_with(task)
 
 
 async def test_planned_work_is_deferred_by_issue_revision_without_inline_review() -> None:
