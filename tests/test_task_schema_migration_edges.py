@@ -5,6 +5,7 @@ from __future__ import annotations
 import aiosqlite
 import pytest
 
+from pynchy.state.in_flight_turn_schema_migrations import drop_legacy_scheduled_runtime_metadata
 from pynchy.state.task_schema_migrations import migrate_cached_task_thread_binding
 
 
@@ -49,3 +50,36 @@ async def test_migration_preserves_bindings_and_logs_drop_failures() -> None:
             "project__thread_slack-C123",
             "Build thread",
         )
+
+
+@pytest.mark.asyncio
+async def test_in_flight_migration_logs_drop_failures_for_legacy_columns() -> None:
+    async with aiosqlite.connect(":memory:") as database:
+        await database.executescript(
+            """
+            CREATE TABLE in_flight_turns (
+                id TEXT PRIMARY KEY,
+                scheduled_base_chat_jid TEXT,
+                scheduled_thread_slot TEXT
+            );
+            CREATE TRIGGER keep_legacy_chat
+            AFTER UPDATE OF scheduled_base_chat_jid ON in_flight_turns
+            BEGIN
+                SELECT NEW.scheduled_base_chat_jid;
+            END;
+            CREATE TRIGGER keep_legacy_slot
+            AFTER UPDATE OF scheduled_thread_slot ON in_flight_turns
+            BEGIN
+                SELECT NEW.scheduled_thread_slot;
+            END;
+            """
+        )
+
+        await drop_legacy_scheduled_runtime_metadata(database)
+
+        cursor = await database.execute("PRAGMA table_info(in_flight_turns)")
+        assert {row[1] for row in await cursor.fetchall()} == {
+            "id",
+            "scheduled_base_chat_jid",
+            "scheduled_thread_slot",
+        }
