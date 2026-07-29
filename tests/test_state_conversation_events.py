@@ -235,3 +235,15 @@ async def test_reader_returns_empty_metadata_for_malformed_persisted_json() -> N
         rows = await get_conversation_event_pointers_since("slack:C123", None)
 
     assert rows == [{"metadata": {}}]
+
+
+async def test_reader_returns_empty_metadata_for_missing_persisted_json() -> None:
+    cursor = MagicMock()
+    cursor.fetchall = AsyncMock(return_value=[{"metadata": None}])
+    database = MagicMock()
+    database.execute = AsyncMock(return_value=cursor)
+
+    with patch("pynchy.state.conversation_events._get_db", return_value=database):
+        rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert rows == [{"metadata": {}}]
