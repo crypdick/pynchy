@@ -96,7 +96,7 @@
 #   GATEWAY__MASTER_KEY, GATEWAY__UI_PASSWORD
 
 # LiteLLM Docker images (usually keep defaults)
-# litellm_image = "ghcr.io/berriai/litellm:main-latest"
+# litellm_image = "ghcr.io/berriai/litellm@sha256:9c1f1889774a973ce650f712ace6753a9b6dd1182d25d837b858dbcac6ea3056"
 # postgres_image = "postgres:17-alpine"
 
 # ─────────────────────────────────────────────────────────────────────────────

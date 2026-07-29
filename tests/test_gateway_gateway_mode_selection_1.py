@@ -48,6 +48,12 @@ class TestGatewayModeSelection:
             with patch.object(gateway, "stop", new_callable=AsyncMock):
                 await stop_gateway()
 
+    def test_litellm_default_image_is_pinned_to_deterministic_digest(self):
+        assert GatewayConfig().litellm_image == (
+            "ghcr.io/berriai/litellm@"
+            "sha256:9c1f1889774a973ce650f712ace6753a9b6dd1182d25d837b858dbcac6ea3056"
+        )
+
     @pytest.mark.asyncio
     async def test_litellm_mode_when_config_set(self, tmp_path: Path):
         cfg = tmp_path / "litellm_config.yaml"
@@ -74,6 +80,39 @@ class TestGatewayModeSelection:
             gw = await start_gateway()
             assert isinstance(gw, LiteLLMGateway)
             assert gw.required_models == ("gpt-5.5",)
+
+    @pytest.mark.asyncio
+    async def test_litellm_mode_requires_effective_responses_cop_model(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: []\n")
+
+        mock_settings = make_settings(
+            agent=AgentConfig(default_core="codex", model="agent-model"),
+            gateway=GatewayConfig(
+                litellm_config=str(cfg),
+                port=4000,
+                container_host="host.docker.internal",
+                litellm_image="ghcr.io/berriai/litellm:main-latest",
+                postgres_image="postgres:17-alpine",
+                master_key=SecretStr("test-key"),
+            ),
+            data_dir=tmp_path,
+            mcp_servers={},
+        )
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch(
+                "pynchy.host.container_manager.security.cop_client.get_cop_gateway_config",
+                return_value=("cop-responses-model", "responses"),
+            ),
+            patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
+        ):
+            gateway = await start_gateway()
+
+        assert isinstance(gateway, LiteLLMGateway)
+        assert gateway.required_models == ("agent-model",)
+        assert gateway.required_response_models == ("agent-model", "cop-responses-model")
 
     @pytest.mark.asyncio
     async def test_litellm_mode_requires_effective_workspace_models(self, tmp_path: Path):
@@ -105,12 +144,17 @@ class TestGatewayModeSelection:
 
         with (
             patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch(
+                "pynchy.host.container_manager.security.cop_client.get_cop_gateway_config",
+                return_value=("ignored-cop-model", "messages"),
+            ),
             patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
         ):
             gateway = await start_gateway()
 
         assert isinstance(gateway, LiteLLMGateway)
         assert gateway.required_models == ("global-model", "profile-model", "workspace-model")
+        assert gateway.required_response_models == ()
 
     @pytest.mark.asyncio
     async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):

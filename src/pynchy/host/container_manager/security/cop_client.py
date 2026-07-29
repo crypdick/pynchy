@@ -24,6 +24,11 @@ def configure_cop_gateway(*, model: str | None, wire_api: str) -> None:
     _cop_wire_api = wire_api
 
 
+def get_cop_gateway_config() -> tuple[str, str]:
+    """Return the resolved Cop model and wire API for gateway startup."""
+    return _cop_model, _cop_wire_api
+
+
 def _strip_json_fence(text: str) -> str:
     text = text.strip()
     if not text.startswith("```"):

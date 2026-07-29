@@ -55,6 +55,7 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     assert "model_name: pynchy-deterministic" in litellm_config
     assert f"api_base: http://{spec.fake_container_name}:8080/v1" in litellm_config
     assert "api_key: os.environ/PYNCHY_DETERMINISTIC_API_KEY" in litellm_config
+    assert "mode: responses" in litellm_config
     assert "public_routes" not in litellm_config
     assert 'default_core = "openai"' in config
     assert 'model = "pynchy-deterministic"' in config
@@ -393,6 +394,7 @@ def test_exec_rejects_dead_diagnostic_state(
         ("gateway", "postgres_container", "exited"),
         ("gateway", "ready", False),
         ("gateway", "database", "disconnected"),
+        ("gateway", "responses", {"state": "unavailable"}),
         ("temporal", "cluster_healthy", False),
         ("temporal", "worker_running", False),
     ],
@@ -407,6 +409,7 @@ def test_runtime_readiness_requires_every_critical_subsystem(
             "postgres_container": "running",
             "ready": True,
             "database": "connected",
+            "responses": {"state": "available"},
         },
         "temporal": {"cluster_healthy": True, "worker_running": True},
     }

@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from ._helpers import response_requests
+
 pytestmark = pytest.mark.runtime
 
 
@@ -66,8 +68,48 @@ def test_runtime_is_semantically_ready_and_returns_the_fixed_chat_response() -> 
     assert gateway["postgres_container"] == "running"
     assert gateway["ready"] is True
     assert gateway["database"] == "connected"
+    responses = gateway["responses"]
+    assert responses["state"] == "available"
+    assert isinstance(responses["checked_at"], str)
+    assert len(responses["aliases"]) == 1
+    alias = responses["aliases"][0]
+    assert set(alias) == {
+        "alias",
+        "route_count",
+        "state",
+        "checked_at",
+        "failure",
+    }
+    assert alias["alias"] == state["model"]
+    assert alias["route_count"] == 1
+    assert alias["state"] == "available"
+    assert isinstance(alias["checked_at"], str)
+    assert alias["failure"] is None
     assert status["temporal"]["cluster_healthy"] is True
     assert status["temporal"]["worker_running"] is True
+
+    startup_requests = response_requests(state)
+    assert len(startup_requests) == 1
+    startup_canary = startup_requests[0]
+    assert set(startup_canary) == {
+        "response_id",
+        "previous_response_id",
+        "model",
+        "input",
+        "stream",
+        "max_output_tokens",
+    }
+    assert isinstance(startup_canary["response_id"], str)
+    assert startup_canary["previous_response_id"] is None
+    assert startup_canary["model"] == state["model"]
+    assert startup_canary["input"] == [
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": "."}],
+        }
+    ]
+    assert startup_canary["stream"] is True
+    assert startup_canary["max_output_tokens"] == 1
 
     completion = _json_request(
         f"{state['gateway_url']}/v1/chat/completions",
@@ -109,7 +151,12 @@ def test_runtime_forwards_streamed_responses_events() -> None:
         data=json.dumps(
             {
                 "model": state["model"],
-                "input": "streamed runtime contract",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "streamed runtime contract"}],
+                    }
+                ],
                 "stream": True,
             }
         ).encode("utf-8"),
