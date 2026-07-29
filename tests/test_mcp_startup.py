@@ -21,24 +21,28 @@ async def _synced_manager(
     monkeypatch: pytest.MonkeyPatch,
     *,
     server_names: tuple[str, ...] = ("healthy", "broken"),
+    server_configs: dict[str, McpServerConfig] | None = None,
+    background_task_factory=None,
 ) -> McpManager:
     """Build manager state through its public configuration and sync APIs."""
-    server_configs = {
+    configs = server_configs or {
         "healthy": McpServerConfig(type="docker", image="healthy-image", port=8000),
         "broken": McpServerConfig(type="docker", image="broken-image", port=8001),
     }
+    selected_configs = {name: configs[name] for name in server_names}
     settings = make_settings(
         data_dir=tmp_path,
         tools={
             name: McpTool(
                 type="mcp",
-                mcp=McpToolConfig(
-                    runtime="docker",
-                    image=server_configs[name].image,
-                    port=server_configs[name].port,
+                mcp=McpToolConfig.model_validate(
+                    {
+                        **config.model_dump(exclude={"type"}),
+                        "runtime": config.type,
+                    }
                 ),
             )
-            for name in server_names
+            for name, config in selected_configs.items()
         },
         profiles={"test": ProfileConfig(tools=list(server_names))},
         workspaces={"workspace": WorkspaceConfig(profiles=["test"])},
@@ -46,7 +50,7 @@ async def _synced_manager(
     manager = McpManager(
         settings,
         MagicMock(spec=LiteLLMGateway),
-        plugin_mcp_servers={name: server_configs[name] for name in server_names},
+        plugin_mcp_servers=selected_configs,
     )
     monkeypatch.setattr(McpProxy, "start", AsyncMock(return_value=12345))
     monkeypatch.setattr(mcp_manager, "sync_mcp_endpoints", AsyncMock())
@@ -56,7 +60,11 @@ async def _synced_manager(
         coro.close()
         return MagicMock()
 
-    monkeypatch.setattr(mcp_manager, "create_background_task", discard_background_task)
+    monkeypatch.setattr(
+        mcp_manager,
+        "create_background_task",
+        background_task_factory or discard_background_task,
+    )
 
     await manager.sync()
 
@@ -306,3 +314,211 @@ class TestWorkspaceMcpStartup:
         clock[0] = 2601.0
         await manager.stop_idle()
         stop.assert_awaited_once()
+
+
+class TestMcpManagerLifecycleContracts:
+    @pytest.mark.asyncio
+    async def test_sync_with_no_configured_servers_is_a_noop(self, tmp_path, monkeypatch):
+        manager = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
+        sync_endpoints = AsyncMock()
+        monkeypatch.setattr(mcp_manager, "sync_mcp_endpoints", sync_endpoints)
+
+        await manager.sync()
+
+        sync_endpoints.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ensure_running_dispatches_host_processes_and_skips_urls(
+        self, tmp_path, monkeypatch
+    ):
+        configs = {
+            "script": McpServerConfig(type="script", command="run", port=8001),
+            "stdio": McpServerConfig(type="stdio", command="run", port=8002, transport="http"),
+            "url": McpServerConfig(type="url", url="https://mcp.example"),
+        }
+        manager = await _synced_manager(
+            tmp_path, monkeypatch, server_names=tuple(configs), server_configs=configs
+        )
+        script = AsyncMock()
+        stdio = AsyncMock()
+        docker = AsyncMock()
+        monkeypatch.setattr(mcp_manager, "ensure_script_running", script)
+        monkeypatch.setattr(mcp_manager, "ensure_stdio_running", stdio)
+        monkeypatch.setattr(mcp_manager, "ensure_docker_running", docker)
+
+        await manager.ensure_running("script")
+        await manager.ensure_running("stdio")
+        await manager.ensure_running("url")
+        await manager.ensure_running("unknown")
+
+        assert script.await_args.args[0].server_name == "script"
+        assert stdio.await_args.args[0].server_name == "stdio"
+        docker.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_proxy_lease_allows_urls_and_rejects_unknown_instances(
+        self, tmp_path, monkeypatch
+    ):
+        config = McpServerConfig(type="url", url="https://mcp.example")
+        manager = await _synced_manager(
+            tmp_path,
+            monkeypatch,
+            server_names=("url",),
+            server_configs={"url": config},
+        )
+
+        async with manager.proxy_backend_lease("url"):
+            pass
+
+        with pytest.raises(McpBackendUnavailableError):
+            async with manager.proxy_backend_lease("unknown"):
+                pytest.fail("unknown backend yielded a lease")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("config", "expected"),
+        [
+            (McpServerConfig(type="url", url="https://mcp.example"), "https://mcp.example"),
+            (
+                McpServerConfig(type="script", command="run", port=8001, transport="http"),
+                "http://localhost:8001/mcp",
+            ),
+            (
+                McpServerConfig(type="script", command="run", port=8002),
+                "http://localhost:8002",
+            ),
+        ],
+    )
+    async def test_canary_endpoint_starts_one_unambiguous_server(
+        self, tmp_path, monkeypatch, config, expected
+    ):
+        manager = await _synced_manager(
+            tmp_path,
+            monkeypatch,
+            server_names=("canary",),
+            server_configs={"canary": config},
+        )
+        ensure_running = AsyncMock()
+        monkeypatch.setattr(manager, "ensure_running", ensure_running)
+
+        endpoint = await manager.get_canary_server_endpoint("canary")
+
+        assert endpoint == expected
+        ensure_running.assert_awaited_once_with("canary")
+
+    @pytest.mark.asyncio
+    async def test_canary_endpoint_rejects_missing_or_ambiguous_servers(
+        self, tmp_path, monkeypatch
+    ):
+        manager = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
+        with pytest.raises(RuntimeError, match="No configured MCP server"):
+            await manager.get_canary_server_endpoint("missing")
+
+        config = McpServerConfig(type="script", command="run", port=8001)
+        settings = make_settings(
+            data_dir=tmp_path,
+            tools={
+                "shared": McpTool(
+                    type="mcp",
+                    mcp=McpToolConfig(
+                        runtime="script", command="run", port=8001, inject_workspace=True
+                    ),
+                )
+            },
+            profiles={
+                "first": ProfileConfig(tools=["shared"]),
+                "second": ProfileConfig(tools=["shared"]),
+            },
+            workspaces={
+                "one": WorkspaceConfig(profiles=["first"]),
+                "two": WorkspaceConfig(profiles=["second"]),
+            },
+        )
+        ambiguous = McpManager(
+            settings, MagicMock(spec=LiteLLMGateway), plugin_mcp_servers={"shared": config}
+        )
+        monkeypatch.setattr(McpProxy, "start", AsyncMock(return_value=12345))
+        monkeypatch.setattr(mcp_manager, "sync_mcp_endpoints", AsyncMock())
+        monkeypatch.setattr(mcp_manager, "sync_teams", AsyncMock())
+        monkeypatch.setattr(
+            mcp_manager, "create_background_task", lambda coro, **_kwargs: coro.close()
+        )
+        await ambiguous.sync()
+
+        with pytest.raises(RuntimeError, match="must resolve to one instance"):
+            await ambiguous.get_canary_server_endpoint("shared")
+
+    @pytest.mark.asyncio
+    async def test_stop_idle_reaps_live_host_process_and_running_container(
+        self, tmp_path, monkeypatch
+    ):
+        configs = {
+            "script": McpServerConfig(type="script", command="run", port=8001, idle_timeout=1),
+            "docker": McpServerConfig(type="docker", image="image", port=8002, idle_timeout=1),
+            "permanent": McpServerConfig(type="docker", image="image", port=8003, idle_timeout=0),
+        }
+        manager = await _synced_manager(
+            tmp_path, monkeypatch, server_names=tuple(configs), server_configs=configs
+        )
+        live_process = MagicMock(spec=["poll"])
+        live_process.poll.return_value = None
+
+        async def start_script(instance) -> None:
+            await asyncio.sleep(0)
+            instance.process = live_process
+
+        terminate = MagicMock()
+        running = AsyncMock(return_value=True)
+        stop = AsyncMock()
+        clock = [0.0]
+        monkeypatch.setattr(mcp_manager, "ensure_script_running", start_script)
+        monkeypatch.setattr(mcp_manager, "terminate_process", terminate)
+        monkeypatch.setattr(mcp_manager, "is_container_running", running)
+        monkeypatch.setattr(mcp_manager, "stop_container", stop)
+        monkeypatch.setattr(mcp_manager, "time", MagicMock(monotonic=lambda: clock[0]))
+        await manager.ensure_running("script")
+        clock[0] = 2.0
+
+        await manager.stop_idle()
+
+        assert terminate.call_args.args[0].server_name == "script"
+        assert running.await_args.args[0].endswith("-docker")
+        assert stop.await_args.args[0].endswith("-docker")
+
+    @pytest.mark.asyncio
+    async def test_stop_all_stops_managed_backends_and_cancels_background_tasks(
+        self, tmp_path, monkeypatch
+    ):
+        configs = {
+            "script": McpServerConfig(type="script", command="run", port=8001),
+            "docker": McpServerConfig(type="docker", image="image", port=8002),
+            "url": McpServerConfig(type="url", url="https://mcp.example"),
+        }
+        background_tasks: list[MagicMock] = []
+        proxy_stop = AsyncMock()
+        monkeypatch.setattr(McpProxy, "stop", proxy_stop)
+
+        def register_background_task(coro, **_kwargs):
+            coro.close()
+            task = MagicMock()
+            background_tasks.append(task)
+            return task
+
+        manager = await _synced_manager(
+            tmp_path,
+            monkeypatch,
+            server_names=tuple(configs),
+            server_configs=configs,
+            background_task_factory=register_background_task,
+        )
+        terminate = MagicMock()
+        stop = AsyncMock()
+        monkeypatch.setattr(mcp_manager, "terminate_process", terminate)
+        monkeypatch.setattr(mcp_manager, "stop_container", stop)
+
+        await manager.stop_all()
+
+        proxy_stop.assert_awaited_once()
+        assert [task.cancel.call_count for task in background_tasks] == [1, 1]
+        assert terminate.call_args.args[0].server_name == "script"
+        assert stop.await_args.args[0].endswith("-docker")

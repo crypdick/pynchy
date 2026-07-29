@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+# Tests only read repository contents; keep the workflow token read-only.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Python tests

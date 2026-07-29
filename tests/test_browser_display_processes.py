@@ -70,6 +70,88 @@ def test_browser_vnc_repair_uses_resolved_executables(monkeypatch: pytest.Monkey
     assert [command[0] for command in commands] == ["/opt/bin/x11vnc", "/opt/bin/websockify"]
 
 
+def test_browser_requires_an_existing_explicit_chrome_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    missing = tmp_path / "missing-chrome"
+    monkeypatch.setenv("CHROME_PATH", str(missing))
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        browser.chrome_path()
+
+
+def test_browser_prefers_explicit_chrome_path_over_system_discovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    chrome = tmp_path / "chrome"
+    chrome.touch()
+    monkeypatch.setenv("CHROME_PATH", str(chrome))
+    monkeypatch.setattr(browser, "_detect_chrome", lambda: "/system/chrome")
+
+    assert browser.chrome_path() == str(chrome)
+
+
+def test_browser_reports_how_to_install_chrome_when_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHROME_PATH", raising=False)
+    monkeypatch.setattr(browser, "_detect_chrome", lambda: None)
+
+    with pytest.raises(RuntimeError, match="Install Google Chrome"):
+        browser.chrome_path()
+
+
+def test_browser_profile_uses_configured_project_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("PYNCHY_PROJECT_ROOT", str(tmp_path))
+
+    profile = browser.profile_dir("google")
+
+    assert profile == tmp_path / "data" / "playwright-profiles" / "google"
+    assert profile.is_dir()
+
+
+def test_browser_detects_a_live_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPLAY", ":42")
+    monkeypatch.setattr(browser.shutil, "which", lambda _name: "/usr/bin/xdpyinfo")
+    monkeypatch.setattr(
+        browser.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0),
+    )
+
+    assert browser.has_display() is True
+    assert browser.display_is_live(":99") is True
+
+
+def test_browser_reuses_live_virtual_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        browser,
+        "_resolve_executables",
+        lambda *_names: {"Xvfb": "xvfb", "x11vnc": "x11vnc", "websockify": "websockify"},
+    )
+    monkeypatch.setattr(browser, "display_is_live", lambda _display: True)
+    monkeypatch.setattr(browser, "ensure_vnc_stack_alive", list)
+    monkeypatch.setattr(browser, "_resolve_novnc_url", lambda: "http://host:6080/vnc.html")
+
+    procs, url = browser.start_virtual_display()
+
+    assert procs == []
+    assert url == "http://host:6080/vnc.html"
+    assert browser.os.environ["DISPLAY"] == ":99"
+
+
+def test_browser_removes_stale_profile_locks(tmp_path) -> None:
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        (tmp_path / name).touch()
+
+    browser.cleanup_lock_files(tmp_path)
+
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.mark.action("social.x.session.setup")
 async def test_x_session_setup_uses_resolved_display_executables(
     monkeypatch: pytest.MonkeyPatch,

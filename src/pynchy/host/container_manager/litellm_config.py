@@ -14,6 +14,7 @@ from pynchy.logger import logger
 PLACEHOLDER_RE = re.compile(r"\.\.\.|YOUR_|CHANGE_ME|REPLACE_|xxx{3,}", re.IGNORECASE)
 _MODEL_LIST_TYPE_ERROR = "LiteLLM config model_list must be a list"
 _MODEL_LIST_ENTRY_TYPE_ERROR = "LiteLLM config model_list entries must be mappings"
+_LITELLM_SETTINGS_TYPE_ERROR = "LiteLLM config litellm_settings must be a mapping"
 
 
 @dataclass(frozen=True)
@@ -34,12 +35,14 @@ class LiteLLMConfigPreparer:
                 self.required_models,
             )
         if "model_list" not in config:
-            return _copy_unvalidated_config(
-                config_path,
-                output_dir,
-                config_text,
-                self.required_models,
-            )
+            if self.required_models:
+                return _copy_unvalidated_config(
+                    config_path,
+                    output_dir,
+                    config_text,
+                    self.required_models,
+                )
+            return _write_filtered_config(output_dir, config)
 
         model_list = _model_list(config)
         kept, removed_reasons = _filter_model_list(model_list, env)
@@ -179,6 +182,12 @@ def _model_route_matches(required_model: str, configured_name: object) -> bool:
 
 
 def _write_filtered_config(output_dir: Path, config: dict[str, Any]) -> Path:
+    settings = config.setdefault("litellm_settings", {})
+    if not isinstance(settings, dict):
+        raise TypeError(_LITELLM_SETTINGS_TYPE_ERROR)
+    settings["turn_off_message_logging"] = True
+    settings["log_raw_request_response"] = False
+
     out = output_dir / "litellm_config.yaml"
     out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8")
     return out

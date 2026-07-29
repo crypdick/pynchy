@@ -4,7 +4,8 @@ The event observation system — how Pynchy emits events and how plugins subscri
 
 Observers are pluggable. The built-in observer stores operational events to
 SQLite, including a bounded evidence projection for live agent traces. The
-LiteLLM gateway exports complete LLM request and response traces to Phoenix.
+LiteLLM gateway exports metadata-only LLM traces to Phoenix; prompt and response
+content is disabled at the generated proxy configuration boundary.
 
 ## Event Bus
 
@@ -53,8 +54,8 @@ types. The security Cop reads only the projected tool names, not tool inputs or
 results.
 
 Use this SQLite projection for a bounded operational evidence packet. Use
-Phoenix when debugging requires complete thinking, prompt, response, token,
-cost, or provider-request traces.
+Phoenix for token, cost, timing, model, and provider-request metadata without
+prompt or response bodies.
 
 **Indexes:** event type, chat JID, and timestamp — for querying event history by group or time range.
 

@@ -164,6 +164,154 @@ def test_gog_subprocess_does_not_inherit_unrelated_host_environment(
     assert "UNRELATED_HOST_SECRET" not in environment
 
 
+def test_gog_client_builds_reviewed_read_and_draft_commands(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path / "gog-home",
+        oauth_client_path=None,
+    )
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "{}", "")
+
+    with patch("pynchy.plugins.integrations.gog._client.subprocess.run", side_effect=run):
+        assert client.gmail_get(message_id="message-1") == "{}"
+        assert (
+            client.gmail_create_draft(
+                to=["to@example.com"],
+                cc=["cc@example.com"],
+                bcc=["bcc@example.com"],
+                subject="Subject",
+                body="Body",
+            )
+            == "{}"
+        )
+        assert client.contacts_search(query="Ada", limit=3) == "{}"
+        assert client.docs_read(document_id="doc-1", tab="tab-1") == "{}"
+        assert client.docs_export(document_id="doc-1", export_format="md") == "{}"
+        assert client.sheets_get(spreadsheet_id="sheet-1", range_name="Sheet1!A1") == "{}"
+
+    commands = [command for command, _kwargs in calls]
+    assert commands[0][-5:] == ["gmail", "get", "--sanitize-content", "--", "message-1"]
+    assert "--readonly" in commands[0]
+    assert commands[1][-13:] == [
+        "gmail",
+        "drafts",
+        "create",
+        "--to",
+        "to@example.com",
+        "--subject",
+        "Subject",
+        "--body-file",
+        "-",
+        "--cc",
+        "cc@example.com",
+        "--bcc",
+        "bcc@example.com",
+    ]
+    assert calls[1][1]["input"] == "Body"
+    assert "--readonly" not in commands[1]
+    assert commands[2][-6:] == ["contacts", "search", "--max", "3", "--", "Ada"]
+    assert commands[3][-8:] == [
+        "docs",
+        "cat",
+        "--max-bytes",
+        "2000000",
+        "--tab",
+        "tab-1",
+        "--",
+        "doc-1",
+    ]
+    assert commands[4][-8:] == [
+        "docs",
+        "export",
+        "--format",
+        "md",
+        "--out",
+        "-",
+        "--",
+        "doc-1",
+    ]
+    assert commands[5][-5:] == ["sheets", "get", "--", "sheet-1", "Sheet1!A1"]
+    readonly_commands = (commands[2], commands[3], commands[4], commands[5])
+    assert all("--readonly" in command for command in readonly_commands)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "message"),
+    [
+        pytest.param(FileNotFoundError(), "unavailable"),
+        pytest.param(subprocess.TimeoutExpired(["gog"], timeout=1), "timed out"),
+        pytest.param(subprocess.CompletedProcess([], 1, "", ""), "failed"),
+        pytest.param(subprocess.CompletedProcess([], 0, " ", ""), "no data"),
+    ],
+)
+def test_gog_client_returns_safe_errors_for_execution_failures(
+    tmp_path: Path,
+    outcome: Exception | subprocess.CompletedProcess[str],
+    message: str,
+) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+
+    def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", side_effect=run),
+        pytest.raises(gog.GogError, match=message),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
+@pytest.mark.parametrize(
+    ("output", "message"),
+    [("not json", "invalid JSON"), ('"scalar"', "unsupported JSON")],
+)
+def test_gog_client_rejects_invalid_provider_json(
+    tmp_path: Path,
+    output: str,
+    message: str,
+) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    result = subprocess.CompletedProcess([], 0, output, "")
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=result),
+        pytest.raises(gog.GogError, match=message),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
+def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: Path) -> None:
+    unconfigured = gog.GogClient(
+        config=gog.GogConfig(),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    missing_credentials = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=tmp_path / "missing.json",
+    )
+
+    with pytest.raises(gog.GogError, match="account"):
+        unconfigured.gmail_search(query="Ada", limit=1)
+    with pytest.raises(gog.GogError, match="credentials"):
+        missing_credentials.setup_start()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "called_method"),
