@@ -425,6 +425,43 @@ async def test_write_actions_use_reviewed_host_operation_and_action_intent(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("tool_name", "arguments", "message"),
+    [
+        (
+            "gog_gmail_send",
+            {"to": ["friend@example.com"], "subject": "Hello", "body": " "},
+            "body must not be empty",
+        ),
+        (
+            "gog_sheets_update",
+            {"spreadsheet_id": "sheet-1", "range": "Sheet1!A1", "values": [[]]},
+            "values must not contain empty rows",
+        ),
+        (
+            "gog_setup_complete",
+            {"redirect_url": "ftp://localhost/callback"},
+            "HTTP(S) URL",
+        ),
+        (
+            "gog_gmail_send",
+            {"to": ["friend@example.com,other@example.com"], "subject": "Hello", "body": "Body"},
+            "one email address",
+        ),
+    ],
+)
+async def test_gog_handlers_reject_invalid_public_payloads(
+    tool_name: str,
+    arguments: dict[str, object],
+    message: str,
+) -> None:
+    result = await _handler(tool_name)({"source_group": "workspace", **arguments})
+
+    assert "error" in result
+    assert message in str(result["error"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     ("tool_name", "arguments", "called_method"),
     [
         pytest.param(
