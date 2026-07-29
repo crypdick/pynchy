@@ -24,6 +24,7 @@ from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
+    linear_client_context,
     proton_client_factory,
 )
 from pynchy.plugins.integrations.proton_bridge import (
@@ -73,6 +74,29 @@ async def test_calendar_canary_uses_configured_calendar_and_removes_event(monkey
     assert verified[0].startswith("calendar:verified:")
     assert cleaned[0].startswith("calendar:deleted:")
     delete_event.assert_awaited_once_with({"calendar": "canary", "event_id": "event-1"})
+
+
+@pytest.mark.asyncio
+async def test_calendar_canary_fails_when_service_returns_an_error():
+    scenario = CalendarRoundTripCanary(
+        "canary",
+        list_calendars=AsyncMock(return_value={"error": "unavailable"}),
+    )
+
+    with pytest.raises(operational_canaries.CanaryServiceError, match="rejected"):
+        await scenario.exercise(_context("calendar.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_linear_canary_requires_a_configured_account():
+    with pytest.raises(operational_canaries.CanaryServiceError, match="does not select"):
+        async with linear_client_context(None)():
+            pass
+
+
+def test_proton_canary_requires_mcp_tool_configuration():
+    with pytest.raises(operational_canaries.CanaryServiceError, match="requires an MCP"):
+        proton_client_factory(None)()
 
 
 class _FakeLinearClient:
