@@ -65,6 +65,40 @@ async def test_context_reset_settles_every_participant_before_propagating_failur
     failing.assert_awaited_once_with(group)
 
 
+async def test_context_reset_allows_an_empty_plugin_registry() -> None:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+
+    await prepare_context_reset(
+        manager,
+        WorkspaceProfile(jid="slack:C123", name="Test", folder="test", trigger="@pynchy"),
+    )
+
+
+async def test_context_reset_reports_all_plugin_failures_together() -> None:
+    class _FailingPlugin:
+        def __init__(self, error: BaseException) -> None:
+            self._error = error
+
+        @hookimpl
+        async def pynchy_before_context_reset(self, group: WorkspaceProfile) -> None:
+            del group
+            raise self._error
+
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(_FailingPlugin(RuntimeError("first")))
+    manager.register(_FailingPlugin(ValueError("second")))
+
+    with pytest.raises(BaseExceptionGroup) as raised:
+        await prepare_context_reset(
+            manager,
+            WorkspaceProfile(jid="slack:C123", name="Test", folder="test", trigger="@pynchy"),
+        )
+
+    assert {type(error) for error in raised.value.exceptions} == {RuntimeError, ValueError}
+
+
 async def test_linear_plugin_settles_its_execution_before_reset() -> None:
     group = WorkspaceProfile(
         jid="slack:C123",
