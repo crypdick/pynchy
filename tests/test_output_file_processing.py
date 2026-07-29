@@ -493,6 +493,18 @@ class TestOutputFileErrors:
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "test-group-test.json").exists()
 
+    async def test_malformed_output_is_deleted_when_error_directory_is_unavailable(
+        self, tmp_path: Path
+    ) -> None:
+        """A malformed file cannot remain when its error directory is blocked."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(ipc_dir, "test-group", {"type": "text"})
+        (ipc_dir / "errors").write_text("blocked")
+
+        await process_output_file(file_path, "test-group", ipc_dir)
+
+        assert not file_path.exists()
+
     async def test_handler_exception_does_not_prevent_file_deletion(self, tmp_path: Path):
         """If the output handler raises, the file should still be deleted."""
         ipc_dir = tmp_path / "ipc"
