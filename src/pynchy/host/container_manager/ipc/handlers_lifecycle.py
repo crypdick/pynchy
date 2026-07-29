@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
 from typing import Any, NoReturn, Protocol
 
+from pynchy.conversation.api import parent_workspace_name
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
@@ -85,6 +86,11 @@ def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
 
 def get_settings() -> LifecycleSettings:
     return _get_settings()
+
+
+def _publication_worktree_group(source_group: str) -> str:
+    """Use the parent workspace worktree for routed conversation runtimes."""
+    return parent_workspace_name(source_group) or source_group
 
 
 def _aggregate_publication_results(
@@ -248,10 +254,12 @@ async def _handle_sync_worktree_to_main(
         logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
         return
 
+    worktree_group = _publication_worktree_group(source_group)
+
     if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary, required_human_reason = await asyncio.to_thread(
             _publication_patch_context,
-            source_group,
+            worktree_group,
             repo_contexts,
         )
         allowed = await cop_gate_module.cop_gate(
@@ -280,7 +288,7 @@ async def _handle_sync_worktree_to_main(
     for repo_ctx in repo_contexts:
         repo_result = await asyncio.to_thread(
             host_create_pr_from_worktree,
-            source_group,
+            worktree_group,
             repo_ctx,
         )
         publication_results.append((repo_ctx, repo_result))
