@@ -222,6 +222,8 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     import pluggy
 
     from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
@@ -335,7 +337,11 @@ def configure_gog_plugin(settings: Settings) -> None:
     )
 
 
-def configure_linear_plugin(plugin_manager: pluggy.PluginManager, settings: Settings) -> None:
+def configure_linear_plugin(
+    plugin_manager: pluggy.PluginManager,
+    settings: Settings,
+    start_work_item_reconciliation: Callable[[], Awaitable[None]],
+) -> None:
     """Inject the named Linear accounts resolved at application composition."""
     plugin = settings.plugins.get("linear")
 
@@ -389,6 +395,7 @@ def configure_linear_plugin(plugin_manager: pluggy.PluginManager, settings: Sett
             cancel_execution=cancel_work_item_execution,
             cancel_execution_if_lifecycle_current=cancel_work_item_execution_if_lifecycle_current,
             get_active_execution=get_active_work_item_execution,
+            start_work_item_reconciliation=start_work_item_reconciliation,
         )
     )
     configure_linear_work_item_task_runtime(

@@ -5,7 +5,7 @@ from __future__ import annotations
 # allow: file-length - task admission and recovery share one durable lease policy.
 import hashlib
 import json
-from collections.abc import (  # noqa: TC003 - beartype resolves task annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from pynchy.content_fencing import fence_untrusted_content
 from pynchy.conversation.api import ConversationControlBinding, ConversationId
+from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves task annotations.
@@ -58,6 +59,8 @@ from pynchy.work_items.api import (
 
 if TYPE_CHECKING:
     from pynchy.plugins.integrations.linear_client import LinearClient
+
+LinearPlanReviewDeferrer = Callable[[LinearPlanReviewAdmission], Awaitable[None]]
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" aligned with this policy.
 _ORPHAN_RETRY_GRACE = timedelta(minutes=5)
@@ -126,6 +129,7 @@ class DecisionAdmission:
     public_source: bool
     review_plan: LinearPlanReviewer | None = None
     broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None
+    defer_plan_review: LinearPlanReviewDeferrer | None = None
 
 
 @dataclass(frozen=True)
@@ -469,6 +473,17 @@ async def _admit_human_approved_issue(
     if await _configured_runtime().get_active_execution(issue.id) is not None:
         return None
     if PLAN_START in issue.description:
+        if context.defer_plan_review is not None:
+            await context.defer_plan_review(
+                LinearPlanReviewAdmission(
+                    workspace=workspace.folder,
+                    issue_id=issue.id,
+                    identifier=issue.identifier,
+                    updated_at=issue.updated_at,
+                    public_source=context.public_source,
+                )
+            )
+            return None
         await _report_plan_review_status(
             issue,
             workspace,

@@ -20,7 +20,10 @@ from pynchy.plugins.integrations.linear_boot import (
     linear_workspace_boards,
     linear_workspace_enabled,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import reconcile_all_linear_work_items
+from pynchy.plugins.integrations.linear_decision_inbox import (
+    process_linear_plan_review_admission,
+    reconcile_all_linear_work_items,
+)
 from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
 from pynchy.plugins.integrations.matrix_route_registry import get_active_matrix_route
 from pynchy.plugins.integrations.proton_bridge import ProtonMailClient, create_proton_mail_client
@@ -44,6 +47,7 @@ __all__ = [
     "linear_workspace_enabled",
     "list_workspace_todos",
     "move_workspace_todo",
+    "process_linear_plan_review_admission",
     "reconcile_all_linear_work_items",
     "select_team",
     "work_item_execution_to_dict",

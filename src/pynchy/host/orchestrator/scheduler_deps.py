@@ -27,6 +27,7 @@ from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves annotat
     LearningPacket,
 )
 from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves annotations.
+    LinearPlanReviewAdmission,
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
@@ -156,6 +157,11 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     async def run_learning_review(self, packet: LearningPacket) -> str: ...
 
     async def reconcile_linear_work_items(self) -> int | None: ...
+
+    async def process_linear_plan_review_admission(
+        self,
+        admission: LinearPlanReviewAdmission,
+    ) -> bool: ...
 
     async def reset_scheduled_context(
         self,

@@ -300,6 +300,9 @@ from pynchy.plugins.integrations.api import (
     linear_workspace_enabled,
     reconcile_all_linear_work_items,
 )
+from pynchy.plugins.integrations.api import (
+    process_linear_plan_review_admission as admit_linear_plan_review,
+)
 from pynchy.plugins.runtimes.api import (
     configure_runtime_override,
     ensure_agent_image_available,
@@ -342,6 +345,7 @@ from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc.deps import IpcDeps
+    from pynchy.linear_plan_types import LinearPlanReviewAdmission
 
 from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
     LearningPacket,
@@ -1337,6 +1341,10 @@ class PynchyApp(ThreadRouting):
         """Start durable Temporal reconciliation for channel history."""
         await temporal_scheduler.start_channel_reconciliation_workflow()
 
+    async def start_linear_work_item_reconciliation(self) -> None:
+        """Start durable Temporal reconciliation for managed Linear work."""
+        await temporal_scheduler.start_linear_work_item_reconciliation_workflow()
+
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None:
@@ -1528,8 +1536,25 @@ class PynchyApp(ThreadRouting):
             boards,
             review_plan=self.review_linear_plan,
             broadcast_host_message=self.broadcast_host_message,
+            defer_plan_review=temporal_scheduler.start_linear_plan_review_workflow,
         )
         return len(admitted)
+
+    async def process_linear_plan_review_admission(
+        self,
+        admission: LinearPlanReviewAdmission,
+    ) -> bool:
+        """Review one exact issue revision and start admitted execution immediately."""
+        task = await admit_linear_plan_review(
+            admission,
+            self.workspaces.values(),
+            review_plan=self.review_linear_plan,
+            broadcast_host_message=self.broadcast_host_message,
+        )
+        if task is None:
+            return False
+        await temporal_scheduler.start_scheduled_agent_task_workflow(task)
+        return True
 
     async def handle_streamed_output(
         self,

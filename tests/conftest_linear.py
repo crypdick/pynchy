@@ -100,7 +100,15 @@ if TYPE_CHECKING:
     from pynchy.config.api import Settings
 
 
-def configure_linear_accounts_for(settings: Settings) -> None:
+async def _noop_linear_reconciliation() -> None:
+    pass
+
+
+def configure_linear_accounts_for(
+    settings: Settings,
+    *,
+    start_work_item_reconciliation=_noop_linear_reconciliation,
+) -> None:
     """Wire Linear account lookups to one test's resolved settings."""
 
     def workspace_tool_names(workspace: str) -> tuple[str, ...] | None:
@@ -160,6 +168,7 @@ def configure_linear_accounts_for(settings: Settings) -> None:
             cancel_execution=cancel_work_item_execution,
             cancel_execution_if_lifecycle_current=cancel_work_item_execution_if_lifecycle_current,
             get_active_execution=get_active_work_item_execution,
+            start_work_item_reconciliation=start_work_item_reconciliation,
         )
     )
     configure_linear_work_item_task_runtime(
