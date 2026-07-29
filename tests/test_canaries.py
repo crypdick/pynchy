@@ -203,6 +203,20 @@ def test_enabled_canary_requires_explicit_scenario_selection():
         )
 
 
+def test_enabled_canary_rejects_unknown_scenarios():
+    with pytest.raises(ValueError, match="includes unknown scenarios"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {}},
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["unknown.round.trip"],
+                },
+            }
+        )
+
+
 def test_enabled_proton_round_trip_requires_a_delivery_recipient():
     with pytest.raises(ValueError, match="proton_recipient is required"):
         validate_settings_mapping(
