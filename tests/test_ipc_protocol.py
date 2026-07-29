@@ -188,6 +188,39 @@ class TestRequestEnvelope:
                 source_group="admin-1",
             )
 
+    def test_envelope_rejects_empty_required_string(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-required",
+            source_group="admin-1",
+        )
+        request["request_id"] = ""
+
+        with pytest.raises(ValueError, match="request_id must be a non-empty string"):
+            IpcRequestEnvelope.from_dict(request)
+
+    def test_envelope_rejects_non_string_optional_field(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-optional",
+            source_group="admin-1",
+        )
+        request["reply_to"] = 42
+
+        with pytest.raises(ValueError, match="reply_to must be a string or null"):
+            IpcRequestEnvelope.from_dict(request)
+
+    def test_envelope_rejects_non_object_payload(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-payload",
+            source_group="admin-1",
+        )
+        request["payload"] = []
+
+        with pytest.raises(ValueError, match="payload must be an object"):
+            IpcRequestEnvelope.from_dict(request)
+
     def test_make_ipc_request_writes_required_envelope_fields(self):
         """Every request file should carry the versioned transport envelope."""
         payload = {"jid": "new@g.us", "name": "New", "folder": "new", "trigger": "@pynchy"}

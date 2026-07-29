@@ -149,6 +149,16 @@ class TestSendReactionToChannels:
         ch.send_reaction.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_skips_channels_that_do_not_own_the_chat(self):
+        ch = _make_channel(has_reaction=True)
+        ch.owns_jid.return_value = False
+        deps = _make_deps([ch])
+
+        await send_reaction_to_channels(deps, "group@g.us", "msg-1", "user@s", "👀")
+
+        ch.send_reaction.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_catches_network_errors(self):
         ch = _make_channel(has_reaction=True)
         ch.send_reaction.side_effect = OSError("network")
@@ -163,6 +173,19 @@ class TestSendReactionToChannels:
 
 
 class TestProcessingAckEmoji:
+    def test_disconnected_channel_does_not_supply_an_ack(self):
+        ch = _make_channel(connected=False)
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") == "🦞"
+
+    def test_foreign_channel_does_not_supply_an_ack(self):
+        ch = _make_channel()
+        ch.owns_jid.return_value = False
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") == "🦞"
+
     def test_uses_channel_specific_processing_ack(self):
         ch = _make_channel(name="discord", connected=True)
         ch.owns_jid.return_value = True
@@ -182,6 +205,14 @@ class TestProcessingAckEmoji:
     def test_default_used_when_channel_has_no_preference(self):
         ch = _make_channel(name="slack", connected=True)
         ch.owns_jid.return_value = True
+        deps = _make_deps([ch])
+
+        assert processing_ack_emoji(deps, "group@g.us") == "🦞"
+
+    def test_default_used_for_invalid_channel_preference(self):
+        ch = _make_channel(name="slack", connected=True)
+        ch.owns_jid.return_value = True
+        ch.processing_ack_emoji = MagicMock(return_value=42)
         deps = _make_deps([ch])
 
         assert processing_ack_emoji(deps, "group@g.us") == "🦞"
@@ -216,6 +247,16 @@ class TestSetTypingOnChannels:
         deps = _make_deps([ch])
 
         await set_typing_on_channels(deps, "group@g.us", is_typing=True)
+
+    @pytest.mark.asyncio
+    async def test_skips_foreign_channels(self):
+        ch = _make_channel(has_typing=True)
+        ch.owns_jid.return_value = False
+        deps = _make_deps([ch])
+
+        await set_typing_on_channels(deps, "group@g.us", is_typing=True)
+
+        ch.set_typing.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_catches_network_errors(self):
@@ -262,3 +303,21 @@ class TestSendReactionToOutbound:
 
         await send_reaction_to_outbound(deps, "group@g.us", per_channel_ids, "zzz")
         # No error, no call
+
+    @pytest.mark.asyncio
+    async def test_skips_foreign_channels(self):
+        ch = _make_channel(name="slack", connected=True, has_reaction=True)
+        ch.owns_jid.return_value = False
+        deps = _make_deps([ch])
+
+        await send_reaction_to_outbound(deps, "group@g.us", {"slack": "message-1"}, "zzz")
+
+        ch.send_reaction.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_catches_network_errors(self):
+        ch = _make_channel(name="slack", connected=True, has_reaction=True)
+        ch.send_reaction.side_effect = ConnectionError("network")
+        deps = _make_deps([ch])
+
+        await send_reaction_to_outbound(deps, "group@g.us", {"slack": "message-1"}, "zzz")
