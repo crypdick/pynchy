@@ -265,7 +265,7 @@ async def test_x_post_uses_the_configured_persistent_browser(
 
 
 @pytest.mark.asyncio
-async def test_x_session_setup_reports_existing_login_without_vnc(
+async def test_x_session_setup_reports_existing_login_with_vnc(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -274,8 +274,13 @@ async def test_x_session_setup_reports_existing_login_without_vnc(
     closed, launches = _install_playwright(monkeypatch, page, profile_path)
     action_handler = _action_handler(_handler("setup_x_session"))
     action_globals = action_handler.__globals__
-    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
     monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(
+        action_globals,
+        "start_vnc_layer",
+        lambda: ([], "http://host:6080/vnc.html?autoconnect=true"),
+    )
     monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
     monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
     monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
@@ -288,6 +293,7 @@ async def test_x_session_setup_reports_existing_login_without_vnc(
         "result": {
             "status": "ok",
             "message": f"Already logged in to X. Profile saved at {profile_path}",
+            "novnc_url": "http://host:6080/vnc.html?autoconnect=true",
         }
     }
     assert launches == [{"headless": False}]
@@ -327,8 +333,13 @@ async def test_x_session_setup_saves_completed_login_and_surfaces_setup_failure(
     _install_playwright(monkeypatch, page, profile_path)
     action_handler = _action_handler(_handler("setup_x_session"))
     action_globals = action_handler.__globals__
-    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
     monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(
+        action_globals,
+        "start_vnc_layer",
+        lambda: ([], "http://host:6080/vnc.html?autoconnect=true"),
+    )
     monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
     monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
     monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
@@ -338,7 +349,7 @@ async def test_x_session_setup_saves_completed_login_and_surfaces_setup_failure(
     result = await _handler("setup_x_session")({"timeout_seconds": 1})
 
     assert result["result"]["profile_dir"] == str(profile_path)
-    assert "novnc_url" not in result["result"]
+    assert result["result"]["novnc_url"] == "http://host:6080/vnc.html?autoconnect=true"
 
     def fail_setup() -> None:
         raise RuntimeError("display missing")
