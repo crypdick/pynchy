@@ -7,7 +7,9 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import aiohttp
 import pytest
+from aiohttp import ClientSession, web
 
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp import litellm
@@ -15,7 +17,7 @@ from pynchy.host.container_manager.mcp.manager import (
     DirectMcpServerConfigRequest,
     build_direct_server_configs,
 )
-from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
+from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam, build_trust_map
 from pynchy.plugins.api import McpServerConfig
 
 
@@ -53,18 +55,28 @@ class _LiteLLMSession:
         return None
 
 
-def _make_gateway(tmp_path) -> LiteLLMGateway:
+def _make_gateway(tmp_path, *, port: int = 4000) -> LiteLLMGateway:
     config_path = tmp_path / "litellm_config.yaml"
     config_path.write_text("model_list: []\n")
     return LiteLLMGateway(
         config_path=str(config_path),
-        port=4000,
+        port=port,
         container_host="host.docker.internal",
         image="litellm:test",
         postgres_image="postgres:test",
         data_dir=tmp_path,
         master_key="sk-test",
     )
+
+
+async def _start_http_server(app: web.Application) -> tuple[web.AppRunner, int]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    server = site._server
+    assert server is not None
+    return runner, server.sockets[0].getsockname()[1]
 
 
 def _build_direct_configs(
@@ -133,6 +145,66 @@ class TestLiteLLMSyncRuntimeTypes:
             patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
         ):
             await litellm.sync_mcp_endpoints(gateway, {"gdrive": _make_instance("gdrive")})
+
+
+class TestLiteLLMApiRequest:
+    @pytest.mark.asyncio
+    async def test_sends_authenticated_json_and_returns_the_management_response(self, tmp_path):
+        received: dict[str, object] = {}
+
+        async def create_team(request: web.Request) -> web.Response:
+            received["authorization"] = request.headers["Authorization"]
+            received["body"] = await request.json()
+            return web.json_response({"team_id": "team-1"}, status=201)
+
+        app = web.Application()
+        app.router.add_post("/team/new", create_team)
+        runner, port = await _start_http_server(app)
+        gateway = _make_gateway(tmp_path, port=port)
+
+        try:
+            async with ClientSession() as session:
+                response = await litellm.api_request(
+                    session,
+                    gateway,
+                    "POST",
+                    "/team/new",
+                    json_data={"team_alias": "ops"},
+                )
+        finally:
+            await runner.cleanup()
+
+        assert response == {"team_id": "team-1"}
+        assert received == {
+            "authorization": "Bearer sk-test",  # pragma: allowlist secret
+            "body": {"team_alias": "ops"},
+        }
+
+    @pytest.mark.asyncio
+    async def test_treats_empty_success_as_success_and_rejected_request_as_failure(self, tmp_path):
+        async def empty_response(_request: web.Request) -> web.Response:
+            await asyncio.sleep(0)
+            return web.Response(status=200)
+
+        async def rejected_response(_request: web.Request) -> web.Response:
+            await asyncio.sleep(0)
+            return web.Response(status=403, text="denied")
+
+        app = web.Application()
+        app.router.add_get("/empty", empty_response)
+        app.router.add_get("/rejected", rejected_response)
+        runner, port = await _start_http_server(app)
+        gateway = _make_gateway(tmp_path, port=port)
+
+        try:
+            async with ClientSession() as session:
+                empty = await litellm.api_request(session, gateway, "GET", "/empty")
+                rejected = await litellm.api_request(session, gateway, "GET", "/rejected")
+        finally:
+            await runner.cleanup()
+
+        assert empty is True
+        assert rejected is None
 
 
 class TestLiteLLMSyncEndpoints:
@@ -224,6 +296,70 @@ class TestLiteLLMSyncEndpoints:
                 "auth_value": "secret-token",
             },
         ) in calls
+
+
+class TestLiteLLMWorkspaceTeams:
+    @pytest.mark.asyncio
+    async def test_sync_teams_creates_new_updates_current_and_deletes_stale(self, tmp_path):
+        gateway = _make_gateway(tmp_path)
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+        workspace_teams = {
+            "current": WorkspaceTeam(team_id="team-current", virtual_key="key-current"),
+            "stale": WorkspaceTeam(team_id="team-stale", virtual_key="key-stale"),
+        }
+        session = aiohttp.ClientSession()
+
+        def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            calls.append((method, path, json_data))
+            if path == "/team/new":
+                return asyncio.sleep(0, result={"team_id": "team-new"})
+            if path == "/key/generate":
+                return asyncio.sleep(0, result={"key": "key-new"})
+            return asyncio.sleep(0, result=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=session,
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_teams(
+                gateway,
+                {"new": ["gdrive"], "current": ["notebook"]},
+                workspace_teams,
+            )
+
+        assert workspace_teams == {
+            "new": WorkspaceTeam(team_id="team-new", virtual_key="key-new"),
+            "current": WorkspaceTeam(team_id="team-current", virtual_key="key-current"),
+        }
+        assert (
+            "POST",
+            "/team/new",
+            {"team_alias": "pynchy-mcp-new", "metadata": {"pynchy_workspace": "new"}},
+        ) in calls
+        assert (
+            "POST",
+            "/key/generate",
+            {"team_id": "team-new", "allowed_mcp_servers": ["gdrive"]},
+        ) in calls
+        assert (
+            "POST",
+            "/team/update",
+            {"team_id": "team-current", "metadata": {"allowed_mcp_servers": ["notebook"]}},
+        ) in calls
+        assert ("POST", "/team/delete", {"team_ids": ["team-stale"]}) in calls
+
+    def test_team_cache_round_trips_and_discards_malformed_data(self, tmp_path):
+        cache_path = tmp_path / "mcp" / "teams.json"
+        teams = {"ops": WorkspaceTeam(team_id="team-ops", virtual_key="key-ops")}
+
+        litellm.save_teams_cache(cache_path, teams)
+
+        assert litellm.load_teams_cache(cache_path) == teams
+        cache_path.write_text('{"ops": {"team_id": "team-ops"}}', encoding="utf-8")
+        assert litellm.load_teams_cache(cache_path) == {}
 
 
 class TestBuildDirectServerConfigs:

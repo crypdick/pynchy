@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from typing import get_type_hints
 from unittest.mock import AsyncMock
 
 import pytest
+from temporalio.converter import DataConverter
 
 import pynchy.host.orchestrator.temporal.channel_reconciliation as temporal_channel_reconciliation
 import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
@@ -507,8 +509,13 @@ class TestTemporalSchedulerRuntime:
             "updated_at": "2026-07-28T12:00:00Z",
             "public_source": True,
         }
+        encoded = await DataConverter.default.encode([payload])
+        payload_hint = get_type_hints(temporal_linear_work_items.run_linear_plan_review_admission)[
+            "payload"
+        ]
 
-        result = await temporal_linear_work_items.run_linear_plan_review_admission(payload)
+        [decoded] = await DataConverter.default.decode(encoded, [payload_hint])
+        result = await temporal_linear_work_items.run_linear_plan_review_admission(decoded)
 
         assert result == "admitted"
         deps.process_linear_plan_review_admission.assert_awaited_once()

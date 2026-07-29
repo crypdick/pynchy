@@ -309,7 +309,7 @@ class LiteLLMGateway:
 
         resolved = {
             "LITELLM_OTEL_V2": env.get("LITELLM_OTEL_V2", "true"),
-            _OTEL_CONTENT_ENV: env.get(_OTEL_CONTENT_ENV, "SPAN_AND_EVENT"),
+            _OTEL_CONTENT_ENV: "NO_CONTENT",
             _PHOENIX_ENDPOINT_ENV: endpoint,
             "PHOENIX_PROJECT_NAME": env.get("PHOENIX_PROJECT_NAME", "pynchy"),
         }
