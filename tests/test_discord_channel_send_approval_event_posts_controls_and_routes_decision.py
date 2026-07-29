@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from pynchy.config.api import DiscordConnectionConfig
@@ -195,6 +196,19 @@ async def test_approval_timeout_disables_controls_and_marks_the_original_message
     assert all(item.disabled for item in view.children)
     destination.fetch_message.assert_awaited_once_with(101)
     assert "This approval expired." in message.edit.await_args.kwargs["content"]
+
+
+@pytest.mark.asyncio
+async def test_approval_timeout_ignores_discord_fetch_failure():
+    ch, view = await _approval_view(callback=MagicMock())
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=discord.DiscordException("offline")
+    )
+    view.bind_message_id("101")
+
+    await view.on_timeout()
+
+    assert all(item.disabled for item in view.children)
 
 
 @pytest.mark.asyncio
