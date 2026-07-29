@@ -35,6 +35,48 @@ DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
 
 
+async def _approval_view(
+    *,
+    callback: MagicMock | None,
+) -> tuple[DiscordChannel, object]:
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="open"),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _msg: None,
+        on_chat_metadata=lambda _jid, _ts, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        on_approval_decision=callback,
+    )
+    ch.client = object()
+    destination = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+    await ch.send_event(
+        "discord:direct:42",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approval required",
+            metadata={"short_id": "js"},
+        ),
+    )
+    return ch, destination.sends[0][1]["view"]
+
+
+def _interaction() -> MagicMock:
+    interaction = MagicMock()
+    interaction.user.id = "42"
+    interaction.user.bot = False
+    interaction.user.roles = []
+    interaction.channel.id = "42"
+    interaction.channel.parent = None
+    interaction.channel.parent_id = None
+    interaction.channel.name = None
+    interaction.guild = None
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+    return interaction
+
+
 @pytest.mark.asyncio
 async def test_send_approval_event_posts_controls_and_routes_decision():
     decision_callback = MagicMock()
@@ -80,6 +122,60 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 
     decision_callback.assert_called_once_with("discord:direct:42", "approve", "js", "42")
     interaction.response.edit_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approval_controls_reject_unauthorized_and_duplicate_decisions():
+    callback = MagicMock()
+    ch, view = await _approval_view(callback=callback)
+    interaction = _interaction()
+    ch.is_interaction_allowed = lambda _interaction: False  # type: ignore[method-assign]
+
+    await view.children[0].callback(interaction)
+
+    callback.assert_not_called()
+    interaction.response.send_message.assert_awaited_once_with(
+        "You are not allowed to decide this approval.", ephemeral=True
+    )
+
+    ch.is_interaction_allowed = lambda _interaction: True  # type: ignore[method-assign]
+    await view.children[0].callback(interaction)
+    await view.children[1].callback(interaction)
+
+    callback.assert_called_once_with("discord:direct:42", "approve", "js", "42")
+    assert interaction.response.send_message.await_args_list[-1].args[0] == (
+        "This approval has already been decided."
+    )
+
+
+@pytest.mark.asyncio
+async def test_approval_controls_explain_when_no_decision_callback_is_available():
+    _ch, view = await _approval_view(callback=None)
+    interaction = _interaction()
+
+    await view.children[0].callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "Approval controls are unavailable; use the command in the prompt instead.",
+        ephemeral=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_approval_timeout_disables_controls_and_marks_the_original_message():
+    ch, view = await _approval_view(callback=MagicMock())
+    message = MagicMock()
+    message.edit = AsyncMock()
+    destination = MagicMock()
+    destination.fetch_message = AsyncMock(return_value=message)
+    ch.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+    view.bind_message_id("101")
+
+    await view.on_timeout()
+
+    assert all(item.disabled for item in view.children)
+    destination.fetch_message.assert_awaited_once_with(101)
+    assert "This approval expired." in message.edit.await_args.kwargs["content"]
 
 
 @pytest.mark.asyncio
