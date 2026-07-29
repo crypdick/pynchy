@@ -15,9 +15,6 @@ from pynchy.host.git_ops.repo import (
     RepoContext,  # beartype resolves git sync helpers at runtime.
     get_repo_context,
 )
-from pynchy.host.git_ops.sync import (
-    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
-)
 from pynchy.host.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
@@ -25,6 +22,9 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
     redact_git_diagnostic,
     run_git,
+)
+from pynchy.host.git_ops.worktree_sync import (
+    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
 )
 from pynchy.logger import logger
 

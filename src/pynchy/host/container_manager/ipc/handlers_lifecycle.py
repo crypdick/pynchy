@@ -1,4 +1,4 @@
-"""IPC handlers for session lifecycle: reset and sync_worktree."""
+"""IPC handlers for reset and pull-request publication lifecycle actions."""
 
 from __future__ import annotations
 

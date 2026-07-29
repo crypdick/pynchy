@@ -103,6 +103,12 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         "sync_worktree_to_main",
     ),
     agent_action(
+        "lifecycle.managed.feature.publish",
+        "agent-tools",
+        "Publish one manifest-bound managed feature as a pull request.",
+        "publish_managed_feature",
+    ),
+    agent_action(
         "lifecycle.context.reset",
         "agent-tools",
         "Clear an agent session and start a new context.",

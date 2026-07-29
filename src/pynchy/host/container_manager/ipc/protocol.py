@@ -58,6 +58,7 @@ TIER2_TYPES = frozenset(
         # Lifecycle: still carries data, will be reviewed later
         "reset_context",
         "sync_worktree_to_main",
+        "publish_managed_feature",
         # Task management
         "pause_task",
         "resume_task",
