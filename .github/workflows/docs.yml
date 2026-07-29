@@ -22,7 +22,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # needed for git-revision-date-localized plugin
 
@@ -30,7 +30,7 @@ jobs:
 
       - run: uv run --with mkdocs-material --with mkdocs-include-markdown-plugin --with mkdocs-git-revision-date-localized-plugin --with mkdocs-minify-plugin --with mkdocs-awesome-pages-plugin mkdocs build --strict
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -42,4 +42,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

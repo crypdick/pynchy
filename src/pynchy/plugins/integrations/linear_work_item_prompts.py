@@ -10,7 +10,9 @@ EXECUTION_CONTRACT = (
     "linear_create_attachment before requesting review. Use your judgment to move the issue "
     "through Awaiting Review, Follow-ups, and Done. Follow-ups are for final operational work "
     "such as deployment verification, preserving useful logs before teardown, cleaning feature "
-    "resources, and updating or unblocking related issues."
+    "resources, and updating or unblocking related issues. If blocked, create a Linear issue "
+    "for the blocker, link it to this work item, and record the handoff before moving this item "
+    "to Blocked."
 )
 FOLLOW_UPS_CONTRACT = (
     "Objective: finish the Follow-ups for the Linear work item below.\n"
@@ -18,5 +20,7 @@ FOLLOW_UPS_CONTRACT = (
     "Success: use your judgment to finish the whole job. Verify delivery or deployment, "
     "preserve useful logs before teardown, clean feature resources, and update or unblock "
     "related issues when relevant. Record useful context and move the item to Done when it is "
-    "genuinely finished, or Blocked when it needs outside help."
+    "genuinely finished, or Blocked when it needs outside help. If blocked, create a Linear "
+    "issue for the blocker, link it to this work item, and record the handoff before moving "
+    "this item to Blocked."
 )
