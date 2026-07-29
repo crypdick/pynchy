@@ -74,6 +74,14 @@ def test_configure_desktop_screenshot_plugin_injects_gateway_accessor(
     assert runtime.default_model in {settings.agent.model, "gpt-5.5"}
     assert runtime.vision_gateway().port == 4000
     assert runtime.vision_gateway().api_key == "gateway-key"  # pragma: allowlist secret
+    monkeypatch.setattr(plugin_configuration.gateway_manager, "get_gateway", lambda: None)
+    assert runtime.vision_gateway() is None
+
+
+def test_configure_desktop_screenshot_plugin_ignores_unregistered_plugin(tmp_path) -> None:
+    plugin_configuration.configure_desktop_screenshot_plugin(
+        _plugin_manager(), make_settings(data_dir=tmp_path / "data")
+    )
 
 
 @pytest.mark.parametrize("configured", [False, True])
@@ -207,3 +215,12 @@ def test_configure_google_setup_plugin_injects_profiles_and_runtime_policy(
     assert runtime.workspace_tools("missing") is None
     assert runtime.workspace_is_admin("missing") is False
     assert configure.call_args.args == (("personal", "work"),)
+
+
+def test_configure_linear_plugin_wires_host_runtime_contracts() -> None:
+    manager = _plugin_manager()
+    settings = make_settings()
+
+    plugin_configuration.configure_linear_plugin(manager, settings, lambda: None)
+
+    assert plugin_configuration.configured_linear_accounts() == ()
