@@ -64,6 +64,40 @@ class TestDetectRuntime:
         assert r.name == "docker"
         assert r.cli == "docker"
 
+    def test_blank_and_duplicate_runtime_names_are_ignored(self):
+        apple = FakePluginRuntime(name="apple")
+        duplicate = FakePluginRuntime(name=" apple ")
+        with patch(
+            "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+            return_value=[FakePluginRuntime(name=""), apple, duplicate],
+        ):
+            assert detect_runtime("apple") is apple
+
+    def test_darwin_falls_back_to_docker_when_apple_is_unavailable(self):
+        apple = FakePluginRuntime(name="apple", available=False)
+        docker = FakePluginRuntime(name="docker")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is docker
+
+    def test_linux_falls_back_to_an_available_non_docker_runtime(self):
+        custom = FakePluginRuntime(name="podman")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[custom],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "linux"
+            assert detect_runtime() is custom
+
     def test_darwin_prefers_apple_plugin_runtime(self):
         apple = FakePluginRuntime(name="apple")
         docker = _docker_plugin()
