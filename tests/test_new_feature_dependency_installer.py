@@ -30,7 +30,9 @@ def _fake_tool_commands(monkeypatch: pytest.MonkeyPatch) -> None:
                 command, 0, stdout="temporal version 1.8.0\n", stderr=""
             )
         if command[-1] == "--version" and Path(command[0]).name == "new-feature":
-            return subprocess.CompletedProcess(command, 0, stdout="new-feature 1.1.14\n", stderr="")
+            return subprocess.CompletedProcess(
+                command, 0, stdout="new-feature 999.0.0\n", stderr=""
+            )
         raise AssertionError(f"Unexpected dependency command: {command}")
 
     monkeypatch.setattr(installer.shutil, "which", command_exists)
@@ -90,7 +92,7 @@ def test_runtime_only_install_places_temporal_in_the_selected_bin_dir(
     assert f"Temporal CLI: {bin_dir / 'temporal'}" in capsys.readouterr().out
 
 
-def test_full_profile_check_accepts_selected_pinned_clis(
+def test_full_profile_check_accepts_selected_clis(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     bin_dir = tmp_path / "bin"
@@ -118,18 +120,18 @@ def test_full_profile_install_creates_missing_selected_clis(
     (bin_dir / "temporal").touch()
     _fake_tool_commands(monkeypatch)
     installs: list[tuple[str, Path]] = []
+    install_commands: list[list[str]] = []
 
-    def install_new_feature(_uv: str, destination: Path) -> None:
-        installs.append(("new-feature", destination))
-        (destination / "new-feature").touch()
+    def run_checked(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        install_commands.append(command)
+        assert env is not None
+        (Path(env["UV_TOOL_BIN_DIR"]) / "new-feature").touch()
 
     def install_codex(_npm: str, destination: Path) -> None:
         installs.append(("codex", destination))
         (destination / "codex").touch()
 
-    monkeypatch.setattr(
-        "scripts.install_new_feature_dependencies._install_new_feature", install_new_feature
-    )
+    monkeypatch.setattr(installer, "_run_checked", run_checked)
     monkeypatch.setattr("scripts.install_new_feature_dependencies._install_codex", install_codex)
 
     def command_exists(name: str) -> str | None:
@@ -141,7 +143,8 @@ def test_full_profile_install_creates_missing_selected_clis(
 
     _invoke_main(monkeypatch, "--bin-dir", str(bin_dir))
 
-    assert installs == [("new-feature", bin_dir), ("codex", bin_dir)]
+    assert install_commands == [["/usr/bin/uv", "tool", "install", "--force", "new-feature"]]
+    assert installs == [("codex", bin_dir)]
     assert (bin_dir / "new-feature").is_file()
     assert (bin_dir / "codex").is_file()
     assert f"new-feature: {bin_dir / 'new-feature'}" in capsys.readouterr().out
