@@ -255,6 +255,25 @@ class TestEnsureWorkspaceBoard:
 
         assert set(boards) == {"first", "second"}
 
+    async def test_reconcile_does_not_duplicate_an_existing_project(self):
+        client = FakeLinearClient()
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Code Improver",
+                "url": "https://linear.app/acme/project/existing",
+            }
+        )
+
+        boards = await reconcile_workspace_boards(
+            client,
+            [WorkspaceStub(folder="code-improver", name="Code Improver")],
+            team_key=None,
+        )
+
+        assert boards["code-improver"].project["id"] == "project-existing"
+        assert [project["id"] for project in client.projects] == ["project-existing"]
+
     async def test_creates_missing_project_and_workflow_states(self):
         client = FakeLinearClient()
         workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
