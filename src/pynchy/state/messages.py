@@ -172,12 +172,27 @@ async def get_messages_since(
     del body_reader
 
     db = _get_db()
+    # Routed projections stay in chat history after their durable claim completes or
+    # is reclaimed, but only the projection for the active claim is pending input.
     sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
                message_type, metadata
         FROM messages
         WHERE chat_jid = ?
               AND is_from_me = 0
+              AND (
+                  json_extract(metadata, '$.conversation_claim_id') IS NULL
+                  OR EXISTS (
+                      SELECT 1
+                      FROM conversation_deliveries AS delivery
+                      WHERE delivery.claim_id =
+                            json_extract(messages.metadata, '$.conversation_claim_id')
+                            AND delivery.delivery_id = messages.id
+                            AND delivery.conversation_id =
+                                json_extract(messages.metadata, '$.conversation_id')
+                            AND delivery.status = 'claimed'
+                  )
+              )
     """
     params: list[object] = [chat_jid]
     if since_timestamp is not None:
