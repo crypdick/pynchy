@@ -43,6 +43,12 @@ def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
     assert settings.workspaces["admin"].profiles == ["admin"]
 
 
+def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
+    profile = ProfileConfig(repo=None)
+
+    assert profile.repo == []
+
+
 @pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])
 def test_profile_prompt_names_must_be_safe_identifiers(name: str) -> None:
     with pytest.raises(ValidationError, match="prompt names"):
