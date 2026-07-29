@@ -37,6 +37,7 @@ def agent_tool_runtime(tmp_path: Path):
             is_admin=False,
             is_scheduled_task=True,
             ipc_dir=tmp_path,
+            turn_id="turn-syn-88",
         )
     ):
         yield tmp_path
@@ -69,6 +70,9 @@ async def test_publication_failure_prefers_per_repository_diagnostic(
     assert result.content[0].text == (
         "owner/pynchy: Push failed: remote rejected write with HTTP 403"
     )
+    request_file = next((agent_tool_runtime / "requests").glob("*.json"))
+    request = json.loads(request_file.read_text(encoding="utf-8"))
+    assert request["payload"]["turn_id"] == "turn-syn-88"
 
 
 @pytest.mark.asyncio

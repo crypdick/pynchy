@@ -7,7 +7,7 @@ Supports two execution paths:
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003 - beartype resolves container-operation annotations.
+import asyncio
 import time
 from collections.abc import (  # noqa: TC003 - beartype resolves container-operation annotations.
     Awaitable,
@@ -32,7 +32,14 @@ from pynchy.host.orchestrator.agent_core_config import (
     session_model_mismatch as _session_model_mismatch,
 )
 from pynchy.host.orchestrator.host_agent_dispatch import run_host_execution as _run_host_execution
-from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
+from pynchy.host.orchestrator.host_execution import (
+    HostExecutionCwdError,
+    bind_active_routed_host_repo,
+    clear_active_routed_host_repo,
+)
+from pynchy.host.orchestrator.host_execution import (
+    host_execution_cwd as _host_execution_cwd,
+)
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.identifiers import (
@@ -456,6 +463,7 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
     ctx.turn_id = resolved_turn_id
     if resume_session_id is not None:
         ctx.session_id = resume_session_id
+    recovered_host_session = ctx.session_id is not None
 
     resolved_agent_core_config = agent_core_config(
         runtime.model, runtime.model_reasoning_effort, group.folder
@@ -472,20 +480,38 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
         deps.sessions.pop(group.folder, None)
         ctx.session_id = None
 
-    host_cwd = _host_execution_cwd(group.folder)
-    if host_cwd is not None:
-        return await _run_host_execution(
-            deps,
-            group,
-            chat_jid,
-            messages,
-            ctx,
-            host_cwd,
-            build_container_input,
-            runtime,
-            is_scheduled_task=is_scheduled_task,
-            destroy_session=operations.destroy_session,
+    try:
+        host_cwd = await asyncio.to_thread(
+            _host_execution_cwd,
+            group.folder,
+            deps.host_runtime_operations,
+            repo_accesses=ctx.repo_accesses,
+            recovered=recovered_host_session,
         )
+    except HostExecutionCwdError as exc:
+        logger.error("Host execution working directory blocked", group=group.name, error=str(exc))
+        await deps.broadcast_host_message(chat_jid, f"Host execution blocked: {exc}")
+        return "error"
+    if host_cwd is not None:
+        ctx.system_notices.extend(host_cwd.notices)
+        if host_cwd.repo_access is not None:
+            bind_active_routed_host_repo(group.folder, host_cwd.repo_access, resolved_turn_id)
+        try:
+            return await _run_host_execution(
+                deps,
+                group,
+                chat_jid,
+                messages,
+                ctx,
+                host_cwd.path,
+                build_container_input,
+                runtime,
+                is_scheduled_task=is_scheduled_task,
+                destroy_session=operations.destroy_session,
+            )
+        finally:
+            if host_cwd.repo_access is not None:
+                clear_active_routed_host_repo(group.folder, host_cwd.repo_access, resolved_turn_id)
 
     session = cast("AgentSession | None", operations.get_session(GroupFolder(group.folder)))
     if session is not None and session.is_alive and is_scheduled_task:

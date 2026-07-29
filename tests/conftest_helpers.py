@@ -32,7 +32,7 @@ from pynchy.host.orchestrator.api import (
     policy_approval_timestamp,
     prepare_action_intent,
 )
-from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
+from pynchy.host.orchestrator.host_execution import HostExecutionCwd, HostRuntimeOperations
 from pynchy.host.orchestrator.messaging.deps import CommandMatcher
 from pynchy.plugins.api import (
     ApprovalContract,
@@ -131,6 +131,9 @@ def make_host_runtime_operations() -> HostRuntimeOperations:
         gateway_port=4000,
         prepare_host_codex_home=lambda folder, _plugins: Path("sessions") / folder / ".codex",
         host_learning_vault=lambda _folder: None,
+        resolve_routed_host_cwd=lambda _folder, cwd, _repo_accesses, *, recovered: HostExecutionCwd(
+            cwd
+        ),
     )
 
 

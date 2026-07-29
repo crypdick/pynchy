@@ -51,12 +51,16 @@ def _publication_result_message(result: dict[str, Any]) -> str:
 )
 async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     request_id = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}"
+    runtime = _ipc.get_agent_tool_runtime()
+    payload: dict[str, str] = {
+        "groupFolder": runtime.group_folder,
+        "publication": "pull-request",
+    }
+    if runtime.turn_id:
+        payload["turn_id"] = runtime.turn_id
     _ipc.write_request_file(
         "sync_worktree_to_main",
-        {
-            "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
-            "publication": "pull-request",
-        },
+        payload,
         request_id=request_id,
         reply_to="merge_results",
     )

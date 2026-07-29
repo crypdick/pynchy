@@ -15,10 +15,12 @@ from conftest import make_settings
 
 from pynchy.host.git_ops.api import (
     RepoContext,
+    RoutedHostWorktreeError,
     WorktreeError,
     ensure_worktree,
     install_repo_hooks,
     reconcile_worktrees_at_startup,
+    resolve_routed_host_worktree_cwd,
 )
 
 if TYPE_CHECKING:
@@ -352,6 +354,194 @@ class TestEnsureWorktree:
         # WIP file is gone (worktree was recreated from scratch)
         assert not (wt_path / "wip.txt").exists()
         assert "Broken worktree detected, recreating" in caplog.text
+
+    def test_reattaches_existing_branch_when_worktree_directory_is_missing(self, git_env: dict):
+        """A removed child directory must not erase committed recovery work."""
+        repo_ctx = git_env["repo_ctx"]
+        worktree = ensure_worktree("host__thread_conversation-conv_recovery", repo_ctx).path
+        (worktree / "recovered.txt").write_text("keep this commit")
+        _git(worktree, "add", "recovered.txt")
+        _git(worktree, "commit", "-m", "preserve routed recovery")
+        _git(repo_ctx.root, "worktree", "remove", "--force", str(worktree))
+
+        restored = ensure_worktree("host__thread_conversation-conv_recovery", repo_ctx)
+
+        assert restored.path == worktree
+        assert (restored.path / "recovered.txt").read_text() == "keep this commit"
+
+
+class TestRoutedHostWorktrees:
+    def test_maps_relative_cwd_and_reuses_child_worktree_after_recovery(self, git_env: dict):
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+        source_cwd = project / "tools"
+        source_cwd.mkdir()
+        (source_cwd / "runner.txt").write_text("tracked")
+        _git(project, "add", "tools/runner.txt")
+        _git(project, "commit", "-m", "add host tools")
+        _git(project, "push", "origin", "main")
+        folder = "host__thread_conversation-conv_recovery"
+
+        first = resolve_routed_host_worktree_cwd(
+            folder,
+            source_cwd,
+            [repo_ctx],
+            recovered=False,
+        )
+        second = resolve_routed_host_worktree_cwd(
+            folder,
+            source_cwd,
+            [repo_ctx],
+            recovered=True,
+        )
+
+        assert first.cwd == git_env["worktrees_dir"] / folder / "tools"
+        assert second.cwd == first.cwd
+        assert _git(first.cwd, "branch", "--show-current").stdout.strip() == f"worktree/{folder}"
+
+    def test_different_routed_folders_use_distinct_worktree_branches(self, git_env: dict):
+        repo_ctx = git_env["repo_ctx"]
+        first_folder = "host__thread_conversation-conv_first"
+        second_folder = "host__thread_conversation-conv_second"
+
+        first = resolve_routed_host_worktree_cwd(
+            first_folder,
+            git_env["project"],
+            [repo_ctx],
+            recovered=False,
+        )
+        second = resolve_routed_host_worktree_cwd(
+            second_folder,
+            git_env["project"],
+            [repo_ctx],
+            recovered=False,
+        )
+
+        assert first.cwd != second.cwd
+        assert _git(first.cwd, "branch", "--show-current").stdout.strip() == (
+            f"worktree/{first_folder}"
+        )
+        assert _git(second.cwd, "branch", "--show-current").stdout.strip() == (
+            f"worktree/{second_folder}"
+        )
+
+    def test_rejects_routed_slot_from_a_different_checkout(self, git_env: dict):
+        folder = "host__thread_conversation-conv_wrong_checkout"
+        worktree_path = git_env["worktrees_dir"] / folder
+        _git(git_env["project"].parent, "init", "--initial-branch=main", str(worktree_path))
+        (worktree_path / "foreign.txt").write_text("do not delete")
+
+        with pytest.raises(RoutedHostWorktreeError, match="different checkout"):
+            resolve_routed_host_worktree_cwd(
+                folder,
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert (worktree_path / "foreign.txt").read_text() == "do not delete"
+
+    def test_rejects_routed_slot_on_another_branch(self, git_env: dict):
+        folder = "host__thread_conversation-conv_wrong_branch"
+        worktree_path = git_env["worktrees_dir"] / folder
+        _git(
+            git_env["project"],
+            "worktree",
+            "add",
+            "-b",
+            "worktree/unrelated",
+            str(worktree_path),
+            "origin/main",
+        )
+
+        with pytest.raises(RoutedHostWorktreeError, match="unexpected branch"):
+            resolve_routed_host_worktree_cwd(
+                folder,
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        branch = _git(worktree_path, "branch", "--show-current").stdout.strip()
+        assert branch == "worktree/unrelated"
+
+    def test_rejects_routed_slot_symlinked_to_parent_checkout(self, git_env: dict):
+        project = git_env["project"]
+        folder = "host__thread_conversation-conv_symlink"
+        worktree_path = git_env["worktrees_dir"] / folder
+        _git(project, "checkout", "-b", f"worktree/{folder}")
+        worktree_path.parent.mkdir(parents=True)
+        worktree_path.symlink_to(project, target_is_directory=True)
+
+        with pytest.raises(RoutedHostWorktreeError, match="symbolic link"):
+            resolve_routed_host_worktree_cwd(
+                folder,
+                project,
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert worktree_path.is_symlink()
+
+    def test_selects_source_repository_from_multiple_selected_repositories(self, git_env: dict):
+        project = git_env["project"]
+        other_root = project.parent / "other-project"
+        _git(project.parent, "clone", str(git_env["origin"]), str(other_root))
+        other_repo = RepoContext(
+            slug="owner/other",
+            root=other_root,
+            worktrees_dir=git_env["worktrees_dir"] / "other",
+        )
+        folder = "host__thread_conversation-conv_multi_repo"
+
+        result = resolve_routed_host_worktree_cwd(
+            folder,
+            project,
+            [git_env["repo_ctx"], other_repo],
+            recovered=False,
+        )
+
+        assert result.cwd == git_env["worktrees_dir"] / folder
+
+    def test_dirty_legacy_source_blocks_recovered_routed_session(self, git_env: dict):
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+        folder = "host__thread_conversation-conv_dirty"
+        (project / "legacy.txt").write_text("uncommitted parent work")
+
+        with pytest.raises(RoutedHostWorktreeError, match="uncommitted parent work"):
+            resolve_routed_host_worktree_cwd(folder, project, [repo_ctx], recovered=True)
+
+        assert not (git_env["worktrees_dir"] / folder).exists()
+
+    def test_ahead_legacy_source_blocks_recovered_routed_session(self, git_env: dict):
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+        folder = "host__thread_conversation-conv_ahead"
+        (project / "legacy.txt").write_text("committed parent work")
+        _git(project, "add", "legacy.txt")
+        _git(project, "commit", "-m", "legacy parent commit")
+
+        with pytest.raises(RoutedHostWorktreeError, match="ahead of main"):
+            resolve_routed_host_worktree_cwd(folder, project, [repo_ctx], recovered=True)
+
+        assert not (git_env["worktrees_dir"] / folder).exists()
+
+    def test_missing_or_ambiguous_repository_source_fails_safely(self, git_env: dict):
+        with pytest.raises(RoutedHostWorktreeError, match="exactly one"):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_invalid",
+                git_env["project"],
+                [],
+                recovered=False,
+            )
+        with pytest.raises(RoutedHostWorktreeError, match="exactly one"):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_invalid",
+                git_env["project"],
+                [git_env["repo_ctx"], git_env["repo_ctx"]],
+                recovered=False,
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -189,6 +189,7 @@ class TestBuildHostCoreConfig:
         ipc_dir = tmp_path / "ipc"
         hook_path = tmp_path / "audit.py"
         monkeypatch.setenv("PYNCHY_IPC_DIR", str(ipc_dir))
+        monkeypatch.delenv("PYNCHY_SKILLS_ROOT", raising=False)
         ci = ContainerInput(
             messages=[],
             session_id="sess-1",
@@ -223,6 +224,7 @@ class TestBuildHostCoreConfig:
             "PYNCHY_IS_ADMIN": "1",
             "PYNCHY_SESSION_ID": "sess-1",
             "PYNCHY_IS_SCHEDULED_TASK": "0",
+            "PYNCHY_TURN_ID": "turn-host",
             "PYNCHY_IPC_DIR": str(ipc_dir),
         }
         assert config.plugin_hooks == [{"name": "audit", "module_path": str(hook_path)}]

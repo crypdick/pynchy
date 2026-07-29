@@ -17,7 +17,9 @@ from urllib.parse import urlparse
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
+from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import (
     GIT_POLICY_MERGE,
     RepoContext,
@@ -465,7 +467,7 @@ class TestIpcPolicyRouting:
         result = json.loads((merge_results_dir / "req-pr.json").read_text())
         assert "pull/7" in result["repos"]["owner/repo"]["message"]
 
-    async def test_routed_conversation_publishes_its_parent_workspace_worktree(
+    async def test_routed_conversation_publishes_its_own_worktree(
         self,
         deps: MockDeps,
         tmp_path: Path,
@@ -509,8 +511,163 @@ class TestIpcPolicyRouting:
                 deps,
             )
 
-        patch_context.assert_called_once_with("agent-1", [repo_ctx])
-        create_pr.assert_called_once_with("agent-1", repo_ctx)
+        patch_context.assert_called_once_with(source_group, [repo_ctx])
+        create_pr.assert_called_once_with(source_group, repo_ctx)
+
+    async def test_routed_host_publication_selects_only_its_source_repository(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        source_group = "agent-1__thread_conversation-conv_1"
+        result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+        result_dir.mkdir(parents=True)
+        source_repo = RepoContext(
+            slug="owner/source", root=tmp_path / "source", worktrees_dir=tmp_path / "source-wt"
+        )
+        other_repo = RepoContext(
+            slug="owner/other", root=tmp_path / "other", worktrees_dir=tmp_path / "other-wt"
+        )
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+                return_value=[source_repo],
+            ) as resolve_publication_repos,
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                side_effect=AssertionError("valid receipt must not inspect a second repository"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": True, "message": "Opened source PR"},
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-routed-source-pr",
+                    "publication": "pull-request",
+                    "turn_id": "turn-source",
+                },
+                source_group,
+                False,
+                deps,
+            )
+
+        resolve_publication_repos.assert_called_once_with(source_group, "turn-source")
+        create_pr.assert_called_once_with(source_group, source_repo)
+        result = json.loads((result_dir / "req-routed-source-pr.json").read_text())
+        assert result["success"] is True
+        assert set(result["repos"]) == {source_repo.slug}
+        assert other_repo.slug not in result["repos"]
+
+    async def test_stale_routed_host_publication_rejects_spoofed_repository_data(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        source_group = "agent-1__thread_conversation-conv_1"
+        result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+                side_effect=PublicationRepositoryError("Routed host turn is no longer active"),
+            ) as resolve_publication_repos,
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-stale-routed-host",
+                    "publication": "pull-request",
+                    "repo_access": "owner/agent-selected",
+                    "groupFolder": "agent-1",
+                    "turn_id": "turn-stale",
+                },
+                source_group,
+                False,
+                deps,
+            )
+
+        resolve_publication_repos.assert_called_once_with(source_group, "turn-stale")
+        create_pr.assert_not_called()
+        result = json.loads((result_dir / "req-stale-routed-host.json").read_text())
+        assert result == {
+            "success": False,
+            "message": "Publication blocked: Routed host turn is no longer active",
+        }
+
+    async def test_missing_routed_child_worktree_never_publishes_parent(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        source_group = "agent-1__thread_conversation-conv_1"
+        result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+        result_dir.mkdir(parents=True)
+        repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=(
+                    f"Publish committed worktree from {source_group!r}.",
+                    "Committed patch unavailable for owner/repo: worktree is missing",
+                ),
+            ) as patch_context,
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-missing-routed-child",
+                    "publication": "pull-request",
+                },
+                source_group,
+                False,
+                deps,
+            )
+
+        patch_context.assert_called_once_with(source_group, [repo_ctx])
+        create_pr.assert_not_called()
 
     async def test_publication_failure_diagnostic_is_redacted_and_bounded(
         self,

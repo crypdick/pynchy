@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from pynchy.host.git_ops import repo, sync_poll, worktree
+from collections.abc import (
+    Sequence,  # noqa: TC003 - beartype resolves public API annotations at runtime.
+)
+from pathlib import Path  # noqa: TC003 - beartype resolves public API annotations at runtime.
+
+from pynchy.host.git_ops import _routed_host_worktree, repo, sync_poll, worktree
+from pynchy.host.git_ops._worktree_models import (
+    RoutedHostWorktreeError,
+    RoutedHostWorktreeResult,
+)
 from pynchy.host.git_ops._worktree_notify import (
     build_rebase_notice,
     host_notify_worktree_updates,
@@ -80,6 +89,27 @@ def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
     return worktree.ensure_worktree(group_folder, repo_ctx)
 
 
+def select_routed_host_repo(source_cwd: Path, repo_contexts: Sequence[RepoContext]) -> RepoContext:
+    """Identify the configured repository that owns a routed host CWD."""
+    return _routed_host_worktree.select_routed_host_repo(source_cwd, repo_contexts)
+
+
+def resolve_routed_host_worktree_cwd(
+    group_folder: str,
+    source_cwd: Path,
+    repo_contexts: Sequence[RepoContext],
+    *,
+    recovered: bool,
+) -> RoutedHostWorktreeResult:
+    """Resolve one routed host conversation to its isolated worktree CWD."""
+    return worktree.resolve_routed_host_worktree_cwd(
+        group_folder,
+        source_cwd,
+        repo_contexts,
+        recovered=recovered,
+    )
+
+
 __all__ = [
     "GIT_POLICY_MERGE",
     "GIT_POLICY_PR",
@@ -89,6 +119,8 @@ __all__ = [
     "RepoContext",
     "RepoSettings",
     "ResolvedRepoWorkspace",
+    "RoutedHostWorktreeError",
+    "RoutedHostWorktreeResult",
     "WorktreeError",
     "WorktreeResult",
     "build_rebase_notice",
@@ -132,7 +164,9 @@ __all__ = [
     "repo_host_root",
     "resolve_git_policy",
     "resolve_repos_for_group",
+    "resolve_routed_host_worktree_cwd",
     "run_git",
+    "select_routed_host_repo",
     "sync_personalization_repo",
     "sync_poll",
     "worktree",

@@ -2,8 +2,9 @@
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from beartype import beartype
@@ -12,9 +13,17 @@ from conftest import make_settings
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.orchestrator import codex_rollouts, host_execution
 from pynchy.host.orchestrator.host_execution import (
+    HostExecutionCwd,
     HostRuntimeOperations,
     codex_thread_exists_in_host_runtime,
 )
+
+
+@dataclass(frozen=True)
+class _ResolvedHostWorkspace:
+    execution_mode: str
+    cwd: str
+    repo: list[str]
 
 
 def _runtime_operations(
@@ -33,12 +42,87 @@ def _runtime_operations(
             settings.data_dir / "sessions" / folder / ".codex"
         ),
         host_learning_vault=host_learning_vault,
+        resolve_routed_host_cwd=lambda _folder, cwd, _repo_accesses, *, recovered: HostExecutionCwd(
+            cwd
+        ),
     )
 
 
 def test_host_agent_turn_request_is_runtime_decoratable() -> None:
     """The public host-turn request boundary remains instrumented by Beartype."""
     assert callable(beartype(host_execution.HostAgentTurnRequest))
+
+
+def test_routed_host_execution_resolves_selected_repository_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_cwd = tmp_path / "parent" / "tools"
+    child_cwd = tmp_path / "worktrees" / "routed" / "tools"
+    profile_repo = "owner/profile-repository"
+    scheduled_override = "owner/scheduled-override"
+    resolved = _ResolvedHostWorkspace("host", str(source_cwd), [profile_repo])
+    resolver = MagicMock(
+        return_value=HostExecutionCwd(child_cwd, ("child notice",), scheduled_override)
+    )
+    operations = _runtime_operations(make_settings())
+    operations.resolve_routed_host_cwd = resolver
+    monkeypatch.setattr(
+        host_execution.workspace_config,
+        "load_resolved_config",
+        lambda _folder: resolved,
+    )
+
+    result = host_execution.host_execution_cwd(
+        "host__thread_conversation-conv_routed",
+        operations,
+        repo_accesses=[scheduled_override],
+        recovered=True,
+    )
+
+    assert result == HostExecutionCwd(child_cwd, ("child notice",), scheduled_override)
+    resolver.assert_called_once_with(
+        "host__thread_conversation-conv_routed",
+        source_cwd,
+        [scheduled_override],
+        recovered=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("folder", "repo_accesses"),
+    [
+        ("host", ["owner/repo"]),
+        ("host__thread_discord-review", ["owner/repo"]),
+        ("host__thread_conversation-conv_no_repo", []),
+    ],
+)
+def test_non_routed_or_no_repo_host_execution_keeps_configured_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    folder: str,
+    repo_accesses: list[str],
+) -> None:
+    source_cwd = tmp_path / "parent"
+    resolved = _ResolvedHostWorkspace("host", str(source_cwd), [])
+    resolver = MagicMock(side_effect=AssertionError("must not resolve a repository worktree"))
+    operations = _runtime_operations(make_settings())
+    operations.resolve_routed_host_cwd = resolver
+    monkeypatch.setattr(
+        host_execution.workspace_config,
+        "load_resolved_config",
+        lambda _folder: resolved,
+    )
+
+    result = host_execution.host_execution_cwd(
+        folder,
+        operations,
+        repo_accesses=repo_accesses,
+        recovered=False,
+    )
+
+    assert result == HostExecutionCwd(source_cwd)
+    resolver.assert_not_called()
 
 
 def _write_rollout(
