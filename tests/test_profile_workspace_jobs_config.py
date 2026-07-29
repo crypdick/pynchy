@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig, validate_settings_mapping
+from pynchy.config.api import (
+    CanaryConfig,
+    JobConfig,
+    ProfileConfig,
+    SchedulerConfig,
+    WorkspaceConfig,
+    validate_settings_mapping,
+)
 
 if TYPE_CHECKING:
     from pynchy.config.api import Settings
@@ -41,6 +48,29 @@ def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
     assert settings.profiles["admin"].contains_secrets is True
     assert settings.profiles["admin"].repo == ["crypdick/pynchy"]
     assert settings.workspaces["admin"].profiles == ["admin"]
+
+
+def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
+    profile = ProfileConfig(repo=None)
+
+    assert profile.repo == []
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [
+        {"git_sync_interval_seconds": 0},
+        {"channel_reconciliation_interval_seconds": -1},
+    ],
+)
+def test_scheduler_rejects_non_positive_polling_intervals(interval: dict[str, int]) -> None:
+    with pytest.raises(ValidationError, match="scheduler intervals must be positive"):
+        SchedulerConfig(**interval)
+
+
+def test_enabled_canary_requires_a_target_profile() -> None:
+    with pytest.raises(ValidationError, match="target_profile is required"):
+        CanaryConfig(enabled=True, target_profile=" ")
 
 
 @pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])

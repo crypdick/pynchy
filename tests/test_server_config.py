@@ -25,3 +25,14 @@ def test_server_config_rejects_unsafe_listener_values(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         ServerConfig(**values)
+
+
+def test_server_config_accepts_the_smallest_safe_listener_values() -> None:
+    config = ServerConfig(
+        host="localhost",
+        port=1,
+        rate_limit_requests=1,
+        rate_limit_window_seconds=1,
+    )
+
+    assert config.port == 1

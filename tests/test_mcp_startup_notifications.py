@@ -55,3 +55,16 @@ async def test_mcp_startup_failure_is_sent_as_host_message() -> None:
         "⚠️ MCP tool unavailable: gcal (start timed out). Continuing without it; "
         "Pynchy will retry in 5 minutes.",
     )
+
+
+@pytest.mark.asyncio
+async def test_mcp_startup_notice_delivery_failure_does_not_block_agent() -> None:
+    broadcast = AsyncMock(side_effect=RuntimeError("channel unavailable"))
+
+    await notify_mcp_startup_failures(
+        broadcast,
+        "discord:channel-1",
+        (McpStartupFailure(instance_id="gcal", server_name="gcal", reason="start timed out"),),
+    )
+
+    broadcast.assert_awaited_once()

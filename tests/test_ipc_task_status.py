@@ -177,5 +177,19 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
     assert "private-command" not in response_text
 
 
+async def test_task_status_without_request_id_produces_no_response(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+
+    await dispatch(
+        {"type": "task_status"},
+        "review",
+        False,
+        make_ipc_deps(PynchyApp()),
+    )
+
+    assert not (tmp_path / "ipc" / "review" / "responses").exists()
+
+
 def test_task_status_requests_skip_mutation_ledger() -> None:
     assert not request_requires_idempotency_ledger("task_status")

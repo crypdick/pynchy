@@ -7,8 +7,46 @@ import pytest
 from aiohttp import web
 
 from pynchy.plugins.api import PynchySpec
-from pynchy.plugins.speech.api import get_speech_synthesizer
+from pynchy.plugins.speech.api import (
+    SpeechSynthesisResult,
+    SpeechSynthesizerHealth,
+    get_speech_synthesizer,
+)
 from pynchy.plugins.speech.pocket_tts import PocketTtsPlugin, PocketTtsProvider
+
+hookimpl = pluggy.HookimplMarker("pynchy")
+
+
+class _InvalidSpeechPlugin:
+    @hookimpl
+    def pynchy_speech_synthesizer(self) -> object:
+        return object()
+
+
+class _BrokenSpeechPlugin:
+    @hookimpl
+    def pynchy_speech_synthesizer(self) -> None:
+        raise RuntimeError("plugin startup failed")
+
+
+class _SpeechProvider:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    async def synthesize(self, _text: str, output_path):
+        return SpeechSynthesisResult(success=True, output_path=output_path, provider=self.name)
+
+    async def health(self) -> SpeechSynthesizerHealth:
+        return SpeechSynthesizerHealth(ready=True)
+
+
+class _SpeechPlugin:
+    def __init__(self, provider: _SpeechProvider) -> None:
+        self._provider = provider
+
+    @hookimpl
+    def pynchy_speech_synthesizer(self) -> _SpeechProvider:
+        return self._provider
 
 
 async def _start_server(app: web.Application) -> tuple[web.AppRunner, str]:
@@ -107,3 +145,29 @@ def test_pocket_tts_is_discovered_through_the_speech_plugin_hook():
 
     assert provider is not None
     assert provider.name == "pocket-tts"
+
+
+def test_speech_discovery_ignores_invalid_providers() -> None:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(_InvalidSpeechPlugin())
+
+    assert get_speech_synthesizer(manager) is None
+
+
+def test_speech_discovery_quarantines_plugin_hook_failures() -> None:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(_BrokenSpeechPlugin())
+
+    assert get_speech_synthesizer(manager) is None
+
+
+def test_speech_discovery_selects_the_first_valid_provider() -> None:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    first = _SpeechProvider("first")
+    manager.register(_SpeechPlugin(_SpeechProvider("second")))
+    manager.register(_SpeechPlugin(first))
+
+    assert get_speech_synthesizer(manager) is first

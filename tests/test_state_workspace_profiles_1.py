@@ -14,6 +14,8 @@ from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
     begin_work_item_transition,
+    bind_work_item_execution_to_task,
+    bind_work_item_execution_to_turn,
     cancel_work_item_execution,
     create_host_job,
     create_task,
@@ -502,3 +504,54 @@ async def test_late_work_item_transition_cannot_revive_cancelled_execution() -> 
 
     assert resolved.status is WorkItemExecutionStatus.CANCELLED
     assert resolved.blocker == "terminal callback"
+
+
+async def test_cancelling_unknown_work_item_execution_fails() -> None:
+    with pytest.raises(ValueError, match="execution does not exist"):
+        await cancel_work_item_execution("missing-execution", blocker="terminal callback")
+
+
+async def test_execution_bindings_preserve_original_turn_and_task_owner() -> None:
+    issue = {
+        "id": "issue-2",
+        "identifier": "SYN-2",
+        "url": "https://linear.app/example/issue/SYN-2",
+        "state": {"id": "state-approved", "name": "Human Approved"},
+    }
+    execution = await create_work_item_claim(
+        WorkItemClaimRequest(
+            workspace="project",
+            issue=issue,
+            turn_id=None,
+            task_id="primary-task",
+            initiated_by="test",
+            request_id="claim-2",
+        )
+    )
+    claim = await get_work_item_transition_by_request("claim-2")
+    assert claim is not None
+    execution = await resolve_work_item_transition(
+        transition=claim,
+        execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+    )
+
+    bound = await bind_work_item_execution_to_turn(
+        execution.id,
+        turn_id="turn-owner",
+        task_id="primary-task",
+    )
+    assert bound.turn_id == "turn-owner"
+
+    with pytest.raises(ValueError, match="another agent turn"):
+        await bind_work_item_execution_to_turn(
+            execution.id,
+            turn_id="turn-other",
+            task_id="primary-task",
+        )
+    with pytest.raises(ValueError, match="another durable task"):
+        await bind_work_item_execution_to_task(
+            execution.id,
+            task_id="other-task",
+            temporal_workflow_id="other-workflow",
+        )
