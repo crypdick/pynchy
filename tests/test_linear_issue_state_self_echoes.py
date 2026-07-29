@@ -163,6 +163,29 @@ async def test_query_only_client_rejects_incomplete_issue_update_responses(
         await update_issue_state(client, _ISSUE_ID, _STATE_ID)
 
 
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        ({"issueUpdate": {"success": False}}, "did not persist"),
+        ({"issueUpdate": {"success": True}}, "plan response did not include"),
+    ],
+)
+async def test_query_only_client_rejects_incomplete_plan_update_responses(
+    response: dict[str, object],
+    message: str,
+) -> None:
+    client = _ConstructorlessLinearClient()
+    client.query = AsyncMock(return_value=response)
+
+    with pytest.raises(LinearError, match=message):
+        await update_issue_plan(
+            client,
+            issue_id=_ISSUE_ID,
+            state_id=_STATE_ID,
+            description="A plan.",
+        )
+
+
 async def test_provider_declared_state_failure_releases_effect_instead_of_quarantining() -> None:
     recorder = LinearSelfEchoRecorder(
         account_name="linear-project",
