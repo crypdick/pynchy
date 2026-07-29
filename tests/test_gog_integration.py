@@ -164,6 +164,81 @@ def test_gog_subprocess_does_not_inherit_unrelated_host_environment(
     assert "UNRELATED_HOST_SECRET" not in environment
 
 
+def test_gog_client_builds_reviewed_read_and_draft_commands(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path / "gog-home",
+        oauth_client_path=None,
+    )
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "{}", "")
+
+    with patch("pynchy.plugins.integrations.gog._client.subprocess.run", side_effect=run):
+        assert client.gmail_get(message_id="message-1") == "{}"
+        assert (
+            client.gmail_create_draft(
+                to=["to@example.com"],
+                cc=["cc@example.com"],
+                bcc=["bcc@example.com"],
+                subject="Subject",
+                body="Body",
+            )
+            == "{}"
+        )
+        assert client.contacts_search(query="Ada", limit=3) == "{}"
+        assert client.docs_read(document_id="doc-1", tab="tab-1") == "{}"
+        assert client.docs_export(document_id="doc-1", export_format="md") == "{}"
+        assert client.sheets_get(spreadsheet_id="sheet-1", range_name="Sheet1!A1") == "{}"
+
+    commands = [command for command, _kwargs in calls]
+    assert commands[0][-5:] == ["gmail", "get", "--sanitize-content", "--", "message-1"]
+    assert "--readonly" in commands[0]
+    assert commands[1][-13:] == [
+        "gmail",
+        "drafts",
+        "create",
+        "--to",
+        "to@example.com",
+        "--subject",
+        "Subject",
+        "--body-file",
+        "-",
+        "--cc",
+        "cc@example.com",
+        "--bcc",
+        "bcc@example.com",
+    ]
+    assert calls[1][1]["input"] == "Body"
+    assert "--readonly" not in commands[1]
+    assert commands[2][-6:] == ["contacts", "search", "--max", "3", "--", "Ada"]
+    assert commands[3][-8:] == [
+        "docs",
+        "cat",
+        "--max-bytes",
+        "2000000",
+        "--tab",
+        "tab-1",
+        "--",
+        "doc-1",
+    ]
+    assert commands[4][-8:] == [
+        "docs",
+        "export",
+        "--format",
+        "md",
+        "--out",
+        "-",
+        "--",
+        "doc-1",
+    ]
+    assert commands[5][-5:] == ["sheets", "get", "--", "sheet-1", "Sheet1!A1"]
+    readonly_commands = (commands[2], commands[3], commands[4], commands[5])
+    assert all("--readonly" in command for command in readonly_commands)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "called_method"),
