@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig, validate_settings_mapping
+from pynchy.config.api import (
+    JobConfig,
+    ProfileConfig,
+    SchedulerConfig,
+    WorkspaceConfig,
+    validate_settings_mapping,
+)
 
 if TYPE_CHECKING:
     from pynchy.config.api import Settings
@@ -47,6 +53,18 @@ def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
     profile = ProfileConfig(repo=None)
 
     assert profile.repo == []
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [
+        {"git_sync_interval_seconds": 0},
+        {"channel_reconciliation_interval_seconds": -1},
+    ],
+)
+def test_scheduler_rejects_non_positive_polling_intervals(interval: dict[str, int]) -> None:
+    with pytest.raises(ValidationError, match="scheduler intervals must be positive"):
+        SchedulerConfig(**interval)
 
 
 @pytest.mark.parametrize("name", ["../secret", "nested/prompt", "Uppercase", "has space"])
