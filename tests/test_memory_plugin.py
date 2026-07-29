@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -138,6 +138,15 @@ class TestMcpHandlers:
 
 
 class TestDiscovery:
+    def test_get_memory_provider_ignores_plugin_failure(self, tmp_path):
+        plugin_manager = get_plugin_manager()
+        with patch.object(
+            plugin_manager.hook,
+            "pynchy_memory",
+            side_effect=RuntimeError("plugin unavailable"),
+        ):
+            assert get_memory_provider(plugin_manager, tmp_path / "memories.db") is None
+
     def test_get_memory_provider_returns_backend(self, tmp_path):
         """get_memory_provider finds the sqlite-memory plugin."""
         provider = get_memory_provider(get_plugin_manager(), tmp_path / "memories.db")
