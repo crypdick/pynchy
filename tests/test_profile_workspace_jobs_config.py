@@ -450,3 +450,71 @@ def test_host_job_rejects_one_time_at_until_dispatch_exists() -> None:
             workspace="host",
             command="scripts/backup_runtime_dbs.sh",
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("schedule", "not cron", "Invalid cron expression"),
+        ("workspace", "   ", "job workspace cannot be empty"),
+        ("command", "   ", "host job command cannot be empty"),
+        ("timeout_seconds", 0, "timeout_seconds must be positive"),
+        ("display_name", "   ", "job text fields cannot be empty"),
+    ],
+)
+def test_job_rejects_invalid_field_values(field: str, value: str | int, message: str) -> None:
+    values: dict[str, str | int] = {
+        "schedule": "0 8 * * *",
+        "workspace": "host",
+        "command": "scripts/backup.sh",
+    }
+    values[field] = value
+
+    with pytest.raises(ValidationError, match=message):
+        JobConfig(**values)
+
+
+def test_host_job_requires_command_and_rejects_pre_run_fields() -> None:
+    with pytest.raises(ValidationError, match="host jobs require command"):
+        JobConfig(schedule="0 8 * * *", workspace="host")
+
+    with pytest.raises(ValidationError, match="host jobs cannot set pre-run fields"):
+        JobConfig(
+            schedule="0 8 * * *",
+            workspace="host",
+            command="scripts/backup.sh",
+            pre_run_command="scripts/prepare.sh",
+        )
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        (
+            {"agent": False},
+            "deterministic workspace jobs require command",
+        ),
+        (
+            {"agent": False, "command": "scripts/check.sh", "prompt": "Nope"},
+            "deterministic workspace jobs cannot set prompts",
+        ),
+        (
+            {"agent": False, "command": "scripts/check.sh", "pre_run_cwd": "project"},
+            "deterministic workspace jobs cannot set pre-run fields",
+        ),
+        (
+            {"command": "scripts/check.sh", "prompt": "Nope"},
+            "agent jobs cannot set command",
+        ),
+        (
+            {"prompt": "Nope", "pre_run_cwd": "project"},
+            "agent job pre-run options require pre_run_command",
+        ),
+    ],
+)
+def test_workspace_job_rejects_an_incompatible_execution_shape(
+    values: dict[str, str | bool],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        JobConfig(schedule="0 8 * * *", workspace="admin", **values)
