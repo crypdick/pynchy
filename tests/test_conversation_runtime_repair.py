@@ -301,6 +301,33 @@ async def test_authoritative_owner_conflict_aborts_without_partial_mutation() ->
     assert await get_router_state(RUNTIME_OWNER_MIGRATION_KEY) is None
 
 
+async def test_authoritative_owner_repair_rejects_foreign_source_folder() -> None:
+    thread_jid = ChatJid("discord:channel:source-owner-repair")
+    conversation = (
+        await _admit(
+            "delivery-source-owner-repair", "issue-source-owner-repair", workspace="pynchy-dev"
+        )
+    ).conversation
+    await _bind_control_thread(
+        conversation.id,
+        thread_jid,
+        parent_workspace=GroupFolder("admin"),
+    )
+    await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
+    source_folder = GroupFolder(routed_conversation_folder("admin", conversation.id))
+    await set_workspace_profile(
+        WorkspaceProfile(
+            jid="discord:channel:foreign-source-owner",
+            name="Foreign source owner",
+            folder=source_folder,
+            trigger="@Pynchy",
+        )
+    )
+
+    with pytest.raises(RuntimeOwnershipRepairConflictError, match="Routed runtime source"):
+        await prepare_conversation_runtime_ownership_recovery()
+
+
 async def test_repair_does_not_overwrite_conflicting_target_session() -> None:
     thread_jid = ChatJid("discord:channel:thread-session-conflict")
     conversation = await resolve_conversation(
