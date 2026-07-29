@@ -31,6 +31,7 @@ from pynchy.plugins.integrations.linear_client import (
 )
 from pynchy.plugins.integrations.linear_comment_actions import handle_create_comment
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
+from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.state import (
     WebhookConversationRequest,
     WebhookReceipt,
@@ -492,6 +493,66 @@ async def test_host_comment_action_preserves_workspace_and_provider_receipt(
     assert result["result"] == client.create_comment.return_value
     workspace_issue.assert_awaited_once_with(client, "project", _ISSUE_ID)
     client.create_comment.assert_awaited_once_with(_ISSUE_ID, "Validation passed.")
+
+
+@pytest.mark.action("linear.comment.create")
+@pytest.mark.parametrize(
+    ("arguments", "error"),
+    [
+        pytest.param(
+            {"issue_id": _ISSUE_ID, "body": "Validation passed."},
+            "source_group is required",
+            id="missing-workspace",
+        ),
+        pytest.param(
+            {"source_group": "project", "body": "Validation passed."},
+            "issue_id is required",
+            id="missing-issue",
+        ),
+        pytest.param(
+            {"source_group": "project", "issue_id": _ISSUE_ID},
+            "body is required",
+            id="missing-body",
+        ),
+    ],
+)
+async def test_registered_comment_action_rejects_incomplete_requests(
+    arguments: dict[str, str],
+    error: str,
+) -> None:
+    action = next(
+        action
+        for action in host_action_registration().actions
+        if action.tool_name == "linear_create_comment"
+    )
+
+    assert await action.handler(arguments) == {"error": error}
+
+
+@pytest.mark.action("linear.comment.create")
+def test_registered_comment_action_records_durable_intent_and_receipt() -> None:
+    action = next(
+        action
+        for action in host_action_registration().actions
+        if action.tool_name == "linear_create_comment"
+    )
+    assert action.action_intent is not None
+
+    draft = action.action_intent.draft_from_request(
+        {
+            "source_group": "project__thread_discord-channel-123",
+            "issue_id": _ISSUE_ID,
+            "body": "Validation passed.",
+        }
+    )
+    receipt = action.action_intent.receipt_from_response({"result": {"id": "comment-1"}})
+
+    assert draft.recipient == f"linear:project:issue:{_ISSUE_ID}"
+    assert receipt.provider_request_id == "comment-1"
+    with pytest.raises(TypeError, match="durable receipt"):
+        action.action_intent.receipt_from_response({})
+    with pytest.raises(ValueError, match="durable receipt"):
+        action.action_intent.receipt_from_response({"result": {}})
 
 
 async def test_transport_failure_stays_quarantined_as_outcome_unknown() -> None:
