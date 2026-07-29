@@ -144,25 +144,24 @@ async def wait_healthy(request: HealthCheckRequest) -> None:
         timeout=aiohttp.ClientTimeout(total=5),
     ) as session:
         while loop.time() < deadline:
+            _raise_if_process_exited(request)
             try:
                 async with session.get(request.url, headers=request.headers) as resp:
                     healthy = resp.status == 200 or (request.any_non_5xx and resp.status < 500)
-                    if healthy:
-                        elapsed_ms = (time.monotonic() - start) * 1000
-                        logger.info(
-                            "Health check passed",
-                            container=request.container_name,
-                            elapsed_ms=round(elapsed_ms),
-                        )
-                        return
             except (aiohttp.ClientError, OSError):
-                pass
+                healthy = False
 
-            if request.process is not None:
-                if request.process.poll() is not None:
-                    msg = f"Script {request.container_name} exited unexpectedly"
-                    raise RuntimeError(msg)
-            elif not await is_container_running(request.container_name):
+            if healthy:
+                _raise_if_process_exited(request)
+                elapsed_ms = (time.monotonic() - start) * 1000
+                logger.info(
+                    "Health check passed",
+                    container=request.container_name,
+                    elapsed_ms=round(elapsed_ms),
+                )
+                return
+
+            if request.process is None and not await is_container_running(request.container_name):
                 logs = await run_docker("logs", "--tail", "30", request.container_name, check=False)
                 logger.error(
                     "Container exited",
@@ -179,3 +178,9 @@ async def wait_healthy(request: HealthCheckRequest) -> None:
         f"{request.health_timeout_seconds}s"
     )
     raise TimeoutError(msg)
+
+
+def _raise_if_process_exited(request: HealthCheckRequest) -> None:
+    if request.process is not None and request.process.poll() is not None:
+        msg = f"Script {request.container_name} exited unexpectedly"
+        raise RuntimeError(msg)
