@@ -1,0 +1,100 @@
+"""Small public edge contracts that should not be left to incidental coverage."""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from pynchy.discord import (
+    DiscordChannelSettings,
+    DiscordChatTarget,
+    DiscordConnectionSettings,
+    DiscordGuildSettings,
+)
+from pynchy.host.container_manager.ipc.ledger import claim_request_for_execution
+from pynchy.host.container_manager.ipc.protocol import IpcRequestEnvelope, make_ipc_request
+from pynchy.plugins.channels.discord.api import DiscordChannel
+from pynchy.plugins.integrations.linear_board_mutations import apply_workspace_todo_move
+from pynchy.plugins.integrations.linear_board_payloads import LinearBoardPayloadError
+
+
+def test_empty_discord_channel_name_is_rejected():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionSettings(
+            bot_token_env="",
+            chat={
+                "guild": DiscordGuildSettings(
+                    channels={"channel": DiscordChannelSettings(name="!!!")}
+                )
+            },
+        ),
+        "token",
+        lambda *_args: None,
+        lambda *_args: None,
+        audio_cache_dir=Path("audio"),
+    )
+
+    with pytest.raises(ValueError, match="cannot be empty"):
+        channel.configured_channel_name(DiscordChatTarget("channel", "channel", "guild"))
+
+
+async def test_nonnumeric_discord_target_without_client_is_unresolved():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionSettings(
+            bot_token_env="",
+            chat={"guild": DiscordGuildSettings(channels={"not-an-id": DiscordChannelSettings()})},
+        ),
+        "token",
+        lambda *_args: None,
+        lambda *_args: None,
+        audio_cache_dir=Path("audio"),
+    )
+
+    assert await channel.resolve_chat_jid("guild.channels.not-an-id") is None
+
+
+def test_non_mutating_ipc_request_does_not_create_a_ledger_entry(tmp_path: Path):
+    request = make_ipc_request(
+        kind="task_status",
+        request_id="refresh-1",
+        source_group="admin",
+        created_at="2026-07-29T00:00:00+00:00",
+        payload={},
+    )
+
+    assert claim_request_for_execution(IpcRequestEnvelope.from_dict(request), tmp_path) is True
+    assert not (tmp_path / "admin" / "request_ledger").exists()
+
+
+async def test_linear_board_move_fails_when_provider_rejects_update():
+    effect = MagicMock()
+    effect.fail = AsyncMock()
+    client = MagicMock()
+    client.query = AsyncMock(
+        return_value={"issueUpdate": {"success": False, "issue": {"id": "issue-1"}}}
+    )
+
+    @asynccontextmanager
+    async def effect_scope(*_args, **_kwargs):
+        yield effect
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_board_mutations.linear_effects.linear_webhook_effect",
+            effect_scope,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_board_mutations.linear_effects.confirm_issue_state_effect",
+            new_callable=AsyncMock,
+        ) as confirm,
+        pytest.raises(LinearBoardPayloadError, match="did not complete issueUpdate"),
+    ):
+        await apply_workspace_todo_move(client, issue_id="issue-1", state_id="done")
+
+    effect.fail.assert_awaited_once_with()
+    confirm.assert_not_awaited()
