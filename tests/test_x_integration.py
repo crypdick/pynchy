@@ -392,6 +392,61 @@ async def test_x_actions_surface_input_and_navigation_failures(
 
 
 @pytest.mark.asyncio
+async def test_x_post_treats_detached_login_locators_as_not_visible(monkeypatch):
+    handler = _handler("x_post")
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def detached(_self):
+        await asyncio.sleep(0)
+        raise RuntimeError("detached")
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setattr(_FakeLocator, "is_visible", detached)
+
+    result = await handler({"content": "posted after reload"})
+
+    assert result["result"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_x_like_normalizes_a_host_without_an_http_scheme(monkeypatch):
+    handler = _handler("x_like")
+    action_handler = _action_handler(handler)
+    page = _FakePage(visible=(True,))
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(action_handler.__globals__, "is_visible", AsyncMock(return_value=True))
+
+    result = await handler({"tweet_url": "x.com/status/123"})
+
+    assert result["result"]["message"] == "Tweet already liked"
+    assert page.calls[0][1] == "https://x.com/status/123"
+
+
+@pytest.mark.asyncio
+async def test_x_post_reports_an_expired_login_from_the_public_action(monkeypatch):
+    handler = _handler("x_post")
+    action_handler = _action_handler(handler)
+    page = _FakePage(visible=(False, True))
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+
+    assert await handler({"content": "hello"}) == {
+        "error": "X login expired. Run setup_x_session to re-authenticate."
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "data"),
     [
