@@ -77,6 +77,25 @@ def _interaction() -> MagicMock:
     return interaction
 
 
+def test_interaction_access_allows_registered_workspace_thread():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"pynchy": {"name": "pynchy", "channels": {"general": {}}}},
+        )
+    )
+    ch.workspaces = lambda: {"discord:channel:99": MagicMock()}
+    interaction = _interaction()
+    interaction.channel.id = "99"
+    interaction.channel.name = "dynamic-workspace-thread"
+    interaction.guild = MagicMock()
+    interaction.guild.id = "1"
+    interaction.guild.name = "pynchy"
+
+    assert ch.is_interaction_allowed(interaction)
+
+
 @pytest.mark.asyncio
 async def test_send_approval_event_posts_controls_and_routes_decision():
     decision_callback = MagicMock()

@@ -199,7 +199,14 @@ class DiscordChannel:
 
     def is_interaction_allowed(self, interaction: object) -> bool:
         """Apply the ordinary inbound access policy to a component click."""
-        return self.access.decide(interaction_context(interaction)) == "allow"
+        ctx = interaction_context(interaction)
+        if self.access.decide(ctx) == "allow":
+            return True
+        jid = dm_jid(ctx.author_id) if ctx.is_dm else channel_jid(ctx.channel_id)
+        return (
+            self.allows_registered_workspace_jid(jid, is_dm=ctx.is_dm)
+            and self.access.decide_registered_workspace(ctx) == "allow"
+        )
 
     def allows_registered_workspace_jid(self, jid: str, *, is_dm: bool) -> bool:
         """Return whether runtime registration supplies this guild destination."""
