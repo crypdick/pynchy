@@ -35,6 +35,7 @@ from pynchy.state import (
     claim_action_intent,
     expire_action_intent,
     get_action_intent_by_request,
+    mark_action_intent_awaiting_approval,
     mark_action_intent_executing,
     recover_incomplete_action_intents,
 )
@@ -335,6 +336,136 @@ async def test_receipted_action_replay_returns_receipt_without_resending():
 
 
 @pytest.mark.asyncio
+async def test_prepare_replays_awaiting_approval_without_creating_a_second_intent():
+    action = _transactional_action(AsyncMock())
+    request_id = "request-awaiting-approval"
+    intent, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id=request_id,
+    )
+    assert intent is not None
+    assert replay is None
+    await mark_action_intent_awaiting_approval(request_id, policy_decision="human required")
+
+    replayed, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id=request_id,
+    )
+
+    assert replayed is not None
+    assert replayed.id == intent.id
+    assert replay == {"error": "External action is awaiting human approval."}
+
+
+@pytest.mark.asyncio
+async def test_invalid_action_arguments_do_not_create_a_durable_intent():
+    handler = AsyncMock()
+    action = _transactional_action(handler)
+
+    intent, response = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": 1},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id="request-invalid-arguments",
+    )
+
+    assert intent is None
+    assert response == {
+        "error": "Invalid external action arguments: room_id and body must be strings"
+    }
+    assert await get_action_intent_by_request("request-invalid-arguments") is None
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider_response",
+    [{"error": "provider rejected the request"}, {"result": {}}],
+)
+async def test_unreceipted_provider_responses_become_outcome_unknown(
+    provider_response: dict[str, object],
+):
+    handler = AsyncMock(return_value=provider_response)
+    action = _transactional_action(handler)
+    request_id = f"request-unreceipted-{len(provider_response)}"
+    await _prepared_approved_intent(action, request_id)
+
+    response = await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        request_id=request_id,
+    )
+
+    assert response == {"error": "External action outcome is unknown; do not retry automatically."}
+    handler.assert_awaited_once()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.OUTCOME_UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_invalid_approved_payload_fails_before_provider_execution():
+    handler = AsyncMock()
+    action = _transactional_action(handler)
+    request_id = "request-invalid-approved-payload"
+    await _prepared_approved_intent(action, request_id)
+
+    response = await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": 1},
+        request_id=request_id,
+    )
+
+    assert response == {"error": "Approved external action is no longer valid; request it again."}
+    handler.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_missing_durable_intent_refuses_provider_execution():
+    handler = AsyncMock()
+    action = _transactional_action(handler)
+
+    response = await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        request_id="request-missing-durable-intent",
+    )
+
+    assert response == {"error": "External action record is missing; refusing to send."}
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_changed_approved_payload_fails_before_provider_execution():
+    handler = AsyncMock()
+    action = _transactional_action(handler)
+    request_id = "request-changed-approved-payload"
+    await _prepared_approved_intent(action, request_id)
+
+    response = await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "changed payload"},
+        request_id=request_id,
+    )
+
+    assert response == {"error": "Approved external action changed; request a new approval."}
+    handler.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+
+
+@pytest.mark.asyncio
 async def test_provider_failure_becomes_unknown_and_never_retries():
     handler = AsyncMock(side_effect=RuntimeError("gateway connection lost"))
     action = _transactional_action(handler)
@@ -397,3 +528,14 @@ async def test_expired_approval_closes_unexecuted_action_intent():
 
     assert expired is not None
     assert expired.status is ActionIntentStatus.EXPIRED
+
+    replayed, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id=request_id,
+    )
+
+    assert replayed == expired
+    assert replay == {"error": "Approval elapsed"}
