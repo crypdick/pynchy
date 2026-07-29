@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import aiohttp
 import pytest
 
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
@@ -15,7 +16,7 @@ from pynchy.host.container_manager.mcp.manager import (
     DirectMcpServerConfigRequest,
     build_direct_server_configs,
 )
-from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
+from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam, build_trust_map
 from pynchy.plugins.api import McpServerConfig
 
 
@@ -224,6 +225,70 @@ class TestLiteLLMSyncEndpoints:
                 "auth_value": "secret-token",
             },
         ) in calls
+
+
+class TestLiteLLMWorkspaceTeams:
+    @pytest.mark.asyncio
+    async def test_sync_teams_creates_new_updates_current_and_deletes_stale(self, tmp_path):
+        gateway = _make_gateway(tmp_path)
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+        workspace_teams = {
+            "current": WorkspaceTeam(team_id="team-current", virtual_key="key-current"),
+            "stale": WorkspaceTeam(team_id="team-stale", virtual_key="key-stale"),
+        }
+        session = aiohttp.ClientSession()
+
+        def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            calls.append((method, path, json_data))
+            if path == "/team/new":
+                return asyncio.sleep(0, result={"team_id": "team-new"})
+            if path == "/key/generate":
+                return asyncio.sleep(0, result={"key": "key-new"})
+            return asyncio.sleep(0, result=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=session,
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_teams(
+                gateway,
+                {"new": ["gdrive"], "current": ["notebook"]},
+                workspace_teams,
+            )
+
+        assert workspace_teams == {
+            "new": WorkspaceTeam(team_id="team-new", virtual_key="key-new"),
+            "current": WorkspaceTeam(team_id="team-current", virtual_key="key-current"),
+        }
+        assert (
+            "POST",
+            "/team/new",
+            {"team_alias": "pynchy-mcp-new", "metadata": {"pynchy_workspace": "new"}},
+        ) in calls
+        assert (
+            "POST",
+            "/key/generate",
+            {"team_id": "team-new", "allowed_mcp_servers": ["gdrive"]},
+        ) in calls
+        assert (
+            "POST",
+            "/team/update",
+            {"team_id": "team-current", "metadata": {"allowed_mcp_servers": ["notebook"]}},
+        ) in calls
+        assert ("POST", "/team/delete", {"team_ids": ["team-stale"]}) in calls
+
+    def test_team_cache_round_trips_and_discards_malformed_data(self, tmp_path):
+        cache_path = tmp_path / "mcp" / "teams.json"
+        teams = {"ops": WorkspaceTeam(team_id="team-ops", virtual_key="key-ops")}
+
+        litellm.save_teams_cache(cache_path, teams)
+
+        assert litellm.load_teams_cache(cache_path) == teams
+        cache_path.write_text('{"ops": {"team_id": "team-ops"}}', encoding="utf-8")
+        assert litellm.load_teams_cache(cache_path) == {}
 
 
 class TestBuildDirectServerConfigs:
