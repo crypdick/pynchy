@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pynchy.config import access
+from pynchy.config._personalization_validation import validate_personalization_configuration
 from pynchy.config.access import (
     filter_allowed_messages,
     is_user_allowed,
@@ -183,6 +184,7 @@ __all__ = [
     "static_workspace_name",
     "tool_process_environment",
     "validate_litellm_model_names",
+    "validate_personalization_configuration",
     "validate_personalization_tree",
     "validate_settings_mapping",
 ]

@@ -11,9 +11,11 @@ pynchy/
 └── .env                   # deployment secrets only
 ```
 
-Pynchy does not clone the repository or pull remote-only changes. It validates,
-commits, and pushes valid local changes from the host sync loop. Before a push,
-the host fetches and rebases local commits onto the remote branch.
+Pynchy does not clone the repository or fast-forward a clean checkout with
+remote-only divergence. Its host-owned publication path validates, commits, and
+pushes valid local changes from the host sync loop. An operator can run that
+same path on demand. Before a push, the host fetches and rebases local commits
+onto the remote branch.
 
 ## Create the repository
 
@@ -27,17 +29,54 @@ git add .
 git commit -m "Initialize Pynchy personalization"
 ```
 
-Push that directory to a private remote, then check it out inside each Pynchy
-installation:
+Push that directory to a private GitHub.com remote (HTTPS or SSH), then check it
+out inside each Pynchy installation:
 
 ```bash
 git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
   data/personalization
 ```
 
-Do not use a Git submodule. `data/personalization/` is ignored by the public
-Pynchy repository, so the nested checkout remains independent and Pynchy does
-not publish its URL or commit identity.
+Do not use a Git submodule or linked Git worktree. `data/personalization/` is
+ignored by the public Pynchy repository, so the nested checkout remains
+independent and Pynchy does not publish its URL or commit identity.
+
+## Publish local changes
+
+Run this command from the Pynchy host checkout when a valid local repair must
+reach the configured remote immediately:
+
+```bash
+uv run pynchy publish-personalization
+```
+
+The command only operates on the independent `data/personalization/` checkout.
+It accepts no repository path, branch, or remote override. It requires a
+GitHub.com HTTPS or SSH `origin` remote. Before publication, Pynchy verifies
+that the checked-out branch matches both local `origin/HEAD` and GitHub's
+advertised default branch. If the remote default branch changed, run `git fetch
+origin` and `git remote set-head origin -a`, then switch the checkout to that
+branch (for example, `git switch --track origin/master`) before retrying.
+Pynchy validates dirty work before committing it and validates clean local
+commits before publishing them. Publication uses canonical GitHub HTTPS even
+when the checkout uses SSH. Configure a host GitHub token or authenticate `gh`
+with `gh auth login` before publishing; never put a token in the personalization
+repository or CLI arguments. Standard agent Bash hooks reject this command.
+Trusted direct-host and raw host-mount contexts remain operator boundaries; see
+the [security model](../architecture/security.md#direct-host-execution).
+
+The command never clones a repository, scans for another checkout, creates or
+changes a remote, or turns a submodule or linked worktree into a publishable
+checkout.
+
+`Personalization published.` confirms that the host published local commits.
+`Personalization already matches origin.` means no commit needs publication.
+On failure, Pynchy leaves invalid edits uncommitted and invalid local commits
+unpublished. When local commits need publication, it fetches and rebases them
+onto the remote branch, so valid remote commits can be incorporated locally
+before the final validation and push. A clean checkout with remote-only
+divergence is not fast-forwarded or published. Inspect redacted host logs,
+resolve the Git or configuration state on the host, then run the command again.
 
 ## Directory contract
 
@@ -141,8 +180,9 @@ Treat skill directories under `data/sessions/` as generated runtime registries.
 Pynchy gives every agent read-write access to the canonical personalized skill
 registry through `$PYNCHY_SKILLS_ROOT`. Agents may create or improve skills
 there. Pynchy refreshes selected skills into each generated session registry
-before the next turn, without restarting the service. Valid personalization
-changes are committed and pushed automatically.
+before the next turn, without restarting the service. The host sync loop
+publishes valid personalization changes automatically; use
+`pynchy publish-personalization` when an operator needs an immediate result.
 
 Do not author durable changes in a session's `.claude/skills/` or
 `.codex/skills/` directory. Those copies are generated and replaced from the
