@@ -12,6 +12,7 @@ import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exce
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlparse
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
@@ -171,7 +172,7 @@ class TestHostCreatePrFromWorktree:
         assert result["success"] is True
         assert "1 commit(s)" in result["message"]
         assert "PR" in result["message"]
-        assert "https://github.com" in result["message"]
+        assert urlparse(result["message"].rpartition(" ")[2]).hostname == "github.com"
 
         # Verify branch was pushed to origin
         branches = _git(git_env["origin"], "branch")
