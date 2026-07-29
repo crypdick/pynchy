@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
@@ -285,3 +286,120 @@ async def test_x_actions_surface_input_and_navigation_failures(
         result = await _handler("x_post")(data)
 
     assert result == {"error": expected}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "data", "expected"),
+    [
+        ("x_like", {}, "Please provide a tweet URL"),
+        ("x_reply", {}, "Please provide a tweet URL"),
+        ("x_reply", {"tweet_url": "123"}, "Reply content cannot be empty"),
+        ("x_retweet", {}, "Please provide a tweet URL"),
+        ("x_quote", {}, "Please provide a tweet URL"),
+        ("x_quote", {"tweet_url": "123"}, "Comment content cannot be empty"),
+        ("x_post", {"content": "x" * 281}, "Tweet exceeds 280 char limit (current: 281)"),
+    ],
+)
+async def test_x_actions_validate_public_input(tool_name, data, expected):
+    assert await _handler(tool_name)(data) == {"error": expected}
+
+
+@pytest.mark.asyncio
+async def test_x_post_reports_login_and_disabled_button_states(monkeypatch):
+    action_handler = _action_handler(_handler("x_post"))
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__,
+        "check_login",
+        AsyncMock(return_value="Please log in to X first"),
+    )
+    assert await _handler("x_post")({"content": "hello"}) == {"error": "Please log in to X first"}
+
+    monkeypatch.setitem(action_handler.__globals__, "check_login", AsyncMock(return_value=None))
+
+    async def disabled(_self, _name):
+        await asyncio.sleep(0)
+        return "true"
+
+    monkeypatch.setattr(_FakeLocator, "get_attribute", disabled)
+    assert await _handler("x_post")({"content": "hello"}) == {
+        "error": "Post button disabled. Content may be empty or exceed limit."
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "visibility", "expected"),
+    [
+        ("x_like", (True,), "Tweet already liked"),
+        (
+            "x_like",
+            (False, False),
+            "Like action completed but could not verify success",
+        ),
+        ("x_retweet", (True,), "Tweet already retweeted"),
+        (
+            "x_retweet",
+            (False, False),
+            "Retweet action completed but could not verify success",
+        ),
+    ],
+)
+async def test_x_actions_report_existing_and_unverified_effects(
+    monkeypatch, tool_name, visibility, expected
+):
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value=None)
+    )
+    monkeypatch.setitem(action_handler.__globals__, "is_visible", AsyncMock(side_effect=visibility))
+
+    result = await handler({"tweet_url": "123"})
+
+    assert result["result"]["message"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["x_reply", "x_quote"])
+async def test_x_modal_actions_report_disabled_submit_button(monkeypatch, tool_name):
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    async def disabled(_self, _name):
+        await asyncio.sleep(0)
+        return "true"
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(_FakeLocator, "get_attribute", disabled)
+    data = (
+        {"tweet_url": "123", "content": "reply"}
+        if tool_name == "x_reply"
+        else {
+            "tweet_url": "123",
+            "comment": "quote",
+        }
+    )
+
+    assert await handler(data) == {
+        "error": "Submit button disabled. Content may be empty or exceed limit."
+    }
