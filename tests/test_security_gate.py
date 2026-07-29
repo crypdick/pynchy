@@ -457,18 +457,29 @@ class TestGateLifecycle:
 
         state.release()  # Should not raise
 
-    async def test_container_session_stop_destroys_worker_gate(self):
-        """Stopping the durable worker retires its gate."""
+    async def test_container_session_stop_retains_gate_until_worker_stops(self):
+        """Stopping the worker retains its gate while IPC requests can still drain."""
         create_gate("test-ws", 100.0, WorkspaceSecurity())
         session = ContainerSession(
             "test-ws",
             "pynchy-test-ws",
             invocation_ts=100.0,
         )
+        session.proc = AsyncMock()
+        session.proc.returncode = None
 
-        with patch(
-            "pynchy.host.container_manager.session.docker_rm_force",
-            new_callable=AsyncMock,
+        def assert_gate_exists_while_stopping(*_args: object) -> None:
+            assert get_gate("test-ws", 100.0) is not None
+
+        with (
+            patch(
+                "pynchy.host.container_manager.session.graceful_stop",
+                side_effect=assert_gate_exists_while_stopping,
+            ),
+            patch(
+                "pynchy.host.container_manager.session.docker_rm_force",
+                new_callable=AsyncMock,
+            ),
         ):
             await session.stop()
 
