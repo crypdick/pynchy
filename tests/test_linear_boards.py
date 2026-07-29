@@ -177,6 +177,13 @@ class TestSelectTeam:
         with pytest.raises(LinearBoardError, match="missing string id"):
             await select_team(client, team_key=None)
 
+    async def test_rejects_non_object_team_payloads_at_the_boundary(self):
+        client = FakeLinearClient()
+        client.teams = [None]
+
+        with pytest.raises(LinearBoardError, match="not an object"):
+            await select_team(client, team_key=None)
+
     async def test_rejects_an_unknown_team_key(self):
         with pytest.raises(LinearBoardError, match="did not match"):
             await select_team(FakeLinearClient(), team_key="MISSING")
@@ -404,6 +411,32 @@ class TestEnsureWorkspaceBoard:
             await provision_workspace_board(client, workspace, team_key=None)
 
         assert client.updated_projects == []
+
+    async def test_rejects_duplicate_unmanaged_projects_by_name(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {"id": "project-one", "name": "Code Improver"},
+                {"id": "project-two", "name": "Code Improver"},
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        with pytest.raises(LinearBoardError, match="Duplicate Linear projects"):
+            await provision_workspace_board(client, workspace, team_key=None)
+
+    async def test_duplicate_unmanaged_projects_require_ids(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {"name": "Code Improver"},
+                {"id": "project-two", "name": "Code Improver"},
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        with pytest.raises(LinearBoardError, match="did not include an ID"):
+            await provision_workspace_board(client, workspace, team_key=None)
 
     async def test_workspace_marker_does_not_match_a_longer_workspace_name(self):
         client = FakeLinearClient()
