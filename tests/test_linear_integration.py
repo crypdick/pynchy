@@ -200,6 +200,19 @@ class TestLinearClient:
 
         assert await client.list_teams() == [{"id": "team-1", "key": "PYN", "name": "Pynchy"}]
 
+    async def test_list_issues_declares_team_filter_as_graphql_id(self):
+        response = MagicMock(status=200)
+        response.json = AsyncMock(return_value={"data": {"issues": {"nodes": [{"id": "issue-1"}]}}})
+        session = MagicMock()
+        session.post.return_value = FakePostContext(response)
+        client = LinearClient(api_key="lin_api_test", session=session)
+
+        assert await client.list_issues(team_id="team-1", first=1) == [{"id": "issue-1"}]
+
+        _, kwargs = session.post.call_args
+        assert kwargs["json"]["variables"] == {"first": 1, "teamId": "team-1"}
+        assert "$teamId: ID!" in kwargs["json"]["query"]
+
     async def test_create_issue_returns_identifier_and_url(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         client.query = AsyncMock(

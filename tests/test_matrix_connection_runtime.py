@@ -97,6 +97,17 @@ async def _database_and_registries() -> None:
     clear_runtime_workspace_restrictions()
 
 
+async def test_provider_cursor_rejects_blank_values_and_replaces_existing_value() -> None:
+    assert await get_external_provider_cursor("matrix", "personal-chats") is None
+    with pytest.raises(ValueError, match="must not be empty"):
+        await set_external_provider_cursor("matrix", "personal-chats", "  ")
+
+    await set_external_provider_cursor("matrix", "personal-chats", "cursor-1")
+    await set_external_provider_cursor("matrix", "personal-chats", "cursor-2")
+
+    assert await get_external_provider_cursor("matrix", "personal-chats") == "cursor-2"
+
+
 class _DiscordThreadChannel:
     name = "connection.discord.main"
     formatter = object()

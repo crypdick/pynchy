@@ -110,6 +110,21 @@ def _client(
 
 
 class TestProtonBridgeImapClient:
+    def test_normalizes_a_bridge_username_and_rejects_missing_environment(self):
+        configuration = ProtonBridgeConfiguration(
+            username=" mail@example.test ",
+            password_command=_TEST_PASSWORD_COMMAND,
+        )
+
+        assert configuration.username == "mail@example.test"
+        with pytest.raises(ProtonMailError, match="PYNCHY_PROTON_BRIDGE_USERNAME"):
+            ProtonBridgeConfiguration.from_environment({})
+        with pytest.raises(ValueError, match="single non-empty line"):
+            ProtonBridgeConfiguration(
+                username="mail\n@example.test",
+                password_command=_TEST_PASSWORD_COMMAND,
+            )
+
     def test_reads_bridge_settings_from_an_explicit_mcp_environment(self):
         configuration = ProtonBridgeConfiguration.from_environment(
             {

@@ -6,7 +6,7 @@ uses Neonize, the Python bindings for Whatsmeow.
 ## Set up WhatsApp
 
 ```bash
-uv sync --extra whatsapp
+uv sync --locked --inexact --extra whatsapp
 uv run pynchy-whatsapp-auth
 ```
 

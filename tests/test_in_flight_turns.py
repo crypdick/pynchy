@@ -239,6 +239,34 @@ async def test_reset_request_never_enters_automatic_recovery() -> None:
 
 
 @pytest.mark.asyncio
+async def test_control_guards_preserve_reset_and_reject_unavailable_pause_work() -> None:
+    await init_test_database()
+
+    assert (
+        await request_in_flight_turn_control(
+            "slack:C123",
+            CheckpointControlState.PAUSE_REQUESTED,
+        )
+        is None
+    )
+    assert await finalize_in_flight_pause("missing-turn") is False
+
+    await begin_in_flight_turn(_turn())
+    assert await resume_paused_in_flight_turn("turn-1", [], "cursor", claim=False) is None
+
+    await request_in_flight_turn_control(
+        "slack:C123",
+        CheckpointControlState.RESET_REQUESTED,
+    )
+    retained = await request_in_flight_turn_control(
+        "slack:C123",
+        CheckpointControlState.PAUSE_REQUESTED,
+    )
+    assert retained is not None
+    assert retained.control_state is CheckpointControlState.RESET_REQUESTED
+
+
+@pytest.mark.asyncio
 async def test_terminal_scheduled_cleanup_preserves_claimed_recovery() -> None:
     await init_test_database()
     await begin_in_flight_turn(

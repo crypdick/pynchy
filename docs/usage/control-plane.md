@@ -12,8 +12,9 @@ The default server starts two listeners:
 - `127.0.0.1:8484`, a loopback TCP fallback for platforms and clients that cannot
   use Unix sockets.
 
-`uv run pynchy doctor` prefers the Unix socket when it exists, then falls back
-to loopback TCP. Pass `--socket <path>` to select a custom socket.
+`uv run pynchy status`, `uv run pynchy deploy`, and `uv run pynchy doctor`
+prefer the Unix socket when it exists, then fall back to loopback TCP. Pass
+`--socket <path>` before the subcommand to select a custom socket.
 
 The Unix socket relies on filesystem permissions and accepts local control requests
 without a bearer token. Loopback TCP also accepts local requests without a token
@@ -31,6 +32,13 @@ state without draft payloads; see [Action coverage](../architecture/action-cover
 for its lifecycle. A remote posture requires authentication for every TCP route
 except `/health` and exact plugin-registered webhook POST paths, including unknown
 paths.
+
+Use the bounded local clients instead of constructing HTTP requests by hand:
+
+```bash
+uv run pynchy status
+uv run pynchy deploy
+```
 
 ## Bootstrap a bearer token
 
@@ -70,9 +78,14 @@ contains fewer than 32 bytes. Network ACLs and firewalls remain useful defense i
 depth, but they do not replace application authentication.
 
 Transfer the token to diagnostic clients through an authenticated secret-sharing
-channel and store it in a mode-`0600` file. The `pynchy doctor` command accepts
-`--token-file` and `--host`; HTTP clients send the same value in the
-`Authorization: Bearer <token>` header.
+channel and store it in a mode-`0600` file. The control-plane commands accept
+`--token-file` and `--host` before the subcommand:
+
+```bash
+uv run pynchy --host pynchy.example:8484 --token-file ./pynchy.token status
+```
+
+HTTP clients send the same value in the `Authorization: Bearer <token>` header.
 
 Pynchy compares bearer tokens without timing-sensitive string equality. It applies
 a per-client fixed-window request limit before authentication so invalid tokens also
@@ -131,10 +144,11 @@ allow_remote_deploy = true
 loopback bind. Local callers can use the permission-restricted Unix socket without
 enabling remote deployment.
 
-To call `/deploy` from a remote automation client, send the token in the
-`Authorization: Bearer <token>` header. Never put it in the URL. The client must
-handle `401`, `403`, and `429` as terminal policy responses rather than retrying
-without correction.
+To call `/deploy` from a remote automation client, use the authenticated CLI
+form above with the `deploy` subcommand, or send the token in the
+`Authorization: Bearer <token>` header. Never put it in the URL. The client
+must handle `401`, `403`, and `429` as terminal policy responses rather than
+retrying without correction.
 
 ## Configuration reference
 

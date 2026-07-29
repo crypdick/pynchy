@@ -145,6 +145,24 @@ async def test_constructorless_linear_query_fake_does_not_require_a_recorder() -
     assert issue["id"] == _ISSUE_ID
 
 
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        ({"issueUpdate": {"success": False}}, "did not update"),
+        ({"issueUpdate": {"success": True}}, "did not include an issue"),
+    ],
+)
+async def test_query_only_client_rejects_incomplete_issue_update_responses(
+    response: dict[str, object],
+    message: str,
+) -> None:
+    client = _ConstructorlessLinearClient()
+    client.query = AsyncMock(return_value=response)
+
+    with pytest.raises(LinearError, match=message):
+        await update_issue_state(client, _ISSUE_ID, _STATE_ID)
+
+
 async def test_provider_declared_state_failure_releases_effect_instead_of_quarantining() -> None:
     recorder = LinearSelfEchoRecorder(
         account_name="linear-project",

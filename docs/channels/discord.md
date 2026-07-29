@@ -57,11 +57,11 @@ configuration.
    Pynchy adds every `default_thread_participants` user to newly created Discord
    threads; use Discord user snowflakes, not display names.
 
-5. Install dependencies, restart Pynchy, and inspect the channel state:
+5. Install dependencies, deploy the change, and inspect the channel state:
 
    ```bash
-   uv sync --extra discord
-   curl -s http://localhost:8485/status
+   uv sync --locked --inexact --extra discord
+   uv run pynchy status
    ```
 
    `registered_groups` should contain JIDs such as

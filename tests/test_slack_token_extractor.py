@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 
 
 class _FakePage:
-    def __init__(self) -> None:
-        self.url = "https://app.slack.com/signin"
+    def __init__(self, url: str = "https://app.slack.com/signin") -> None:
+        self.url = url
 
     async def goto(self, _url: str, *, wait_until: str) -> None:
         assert wait_until == "networkidle"
@@ -28,8 +28,8 @@ class _FakePage:
 
 
 class _FakeContext:
-    def __init__(self) -> None:
-        self.pages = [_FakePage()]
+    def __init__(self, page: _FakePage | None = None) -> None:
+        self.pages = [page or _FakePage()]
         self.closed = False
 
     async def new_page(self) -> _FakePage:
@@ -58,6 +58,12 @@ class _FakePlaywright:
 
     async def __aexit__(self, exc_type, exc, _tb) -> None:
         return None
+
+
+def _handler(name: str):
+    action = SlackTokenExtractorPlugin().pynchy_service_handler().action_for(name)
+    assert action is not None
+    return action.handler
 
 
 @pytest.mark.action("integration.slack.tokens.refresh")
@@ -140,3 +146,61 @@ async def test_setup_slack_session_timeout_returns_novnc_url(
     }
     assert context.closed is True
     stop_procs.assert_called_once_with([])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        ({}, "workspace_name is required"),
+        ({"workspace_name": "acme"}, "xoxc_var and xoxd_var are required"),
+    ],
+)
+async def test_refresh_slack_tokens_rejects_incomplete_requests(data, expected) -> None:
+    assert await _handler("refresh_slack_tokens")(data) == {"error": expected}
+
+
+@pytest.mark.asyncio
+async def test_refresh_slack_tokens_surfaces_browser_extraction_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}._find_dotenv", lambda: tmp_path / ".env")
+    monkeypatch.setattr(
+        f"{_SLACK_EXTRACTOR_MODULE}.profile_dir", lambda _name: tmp_path / "profile"
+    )
+    monkeypatch.setattr(
+        f"{_SLACK_EXTRACTOR_MODULE}._extract_tokens", AsyncMock(side_effect=RuntimeError("expired"))
+    )
+
+    response = await _handler("refresh_slack_tokens")(
+        {"workspace_name": "acme", "xoxc_var": "XOXC", "xoxd_var": "XOXD"}
+    )
+
+    assert response == {"error": "expired"}
+
+
+@pytest.mark.action("integration.slack.session.setup")
+@pytest.mark.asyncio
+async def test_setup_slack_session_reports_an_existing_authenticated_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context = _FakeContext(_FakePage("https://app.slack.com/client/T123"))
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.has_display", lambda: True)
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.stop_procs", Mock())
+    monkeypatch.setattr(
+        f"{_SLACK_EXTRACTOR_MODULE}.profile_dir", lambda _name: tmp_path / "profile"
+    )
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.chrome_path", lambda: "/usr/bin/google-chrome")
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "playwright.async_api",
+        type("_PlaywrightModule", (), {"async_playwright": lambda: _FakePlaywright(context)}),
+    )
+
+    response = await _handler("setup_slack_session")({"workspace_name": "acme"})
+
+    assert response["result"]["status"] == "ok"
+    assert "Already logged in" in response["result"]["message"]
+    assert context.closed is True

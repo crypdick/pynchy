@@ -82,3 +82,66 @@ def test_control_plane_bootstrap_cli_refuses_to_overwrite_without_rotate(
     assert errors == (
         f"Control-plane bootstrap failed: Control-plane token already exists: {token_path}\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("command", "relative_url", "method"),
+    [("status", "/status", "GET"), ("deploy", "/deploy", "POST")],
+)
+def test_control_plane_command_uses_the_selected_authenticated_target(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    tmp_path: Path,
+    command: str,
+    relative_url: str,
+    method: str,
+) -> None:
+    socket_path = tmp_path / "pynchy.sock"
+    token_file = tmp_path / "control-plane.token"
+    request: dict[str, object] = {}
+
+    def fetch(
+        host: str | None,
+        path: str,
+        *,
+        method: str,
+        socket_path: Path | None,
+        token_file: Path | None,
+    ) -> object:
+        request.update(
+            host=host,
+            path=path,
+            method=method,
+            socket_path=socket_path,
+            token_file=token_file,
+        )
+        return {"ok": True}
+
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", fetch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "pynchy",
+            "--socket",
+            str(socket_path),
+            "--token-file",
+            str(token_file),
+            command,
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 0
+    assert captured.out == '{\n  "ok": true\n}\n'
+    assert not captured.err
+    assert request == {
+        "host": None,
+        "path": relative_url,
+        "method": method,
+        "socket_path": socket_path,
+        "token_file": token_file,
+    }

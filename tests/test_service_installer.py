@@ -372,6 +372,7 @@ class TestInstallSystemdService:
         assert "Description=Pynchy personal assistant" in content
         assert f"WorkingDirectory={tmp_path}" in content
         assert "ExecStartPre=/usr/local/bin/uv tool run prek install" in content
+        assert "uv sync" not in content
         assert f"ExecStart=/bin/sh {tmp_path}/scripts/run_pynchy.sh" in content
         assert "Restart=always" in content
         assert "RestartSec=10" in content
@@ -422,3 +423,10 @@ class TestInstallSystemdService:
         content = (unit_dir / "pynchy.service").read_text()
         assert "Description=Pynchy personal assistant" in content
         assert mock_run.call_count == 3  # daemon-reload, enable, enable-linger
+
+
+def test_host_launcher_uses_an_isolated_locked_environment() -> None:
+    content = Path("scripts/run_pynchy.sh").read_text(encoding="utf-8")
+
+    assert 'UV_PROJECT_ENVIRONMENT="$project_root/data/host-venv"' in content
+    assert content.count("uv run --locked --no-dev --all-extras pynchy") == 2

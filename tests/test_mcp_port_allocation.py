@@ -89,6 +89,50 @@ class TestMcpServerConfig:
         with pytest.raises(ValueError, match="Stdio MCP servers require HTTP transport"):
             McpServerConfig(type="stdio", command="npx", port=8000)
 
+    @pytest.mark.parametrize(
+        ("config", "message"),
+        [
+            pytest.param(
+                {"type": "docker", "port": 8000},
+                "Docker MCP servers require 'image'",
+                id="docker-image",
+            ),
+            pytest.param(
+                {"type": "docker", "image": "example"},
+                "Docker MCP servers require 'port'",
+                id="docker-port",
+            ),
+            pytest.param(
+                {"type": "url"},
+                "URL MCP servers require 'url'",
+                id="url",
+            ),
+            pytest.param(
+                {"type": "script", "port": 8000},
+                "Script MCP servers require 'command'",
+                id="script-command",
+            ),
+            pytest.param(
+                {"type": "script", "command": "run"},
+                "Script MCP servers require 'port'",
+                id="script-port",
+            ),
+            pytest.param(
+                {"type": "stdio", "port": 8000, "transport": "http"},
+                "Stdio MCP servers require 'command'",
+                id="stdio-command",
+            ),
+            pytest.param(
+                {"type": "stdio", "command": "run", "transport": "http"},
+                "Stdio MCP servers require 'port'",
+                id="stdio-port",
+            ),
+        ],
+    )
+    def test_mcp_server_rejects_incomplete_runtime_configuration(self, config, message):
+        with pytest.raises(ValueError, match=message):
+            McpServerConfig(**config)
+
 
 class TestDockerLifecycleHelpers:
     def _stub_docker_lifecycle(self, monkeypatch) -> tuple[AsyncMock, AsyncMock]:
@@ -166,6 +210,23 @@ class TestDockerLifecycleHelpers:
         await warm_image_cache({"browser": instance})
 
         ensure_image_mock.assert_awaited_once_with(instance.server_config, tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_ensure_docker_running_preserves_an_existing_container(self, monkeypatch):
+        instance = self._make_instance()
+        run_docker_mock = AsyncMock()
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.is_container_running",
+            AsyncMock(return_value=True),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.run_docker",
+            run_docker_mock,
+        )
+
+        await ensure_docker_running(instance)
+
+        run_docker_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_builds_expanded_docker_run_and_localhost_health_check(
@@ -313,6 +374,26 @@ class TestDockerLifecycleHelpers:
 
 class TestStdioLifecycle:
     @pytest.mark.asyncio
+    async def test_ensure_stdio_requires_an_allocated_host_port(self):
+        instance = McpInstance(
+            server_name="android",
+            server_config=McpServerConfig(
+                type="stdio",
+                command="npx",
+                port=8932,
+                transport="streamable_http",
+            ),
+            kwargs={},
+            instance_id="android",
+            container_name="unused",
+            project_root=Path("/project"),
+            port=None,
+        )
+
+        with pytest.raises(RuntimeError, match="Stdio MCP has no host port: android"):
+            await ensure_stdio_running(instance)
+
+    @pytest.mark.asyncio
     async def test_ensure_stdio_runs_loopback_bridge_with_filtered_environment(self, monkeypatch):
         instance = McpInstance(
             server_name="android",
@@ -376,6 +457,72 @@ class TestStdioLifecycle:
 
 
 class TestScriptLifecycle:
+    @pytest.mark.asyncio
+    async def test_ensure_script_running_preserves_a_live_process(self, monkeypatch):
+        process = subprocess.Popen.__new__(subprocess.Popen)
+        process.poll = MagicMock(return_value=None)
+        instance = McpInstance(
+            server_name="linear",
+            server_config=McpServerConfig(
+                type="script",
+                command="uv",
+                port=8474,
+                transport="streamable_http",
+            ),
+            kwargs={},
+            instance_id="linear",
+            container_name="unused",
+            project_root=Path("/project"),
+            port=8474,
+            process=process,
+        )
+        start_process = MagicMock()
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._start_script_process",
+            start_process,
+        )
+
+        await ensure_script_running(instance)
+
+        start_process.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_script_cleans_up_after_failed_health_check(self, monkeypatch):
+        instance = McpInstance(
+            server_name="linear",
+            server_config=McpServerConfig(
+                type="script",
+                command="uv",
+                port=8474,
+                transport="streamable_http",
+            ),
+            kwargs={},
+            instance_id="linear",
+            container_name="unused",
+            project_root=Path("/project"),
+            port=8474,
+        )
+        process = subprocess.Popen.__new__(subprocess.Popen)
+        terminate = MagicMock(side_effect=lambda current: setattr(current, "process", None))
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._start_script_process",
+            MagicMock(return_value=process),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            AsyncMock(side_effect=TimeoutError("not ready")),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.terminate_process",
+            terminate,
+        )
+
+        with pytest.raises(TimeoutError, match="not ready"):
+            await ensure_script_running(instance)
+
+        terminate.assert_called_once_with(instance)
+        assert instance.process is None
+
     @pytest.mark.asyncio
     async def test_ensure_script_runs_with_filtered_environment(self, monkeypatch):
         instance = McpInstance(

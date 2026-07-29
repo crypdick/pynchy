@@ -20,16 +20,18 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 
 ## Quick Status Check
 
-**Preferred: the `/status` endpoint.** Single command that returns everything:
+**Preferred: the authenticated control-plane CLI.** It uses the
+permission-restricted Unix socket on the live host:
 
 ```bash
 # On the live host directly:
-curl -s http://localhost:8484/status | python3 -m json.tool
+cd "$PYNCHY_REMOTE_ROOT"
+uv run pynchy status
 
-# Remotely (via Tailscale):
+# Remotely over SSH:
 PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
-PYNCHY_PORT="${PYNCHY_PORT:-8484}"
-curl -s "http://$PYNCHY_HOST:$PYNCHY_PORT/status" | python3 -m json.tool
+PYNCHY_REMOTE_ROOT="${PYNCHY_REMOTE_ROOT:?set the live checkout path}"
+ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy status"
 ```
 
 Returns JSON with: `service` (uptime), `deploy` (SHA, dirty, unpushed), `channels` (slack/whatsapp connected), `gateway` (LiteLLM health), `temporal` (cluster health, worker state, task queue, last scheduled workflow/result), `queue` (active containers, waiting groups), `repos` (per-repo worktree status — SHA, dirty, ahead/behind, conflicts), `messages` (inbound/outbound counts, last activity), `tasks` (scheduled tasks with status/next run), `host_jobs`, `groups` (total, active sessions).
@@ -80,11 +82,11 @@ rsync -a "$VAULT_ROOT/" "$PYNCHY_REMOTE_ROOT/data/learning/host-vault-mirrors/$P
 Pynchy consumes this prepared mirror for host execution and leaves it unchanged.
 
 ```bash
-# Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
+# Trigger a deploy through the live host's Unix socket. From containers, use
+# mcp__pynchy__deploy_changes instead.
 PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
-PYNCHY_PORT="${PYNCHY_PORT:-8484}"
 PYNCHY_REMOTE_ROOT="${PYNCHY_REMOTE_ROOT:?set the live checkout path}"
-curl -s -X POST "http://$PYNCHY_HOST:$PYNCHY_PORT/deploy"
+ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy deploy"
 
 # Observe (always safe)
 ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy'
@@ -134,7 +136,7 @@ Safe checks:
 ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy.temporal'
 ssh "$PYNCHY_HOST" 'temporal operator cluster health --address 127.0.0.1:7233'
 ssh "$PYNCHY_HOST" 'lsof -nP -iTCP:7233 -sTCP:LISTEN'
-curl -s "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/status" | python3 -m json.tool
+ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy status"
 ```
 
 `data/temporal.db` is durable scheduler state. Make sure host backups include it with the rest of `data/`.

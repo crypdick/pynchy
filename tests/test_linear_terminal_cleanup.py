@@ -544,6 +544,18 @@ async def test_newer_cancelled_terminal_blocks_claimed_done_settlement() -> None
     )
     assert stale_done is None
 
+    stale_cancel = await cancel_work_item_execution_if_lifecycle_current(
+        execution.id,
+        blocker="stale terminal state",
+        lifecycle_fence=ConversationLifecycleFence(
+            conversation_id=conversation_id,
+            identity=old_identity,
+            claim_id=old_claim_id,
+            control_state_revision=old_revision,
+        ),
+    )
+    assert stale_cancel is None
+
     new_claim_id = ConversationClaimId("new-cancelled-claim")
     new_claim = await claim_next_conversation_delivery(conversation_id, new_claim_id)
     assert new_claim is not None
