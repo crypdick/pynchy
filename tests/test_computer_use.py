@@ -201,6 +201,21 @@ async def test_router_rejects_empty_shortcuts(keys: object) -> None:
     assert "key requires keys" in result["error"]
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"source_group": "admin", "action": "launch_app", "app": " "}, "must not be empty"),
+        ({"source_group": "../admin", "action": "list_apps"}, "one path component"),
+        ({"source_group": "admin", "action": "set_value", "value": "x"}, "requires element"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_router_rejects_invalid_request_boundaries(payload, message) -> None:
+    result = await _handler()(payload)
+
+    assert message in result["error"]
+
+
 def test_router_config_rejects_duplicate_providers() -> None:
     with pytest.raises(ValidationError, match="computer-use providers must be unique"):
         ComputerUseRouterConfig(providers=("peekaboo", "peekaboo"))
