@@ -54,17 +54,19 @@ async def get_active_work_item_execution(issue_id: str) -> WorkItemExecution | N
 
 
 async def get_unfinished_work_item_execution(issue_id: str) -> WorkItemExecution | None:
-    """Return the newest execution a terminal provider state must still retire."""
+    """Return the newest execution when a terminal provider state must still retire it."""
     db = _get_db()
     cursor = await db.execute(
         """
-        SELECT * FROM work_item_executions
-        WHERE linear_issue_id = ?
-          AND status IN (
-              'claiming', 'in_progress', 'awaiting_review', 'follow_ups', 'blocked', 'unknown'
-          )
-        ORDER BY created_at DESC
-        LIMIT 1
+        SELECT * FROM (
+            SELECT * FROM work_item_executions
+            WHERE linear_issue_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        )
+        WHERE status IN (
+            'claiming', 'in_progress', 'awaiting_review', 'follow_ups', 'blocked', 'unknown'
+        )
         """,
         (issue_id,),
     )

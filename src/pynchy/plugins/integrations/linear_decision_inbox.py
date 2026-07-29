@@ -260,7 +260,12 @@ async def reconcile_provider_work_item_state(
     retired = 0
     for workspace, board in boards.items():
         executions = await runtime.list_executions(workspace=workspace)
+        latest_by_issue: dict[str, WorkItemExecution] = {}
         for execution in executions:
+            current = latest_by_issue.get(execution.linear_issue_id)
+            if current is None or execution.attempt > current.attempt:
+                latest_by_issue[execution.linear_issue_id] = execution
+        for execution in latest_by_issue.values():
             if execution.status not in _RECONCILABLE_EXECUTION_STATUSES:
                 continue
             try:
