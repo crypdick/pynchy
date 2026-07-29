@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
@@ -11,6 +12,7 @@ from pynchy.plugins.integrations.x_integration import XIntegrationPlugin
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 
 class _FakeLocator:
@@ -42,18 +44,29 @@ class _FakeLocator:
     async def get_attribute(self, _name: str) -> None:
         return None
 
+    async def is_visible(self) -> bool:
+        return self._calls.pop(0)[2] == "visible"
+
 
 class _FakePage:
-    def __init__(self) -> None:
+    def __init__(
+        self, *, visible: tuple[bool, ...] = (), navigation_error: str | None = None
+    ) -> None:
         self.calls: list[tuple[str, str, str | None]] = []
+        self._visible = iter(visible)
+        self._navigation_error = navigation_error
 
     def locator(self, selector: str) -> _FakeLocator:
-        return _FakeLocator(selector, self.calls)
+        locator = _FakeLocator(selector, self.calls)
+        locator.is_visible = AsyncMock(side_effect=self._visible)  # type: ignore[method-assign]
+        return locator
 
     def get_by_role(self, role: str) -> _FakeLocator:
         return _FakeLocator(role, self.calls)
 
     async def goto(self, url: str, **_kwargs: object) -> None:
+        if self._navigation_error:
+            raise RuntimeError(self._navigation_error)
         self.calls.append(("goto", url, None))
 
     async def wait_for_timeout(self, _milliseconds: int) -> None:
@@ -72,6 +85,69 @@ def _action_handler(handler: Callable[[dict[str, Any]], Any]) -> Callable[[dict[
     while "with_browser" not in current.__globals__:
         current = current.__wrapped__
     return current
+
+
+class _FakeBrowserContext:
+    def __init__(self, page: _FakePage, closed: list[bool]) -> None:
+        self.pages = [page]
+        self._closed = closed
+
+    async def close(self) -> None:
+        self._closed.append(True)
+
+
+class _FakeChromium:
+    def __init__(self, context: _FakeBrowserContext, launches: list[dict[str, object]]) -> None:
+        self._context = context
+        self._launches = launches
+
+    async def launch_persistent_context(self, **kwargs: object) -> _FakeBrowserContext:
+        self._launches.append(kwargs)
+        return self._context
+
+
+class _FakePlaywright:
+    def __init__(self, context: _FakeBrowserContext, launches: list[dict[str, object]]) -> None:
+        self.chromium = _FakeChromium(context, launches)
+
+    async def __aenter__(self) -> _FakePlaywright:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+
+def _install_playwright(
+    monkeypatch: pytest.MonkeyPatch,
+    page: _FakePage,
+    profile_path: Path,
+) -> tuple[list[bool], list[dict[str, object]]]:
+    """Install only the optional Playwright surface reached by public X actions."""
+    closed: list[bool] = []
+    launches: list[dict[str, object]] = []
+    context = _FakeBrowserContext(page, closed)
+    playwright = _FakePlaywright(context, launches)
+    async_api = type(sys)("playwright.async_api")
+    async_api.async_playwright = lambda: playwright
+    package = type(sys)("playwright")
+    package.async_api = async_api
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._browser.ensure_xvfb", lambda: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._browser.cleanup_lock_files", lambda _path: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._browser.profile_dir",
+        lambda _name: profile_path,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._browser.chrome_path",
+        lambda: "/usr/bin/google-chrome",
+    )
+    return closed, launches
 
 
 @pytest.mark.asyncio
@@ -144,3 +220,68 @@ async def test_x_mutations_drive_browser_and_report_verified_effects(
     assert any(call[0] == "click" for call in page.calls)
     if tool_name in {"x_post", "x_reply", "x_quote"}:
         assert any(call[0] == "fill" for call in page.calls)
+
+
+@pytest.mark.asyncio
+async def test_x_post_uses_the_configured_persistent_browser(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The public action owns display setup, profile cleanup, and browser closure."""
+    page = _FakePage(visible=(True,))
+    profile_path = tmp_path / "x-profile"
+    closed, launches = _install_playwright(monkeypatch, page, profile_path)
+
+    result = await _handler("x_post")({"content": "Pynchy release note"})
+
+    assert result["result"]["message"] == "Tweet posted: Pynchy release note"
+    assert launches == [
+        {
+            "user_data_dir": str(profile_path),
+            "executable_path": "/usr/bin/google-chrome",
+            "headless": False,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-sync",
+            ],
+            "ignore_default_args": ["--enable-automation"],
+        }
+    ]
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "page", "expected"),
+    [
+        ({"content": ""}, None, "Tweet content cannot be empty"),
+        (
+            {"tweet_url": "123"},
+            _FakePage(visible=(False,)),
+            "Tweet not found. It may have been deleted or the URL is invalid.",
+        ),
+        (
+            {"tweet_url": "https://x.com/broken"},
+            _FakePage(navigation_error="offline"),
+            "Navigation failed: offline",
+        ),
+    ],
+)
+async def test_x_actions_surface_input_and_navigation_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    data: dict[str, str],
+    page: _FakePage | None,
+    expected: str,
+) -> None:
+    if page is not None:
+        _install_playwright(monkeypatch, page, tmp_path / "x-profile")
+        result = await _handler("x_like")(data)
+    else:
+        result = await _handler("x_post")(data)
+
+    assert result == {"error": expected}
