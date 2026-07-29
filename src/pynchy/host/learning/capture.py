@@ -71,14 +71,8 @@ async def messages_for_learning_packet(
         seen_ids.add(message.id)
         covered_messages.append(message)
 
-    if not covered_messages:
-        logger.warning(
-            "Expanded learning message fetch returned no covered messages",
-            group=group.name,
-            final_cursor=final_cursor,
-        )
-        return missed_messages
-
+    # The last missed message is at or before final_cursor after the early return above,
+    # so at least that message is always retained.
     return sorted(covered_messages, key=lambda message: message.timestamp)
 
 
