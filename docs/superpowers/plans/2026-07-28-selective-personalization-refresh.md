@@ -1,6 +1,13 @@
 # Selective Personalization Refresh Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: Superseded — goal delivered.** The
+> [affected-workspace runtime policy refresh](../future-work/workspace-runtime-policy-refresh.md)
+> implemented the skill-policy outcome through validated candidate publication
+> instead of the hash split and settings-cache reset proposed here. Skill grants
+> and denials now refresh before the next turn without restarting Pynchy.
+>
+> The recipe below records the superseded design. Its step headings are
+> historical, not outstanding work.
 
 **Goal:** Apply personalized profile skill grants and denials before the next agent turn without restarting Pynchy, while preserving restarts for every other settings change.
 
@@ -67,7 +74,7 @@ after its entry criteria are resolved.
 - Modify: `src/pynchy/host/git_ops/api.py:26-111`
 - Test: `tests/test_git_sync.py:760-830`
 
-- [ ] **Step 1: Write the failing hash-classification tests**
+#### Step 1: Write the failing hash-classification tests
 
 Add these tests to `TestHashConfigFiles` in `tests/test_git_sync.py`:
 
@@ -148,7 +155,7 @@ skills = ["remember-routing"]
     assert before.workspace_skill_policy != after.workspace_skill_policy
 ```
 
-- [ ] **Step 2: Run the tests and verify the new API is missing**
+#### Step 2: Run the tests and verify the new API is missing
 
 Run:
 
@@ -158,7 +165,7 @@ uv run pytest -q tests/test_git_sync.py -k "profile_skill_policy or other_profil
 
 Expected: three failures with `AttributeError: module 'pynchy.host.git_ops.sync_poll' has no attribute 'get_host_config_hashes'`.
 
-- [ ] **Step 3: Add the cross-package semantic value**
+#### Step 3: Add the cross-package semantic value
 
 Add this immediately after `DeployRevision` in `src/pynchy/deployments.py`:
 
@@ -171,7 +178,7 @@ class HostConfigHashes:
     workspace_skill_policy: str
 ```
 
-- [ ] **Step 4: Replace the single raw personalization hash with two projections**
+#### Step 4: Replace the single raw personalization hash with two projections
 
 Add these imports in `src/pynchy/host/git_ops/sync_poll.py`:
 
@@ -286,13 +293,13 @@ def get_deploy_config_hash() -> str:
 
 Do not include personalized skill or prompt directories in either hash. Their existing per-turn loaders remain authoritative.
 
-- [ ] **Step 5: Delete the obsolete adapter-local config drift helper**
+#### Step 5: Delete the obsolete adapter-local config drift helper
 
 Delete `_check_config_drift()` from `src/pynchy/host/git_ops/sync_poll.py`. The
 Temporal activity owns config-drift orchestration, and this uncalled helper
 would otherwise retain a reference to the removed `_hash_config_files()`.
 
-- [ ] **Step 6: Export the combined hash reader**
+#### Step 6: Export the combined hash reader
 
 In `src/pynchy/host/git_ops/api.py`, add the reader beside the existing deploy
 hash import:
@@ -310,7 +317,7 @@ Add this entry to `__all__`:
 Keep `get_deploy_config_hash` as the compatibility API used by deployment
 admission and HTTP status.
 
-- [ ] **Step 7: Run the focused tests**
+#### Step 7: Run the focused tests
 
 Run:
 
@@ -320,7 +327,7 @@ uv run pytest -q tests/test_git_sync.py -k "HashConfigFiles"
 
 Expected: all `TestHashConfigFiles` tests pass. In particular, the existing automation and public-default tests must continue changing `get_deploy_config_hash()`.
 
-- [ ] **Step 8: Commit the fingerprint split**
+#### Step 8: Commit the fingerprint split
 
 ```bash
 git add src/pynchy/deployments.py src/pynchy/host/git_ops/sync_poll.py \
@@ -337,7 +344,7 @@ git commit -m "feat: classify live workspace skill policy"
 - Modify: `tests/conftest.py:18-80,1063-1078`
 - Modify: `tests/test_temporal_git_sync.py:1-184`
 
-- [ ] **Step 1: Add test support for explicit personalization outcomes and hashes**
+#### Step 1: Add test support for explicit personalization outcomes and hashes
 
 In `tests/test_temporal_git_sync.py`, import `Mock`, `get_router_state`, and `HostConfigHashes`:
 
@@ -370,7 +377,7 @@ class _RuntimeDeps:
         return self.personalization_result
 ```
 
-- [ ] **Step 2: Write the failing selective-refresh tests**
+#### Step 2: Write the failing selective-refresh tests
 
 Add:
 
@@ -470,7 +477,7 @@ async def test_failed_personalization_neither_deploys_nor_advances_hashes(
     start_deploy.assert_not_awaited()
 ```
 
-- [ ] **Step 3: Run the tests and verify the missing runtime behavior**
+#### Step 3: Run the tests and verify the missing runtime behavior
 
 Run:
 
@@ -481,7 +488,7 @@ uv run pytest -q tests/test_temporal_git_sync.py \
 
 Expected: failures because `get_host_config_hashes`, `reset_settings`, the persisted policy hash, and the new results are not wired.
 
-- [ ] **Step 4: Extend the Temporal state and runtime capabilities**
+#### Step 4: Extend the Temporal state and runtime capabilities
 
 In `src/pynchy/host/orchestrator/temporal/git_sync.py`, import the new domain value:
 
@@ -537,7 +544,7 @@ get_host_config_hashes: Callable[[], HostConfigHashes] = _unconfigured_runtime
 reset_settings: Callable[[], None] = _unconfigured_runtime
 ```
 
-- [ ] **Step 5: Load and migrate the policy baseline without a restart**
+#### Step 5: Load and migrate the policy baseline without a restart
 
 Replace `_load_host_state()` with:
 
@@ -591,7 +598,7 @@ async def _load_host_state(current_hashes: HostConfigHashes) -> HostSyncState:
 
 The fallback for a missing `workspace_skill_policy_hash` migrates existing router state to the current policy without causing a one-time false reload.
 
-- [ ] **Step 6: Add restart precedence and the live refresh action**
+#### Step 6: Add restart precedence and the live refresh action
 
 Replace `_config_drift_started_deploy()` and add `_reload_skill_policy_if_needed()`:
 
@@ -620,7 +627,7 @@ def _reload_skill_policy_if_needed(
     return True
 ```
 
-- [ ] **Step 7: Fail closed before hashing invalid personalization**
+#### Step 7: Fail closed before hashing invalid personalization
 
 Replace `run_host_git_sync()` with:
 
@@ -680,7 +687,7 @@ async def run_host_git_sync() -> str:
 
 This ordering matters: a mixed edit that changes skill policy and any restart-sensitive field starts a deploy and never exposes the mixed settings through live reload.
 
-- [ ] **Step 8: Wire both new capabilities at composition**
+#### Step 8: Wire both new capabilities at composition
 
 In `src/pynchy/host/orchestrator/app.py`, import `get_host_config_hashes` from `pynchy.host.git_ops.api`. Add these arguments to `TemporalGitSyncRuntime(...)`:
 
@@ -698,7 +705,7 @@ reset_settings=reset_config_settings,
 
 to its `TemporalGitSyncRuntime(...)` fixture.
 
-- [ ] **Step 9: Update existing Temporal tests to supply the combined hashes**
+#### Step 9: Update existing Temporal tests to supply the combined hashes
 
 In `test_trigger_deploy_reports_workflow_start_failure_after_rolling_back`,
 add:
@@ -722,7 +729,7 @@ monkeypatch.setattr(
 )
 ```
 
-- [ ] **Step 10: Add a legacy-state regression**
+#### Step 10: Add a legacy-state regression
 
 Add:
 
@@ -756,7 +763,7 @@ async def test_legacy_host_state_adopts_current_skill_policy_without_reload(
     reset.assert_not_called()
 ```
 
-- [ ] **Step 11: Run the complete Temporal Git-sync test file**
+#### Step 11: Run the complete Temporal Git-sync test file
 
 Run:
 
@@ -766,7 +773,7 @@ uv run pytest -q tests/test_temporal_git_sync.py
 
 Expected: all tests pass. The existing rollback test must still prove that failure to start a restart workflow restores the checkout.
 
-- [ ] **Step 12: Commit the Temporal classifier**
+#### Step 12: Commit the Temporal classifier
 
 ```bash
 git add src/pynchy/host/orchestrator/temporal/git_sync.py \
@@ -784,7 +791,7 @@ git commit -m "feat: refresh skill policy without restart"
 - Modify: `src/pynchy/host/orchestrator/app.py:250-257,840-860`
 - Test: `tests/test_workspace_config.py`
 
-- [ ] **Step 1: Write the failing current-settings regression**
+#### Step 1: Write the failing current-settings regression
 
 Import the new use case from `pynchy.host.orchestrator.api` in `tests/test_workspace_config.py`:
 
@@ -822,7 +829,7 @@ def test_workspace_skill_selection_reads_current_settings(monkeypatch):
 
 Also add `Mock` to the existing `unittest.mock` import.
 
-- [ ] **Step 2: Run the regression and verify the use case is missing**
+#### Step 2: Run the regression and verify the use case is missing
 
 Run:
 
@@ -832,7 +839,7 @@ uv run pytest -q tests/test_workspace_config.py::test_workspace_skill_selection_
 
 Expected: collection fails because `resolve_workspace_skill_selection` is not exported.
 
-- [ ] **Step 3: Add the application-owned resolver**
+#### Step 3: Add the application-owned resolver
 
 Add this after `load_resolved_config()` in `src/pynchy/host/orchestrator/workspace_config.py`:
 
@@ -863,7 +870,7 @@ Add this entry to `__all__`:
 "resolve_workspace_skill_selection",
 ```
 
-- [ ] **Step 4: Remove the startup settings capture**
+#### Step 4: Remove the startup settings capture
 
 Import `resolve_workspace_skill_selection` in the `workspace_config` import block in `src/pynchy/host/orchestrator/app.py`.
 
@@ -875,7 +882,7 @@ resolve_workspace_skill_selection=resolve_workspace_skill_selection,
 
 Keep `tool_skills` captured from startup. Tool declarations remain restart-sensitive, so live policy reload must not update that mapping.
 
-- [ ] **Step 5: Run workspace and warm-skill tests**
+#### Step 5: Run workspace and warm-skill tests
 
 Run:
 
@@ -886,7 +893,7 @@ uv run pytest -q tests/test_workspace_config.py \
 
 Expected: all selected tests pass, including the existing assertion that a warm turn refreshes personalized skills before IPC.
 
-- [ ] **Step 6: Commit the dynamic policy resolver**
+#### Step 6: Commit the dynamic policy resolver
 
 ```bash
 git add src/pynchy/host/orchestrator/workspace_config.py \
@@ -903,7 +910,7 @@ git commit -m "refactor: resolve current workspace skill policy"
 - Modify: `docs/architecture/workspaces.md:94-97,124-144`
 - Modify: `docs/usage/personalization.md:99-123`
 
-- [ ] **Step 1: Update the Git-sync drift table**
+#### Step 1: Update the Git-sync drift table
 
 In `docs/architecture/git-sync.md`, replace the opening sentence and config row with:
 
@@ -931,7 +938,7 @@ restart-sensitive when it changes any field beyond `skills` and
 `denied_skills`.
 ```
 
-- [ ] **Step 2: Narrow the workspace restart instruction**
+#### Step 2: Narrow the workspace restart instruction
 
 In `docs/architecture/workspaces.md`, replace lines 94-97 with:
 
@@ -946,7 +953,7 @@ restart. No manual database edits are required.
 
 In “Personalized Skill Access,” replace “the next session's skill registry” with “the workspace's skill registry before its next turn.”
 
-- [ ] **Step 3: Document the operator-facing behavior once**
+#### Step 3: Document the operator-facing behavior once
 
 After the paragraph ending at `docs/usage/personalization.md:119`, add:
 
@@ -957,7 +964,7 @@ next-turn refresh path and do not restart Pynchy. Adding, removing, or renaming
 a profile—or changing any other settings field—remains restart-sensitive.
 ```
 
-- [ ] **Step 4: Build the documentation**
+#### Step 4: Build the documentation
 
 Run:
 
@@ -967,7 +974,7 @@ uv run mkdocs build --strict
 
 Expected: exit 0 with no broken links or strict-mode warnings.
 
-- [ ] **Step 5: Commit the contract**
+#### Step 5: Commit the contract
 
 ```bash
 git add docs/architecture/git-sync.md docs/architecture/workspaces.md \
@@ -981,7 +988,7 @@ git commit -m "docs: explain selective personalization refresh"
 
 - No new files.
 
-- [ ] **Step 1: Run the complete focused suite**
+#### Step 1: Run the complete focused suite
 
 ```bash
 uv run pytest -q tests/test_git_sync.py tests/test_temporal_git_sync.py \
@@ -990,7 +997,7 @@ uv run pytest -q tests/test_git_sync.py tests/test_temporal_git_sync.py \
 
 Expected: all tests pass. The baseline before implementation contains 206 tests across these files.
 
-- [ ] **Step 2: Run the architecture checker directly**
+#### Step 2: Run the architecture checker directly
 
 ```bash
 uv run python -m scripts.prek_hooks.check_architecture_boundaries
@@ -998,7 +1005,7 @@ uv run python -m scripts.prek_hooks.check_architecture_boundaries
 
 Expected: exit 0 with no new boundary or public-surface violations.
 
-- [ ] **Step 3: Run every repository hook**
+#### Step 3: Run every repository hook
 
 ```bash
 uvx prek run --all-files
@@ -1006,7 +1013,7 @@ uvx prek run --all-files
 
 Expected: exit 0. If a formatter changes a file, review the change and rerun this command until it exits cleanly.
 
-- [ ] **Step 4: Confirm the final diff stays within scope**
+#### Step 4: Confirm the final diff stays within scope
 
 ```bash
 git status --short
@@ -1021,7 +1028,7 @@ Expected:
 - The planning commits are followed by the four implementation and
   documentation commits described above.
 
-- [ ] **Step 5: Use Pynchy's managed delivery path**
+#### Step 5: Use Pynchy's managed delivery path
 
 From the control checkout:
 
