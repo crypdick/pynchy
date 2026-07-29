@@ -3,6 +3,8 @@
 Subcommands:
     pynchy              Run the service (default)
     pynchy build        Build the container image
+    pynchy status       Read service status through the authenticated control plane
+    pynchy deploy       Request deployment through the authenticated control plane
     pynchy doctor       Explain effective workspace host-action capabilities
 """
 
@@ -230,10 +232,9 @@ def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> Non
         sys.stdout.write(f"{action}: {removed_path}\n")
 
 
-def _doctor_url(host: str, workspace: str | None) -> str:
+def _control_url(host: str, relative_url: str) -> str:
     base = host if "://" in host else f"http://{host}"
-    url = f"{base.rstrip('/')}/capabilities"
-    return f"{url}?{urllib.parse.urlencode({'workspace': workspace})}" if workspace else url
+    return f"{base.rstrip('/')}/{relative_url.lstrip('/')}"
 
 
 def _render_capability_doctor(payload: object) -> str:
@@ -277,18 +278,22 @@ async def _read_unix_json(
     socket_path: Path,
     relative_url: str,
     *,
+    method: str,
     bearer_token: str | None,
 ) -> object:
     import aiohttp  # noqa: PLC0415 - Unix HTTP client is only needed by local CLI control.
 
     headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else None
     connector = aiohttp.UnixConnector(path=str(socket_path))
-    async with (
-        aiohttp.ClientSession(connector=connector, headers=headers) as session,
-        session.get(f"http://localhost{relative_url}") as response,
-    ):
-        response.raise_for_status()
-        return await response.json()
+    try:
+        async with (
+            aiohttp.ClientSession(connector=connector, headers=headers) as session,
+            session.request(method, f"http://localhost{relative_url}") as response,
+        ):
+            response.raise_for_status()
+            return await response.json()
+    except aiohttp.ClientError as exc:
+        raise OSError(str(exc)) from exc
 
 
 def _doctor(
@@ -300,9 +305,13 @@ def _doctor(
     token_file: Path | None = None,
 ) -> int:
     try:
-        payload = _fetch_doctor_payload(
+        relative_url = "/capabilities"
+        if workspace:
+            relative_url += f"?{urllib.parse.urlencode({'workspace': workspace})}"
+        payload = _fetch_control_payload(
             host,
-            workspace,
+            relative_url,
+            method="GET",
             socket_path=socket_path,
             token_file=token_file,
         )
@@ -318,30 +327,57 @@ def _doctor(
     return 0
 
 
-def _fetch_doctor_payload(
+def _fetch_control_payload(
     host: str | None,
-    workspace: str | None,
+    relative_url: str,
     *,
+    method: str,
     socket_path: Path | None,
     token_file: Path | None,
 ) -> object:
     selected_host, selected_socket = _control_client_target(host, socket_path)
     token = _control_client_token(token_file)
     if selected_socket is not None:
-        relative_url = _doctor_url("localhost", workspace).removeprefix("http://localhost")
-        return asyncio.run(_read_unix_json(selected_socket, relative_url, bearer_token=token))
+        return asyncio.run(
+            _read_unix_json(selected_socket, relative_url, method=method, bearer_token=token)
+        )
     if selected_host is None:
         raise ValueError("No TCP host or Unix socket selected for the control-plane client")
 
-    url = _doctor_url(selected_host, workspace)
+    url = _control_url(selected_host, relative_url)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     request: str | urllib.request.Request = url
-    if token:
+    if token or method != "GET":
         request = urllib.request.Request(  # noqa: S310 - operator-selected endpoint with bearer auth.
             url,
-            headers={"Authorization": f"Bearer {token}"},
+            headers=headers,
+            method=method,
         )
     with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - operator-selected Pynchy status endpoint is intentionally queried.
         return json.loads(response.read())
+
+
+def _control_command(
+    relative_url: str,
+    *,
+    method: str,
+    host: str | None,
+    socket_path: Path | None,
+    token_file: Path | None,
+) -> int:
+    try:
+        payload = _fetch_control_payload(
+            host,
+            relative_url,
+            method=method,
+            socket_path=socket_path,
+            token_file=token_file,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        _stderr_line(f"{relative_url.removeprefix('/').capitalize()} failed: {exc}")
+        return 1
+    _stdout_line(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
 
 
 def main() -> None:
@@ -369,6 +405,8 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("build", help="Build the container image")
+    sub.add_parser("status", help="Read service status through the authenticated control plane")
+    sub.add_parser("deploy", help="Request deployment through the authenticated control plane")
     validate_personalization = sub.add_parser(
         "validate-personalization",
         help="Validate a personalization repository against this Pynchy checkout",
@@ -436,6 +474,26 @@ def main() -> None:
     match args.command:
         case "build":
             _build()
+        case "status":
+            sys.exit(
+                _control_command(
+                    "/status",
+                    method="GET",
+                    host=args.host,
+                    socket_path=args.socket,
+                    token_file=args.token_file,
+                )
+            )
+        case "deploy":
+            sys.exit(
+                _control_command(
+                    "/deploy",
+                    method="POST",
+                    host=args.host,
+                    socket_path=args.socket,
+                    token_file=args.token_file,
+                )
+            )
         case "validate-personalization":
             sys.exit(_validate_personalization(args.path))
         case "control-plane":

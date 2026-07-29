@@ -12,7 +12,7 @@ Pynchy self-manages — it auto-restarts when config files change (`config.toml`
 
 If you need to trigger a deploy explicitly:
 ```bash
-curl -s -X POST http://pynchy:8484/deploy
+uv run pynchy deploy
 ```
 
 **Only use manual service/container commands when the service is unhealthy and needs fixing** (e.g. the deploy endpoint is unreachable, the service is stuck, or you need to debug a crash).

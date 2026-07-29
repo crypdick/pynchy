@@ -18,7 +18,7 @@ Connect Pynchy to Slack channels and DMs through Slack Socket Mode.
 3. Install the optional dependency:
 
    ```bash
-   uv sync --extra slack
+   uv sync --locked --inexact --extra slack
    ```
 
 ## Capabilities

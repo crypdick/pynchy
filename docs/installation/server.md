@@ -32,8 +32,8 @@ Log out and back in after changing Docker group membership, or verify it with
 ssh-keyscan -H github.com >> ~/.ssh/known_hosts
 git clone git@github.com:crypdick/pynchy.git ~/src/pynchy
 cd ~/src/pynchy
-uv sync
-uv sync --extra whatsapp       # only when using WhatsApp
+uv sync --locked
+uv sync --locked --inexact --extra whatsapp  # only when using WhatsApp
 git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
   data/personalization
 uv run pynchy validate-personalization data/personalization
@@ -85,6 +85,9 @@ Use `config-examples/pynchy.service.EXAMPLE` as the unit-file reference. Replace
 its path placeholders before enabling it. The unit starts
 `scripts/run_pynchy.sh`, which materializes
 `data/proton-pass/pynchy.env` through Proton Pass when that template exists.
+The launcher owns the live dependency environment at `data/host-venv` and runs
+the locked full optional set. Checkout-level `uv sync` commands therefore cannot
+prune packages from the running service.
 
 ## Maintain and update the server
 

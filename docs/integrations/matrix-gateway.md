@@ -170,12 +170,12 @@ message without adding it to agent input.
 Inspect the connection loop and route actions with:
 
 ```sh
-pynchy doctor --workspace personal
-curl http://localhost:8484/status
+uv run pynchy doctor --workspace personal
+uv run pynchy status
 ```
 
 The protected status response includes each named connection runtime and its
-current readiness. `pynchy doctor --workspace personal --json` reports route
+current readiness. `uv run pynchy doctor --workspace personal --json` reports route
 action setup, policy, and gateway availability. A ready snapshot is diagnostic,
 not authorization: dispatch and approved replay always enforce current policy
 and live route assertions again.

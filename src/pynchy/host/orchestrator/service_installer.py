@@ -227,7 +227,6 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory={project_root}
 ExecStartPre={git_path} -C {project_root} pull --ff-only
-ExecStartPre={uv_path} sync --all-extras
 ExecStartPre={uv_path} tool run prek install
 ExecStart=/bin/sh {project_root}/scripts/run_pynchy.sh
 Restart=always
