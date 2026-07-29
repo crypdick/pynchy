@@ -1,0 +1,127 @@
+"""Behavior tests for provider callbacks installed by host composition."""
+
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import AsyncMock, Mock
+
+import pluggy
+import pytest
+from conftest import make_settings
+from temporalio.service import RPCError, RPCStatusCode
+
+from pynchy.config.api import McpTool, McpToolConfig
+from pynchy.host.orchestrator import plugin_configuration
+from pynchy.host.orchestrator.temporal.workflow_control import (
+    TemporalRuntimeUnavailableError,
+)
+from pynchy.plugins.integrations.linear import LinearMcpPlugin
+
+
+def _manager(*plugins: tuple[str, object]) -> pluggy.PluginManager:
+    manager = pluggy.PluginManager("pynchy")
+    for name, plugin in plugins:
+        manager.register(plugin, name=name)
+    return manager
+
+
+def test_composition_handles_absent_optional_plugins_and_mcp_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager()
+    settings = make_settings(
+        tools={
+            "reader": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(runtime="script", command="reader", port=8475),
+            )
+        }
+    )
+    configured: dict[str, object] = {}
+    monkeypatch.setattr(
+        plugin_configuration,
+        "configure_marketplace_health_runtime",
+        lambda runtime: configured.setdefault("marketplace", runtime),
+    )
+
+    plugin_configuration.configure_computer_use_plugins(manager, settings)
+    plugin_configuration.configure_observer_plugins(manager)
+    plugin_configuration.configure_google_setup_plugin(manager, settings)
+    plugin_configuration.configure_marketplace_health_plugin(manager, settings)
+
+    runtime = configured["marketplace"]
+    assert runtime.reader_environment("reader") is not None
+
+
+def test_gog_workspace_policy_fails_closed_for_invalid_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    settings = make_settings(project_root=tmp_path)
+
+    def invalid_workspace(_settings: object, _workspace: str) -> None:
+        raise ValueError("invalid workspace")
+
+    monkeypatch.setattr(type(settings), "resolved_workspace_config", invalid_workspace)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        plugin_configuration,
+        "configure_gog_runtime",
+        lambda runtime: captured.setdefault("runtime", runtime),
+    )
+
+    plugin_configuration.configure_gog_plugin(settings)
+
+    assert captured["runtime"].workspace_enables_gog("invalid") is False
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RPCError("unavailable", RPCStatusCode.INTERNAL, b""), TemporalRuntimeUnavailableError()],
+)
+def test_linear_composition_converts_scheduler_failures_to_false(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    linear = LinearMcpPlugin()
+    configure = Mock(wraps=linear.configure)
+    linear.configure = configure
+    plugin_configuration.configure_linear_plugin(
+        _manager(("builtin-linear", linear)), make_settings(), lambda: None
+    )
+    cancel = configure.call_args.kwargs["cancel_scheduled_workflow"]
+
+    async def fail(_workflow_id: str) -> bool:
+        await asyncio.sleep(0)
+        raise failure
+
+    monkeypatch.setattr(plugin_configuration, "cancel_scheduled_agent_workflow", fail)
+    assert asyncio.run(cancel("workflow-1")) is False
+
+
+def test_linear_composition_preserves_successful_scheduler_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    linear = LinearMcpPlugin()
+    configure = Mock(wraps=linear.configure)
+    linear.configure = configure
+    plugin_configuration.configure_linear_plugin(
+        _manager(("builtin-linear", linear)), make_settings(), lambda: None
+    )
+    cancel = configure.call_args.kwargs["cancel_scheduled_workflow"]
+    monkeypatch.setattr(
+        plugin_configuration,
+        "cancel_scheduled_agent_workflow",
+        AsyncMock(return_value=True),
+    )
+
+    assert asyncio.run(cancel("workflow-1")) is True
+
+
+def test_builtin_canary_registration_is_idempotent() -> None:
+    plugin_configuration.configure_builtin_canaries(make_settings())
+    registered = plugin_configuration.registered_canary_scenarios()
+
+    plugin_configuration.configure_builtin_canaries(make_settings())
+
+    assert plugin_configuration.registered_canary_scenarios() == registered
