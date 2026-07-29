@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
+
+import pytest
 
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.plugins.integrations.linear_decision_inbox import (
@@ -20,9 +21,6 @@ from tests.linear_decision_inbox_support import (
 )
 
 pytest_plugins = ("tests.linear_decision_inbox_support",)
-
-if TYPE_CHECKING:
-    import pytest
 
 
 async def test_planned_work_is_deferred_by_issue_revision_without_inline_review() -> None:
@@ -97,3 +95,28 @@ async def test_deferred_review_skips_a_superseded_provider_revision(
 
     assert task is None
     reviewer.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ([], TypeError),
+        ({"workspace": "beta"}, ValueError),
+        (
+            {
+                "workspace": "beta",
+                "issue_id": "issue-1",
+                "identifier": "SYN-1",
+                "updated_at": "2026-07-28T12:00:00Z",
+                "public_source": "yes",
+            },
+            TypeError,
+        ),
+    ],
+)
+def test_plan_review_admission_rejects_malformed_temporal_payloads(
+    payload: object,
+    error: type[Exception],
+) -> None:
+    with pytest.raises(error):
+        LinearPlanReviewAdmission.from_payload(payload)
