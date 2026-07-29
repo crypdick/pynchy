@@ -477,6 +477,10 @@ class TestPacketCodecTypeChecks:
             ("messages", "nope", "must be a list"),
             ("provenance", "nope", "must be an object"),
             ("tool_counts", "nope", "must be an object"),
+            ("error_snippets", [1], "items must be strings"),
+            ("messages", [1], "items must be objects"),
+            ("tool_counts", {1: 1}, "keys must be strings"),
+            ("provenance", {"source": 1}, "values must be strings"),
         ],
     )
     def test_top_level_type_checks_raise_typeerror(self, field, value, match):
