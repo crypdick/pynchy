@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -178,6 +178,8 @@ class _FakeWhatsAppClient:
         self.event = _FakeEventRegistry()
         self.me: object | None = None
         self.sent_messages: list[tuple[object, object]] = []
+        self.presence_updates: list[tuple[object, object, object]] = []
+        self.reactions: list[tuple[object, object, str, str]] = []
         self._idle = asyncio.Event()
 
     async def connect(self) -> None:
@@ -192,6 +194,18 @@ class _FakeWhatsAppClient:
 
     async def send_message(self, target: object, text: object) -> None:
         self.sent_messages.append((target, text))
+
+    async def send_chat_presence(self, target: object, presence: object, media: object) -> None:
+        self.presence_updates.append((target, presence, media))
+
+    async def build_reaction(
+        self, chat: object, sender: object, message_id: str, emoji: str
+    ) -> object:
+        self.reactions.append((chat, sender, message_id, emoji))
+        return {"reaction": emoji}
+
+    async def create_group(self, _name: str) -> object:
+        return type("Group", (), {"JID": _Jid("new-group@g.us", "new-group", "g.us")})()
 
     async def get_joined_groups(self) -> list[object]:
         return []
@@ -280,6 +294,17 @@ class _InboundEvent:
     Message: _MessageBody
 
 
+@dataclass(frozen=True)
+class _GroupName:
+    Name: str
+
+
+@dataclass(frozen=True)
+class _Group:
+    JID: _Jid
+    GroupName: _GroupName
+
+
 def _inbound_event(content: str, *, is_from_me: bool = False) -> _InboundEvent:
     chat = _Jid(value=CHAT_JID, User="120363001234567890", Server="g.us")
     sender = _Jid(value="5551234@s.whatsapp.net", User="5551234", Server="s.whatsapp.net")
@@ -353,6 +378,36 @@ class TestSendAskUser:
         )
 
         assert _rendered_text(connected_channel.client) == "Hello world"
+
+    async def test_set_typing_sends_the_matching_whatsapp_presence(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        await connected_channel.channel.set_typing(CHAT_JID, is_typing=True)
+        await connected_channel.channel.set_typing(CHAT_JID, is_typing=False)
+
+        assert connected_channel.client.presence_updates == [
+            (("120363001234567890", "g.us"), "composing", "text"),
+            (("120363001234567890", "g.us"), "paused", "text"),
+        ]
+
+    async def test_send_reaction_builds_and_delivers_the_provider_reaction(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        await connected_channel.channel.send_reaction(
+            CHAT_JID, "message-1", "5551234@s.whatsapp.net", "👍"
+        )
+
+        assert connected_channel.client.reactions == [
+            (("120363001234567890", "g.us"), ("5551234", "s.whatsapp.net"), "message-1", "👍")
+        ]
+        assert connected_channel.client.sent_messages == [
+            (("120363001234567890", "g.us"), {"reaction": "👍"})
+        ]
+
+    async def test_create_group_returns_the_provider_group_jid(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        assert await connected_channel.channel.create_group("New Group") == "new-group@g.us"
 
 
 class TestResolveAskUserAnswer:
@@ -475,3 +530,65 @@ class TestInboundMessageAdapter:
 class TestCallbackSurface:
     def test_exposes_answer_callback(self, connected_channel: _ConnectedChannel) -> None:
         assert connected_channel.channel.on_ask_user_answer is connected_channel.on_answer
+
+
+class TestChatResolutionAndMetadata:
+    async def test_resolve_chat_jid_returns_exact_jids_without_a_lookup(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        assert await connected_channel.channel.resolve_chat_jid(CHAT_JID) == CHAT_JID
+
+    @pytest.mark.parametrize(
+        ("matches", "expected"),
+        [([CHAT_JID], CHAT_JID), ([], None), ([CHAT_JID, "another@g.us"], None)],
+    )
+    async def test_resolve_chat_jid_requires_one_stored_name_match(
+        self,
+        tmp_path: Path,
+        matches: list[str],
+        expected: str | None,
+    ) -> None:
+        client = _FakeWhatsAppClient()
+        channel = _NoopMetadataSyncWhatsAppChannel(
+            connection_name="connection.whatsapp.test",
+            auth_db_path=str(tmp_path / "neonize.db"),
+            assistant_name="pynchy",
+            on_message=MagicMock(),
+            on_chat_metadata=MagicMock(),
+            workspaces=lambda: {CHAT_JID: WORKSPACE},
+            client_factory=lambda _auth_db: client,
+            find_chat_jids_by_name=AsyncMock(return_value=matches),
+        )
+
+        assert await channel.resolve_chat_jid("Project chat") == expected
+
+    async def test_sync_group_metadata_records_named_groups_for_future_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        client = _FakeWhatsAppClient()
+        client.get_joined_groups = AsyncMock(
+            return_value=[
+                _Group(
+                    JID=_Jid(CHAT_JID, "120363001234567890", "g.us"),
+                    GroupName=_GroupName("Project chat"),
+                )
+            ]
+        )
+        update_chat_name = AsyncMock()
+        set_last_group_sync = AsyncMock()
+        channel = WhatsAppChannel(
+            connection_name="connection.whatsapp.test",
+            auth_db_path=str(tmp_path / "neonize.db"),
+            assistant_name="pynchy",
+            on_message=MagicMock(),
+            on_chat_metadata=MagicMock(),
+            workspaces=lambda: {CHAT_JID: WORKSPACE},
+            client_factory=lambda _auth_db: client,
+            update_chat_name=update_chat_name,
+            set_last_group_sync=set_last_group_sync,
+        )
+
+        await channel.sync_group_metadata(force=True)
+
+        update_chat_name.assert_awaited_once_with(CHAT_JID, "Project chat")
+        set_last_group_sync.assert_awaited_once()

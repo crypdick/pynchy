@@ -1,0 +1,84 @@
+"""Behavior tests for the control-plane credential CLI."""
+
+from __future__ import annotations
+
+import stat
+import sys
+from typing import TYPE_CHECKING
+
+import pytest
+from conftest import make_settings
+
+from pynchy import __main__ as cli
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from _pytest.capture import CaptureFixture
+    from _pytest.monkeypatch import MonkeyPatch
+
+
+def _run_bootstrap(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    project_root: Path,
+    *arguments: str,
+) -> tuple[int, str, str]:
+    settings = make_settings(project_root=project_root)
+    monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "control-plane", "bootstrap", *arguments])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    return exited.value.code, captured.out, captured.err
+
+
+def test_control_plane_bootstrap_cli_creates_a_restricted_token(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    exit_code, output, errors = _run_bootstrap(monkeypatch, capsys, tmp_path)
+    token_path = tmp_path / "data" / "control-plane.token"
+
+    assert exit_code == 0
+    assert not errors
+    assert output == f"Created permission-restricted control-plane token: {token_path}\n"
+    assert len(token_path.read_text().strip()) >= 32
+    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+
+
+def test_control_plane_bootstrap_cli_rotates_an_existing_token(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    assert _run_bootstrap(monkeypatch, capsys, tmp_path)[0] == 0
+    token_path = tmp_path / "data" / "control-plane.token"
+    original_token = token_path.read_text()
+
+    exit_code, output, errors = _run_bootstrap(monkeypatch, capsys, tmp_path, "--rotate")
+
+    assert exit_code == 0
+    assert not errors
+    assert output == f"Rotated permission-restricted control-plane token: {token_path}\n"
+    assert token_path.read_text() != original_token
+
+
+def test_control_plane_bootstrap_cli_refuses_to_overwrite_without_rotate(
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    assert _run_bootstrap(monkeypatch, capsys, tmp_path)[0] == 0
+    token_path = tmp_path / "data" / "control-plane.token"
+
+    exit_code, output, errors = _run_bootstrap(monkeypatch, capsys, tmp_path)
+
+    assert exit_code == 1
+    assert not output
+    assert errors == (
+        f"Control-plane bootstrap failed: Control-plane token already exists: {token_path}\n"
+    )
