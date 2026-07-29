@@ -15,6 +15,7 @@ from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.host.orchestrator.plugin_configuration import configure_observer_plugins
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import ChannelPluginContext, attach_observers
+from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
 
 
@@ -69,6 +70,10 @@ class TestInRepoPluginDiscovery:
 
 class TestObserverPluginRuntimeTypes:
     """Observer plugin entrypoints should accept runtime EventBus instances."""
+
+    def test_unconfigured_sqlite_observer_fails_before_attachment(self):
+        with pytest.raises(RuntimeError, match="not been configured"):
+            SqliteObserverPlugin().pynchy_observer()
 
     def test_attach_observers_accepts_event_bus(self):
         """attach_observers should not crash resolving the EventBus annotation."""
