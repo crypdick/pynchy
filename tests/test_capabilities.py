@@ -30,7 +30,9 @@ from pynchy.plugins.api import (
     IdempotencyContract,
     IdempotencyMode,
     PynchySpec,
+    clear_host_action_catalog_cache,
     get_host_action_catalog,
+    initialize_host_action_catalog,
     validate_host_action_descriptors,
 )
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
@@ -312,3 +314,42 @@ def test_plugin_action_spec_cannot_redefine_builtin_action_id():
         match=r"duplicate action id: chat\.matrix\.route\.read",
     ):
         get_host_action_catalog(_plugin_manager(DuplicatePlugin()))
+
+
+def test_host_action_catalog_initializer_installs_a_reusable_cache():
+    clear_host_action_catalog_cache()
+    try:
+        catalog = initialize_host_action_catalog(_plugin_manager(CalDAVMcpServerPlugin()))
+
+        assert get_host_action_catalog() is catalog
+    finally:
+        clear_host_action_catalog_cache()
+
+
+def test_catalog_rejects_invalid_action_descriptors_from_a_plugin():
+    invalid = _descriptor(capability_id="not")
+
+    class InvalidPlugin:
+        @hookimpl
+        def pynchy_service_handler(self) -> HostActionRegistration:
+            return HostActionRegistration(actions=(invalid,))
+
+    with pytest.raises(CapabilityCatalogError, match="invalid capability id"):
+        get_host_action_catalog(_plugin_manager(InvalidPlugin()))
+
+
+@pytest.mark.parametrize(
+    ("contribution", "message"),
+    [
+        ("not-a-list", "pynchy_action_specs must return a list or tuple"),
+        ((object(),), "pynchy_action_specs entries must be ActionSpec instances"),
+    ],
+)
+def test_catalog_rejects_malformed_action_spec_contributions(contribution, message):
+    class MalformedPlugin:
+        @hookimpl
+        def pynchy_action_specs(self):
+            return contribution
+
+    with pytest.raises(CapabilityCatalogError, match=message):
+        get_host_action_catalog(_plugin_manager(MalformedPlugin()))
