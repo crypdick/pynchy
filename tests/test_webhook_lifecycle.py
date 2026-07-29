@@ -66,6 +66,23 @@ _SUBJECT = ConversationSubject(
 )
 
 
+async def test_routed_admission_requires_a_live_dispatcher() -> None:
+    route = _route()
+    event = _message_event("missing-dispatcher")
+
+    with pytest.raises(RuntimeError, match="dispatcher disappeared"):
+        await admit_prepared_event(
+            None,
+            route,
+            event,
+            WebhookDeliveryAdmissionRequest(
+                receipt=_receipt(route, event),
+                task=None,
+                defer_process_event=False,
+            ),
+        )
+
+
 async def test_dispatcher_preparation_defers_pending_delivery_domain_work() -> None:
     harness = LinearWebhookHarness()
     await harness.persist_parent()
