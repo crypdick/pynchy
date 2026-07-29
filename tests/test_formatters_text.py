@@ -73,6 +73,12 @@ def test_render_thinking():
     assert "analyzing code" in result.text
 
 
+def test_render_empty_thinking_uses_a_placeholder():
+    result = TextFormatter().render(OutboundEvent(type=OutboundEventType.THINKING, content=""))
+
+    assert result.text == "💭 thinking..."
+
+
 def test_render_tool_result():
     fmt = TextFormatter()
     event = OutboundEvent(type=OutboundEventType.TOOL_RESULT, content="file contents here")
