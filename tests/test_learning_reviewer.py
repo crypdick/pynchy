@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
+from conftest import configure_learning_paths_for, make_settings
 
+from pynchy.config.api import LearningConfig, ObsidianLearningConfig
+from pynchy.host.learning.api import run_learning_review
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
 from pynchy.learning_packets import LearningPacket
@@ -131,3 +135,66 @@ def test_should_review_accepts_skill_worthy_repeated_workflow() -> None:
     )
 
     assert should_review(packet) is True
+
+
+@pytest.mark.asyncio
+async def test_hidden_learning_review_skips_low_signal_packet() -> None:
+    run_agent = AsyncMock()
+
+    result = await run_learning_review(
+        _packet(messages=[{"role": "user", "content": "thanks!"}], final_answer="You're welcome."),
+        run_agent,
+    )
+
+    assert result == "skipped"
+    run_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hidden_learning_review_runs_reviewer_with_a_scoped_workspace(tmp_path: Path) -> None:
+    configure_learning_paths_for(
+        make_settings(
+            data_dir=tmp_path / "data",
+            learning=LearningConfig(
+                enabled=True,
+                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+            ),
+        )
+    )
+
+    async def successful_agent(*args, **kwargs) -> str:
+        await kwargs["on_output"](object())
+        return "success"
+
+    run_agent = AsyncMock(side_effect=successful_agent)
+    result = await run_learning_review(_packet(), run_agent)
+
+    assert result == "completed"
+    workspace, reviewer_jid, messages = run_agent.await_args.args
+    assert workspace.jid == reviewer_jid == "learning-review:deep-work"
+    assert workspace.folder == "learning-review-deep-work"
+    assert [message["role"] for message in messages] == ["user"]
+    assert "remember the workflow" in messages[0]["content"]
+    assert run_agent.await_args.kwargs["input_source"] == "hidden_learning_review"
+
+
+@pytest.mark.asyncio
+async def test_hidden_learning_review_rejects_unavailable_paths() -> None:
+    with pytest.raises(RuntimeError, match="learning paths unavailable"):
+        await run_learning_review(_packet(), AsyncMock())
+
+
+@pytest.mark.asyncio
+async def test_hidden_learning_review_raises_when_reviewer_fails(tmp_path: Path) -> None:
+    configure_learning_paths_for(
+        make_settings(
+            data_dir=tmp_path / "data",
+            learning=LearningConfig(
+                enabled=True,
+                obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+            ),
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="learning reviewer returned 'error'"):
+        await run_learning_review(_packet(), AsyncMock(return_value="error"))

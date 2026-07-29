@@ -249,3 +249,147 @@ async def test_learning_observation_failure_does_not_block_streamed_output() -> 
     assert args.kwargs["turn_id"].startswith("turn_")
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
     deps.start_completed_turn_learning_review.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_learning_capture_expands_to_final_cursor_without_duplicate_messages() -> None:
+    group = _make_group()
+    missed = _make_message("original", message_id="msg-2", timestamp="2024-01-01T00:00:02Z")
+    duplicate = _make_message(
+        "duplicate",
+        message_id="msg-2",
+        timestamp="2024-01-01T00:00:02Z",
+    )
+    earlier = _make_message("earlier", message_id="msg-1", timestamp="2024-01-01T00:00:01Z")
+    final = _make_message("final", message_id="msg-3", timestamp="2024-01-01T00:00:03Z")
+    future = _make_message("future", message_id="msg-4", timestamp="2024-01-01T00:00:04Z")
+    fetch_messages_since = AsyncMock(return_value=[duplicate, earlier, future, final])
+
+    messages = await learning_capture.messages_for_learning_packet(
+        chat_jid="g@g.us",
+        group=group,
+        missed_messages=[missed],
+        final_cursor=final.timestamp,
+        fetch_messages_since=fetch_messages_since,
+    )
+
+    assert messages == [earlier, missed, final]
+    fetch_messages_since.assert_awaited_once_with("g@g.us", missed.timestamp)
+
+
+@pytest.mark.asyncio
+async def test_learning_capture_skips_review_when_message_expansion_fails() -> None:
+    group = _make_group()
+    missed = _make_message(timestamp="2024-01-01T00:00:01Z")
+    start_review_workflow = AsyncMock()
+
+    job_id = await learning_capture.start_completed_turn_learning_review(
+        "g@g.us",
+        group,
+        [missed],
+        "2024-01-01T00:00:02Z",
+        learning_capture.LearningRunSummary(),
+        AsyncMock(side_effect=RuntimeError("message store unavailable")),
+        start_review_workflow,
+        enabled=True,
+        review_after_turn=True,
+        packet_max_chars=4_000,
+    )
+
+    assert job_id is None
+    start_review_workflow.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("enabled", "review_after_turn"),
+    [(False, True), (True, False)],
+)
+@pytest.mark.asyncio
+async def test_learning_capture_requires_both_settings(
+    enabled: bool,
+    review_after_turn: bool,
+) -> None:
+    fetch_messages_since = AsyncMock()
+    start_review_workflow = AsyncMock()
+
+    job_id = await learning_capture.start_completed_turn_learning_review(
+        "g@g.us",
+        _make_group(),
+        [_make_message()],
+        "2024-01-01T00:00:02Z",
+        learning_capture.LearningRunSummary(),
+        fetch_messages_since,
+        start_review_workflow,
+        enabled=enabled,
+        review_after_turn=review_after_turn,
+        packet_max_chars=4_000,
+    )
+
+    assert job_id is None
+    fetch_messages_since.assert_not_awaited()
+    start_review_workflow.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_learning_capture_starts_review_with_messages_through_final_cursor() -> None:
+    group = _make_group()
+    first = _make_message(message_id="msg-1", timestamp="2024-01-01T00:00:01Z")
+    final = _make_message(message_id="msg-2", timestamp="2024-01-01T00:00:02Z")
+    summary = learning_capture.LearningRunSummary(final_answer="Done.")
+    start_review_workflow = AsyncMock()
+
+    with patch(
+        "pynchy.host.learning.packets.start_learning_review_workflow",
+        new_callable=AsyncMock,
+        return_value="learning-job",
+    ) as start_packet_review:
+        job_id = await learning_capture.start_completed_turn_learning_review(
+            "g@g.us",
+            group,
+            [first],
+            final.timestamp,
+            summary,
+            AsyncMock(return_value=[final]),
+            start_review_workflow,
+            enabled=True,
+            review_after_turn=True,
+            packet_max_chars=4_000,
+        )
+
+    assert job_id == "learning-job"
+    start_packet_review.assert_awaited_once_with(
+        chat_jid="g@g.us",
+        group=group,
+        missed_messages=[first, final],
+        final_cursor=final.timestamp,
+        summary=summary,
+        enabled=True,
+        packet_max_chars=4_000,
+        start_review_workflow=start_review_workflow,
+    )
+
+
+@pytest.mark.asyncio
+async def test_learning_capture_failure_does_not_escape_completed_turn() -> None:
+    group = _make_group()
+    missed = _make_message(timestamp="2024-01-01T00:00:01Z")
+
+    with patch(
+        "pynchy.host.learning.packets.start_learning_review_workflow",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("packet builder broke"),
+    ):
+        job_id = await learning_capture.start_completed_turn_learning_review(
+            "g@g.us",
+            group,
+            [missed],
+            missed.timestamp,
+            learning_capture.LearningRunSummary(),
+            AsyncMock(),
+            AsyncMock(),
+            enabled=True,
+            review_after_turn=True,
+            packet_max_chars=4_000,
+        )
+
+    assert job_id is None
