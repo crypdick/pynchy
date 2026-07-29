@@ -32,6 +32,10 @@ from pynchy.workspace.api import (
 )
 
 _REVIEWER_RESULT_ERROR = "Plan reviewer did not return one valid JSON decision"
+_REVIEW_SYSTEM_NOTICE = (
+    "This is one bounded plan-freshness check. Work directly and do not delegate "
+    "to subagents or start parallel investigations."
+)
 _REVIEW_PROMPT = """\
 You are Pynchy's independent Linear plan-freshness reviewer. Work read-only.
 Inspect the current repositories and relevant documentation, then decide whether
@@ -178,7 +182,7 @@ async def _run_queued_review(
                 group.jid,
                 [{"role": "user", "content": _review_prompt(request)}],
                 on_output=on_output,
-                extra_system_notices=None,
+                extra_system_notices=[_REVIEW_SYSTEM_NOTICE],
                 is_scheduled_task=True,
                 repo_access_override=None,
                 input_source=(

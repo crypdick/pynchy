@@ -25,6 +25,7 @@ from pynchy.deployments import (
     DeployRevision,
 )
 from pynchy.learning_packets import packet_to_payload
+from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.state import (
     init_test_database,
     initialize_deployment_state,
@@ -67,6 +68,7 @@ class TestTemporalSchedulerRuntime:
             temporal_workflows.ExternalGitSyncWorkflow,
             temporal_workflows.ChannelReconciliationWorkflow,
             temporal_workflows.LinearWorkItemReconciliationWorkflow,
+            temporal_workflows.LinearPlanReviewWorkflow,
         }.issubset(set(captured["workflows"]))
         assert {
             temporal_scheduler.run_interactive_message_turn,
@@ -79,6 +81,7 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler.run_external_git_sync,
             temporal_scheduler.run_channel_reconciliation,
             temporal_scheduler.run_linear_work_item_reconciliation,
+            temporal_scheduler.run_linear_plan_review_admission,
         }.issubset(set(captured["activities"]))
 
     @staticmethod
@@ -296,6 +299,31 @@ class TestTemporalSchedulerRuntime:
         assert kwargs["id"] == "pynchy-learning-review-learning-job-one"
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "REJECT_DUPLICATE"
+
+    @pytest.mark.asyncio
+    async def test_start_linear_plan_review_deduplicates_exact_issue_revision(self):
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=_scheduler_runtime(SchedulerConfig(temporal_task_queue="pynchy-test")),
+        )
+        runtime.client = client
+        admission = LinearPlanReviewAdmission(
+            workspace="project",
+            issue_id="issue-1",
+            identifier="SYN-1",
+            updated_at="2026-07-28T12:00:00Z",
+            public_source=True,
+        )
+
+        await runtime.start_linear_plan_review(admission)
+
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == temporal_workflows.LinearPlanReviewWorkflow.run
+        assert args == (admission.to_payload(),)
+        assert kwargs["id"] == temporal_scheduler.linear_plan_review_workflow_id(admission)
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE_FAILED_ONLY"
 
     @pytest.mark.asyncio
     async def test_start_interactive_message_turn_starts_temporal_workflow(self):

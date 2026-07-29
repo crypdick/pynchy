@@ -11,6 +11,9 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
 from datetime import UTC, datetime
 from typing import Any
 
+from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+    LinearPlanReviewAdmission,
+)
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves inbox annotations at runtime.
@@ -26,11 +29,15 @@ from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_APPROVED_STATUS,
     READY_FOR_PLANNING_STATUS,
 )
-from pynchy.plugins.integrations.linear_work_item_provider import linear_client
+from pynchy.plugins.integrations.linear_work_item_provider import (
+    linear_client,
+    workspace_issue,
+)
 from pynchy.plugins.integrations.linear_work_item_tasks import (
     DecisionAdmission,
     DecisionIssue,
     LinearDecisionClient,
+    LinearPlanReviewDeferrer,
     admit_decision_issue,
     decision_state_id,
 )
@@ -135,6 +142,7 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913 - explicit controlle
     public_source: bool = True,
     review_plan: LinearPlanReviewer | None = None,
     broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None,
+    defer_plan_review: LinearPlanReviewDeferrer | None = None,
 ) -> list[ScheduledTask]:
     """Admit one issue-conversation task for every actionable decision."""
     project_workspaces = _project_workspaces(workspaces, boards)
@@ -146,6 +154,7 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913 - explicit controlle
         public_source,
         review_plan,
         broadcast_host_message,
+        defer_plan_review,
     )
     sample_board = next(iter(boards.values()), None)
     if sample_board is None:
@@ -191,6 +200,7 @@ async def reconcile_all_linear_work_items(
     *,
     review_plan: LinearPlanReviewer,
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
+    defer_plan_review: LinearPlanReviewDeferrer,
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
@@ -209,6 +219,7 @@ async def reconcile_all_linear_work_items(
                         public_source=account.config.public_source is not False,
                         review_plan=review_plan,
                         broadcast_host_message=broadcast_host_message,
+                        defer_plan_review=defer_plan_review,
                     )
                 )
         except Exception:  # noqa: BLE001 - one optional account must not stop other accounts.
@@ -220,6 +231,45 @@ async def reconcile_all_linear_work_items(
     if admitted:
         logger.info("Linear work item tasks admitted", count=len(admitted))
     return admitted
+
+
+async def process_linear_plan_review_admission(
+    admission: LinearPlanReviewAdmission,
+    workspaces: Iterable[WorkspaceLike],
+    *,
+    review_plan: LinearPlanReviewer,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
+) -> ScheduledTask | None:
+    """Review and lease one exact issue revision in its own provider session."""
+    workspace = next(
+        (candidate for candidate in workspaces if candidate.folder == admission.workspace),
+        None,
+    )
+    if workspace is None:
+        raise ValueError("Linear plan review workspace is no longer configured")
+    async with linear_client(workspace=workspace.folder) as client:
+        payload, board = await workspace_issue(client, workspace.folder, admission.issue_id)
+        issue = DecisionIssue.from_payload(payload)
+        if (
+            issue is None
+            or issue.identifier != admission.identifier
+            or issue.updated_at != admission.updated_at
+            or issue.state_id != decision_state_id(board, HUMAN_APPROVED_STATUS)
+        ):
+            return None
+        return await admit_decision_issue(
+            issue,
+            workspace,
+            board,
+            HUMAN_APPROVED_STATUS,
+            DecisionAdmission(
+                client=client,
+                observed_at=datetime.now(UTC),
+                public_source=admission.public_source,
+                review_plan=review_plan,
+                broadcast_host_message=broadcast_host_message,
+            ),
+        )
 
 
 def _boards_by_account(

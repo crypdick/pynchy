@@ -480,6 +480,42 @@ class TestTemporalSchedulerRuntime:
         )
 
     @pytest.mark.asyncio
+    async def test_run_linear_plan_review_admission_isolated_by_issue(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.process_linear_plan_review_admission = AsyncMock(return_value=True)
+
+        @asynccontextmanager
+        async def no_heartbeats(_activity_id):
+            yield
+
+        monkeypatch.setattr(
+            temporal_linear_work_items.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="linear-plan-review-syn-1"),
+        )
+        monkeypatch.setattr(
+            temporal_linear_work_items,
+            "activity_heartbeats",
+            no_heartbeats,
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+        payload = {
+            "workspace": "project",
+            "issue_id": "issue-1",
+            "identifier": "SYN-1",
+            "updated_at": "2026-07-28T12:00:00Z",
+            "public_source": True,
+        }
+
+        result = await temporal_linear_work_items.run_linear_plan_review_admission(payload)
+
+        assert result == "admitted"
+        deps.process_linear_plan_review_admission.assert_awaited_once()
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["tracked_results"]["linear-plan-review:SYN-1"]["result"] == "admitted"
+
+    @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):
 
         temporal_task.status = "paused"

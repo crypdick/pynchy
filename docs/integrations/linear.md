@@ -248,10 +248,11 @@ removals, and messages in the corresponding Discord thread share one ordered
 conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
-Approved` update also remains controller-owned; the periodic controller checks
-any marked plan before it acquires the execution lease. A user-authored state
-transition directly to `In Progress` acquires the same lease without another
-provider move. An unleased `In Progress` update without that actor and
+Approved` update also remains controller-owned and immediately triggers
+work-item reconciliation. The controller starts an issue-revision-specific
+Temporal plan review before it acquires the execution lease. A user-authored
+state transition directly to `In Progress` acquires the same lease without
+another provider move. An unleased `In Progress` update without that actor and
 changed-field evidence remains controller-owned but does not authorize work.
 These issue updates don't also start ordinary conversation turns, because that
 would race a second agent against the durable task. An `Awaiting Plan Approval`
@@ -306,12 +307,14 @@ UUIDs. The signing secret never enters the agent container. The selected Linear
 account's `public_source` setting determines whether callback content is
 trusted.
 
-One Temporal schedule reconciles every managed board once per minute, including
-webhook-routed boards. It creates or recovers planning tasks for `Ready for
-Planning`, reviews marked plans before leasing `Human Approved` work, repairs an
-`In Progress` execution whose durable task is missing, and admits `Follow-ups`
-without a second approval lease. `Awaiting Plan Approval` remains idle until a
-human decides.
+One Temporal schedule reconciles every managed board once per minute as a
+recovery backstop, including webhook-routed boards. It creates or recovers
+planning tasks for `Ready for Planning`, starts one idempotent plan-review
+workflow for each marked `Human Approved` issue revision, repairs an `In
+Progress` execution whose durable task is missing, and admits `Follow-ups`
+without a second approval lease. Each plan review runs independently, so a slow
+review doesn't block discovery or review of another approved issue. `Awaiting
+Plan Approval` remains idle until a human decides.
 
 Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
 `Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear

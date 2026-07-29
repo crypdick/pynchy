@@ -333,7 +333,7 @@ source = ["pynchy"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
-fail_under = 84
+fail_under = 85
 skip_empty = true
 exclude_also = [
     "def __repr__",

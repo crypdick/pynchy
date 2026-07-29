@@ -172,7 +172,7 @@ async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_executi
     complete.assert_not_awaited()
 
 
-async def test_human_approved_issue_waits_for_periodic_controller_admission(
+async def test_human_approved_issue_triggers_controller_reconciliation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
@@ -210,11 +210,17 @@ async def test_human_approved_issue_waits_for_periodic_controller_admission(
         "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
         AsyncMock(return_value=({"state": {"id": "state-approved"}}, board)),
     )
+    trigger_reconciliation = AsyncMock()
+    configure_linear_accounts_for(
+        make_settings(),
+        start_work_item_reconciliation=trigger_reconciliation,
+    )
 
     processed = await process_linear_webhook_event(event)
 
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     assert processed.conversation is not None
+    trigger_reconciliation.assert_awaited_once_with()
 
 
 async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
