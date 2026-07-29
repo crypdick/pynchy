@@ -35,3 +35,13 @@ def test_accepted_receipt_requires_task() -> None:
 def test_routed_receipt_cannot_carry_ignore_reason() -> None:
     with pytest.raises(ValueError, match="cannot create separate tasks"):
         replace(_ignored_receipt(), disposition="routed")
+
+
+def test_lifecycle_receipt_cannot_carry_ignore_reason() -> None:
+    with pytest.raises(ValueError, match="cannot create separate tasks"):
+        replace(_ignored_receipt(), disposition="lifecycle")
+
+
+def test_notified_receipt_cannot_carry_ignore_reason() -> None:
+    with pytest.raises(ValueError, match="cannot create tasks or carry ignore reasons"):
+        replace(_ignored_receipt(), disposition="notified")
