@@ -24,3 +24,9 @@ def test_formats_notices_and_escapes_message_xml() -> None:
         "Use &lt;tags&gt; &amp; quotes &quot;carefully&quot;</message>\n"
         "</messages>"
     )
+
+
+def test_formats_notices_without_messages() -> None:
+    assert format_messages_for_ipc([], ["A host notice"]) == (
+        "<system_notices>\n- A host notice\n</system_notices>"
+    )

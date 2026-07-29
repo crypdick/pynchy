@@ -69,6 +69,27 @@ async def test_record_security_event_redacts_secret_bearing_reason():
 
 
 @pytest.mark.asyncio
+async def test_record_security_event_uses_scanner_when_local_redaction_misses_token():
+    """Provider-token formats never reach the audit log unredacted."""
+    raw_secret = "".join(  # pragma: allowlist secret
+        ("xoxb-", "123456789012-123456789012-abc", "defghijklmnopqrstuvwxyzABCDEF")
+    )
+    await record_security_event(
+        chat_jid="group@test",
+        workspace="main",
+        tool_name="Bash",
+        decision="denied",
+        reason=f"Rejected provider token {raw_secret}",
+        request_id="guard-scanner",
+    )
+
+    entry = (await get_chat_history("group@test"))[0]
+    assert raw_secret not in entry.content
+    assert entry.metadata is not None
+    assert entry.metadata["reason"] == "[redacted: secret-bearing reason]"
+
+
+@pytest.mark.asyncio
 async def test_record_security_event_redacts_pii_reason():
     """PII does not enter persisted audit content or metadata."""
     await record_security_event(

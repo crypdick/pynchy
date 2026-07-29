@@ -28,8 +28,12 @@ from pynchy.conversation.models import (
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
-from pynchy.state import get_conversation_delivery, init_test_database
-from pynchy.webhook_effects import WebhookEffectScope
+from pynchy.state import (
+    classify_webhook_effect_callback,
+    get_conversation_delivery,
+    init_test_database,
+)
+from pynchy.webhook_effects import WebhookEffectCallbackDecision, WebhookEffectScope
 
 _COMMENT_ID = "comment-1"
 _ISSUE_ID = "issue-1"
@@ -95,6 +99,10 @@ async def test_callback_before_response_is_acknowledged_but_never_wakes_an_agent
         assert harness.ingested == []
 
         await recorder.confirm(effect_id, _evidence())
+        assert (
+            await classify_webhook_effect_callback(_evidence(), datetime.now(UTC).isoformat())
+            is WebhookEffectCallbackDecision.SUPPRESSED
+        )
     finally:
         await client.close()
 

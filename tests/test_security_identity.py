@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.host.container_manager.security.identity import (
+from pynchy.host.container_manager.api import (
     ReceiptVerification,
     clear_approval_receipts,
     consume_approval_receipt,
     guarded_action_id,
     issue_approval_receipt,
+)
+from pynchy.host.container_manager.security.identity import (
     request_payload_hash,
 )
 
@@ -31,6 +33,11 @@ def test_payload_hash_is_canonical_and_excludes_only_receipt() -> None:
     assert request_payload_hash(first) == request_payload_hash(reordered)
     reordered["caller_claim"] = True
     assert request_payload_hash(first) != request_payload_hash(reordered)
+
+
+def test_guarded_action_id_requires_request_id() -> None:
+    with pytest.raises(ValueError, match="non-empty request ID"):
+        guarded_action_id("")
 
 
 @pytest.mark.parametrize(

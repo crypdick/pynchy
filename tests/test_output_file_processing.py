@@ -259,6 +259,32 @@ class TestQueryDonePulse:
         # is_query_done_pulse requires error=None
         session.signal_query_done.assert_not_called()
 
+    async def test_result_for_missing_session_does_not_fail_processing(self, tmp_path: Path):
+        """A completion pulse can arrive after its session has already ended."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(
+            ipc_dir,
+            "test-group",
+            {
+                "status": "success",
+                "result": None,
+                "new_session_id": "sess-abc123",
+                "type": "result",
+                "query_id": "query-ended",
+            },
+        )
+
+        with (
+            patch(
+                "pynchy.host.container_manager.session.get_session_output_handler",
+                return_value=None,
+            ),
+            patch("pynchy.host.container_manager.session.get_session", return_value=None),
+        ):
+            await process_output_file(file_path, "test-group", ipc_dir)
+
+        assert file_path.exists()
+
     async def test_result_with_text_result_does_not_signal_query_done(self, tmp_path: Path):
         """A result event with a non-None result should not signal query done."""
         ipc_dir = tmp_path / "ipc"
@@ -492,6 +518,18 @@ class TestOutputFileErrors:
 
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "test-group-test.json").exists()
+
+    async def test_malformed_output_is_deleted_when_error_directory_is_unavailable(
+        self, tmp_path: Path
+    ) -> None:
+        """A malformed file cannot remain when its error directory is blocked."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(ipc_dir, "test-group", {"type": "text"})
+        (ipc_dir / "errors").write_text("blocked")
+
+        await process_output_file(file_path, "test-group", ipc_dir)
+
+        assert not file_path.exists()
 
     async def test_handler_exception_does_not_prevent_file_deletion(self, tmp_path: Path):
         """If the output handler raises, the file should still be deleted."""

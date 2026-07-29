@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pynchy.state import (
     get_all_chats,
+    get_chat_cleared_at,
     get_chat_history,
     set_chat_cleared_at,
     store_chat_metadata,
@@ -19,6 +20,9 @@ pytest_plugins = ("tests.state_support",)
 
 
 class TestChatClearedAt:
+    async def test_unknown_chat_has_no_clear_boundary(self):
+        assert await get_chat_cleared_at("missing@g.us") is None
+
     async def test_cleared_at_hides_old_messages(self):
         """Messages before cleared_at should not appear in get_chat_history."""
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")

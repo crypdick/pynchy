@@ -8,6 +8,8 @@ from types import ModuleType
 from typing import Any
 from unittest.mock import ANY, MagicMock, patch
 
+import pytest
+
 from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config.api import (
     DiscordConnectionConfig,
@@ -191,3 +193,25 @@ def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:
     assert channels == [channel]
     channel_cls.assert_called_once()
     assert channel_cls.call_args.kwargs["connection_name"] == "phone"
+
+
+def test_whatsapp_plugin_rejects_duplicate_auth_databases(tmp_path: Path) -> None:
+    auth_db_path = tmp_path / "phone.db"
+    context = _context(
+        whatsapp_connections={
+            "phone-one": WhatsAppConnectionSettings(
+                auth_db_path=auth_db_path,
+                assistant_name="pynchy",
+            ),
+            "phone-two": WhatsAppConnectionSettings(
+                auth_db_path=auth_db_path,
+                assistant_name="pynchy",
+            ),
+        }
+    )
+
+    with (
+        patch("pynchy.plugins.channels.whatsapp.WhatsAppChannel"),
+        pytest.raises(ValueError, match="auth_db_path must be unique"),
+    ):
+        WhatsAppPlugin().pynchy_create_channel(context=context)
