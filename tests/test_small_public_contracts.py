@@ -12,6 +12,10 @@ from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
 from pynchy.plugins.api import WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
+from pynchy.plugins.integrations.linear_conversation_identity import (
+    resolve_linear_issue_conversation,
+)
+from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
 from pynchy.state.work_item_rows import row_to_transition
 
 
@@ -33,6 +37,23 @@ def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
     plugin_manager.hook.pynchy_connection_runtime.return_value = [None]
 
     assert load_connection_runtimes(plugin_manager) == []
+
+
+@pytest.mark.asyncio
+async def test_linear_conversation_resolution_requires_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_conversation_identity._runtime.runtime", None
+    )
+
+    with pytest.raises(RuntimeError, match="Linear conversation runtime has not been configured"):
+        await resolve_linear_issue_conversation("issue-1", "workspace", "account")
+
+
+def test_linear_self_echo_recorder_requires_configuration(monkeypatch) -> None:
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_self_echoes._runtime.runtime", None)
+
+    with pytest.raises(RuntimeError, match="Linear self-echo runtime has not been configured"):
+        linear_self_echo_recorder("account")
 
 
 def test_transition_row_rejects_non_object_receipts() -> None:
