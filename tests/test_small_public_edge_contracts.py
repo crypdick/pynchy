@@ -13,6 +13,7 @@ from pynchy.discord import (
     DiscordChatTarget,
     DiscordConnectionSettings,
     DiscordGuildSettings,
+    discord_chat_ref_error,
 )
 from pynchy.host.container_manager.ipc.ledger import claim_request_for_execution
 from pynchy.host.container_manager.ipc.protocol import IpcRequestEnvelope, make_ipc_request
@@ -40,6 +41,34 @@ def test_empty_discord_channel_name_is_rejected():
 
     with pytest.raises(ValueError, match="cannot be empty"):
         channel.configured_channel_name(DiscordChatTarget("channel", "channel", "guild"))
+
+
+@pytest.mark.parametrize(
+    ("config", "chat", "message"),
+    [
+        (DiscordConnectionSettings(bot_token_env=""), "invalid", "must target"),
+        (
+            DiscordConnectionSettings(bot_token_env="", dm_policy="disabled"),
+            "direct.user-1",
+            "not allowed",
+        ),
+        (
+            DiscordConnectionSettings(bot_token_env="", group_policy="disabled"),
+            "guild.channels.channel",
+            "disabled",
+        ),
+        (
+            DiscordConnectionSettings(bot_token_env=""),
+            "guild.channels.channel",
+            "unknown Discord guild",
+        ),
+    ],
+)
+def test_discord_chat_reference_errors_are_explicit(config, chat, message):
+    error = discord_chat_ref_error(config, chat)
+
+    assert error is not None
+    assert message in error
 
 
 async def test_nonnumeric_discord_target_without_client_is_unresolved():
