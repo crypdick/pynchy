@@ -44,7 +44,7 @@ Once Pynchy is running, its health endpoint includes the selected provider and
 the loopback readiness check:
 
 ```bash
-curl -s http://127.0.0.1:8485/status | jq '.speech'
+uv run pynchy status | jq '.speech'
 ```
 
 `ready: false` means Pocket TTS did not answer on the loopback endpoint. Check

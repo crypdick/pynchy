@@ -45,13 +45,13 @@ If Apple Container is unavailable on macOS, Pynchy falls back to Docker.
 ```bash
 git clone https://github.com/crypdick/pynchy.git
 cd pynchy
-uv sync
+uv sync --locked
 ```
 
 Install the WhatsApp extra only when you use WhatsApp:
 
 ```bash
-uv sync --extra whatsapp
+uv sync --locked --inexact --extra whatsapp
 ```
 
 For Slack or Discord, follow [Channels](../channels/index.md).
