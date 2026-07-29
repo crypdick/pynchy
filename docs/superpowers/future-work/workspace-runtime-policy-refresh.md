@@ -1,7 +1,6 @@
 # Affected-Workspace Runtime Policy Refresh
 
-**Status:** Consumer inventory and proposed classification complete; not
-implementation-ready.
+**Status:** Implemented.
 
 **Outcome:** Refresh supported workspace policy without restarting the host,
 retiring only affected sessions when a fresh runtime is required.
@@ -126,7 +125,7 @@ configure host infrastructure or belong to the automation/topology briefs:
 `messaging_source_health`, `connections`, `routes`, `plugins`,
 `chrome_profiles`, and `user_groups`.
 
-## Consequences for the future implementation
+## Implementation contract
 
 - Compute affected workspaces from old and candidate **resolved** policy, not
   from profile names. Includes and shared profiles can fan out to many
@@ -166,17 +165,14 @@ configure host infrastructure or belong to the automation/topology briefs:
    and atomic update contract exist.
 6. Preserve unrelated sessions and queues.
 
-## Entry criteria for an implementation plan
+## Acceptance criteria
 
 - [x] Inventory every consumer of each candidate field, including captured
   runtime dataclasses and plugin-provided adapters.
-- [ ] Approve the field-by-field classification matrix.
-- Define the safe point and lifecycle operation for affected-session
+- [x] Approve the field-by-field classification matrix.
+- [x] Pause affected queues at a turn boundary before publication and
   retirement.
-- Define atomic publication and rollback behavior for security-sensitive
-  policy.
-- Define acceptance checks proving both affected-workspace refresh and
-  unaffected-workspace continuity.
-
-Until the matrix and lifecycle contract are approved, these fields remain
-restart-sensitive.
+- [x] Publish durable workspace security and current runtime snapshots before
+  replacing sessions; roll back before resuming queues when retirement fails.
+- [x] Prove affected-session replacement, sticky-taint preservation, queued
+  work preservation, and unaffected-workspace continuity.

@@ -17,6 +17,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves composition cal
     Mapping,
     Sequence,
 )
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves method annotations.
 from typing import TYPE_CHECKING, Any, cast
@@ -49,7 +50,7 @@ from pynchy.config.api import (
     reset_settings,
     resolve_tool_access,
     restart_fingerprint,
-    skill_policy_projection,
+    runtime_policy_changes,
     tool_process_environment,
 )
 from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves scheduled-binding annotations.
@@ -277,6 +278,7 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import configure_workspace_threads_runtime
 from pynchy.identifiers import (
+    ChatJid,
     GroupFolder,
     RuntimeId,
     SessionId,
@@ -311,6 +313,7 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
+    clear_runtime_session_references_batch,
     delete_workspace_profile,
     get_all_chats,
     get_all_sessions,
@@ -327,6 +330,7 @@ from pynchy.state.api import (
     save_router_state_batch,
     set_session,
     set_workspace_profile,
+    set_workspace_profiles,
     store_message,
     store_message_direct,
     update_task,
@@ -671,6 +675,41 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
     )
 
 
+def _agent_execution_runtime_config(settings: Settings) -> AgentExecutionRuntime:
+    return AgentExecutionRuntime(
+        project_root=settings.project_root,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        agent_image=settings.container.image,
+        agent_memory_mb=settings.container.memory_mb,
+        container_timeout=settings.container_timeout,
+        default_core=settings.agent.default_core,
+        idle_timeout=settings.idle_timeout,
+        model=settings.agent.model,
+        model_reasoning_effort=settings.agent.model_reasoning_effort,
+    )
+
+
+def _configure_learning_runtime(settings: Settings) -> None:
+    def profile_for_workspace(folder: str) -> str | None:
+        workspace = get_settings().workspaces.get(static_workspace_folder(folder))
+        return workspace.profiles[0] if workspace is not None and workspace.profiles else None
+
+    configure_learning_paths_runtime(
+        LearningPathsRuntime(
+            enabled=settings.learning.enabled,
+            vault_root=settings.learning.obsidian.vault_root,
+            vault_mount_path=settings.learning.obsidian.mount_path,
+            default_profile_root=settings.learning.obsidian.default_profile_root,
+            memory_dir_name=settings.learning.obsidian.memory_dir_name,
+            data_dir=settings.data_dir,
+            profile_for_workspace=profile_for_workspace,
+        )
+    )
+
+
 class PynchyApp(ThreadRouting):
     """Main application class — owns all runtime state and wires subsystems."""
 
@@ -753,20 +792,7 @@ class PynchyApp(ThreadRouting):
             list_pending_approvals=list_pending_approvals,
             persist_and_process=_persist_and_process_approval,
         )
-        self.agent_execution_runtime = AgentExecutionRuntime(
-            project_root=settings.project_root,
-            groups_dir=settings.groups_dir,
-            data_dir=settings.data_dir,
-            mount_allowlist_path=settings.mount_allowlist_path,
-            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
-            agent_image=settings.container.image,
-            agent_memory_mb=settings.container.memory_mb,
-            container_timeout=settings.container_timeout,
-            default_core=settings.agent.default_core,
-            idle_timeout=settings.idle_timeout,
-            model=settings.agent.model,
-            model_reasoning_effort=settings.agent.model_reasoning_effort,
-        )
+        self.agent_execution_runtime = _agent_execution_runtime_config(settings)
         self.queue.set_process_messages_fn(
             lambda jid: message_handler.process_group_messages(self, jid)
         )
@@ -794,25 +820,161 @@ class PynchyApp(ThreadRouting):
         self,
         candidate: object,
         *,
+        affected_workspaces: tuple[str, ...],
         reconcile_automations: bool,
     ) -> None:
-        """Publish a validated candidate after its durable work converges."""
+        """Publish a validated candidate and retire only affected sessions."""
         settings = cast("Settings", candidate)
-        if not reconcile_automations:
-            publish_settings(settings)
-            return
-
         await self.startup_readiness.wait()
-        scheduler_runtime = _scheduler_runtime_config(settings)
-        await reconcile_automation_jobs(self.workspaces, settings)
-        await temporal_scheduler.reconcile_schedules_with_config(scheduler_runtime)
+        targets = tuple(
+            RuntimeTarget.from_workspace(workspace)
+            for folder in affected_workspaces
+            for workspace in self.workspaces.values()
+            if workspace.folder == folder
+        )
+        runtime_ids = tuple(target.id for target in targets)
+        if targets:
+            await self.queue.pause_runtime_policy(targets)
+        published = get_settings()
+        previous_profiles = tuple(
+            workspace
+            for workspace in self.workspaces.values()
+            if workspace.folder in affected_workspaces
+        )
+        updated_profiles = self._runtime_policy_profiles(settings, previous_profiles)
+        candidate_published = False
+        try:
+            scheduler_runtime = await self._prepare_config_candidate(
+                settings,
+                reconcile_automations=reconcile_automations,
+            )
+            await self._publish_config_snapshot(
+                settings,
+                scheduler_runtime,
+                updated_profiles,
+                previous_profiles,
+                published,
+            )
+            candidate_published = True
+            await self._retire_runtime_policy_sessions(updated_profiles)
+        except BaseException:
+            if candidate_published:
+                await self._rollback_config_snapshot(published, previous_profiles)
+            raise
+        finally:
+            if runtime_ids:
+                self.queue.resume_runtime_policy(runtime_ids)
 
-        # Temporal has no transaction across schedule mutations. Keep the published
-        # execution snapshot visible until the idempotent reconciliation pass
-        # succeeds; a partial failure is retried by the next host-sync poll.
+    async def _prepare_config_candidate(
+        self,
+        settings: Settings,
+        *,
+        reconcile_automations: bool,
+    ) -> SchedulerRuntimeConfig:
+        scheduler_runtime = _scheduler_runtime_config(settings)
+        if reconcile_automations:
+            await reconcile_automation_jobs(self.workspaces, settings)
+            await temporal_scheduler.reconcile_schedules_with_config(scheduler_runtime)
+        return scheduler_runtime
+
+    async def _publish_config_snapshot(
+        self,
+        settings: Settings,
+        scheduler_runtime: SchedulerRuntimeConfig,
+        updated_profiles: tuple[WorkspaceProfile, ...],
+        previous_profiles: tuple[WorkspaceProfile, ...],
+        previous_settings: Settings,
+    ) -> None:
+        if updated_profiles:
+            await set_workspace_profiles(updated_profiles)
+        try:
+            publish_settings(settings)
+            self._replace_workspace_profiles(updated_profiles)
+            self._publish_live_runtime(settings, scheduler_runtime)
+        except BaseException:
+            publish_settings(previous_settings)
+            self._replace_workspace_profiles(previous_profiles)
+            self._publish_live_runtime(
+                previous_settings,
+                _scheduler_runtime_config(previous_settings),
+            )
+            if updated_profiles:
+                await set_workspace_profiles(previous_profiles)
+            raise
+
+    async def _rollback_config_snapshot(
+        self,
+        settings: Settings,
+        profiles: tuple[WorkspaceProfile, ...],
+    ) -> None:
         publish_settings(settings)
+        self._publish_live_runtime(settings, _scheduler_runtime_config(settings))
+        if profiles:
+            await set_workspace_profiles(profiles)
+            self._replace_workspace_profiles(profiles)
+
+    def _runtime_policy_profiles(
+        self,
+        settings: Settings,
+        profiles: tuple[WorkspaceProfile, ...],
+    ) -> tuple[WorkspaceProfile, ...]:
+        updated = []
+        for profile in profiles:
+            config = settings.workspace_config(static_workspace_folder(profile.folder))
+            resolved = load_resolved_config(profile.folder, settings=settings)
+            if config is None or resolved is None:
+                updated.append(profile)
+                continue
+            updated.append(
+                replace(
+                    profile,
+                    security=workspace_security(config, resolved),
+                )
+            )
+        return tuple(updated)
+
+    def _publish_live_runtime(
+        self,
+        settings: Settings,
+        scheduler_runtime: SchedulerRuntimeConfig,
+    ) -> None:
+        self.agent_execution_runtime = _agent_execution_runtime_config(settings)
         self.scheduler_runtime = scheduler_runtime
+        self._learning_review_enabled = settings.learning.enabled
+        self._learning_review_after_turn = settings.learning.review_after_turn
+        self._learning_packet_max_chars = settings.learning.packet_max_chars
+        _configure_learning_runtime(settings)
         temporal_scheduler.publish_scheduler_config(scheduler_runtime)
+
+    async def _retire_runtime_policy_sessions(
+        self,
+        profiles: tuple[WorkspaceProfile, ...],
+    ) -> None:
+        for profile in profiles:
+            await prepare_context_reset(self.plugin_manager, profile)
+            await self.queue.destroy_runtime_session(RuntimeId(profile.folder))
+        references = tuple(
+            (
+                GroupFolder(profile.folder),
+                SessionId(session_id),
+                ChatJid(profile.jid),
+            )
+            for profile in profiles
+            if (session_id := self.sessions.get(profile.folder)) is not None
+        )
+        if references:
+            await clear_runtime_session_references_batch(references)
+        for profile in profiles:
+            self.sessions.pop(profile.folder, None)
+            self.session_cleared.add(profile.folder)
+        self._replace_workspace_profiles(profiles)
+
+    def _replace_workspace_profiles(
+        self,
+        profiles: tuple[WorkspaceProfile, ...],
+    ) -> None:
+        for profile in profiles:
+            self.workspaces[profile.jid] = profile
 
     def _configure_runtime_dependencies(self, settings: Settings) -> None:
         """Wire concrete host adapters into subsystem-local runtime seams."""
@@ -828,9 +990,12 @@ class PynchyApp(ThreadRouting):
                 get_settings=get_settings,
                 load_runtime_candidate=load_runtime_candidate,
                 restart_fingerprint=cast("Callable[[object], str]", restart_fingerprint),
-                skill_policy_projection=cast(
-                    "Callable[[object], object]",
-                    skill_policy_projection,
+                runtime_policy_changes=cast(
+                    "Callable[[object, object, tuple[str, ...]], Any]",
+                    runtime_policy_changes,
+                ),
+                workspace_folders=lambda: tuple(
+                    sorted({workspace.folder for workspace in self.workspaces.values()})
                 ),
             )
         )
@@ -878,21 +1043,7 @@ class PynchyApp(ThreadRouting):
         )
         configure_allowed_message_filter(access.filter_allowed_messages)
 
-        def profile_for_workspace(folder: str) -> str | None:
-            workspace = settings.workspaces.get(folder)
-            return workspace.profiles[0] if workspace is not None and workspace.profiles else None
-
-        configure_learning_paths_runtime(
-            LearningPathsRuntime(
-                enabled=settings.learning.enabled,
-                vault_root=settings.learning.obsidian.vault_root,
-                vault_mount_path=settings.learning.obsidian.mount_path,
-                default_profile_root=settings.learning.obsidian.default_profile_root,
-                memory_dir_name=settings.learning.obsidian.memory_dir_name,
-                data_dir=settings.data_dir,
-                profile_for_workspace=profile_for_workspace,
-            )
-        )
+        _configure_learning_runtime(settings)
 
         def workspace_skill_selection(
             folder: str,

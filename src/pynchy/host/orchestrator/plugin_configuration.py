@@ -682,7 +682,7 @@ def configure_google_setup_plugin(plugin_manager: pluggy.PluginManager, settings
                 else None
             ),
             workspace_is_admin=lambda workspace: bool(
-                (configured := settings.workspaces.get(workspace)) and configured.is_admin
+                (resolved := settings.resolved_workspace_config(workspace)) and resolved.is_admin
             ),
             mcp_tool_names=frozenset(
                 name for name, tool in settings.tools.items() if tool.type == "mcp"

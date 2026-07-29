@@ -20,6 +20,7 @@ class ConfigRefreshStatus(StrEnum):
 
     UNCHANGED = "unchanged"
     REFRESHED = "config_refreshed"
+    RUNTIME_POLICY_REFRESHED = "runtime_policy_refreshed"
     AUTOMATIONS_RECONCILED = "automations_reconciled"
     DEFERRED = "config_refresh_deferred"
     INVALID = "config_invalid"
@@ -41,8 +42,16 @@ class ApplyConfigCandidate(Protocol):
         self,
         candidate: object,
         *,
+        affected_workspaces: tuple[str, ...],
         reconcile_automations: bool,
     ) -> Awaitable[None]: ...
+
+
+class RuntimePolicyChangeSet(Protocol):
+    """Live policy classification returned by the configuration owner."""
+
+    affected_workspaces: tuple[str, ...]
+    live_changed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +65,11 @@ class ConfigRefreshRuntime:
     get_settings: Callable[[], object]
     load_runtime_candidate: Callable[[], object]
     restart_fingerprint: Callable[[object], str]
-    skill_policy_projection: Callable[[object], object]
+    runtime_policy_changes: Callable[
+        [object, object, tuple[str, ...]],
+        RuntimePolicyChangeSet,
+    ]
+    workspace_folders: Callable[[], tuple[str, ...]]
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
@@ -71,7 +84,8 @@ _runtime = ConfigRefreshRuntime(
     get_settings=_unconfigured_runtime,
     load_runtime_candidate=_unconfigured_runtime,
     restart_fingerprint=_unconfigured_runtime,
-    skill_policy_projection=_unconfigured_runtime,
+    runtime_policy_changes=_unconfigured_runtime,
+    workspace_folders=_unconfigured_runtime,
 )
 _applied_automation_projection: object | None = None
 
@@ -124,22 +138,26 @@ async def refresh_host_config(applied_restart_hash: str) -> ConfigRefreshResult:
     if candidate is None or candidate_automations is None:
         raise RuntimeError("Stable configuration candidate is missing")
     published = _runtime.get_settings()
-    skills_changed = _runtime.skill_policy_projection(
-        published
-    ) != _runtime.skill_policy_projection(candidate)
+    policy_changes = _runtime.runtime_policy_changes(
+        published,
+        candidate,
+        _runtime.workspace_folders(),
+    )
     automations_changed = _applied_automation_projection != candidate_automations
-    if not skills_changed and not automations_changed:
+    if not policy_changes.live_changed and not automations_changed:
         return ConfigRefreshResult(ConfigRefreshStatus.UNCHANGED, applied_restart_hash)
 
     await _runtime.apply_candidate(
         candidate,
+        affected_workspaces=policy_changes.affected_workspaces,
         reconcile_automations=automations_changed,
     )
     _applied_automation_projection = candidate_automations
-    status = (
-        ConfigRefreshStatus.AUTOMATIONS_RECONCILED
-        if automations_changed
-        else ConfigRefreshStatus.REFRESHED
-    )
+    if policy_changes.affected_workspaces:
+        status = ConfigRefreshStatus.RUNTIME_POLICY_REFRESHED
+    elif automations_changed:
+        status = ConfigRefreshStatus.AUTOMATIONS_RECONCILED
+    else:
+        status = ConfigRefreshStatus.REFRESHED
     logger.info("Published updated live configuration", status=status.value)
     return ConfigRefreshResult(status, applied_restart_hash)
