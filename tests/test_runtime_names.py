@@ -40,6 +40,15 @@ def test_runtime_container_name_shortens_dynamic_thread_folder(
     assert name != runtime_container_name(f"{suffix}-next")
 
 
+def test_runtime_container_name_rejects_namespace_that_leaves_no_suffix_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "p" * 63)
+
+    with pytest.raises(ValueError, match="leaves no room"):
+        runtime_container_name("long-suffix")
+
+
 def test_runtime_namespace_rejects_unsafe_names(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "Pynchy/../../prod")
     with pytest.raises(ValueError, match="PYNCHY_RUNTIME_NAMESPACE"):
