@@ -93,3 +93,47 @@ async def test_docker_wait_healthy_accepts_an_http_endpoint() -> None:
         )
     finally:
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_can_accept_non_server_errors() -> None:
+    async def unavailable(_request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
+        return web.Response(status=404)
+
+    app = web.Application()
+    app.router.add_get("/health", unavailable)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="test-http",
+                url=f"http://127.0.0.1:{port}/health",
+                health_timeout_seconds=1.0,
+                any_non_5xx=True,
+            )
+        )
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_reports_an_exited_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker, "is_container_running", AsyncMock(return_value=False))
+    run_docker = AsyncMock(return_value=_result(stdout="container logs"))
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    with pytest.raises(RuntimeError, match="failed to start"):
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="stopped-container",
+                url="http://127.0.0.1:9/health",
+                health_timeout_seconds=1.0,
+            )
+        )
