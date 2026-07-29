@@ -64,6 +64,11 @@ class _FakeGatewayClient:
         self._stopped.set()
 
 
+class _CancellationGatewayClient(_FakeGatewayClient):
+    async def close(self) -> None:
+        self.closed = True
+
+
 def test_discord_channel_exposes_lifecycle_state_properties() -> None:
     ch = _channel()
 
@@ -122,6 +127,39 @@ async def test_discord_channel_connects_on_ready_and_stops_through_its_public_ap
     assert client.closed is True
     assert ch.client is None
     assert ch.is_connected() is False
+
+
+@pytest.mark.asyncio
+async def test_discord_channel_reconnects_through_its_public_api() -> None:
+    _FakeGatewayClient.clients = []
+    _FakeGatewayClient.start_error = None
+    ch = _channel()
+
+    with patch(
+        "pynchy.plugins.channels.discord._lifecycle.discord.Client",
+        _FakeGatewayClient,
+    ):
+        await ch.reconnect()
+        assert len(_FakeGatewayClient.clients) == 1
+        assert ch.client is _FakeGatewayClient.clients[0]
+        await ch.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_discord_channel_disconnect_cancels_a_running_gateway_task() -> None:
+    _CancellationGatewayClient.clients = []
+    _CancellationGatewayClient.start_error = None
+    ch = _channel()
+
+    with patch(
+        "pynchy.plugins.channels.discord._lifecycle.discord.Client",
+        _CancellationGatewayClient,
+    ):
+        await ch.connect()
+        await asyncio.sleep(0)
+        await ch.disconnect()
+
+    assert ch.client is None
 
 
 @pytest.mark.asyncio
