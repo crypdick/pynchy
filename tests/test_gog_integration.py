@@ -239,6 +239,79 @@ def test_gog_client_builds_reviewed_read_and_draft_commands(tmp_path: Path) -> N
     assert all("--readonly" in command for command in readonly_commands)
 
 
+@pytest.mark.parametrize(
+    ("outcome", "message"),
+    [
+        pytest.param(FileNotFoundError(), "unavailable"),
+        pytest.param(subprocess.TimeoutExpired(["gog"], timeout=1), "timed out"),
+        pytest.param(subprocess.CompletedProcess([], 1, "", ""), "failed"),
+        pytest.param(subprocess.CompletedProcess([], 0, " ", ""), "no data"),
+    ],
+)
+def test_gog_client_returns_safe_errors_for_execution_failures(
+    tmp_path: Path,
+    outcome: Exception | subprocess.CompletedProcess[str],
+    message: str,
+) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+
+    def run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", side_effect=run),
+        pytest.raises(gog.GogError, match=message),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
+@pytest.mark.parametrize(
+    ("output", "message"),
+    [("not json", "invalid JSON"), ('"scalar"', "unsupported JSON")],
+)
+def test_gog_client_rejects_invalid_provider_json(
+    tmp_path: Path,
+    output: str,
+    message: str,
+) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    result = subprocess.CompletedProcess([], 0, output, "")
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=result),
+        pytest.raises(gog.GogError, match=message),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
+def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: Path) -> None:
+    unconfigured = gog.GogClient(
+        config=gog.GogConfig(),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    missing_credentials = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=tmp_path / "missing.json",
+    )
+
+    with pytest.raises(gog.GogError, match="account"):
+        unconfigured.gmail_search(query="Ada", limit=1)
+    with pytest.raises(gog.GogError, match="credentials"):
+        missing_credentials.setup_start()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "called_method"),
