@@ -346,7 +346,7 @@ class TestPrepareLiteLLMConfig:
         )
 
         prepared = LiteLLMConfigPreparer().prepare(cfg, runtime_dir, env={})
-        settings = yaml.safe_load(prepared.read_text())["litellm_settings"]
+        settings = yaml.safe_load(prepared.path.read_text())["litellm_settings"]
 
         assert settings["turn_off_message_logging"] is True
         assert settings["log_raw_request_response"] is False
