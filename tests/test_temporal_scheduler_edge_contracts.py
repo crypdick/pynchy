@@ -12,6 +12,8 @@ from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
 )
+from pynchy.learning_packets import LearningPacket
+from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from tests.temporal_scheduler_support import NullSchedulerDeps, _scheduler_runtime
 
 
@@ -52,6 +54,112 @@ async def test_public_scheduler_workflow_wrapper_reports_unavailable_runtime(
 
     with pytest.raises(TemporalRuntimeUnavailableError, match="has not been started"):
         await temporal_scheduler.start_channel_reconciliation_workflow()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_waits_briefly_for_runtime_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Loop:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def time(self) -> float:
+            self.calls += 1
+            return 0.0 if self.calls < 3 else 11.0
+
+    loop = _Loop()
+    sleep = AsyncMock()
+    monkeypatch.setattr(temporal_scheduler.asyncio, "get_running_loop", lambda: loop)
+    monkeypatch.setattr(temporal_scheduler.asyncio, "sleep", sleep)
+
+    with pytest.raises(TemporalRuntimeUnavailableError, match="has not been started"):
+        await temporal_scheduler.start_channel_reconciliation_workflow()
+
+    sleep.assert_awaited_once_with(0.05)
+
+
+def _learning_packet() -> LearningPacket:
+    return LearningPacket(
+        job_id="job-1",
+        chat_jid="slack:admin",
+        group_folder="research",
+        profile="default",
+        created_at="2026-07-29T00:00:00Z",
+        messages=[],
+        final_answer=None,
+        tool_counts={},
+        error_snippets=[],
+        loaded_skills=[],
+        provenance={},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "args"),
+    [
+        ("reconcile_schedules_with_config", (_scheduler_runtime(),)),
+        ("start_learning_review_workflow", (_learning_packet(),)),
+        ("start_interactive_message_workflow", ("slack:admin",)),
+        ("start_interrupted_turn_workflow", ("turn-1", "research")),
+        (
+            "start_deploy_workflow",
+            (
+                DeployRequest(
+                    chat_jid="slack:admin",
+                    commit_sha="sha",
+                    config_hash="config",
+                    previous_sha="old",
+                ),
+            ),
+        ),
+        (
+            "start_linear_plan_review_workflow",
+            (LinearPlanReviewAdmission("research", "issue-1", "P-1", "now", True),),
+        ),
+    ],
+)
+async def test_scheduler_workflow_wrappers_propagate_runtime_unavailability(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    args: tuple[object, ...],
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.temporal.scheduler._require_active_runtime",
+        AsyncMock(side_effect=TemporalRuntimeUnavailableError("unavailable")),
+    )
+
+    with pytest.raises(TemporalRuntimeUnavailableError, match="unavailable"):
+        await getattr(temporal_scheduler, operation)(*args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "args"),
+    [
+        ("start_learning_review", (_learning_packet(),)),
+        ("start_interactive_message_turn", ("slack:admin",)),
+        ("start_interrupted_turn", ("turn-1", "research")),
+        (
+            "start_deploy",
+            (
+                DeployRequest(
+                    chat_jid="slack:admin",
+                    commit_sha="sha",
+                    config_hash="config",
+                    previous_sha="old",
+                ),
+            ),
+        ),
+    ],
+)
+async def test_scheduler_start_methods_fail_closed_without_client(
+    method_name: str,
+    args: tuple[object, ...],
+) -> None:
+    with pytest.raises(RuntimeError, match="has not been started"):
+        await getattr(_runtime(), method_name)(*args)
 
 
 def test_publishing_scheduler_config_requires_an_active_runtime() -> None:
