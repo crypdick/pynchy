@@ -54,6 +54,13 @@ async def test_empty_deployment_state_has_no_effective_revision() -> None:
     assert await get_deployment_state() == DeploymentState(applied=None, pending=None)
 
 
+async def test_first_deployment_records_code_and_config_change() -> None:
+    claim = await claim_deployment(DeployRevision("first-sha", "config-a"))
+
+    assert claim.status is DeployClaimStatus.CLAIMED
+    assert claim.change_kind is DeployChangeKind.CODE_AND_CONFIG
+
+
 @pytest.mark.parametrize(
     ("target", "expected_kind"),
     [

@@ -104,6 +104,24 @@ def test_selected_tools_install_companions_and_expose_only_workspace_grants() ->
     assert effective.contains_secrets is True
 
 
+def test_disabled_tool_does_not_receive_a_credential_grant() -> None:
+    settings = _settings()
+    resolved = settings.resolved_workspace_config("dev")
+    assert resolved is not None
+    disabled_linear = settings.tools["linear"].model_copy(update={"enabled": False})
+
+    access = resolve_tool_access(
+        {"linear": disabled_linear},
+        replace(resolved, tools=["linear"]),
+        environ={"LINEAR_SYNAPSE_API_KEY": _LINEAR_SECRET},
+    )
+
+    assert access.tools == ()
+    assert access.companion_skills == ()
+    assert access.workspace_env == {}
+    assert access.missing_requirements == {}
+
+
 def test_agent_process_receives_only_selected_workspace_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

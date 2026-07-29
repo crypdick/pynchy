@@ -107,11 +107,54 @@ async def test_pocket_tts_reports_non_success_response(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pocket_tts_rejects_an_empty_audio_response(tmp_path):
+    async def empty_audio(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(body=b"", content_type="audio/wav")
+
+    app = web.Application()
+    app.router.add_post("/tts", empty_audio)
+    runner, endpoint = await _start_server(app)
+    try:
+        result = await PocketTtsProvider(f"{endpoint}/tts").synthesize(
+            "Hello", tmp_path / "reply.wav"
+        )
+    finally:
+        await runner.cleanup()
+
+    assert result.success is False
+    assert result.error == "Pocket TTS returned empty audio"
+
+
+@pytest.mark.asyncio
 async def test_pocket_tts_rejects_empty_text(tmp_path):
     result = await PocketTtsProvider().synthesize("  ", tmp_path / "reply.wav")
 
     assert result.success is False
     assert result.error == "Cannot synthesize empty text"
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_reports_an_unwritable_audio_destination(tmp_path):
+    async def synthesize(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(body=b"audio", content_type="audio/wav")
+
+    app = web.Application()
+    app.router.add_post("/tts", synthesize)
+    runner, endpoint = await _start_server(app)
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("blocked", encoding="utf-8")
+    try:
+        result = await PocketTtsProvider(f"{endpoint}/tts").synthesize(
+            "Hello", blocked_parent / "reply.wav"
+        )
+    finally:
+        await runner.cleanup()
+
+    assert result.success is False
+    assert result.error is not None
+    assert "Failed to save" in result.error
 
 
 @pytest.mark.asyncio
@@ -134,6 +177,24 @@ async def test_pocket_tts_health_reports_ready_and_unavailable():
     assert ready.endpoint == f"{endpoint}/"
     assert unavailable.ready is False
     assert unavailable.error is not None
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_health_reports_provider_failure():
+    async def unavailable_handler(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(status=503)
+
+    app = web.Application()
+    app.router.add_get("/", unavailable_handler)
+    runner, endpoint = await _start_server(app)
+    try:
+        health = await PocketTtsProvider(f"{endpoint}/tts").health()
+    finally:
+        await runner.cleanup()
+
+    assert health.ready is False
+    assert health.error == "Pocket TTS returned HTTP 503"
 
 
 def test_pocket_tts_is_discovered_through_the_speech_plugin_hook():
