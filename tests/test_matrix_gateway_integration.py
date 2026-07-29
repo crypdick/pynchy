@@ -168,6 +168,39 @@ def _resolve_matrix_routes(settings) -> tuple[ResolvedMatrixRoute, ...]:
     return resolve_matrix_routes(routes, connections, workspace_policy)
 
 
+@pytest.mark.parametrize(
+    "source",
+    ["not-a-matrix-reference", "connection.matrix..chat.family"],
+)
+def test_route_resolution_skips_malformed_endpoint_references(source: str) -> None:
+    route = MatrixRouteInput(
+        name="invalid",
+        source=source,
+        workspace="support",
+        activation=None,
+        outbound=None,
+        tools=None,
+        capabilities={},
+    )
+
+    assert resolve_matrix_routes((route,), {}, lambda _workspace: None) == ()
+
+
+def test_route_resolution_rejects_unknown_connection() -> None:
+    route = MatrixRouteInput(
+        name="missing-connection",
+        source="connection.matrix.missing.chat.family",
+        workspace="support",
+        activation=None,
+        outbound=None,
+        tools=None,
+        capabilities={},
+    )
+
+    with pytest.raises(ValueError, match="unknown connection"):
+        resolve_matrix_routes((route,), {}, lambda _workspace: None)
+
+
 def _configure_matrix_gateway_runtime(settings) -> None:
     routes = _resolve_matrix_routes(settings)
     matrix_gateway.configure_matrix_gateway_runtime(
