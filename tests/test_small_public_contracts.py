@@ -13,6 +13,7 @@ from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
 from pynchy.plugins.api import WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
+from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_conversation_identity import (
     resolve_linear_issue_conversation,
 )
@@ -20,12 +21,24 @@ from pynchy.plugins.integrations.linear_mutation_effects import (
     LinearSelfEchoRecorder,
     LinearWebhookEffectAttempt,
 )
+from pynchy.plugins.integrations.linear_plan_admission import review_approved_plan
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
 from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.webhook_effects import WebhookEffectId
 from pynchy.workspace.api import WorkspaceProfile
+
+
+class _MissingPlanClient:
+    async def query(self, _query: str, **_variables: object) -> dict[str, object]:
+        return {}
+
+    async def get_issue(self, _issue_id: str) -> dict[str, object] | None:
+        return None
+
+    async def create_comment(self, _issue_id: str, _body: str) -> dict[str, object]:
+        return {}
 
 
 def test_wake_gate_ignores_payloads_without_a_wake_decision() -> None:
@@ -104,6 +117,26 @@ async def test_linear_effect_confirmation_requires_evidence() -> None:
 
     with pytest.raises(ValueError, match="requires evidence"):
         await attempt.confirm(None)
+
+
+@pytest.mark.asyncio
+async def test_linear_plan_admission_rejects_missing_current_issue() -> None:
+    assert (
+        await review_approved_plan(
+            _MissingPlanClient(),
+            None,
+            workspace="project",
+            board=LinearWorkspaceBoard(team={}, project={}, states={}),
+            issue_id="issue-1",
+            identifier="SYN-1",
+            title="Missing issue",
+            url="https://linear.app/issue/SYN-1",
+            description="plan",
+            updated_at="2026-07-29T00:00:00Z",
+            public_source=True,
+        )
+        is None
+    )
 
 
 def test_transition_row_rejects_non_object_receipts() -> None:

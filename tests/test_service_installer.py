@@ -333,6 +333,28 @@ class TestInstallLaunchdService:
         assert ["/bin/launchctl", "disable", "gui/501/com.pynchy"] in cmds
         assert ["/bin/launchctl", "enable", "gui/501/com.pynchy"] in cmds
 
+    def test_reports_when_launchd_retry_still_fails(self, tmp_path: Path):
+        src_dir = tmp_path / "launchd"
+        src_dir.mkdir()
+        (src_dir / "com.pynchy.plist").write_text("<plist>test</plist>")
+
+        with (
+            patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
+            patch("pynchy.host.orchestrator.service_installer.os.getuid", return_value=501),
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_loaded",
+                side_effect=[False, False, False],
+            ) as loaded,
+            patch(
+                "pynchy.host.orchestrator.service_installer.is_launchd_managed", return_value=True
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+            install_service(tmp_path)
+
+        assert loaded.call_count == 3
+
 
 # ---------------------------------------------------------------------------
 # _install_systemd_service
