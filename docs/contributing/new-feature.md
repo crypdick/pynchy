@@ -13,11 +13,12 @@ Install `uv`, then run the repository bootstrapper:
 ./scripts/install_new_feature_dependencies.py
 ```
 
-The bootstrapper verifies Docker and installs Pynchy's pinned `new-feature` (v1.1.14) and Codex
-CLIs into `~/.local/bin`. It installs the pinned Temporal release in the selected bin directory
-and verifies its SHA-256 archive digest before installation. It does not install or start Docker
-because that requires platform-specific system administration. Run with `--check` to diagnose
-without installing.
+The bootstrapper verifies Docker and installs the current `new-feature` release and pinned Codex
+CLI into `~/.local/bin`. It accepts any functioning installed `new-feature` release so host-level
+updaters can keep the tool current without fighting repository bootstrap policy. It installs the
+pinned Temporal release in the selected bin directory and verifies its SHA-256 archive digest
+before installation. It does not install or start Docker because that requires platform-specific
+system administration. Run with `--check` to diagnose without installing.
 
 CI and standalone deterministic runtime tests only need Docker and Temporal:
 
