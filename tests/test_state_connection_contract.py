@@ -48,6 +48,14 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.asyncio
+async def test_state_database_access_requires_initialization() -> None:
+    close_test_database()
+
+    with pytest.raises(RuntimeError, match="Database not initialized"):
+        await get_all_chats()
+
+
+@pytest.mark.asyncio
 async def test_init_database_uses_explicit_runtime_config(tmp_path: Path) -> None:
     database_path = tmp_path / "explicit" / "messages.db"
     close_test_database()
