@@ -43,6 +43,7 @@ from pynchy.work_items.api import (
 )
 from pynchy.workspace.api import (
     CapabilityRule,
+    ContainerConfig,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -64,6 +65,7 @@ class TestWorkspaceProfiles:
             name="Test Workspace",
             folder="test-ws",
             trigger="@Test",
+            container_config=ContainerConfig(timeout=90),
             added_at="2024-01-01T00:00:00Z",
         )
         await set_workspace_profile(profile)
@@ -73,6 +75,8 @@ class TestWorkspaceProfiles:
         assert result.name == "Test Workspace"
         assert result.folder == "test-ws"
         assert result.trigger == "@Test"
+        assert result.container_config is not None
+        assert result.container_config.timeout == 90
 
     async def test_workspace_profile_with_security(self):
         security = WorkspaceSecurity(
@@ -157,6 +161,35 @@ class TestWorkspaceProfiles:
         assert await get_workspace_profile(original.jid) is None
         assert await get_all_workspace_profiles() == {replacement.jid: replacement}
 
+    async def test_explicit_rebind_rejects_invalid_profile(self):
+        profile = WorkspaceProfile(
+            jid="invalid-rebind@g.us",
+            name="Valid",
+            folder="invalid-rebind",
+            trigger="@Valid",
+        )
+
+        with pytest.raises(ValueError, match="Invalid workspace profile"):
+            await rebind_workspace_profile(replace(profile, name=""))
+
+    async def test_explicit_rebind_rejects_a_jid_owned_by_another_workspace(self):
+        first = WorkspaceProfile(
+            jid="owned@g.us",
+            name="First",
+            folder="first",
+            trigger="@First",
+        )
+        second = WorkspaceProfile(
+            jid="other@g.us",
+            name="Second",
+            folder="second",
+            trigger="@Second",
+        )
+        await set_workspace_profiles((first, second))
+
+        with pytest.raises(ValueError, match="already owned by workspace"):
+            await rebind_workspace_profile(replace(first, jid=second.jid))
+
     async def test_get_all_workspace_profiles(self):
         for i in range(2):
             profile = WorkspaceProfile(
@@ -240,6 +273,36 @@ class TestWorkspaceProfiles:
         assert result.security.services == {}
         assert result.security.contains_secrets is False
         assert result.security.cop_active is True
+
+    async def test_workspace_profile_defaults_security_on_legacy_null_column(self):
+        profile = WorkspaceProfile(
+            jid="legacy-null@g.us",
+            name="Legacy",
+            folder="legacy-null",
+            trigger="@Legacy",
+        )
+        await set_workspace_profile(profile)
+        async with atomic_write() as db:
+            await db.execute(
+                "UPDATE registered_groups SET security_profile = NULL WHERE jid = ?",
+                (profile.jid,),
+            )
+
+        result = await get_workspace_profile(profile.jid)
+
+        assert result is not None
+        assert result.security.services == {}
+
+    async def test_rebind_same_jid_does_not_delete_the_existing_row(self):
+        profile = WorkspaceProfile(
+            jid="same-jid@g.us",
+            name="Same JID",
+            folder="same-jid",
+            trigger="@Same",
+        )
+        await set_workspace_profile(profile)
+
+        assert await rebind_workspace_profile(profile) == profile.jid
 
     async def test_get_workspace_profile_raises_on_corrupt_security(self):
         """A corrupt security_profile must fail loud, not silently default trust."""
