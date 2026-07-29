@@ -18,6 +18,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves managed publica
 from pathlib import Path
 from typing import Any
 
+from pynchy.host.git_ops._bounded_git import run_git_bounded_stdout
 from pynchy.host.git_ops.managed_feature import resolve_managed_feature_publication
 from pynchy.host.git_ops.managed_github import (
     created_managed_pr_failure as _created_managed_pr_failure,
@@ -40,7 +41,6 @@ from pynchy.host.git_ops.utils import (
     git_env_with_token,
     redact_git_diagnostic,
     run_git,
-    run_git_bounded_stdout,
 )
 from pynchy.host.git_ops.worktree_sync import (
     _validate_sync_preconditions,

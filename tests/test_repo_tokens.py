@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import datetime
+import os
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -539,11 +540,27 @@ class TestGitEnvWithToken:
             assert env is not None
             assert env["GH_TOKEN"] == SCOPED_CREDENTIAL
             assert env["GIT_TERMINAL_PROMPT"] == "0"
-            assert env["GIT_CONFIG_COUNT"] == "4"
-            assert "x-access-token" in env["GIT_CONFIG_VALUE_0"]
-            assert SCOPED_CREDENTIAL in env["GIT_CONFIG_VALUE_1"]
-            assert env["GIT_CONFIG_VALUE_2"] == "git@github.com:"
-            assert env["GIT_CONFIG_VALUE_3"] == "ssh://git@github.com/"
+            start = int(env["GIT_CONFIG_COUNT"]) - 5
+            assert not env[f"GIT_CONFIG_VALUE_{start}"]
+            assert "x-access-token" in env[f"GIT_CONFIG_VALUE_{start + 1}"]
+            assert SCOPED_CREDENTIAL in env[f"GIT_CONFIG_VALUE_{start + 2}"]
+            assert env[f"GIT_CONFIG_VALUE_{start + 3}"] == "git@github.com:"
+            assert env[f"GIT_CONFIG_VALUE_{start + 4}"] == "ssh://git@github.com/"
+
+    def test_isolated_token_environment_skips_host_identity_lookup(self):
+        with (
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_CREDENTIAL),
+            patch("pynchy.host.git_ops._environment.subprocess.run") as config,
+        ):
+            env = git_env_with_token(REPO_SLUG, inherit_host_environment=False)
+
+        assert env is not None
+        config.assert_not_called()
+        assert env["GH_TOKEN"] == SCOPED_CREDENTIAL
+        assert "GIT_AUTHOR_NAME" not in env
+        assert "GIT_COMMITTER_NAME" not in env
+        assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert env["GIT_CONFIG_NOSYSTEM"] == "1"
 
 
 # ---------------------------------------------------------------------------

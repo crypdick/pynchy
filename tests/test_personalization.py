@@ -12,6 +12,7 @@ from pynchy.config.api import (
     load_layered_settings_mapping,
     repository_settings_sources,
     validate_litellm_model_names,
+    validate_personalization_configuration,
     validate_personalization_tree,
     validate_settings_mapping,
 )
@@ -104,6 +105,51 @@ def test_each_automation_file_becomes_a_job_and_personalization_replaces_default
 
     assert settings.jobs["weekly"].schedule == "0 10 * * 1"
     assert settings.jobs["weekly"].prompt == "personal prompt"
+
+
+def test_full_validation_rejects_invalid_settings(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text("unsupported_setting = true\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unknown config sections"):
+        validate_personalization_configuration(tmp_path, personalization)
+
+
+def test_full_validation_requires_global_and_workspace_model_routes(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        '[agent]\nmodel = "openai/global"\n\n[workspaces.pynchy]\nmodel = "openai/workspace"\n',
+        encoding="utf-8",
+    )
+    (personalization / "litellm.yaml").write_text(
+        "model_list:\n"
+        "  - model_name: openai/global\n"
+        "    litellm_params:\n"
+        "      model: openai/global\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="openai/workspace"):
+        validate_personalization_configuration(tmp_path, personalization)
+
+
+def test_full_validation_accepts_wildcard_global_and_workspace_model_routes(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        '[agent]\nmodel = "openai/global"\n\n[workspaces.pynchy]\nmodel = "openai/workspace"\n',
+        encoding="utf-8",
+    )
+    (personalization / "litellm.yaml").write_text(
+        "model_list:\n"
+        "  - model_name: openai/*\n"
+        "    litellm_params:\n"
+        "      model: openai/gpt-test\n",
+        encoding="utf-8",
+    )
+
+    settings = validate_personalization_configuration(tmp_path, personalization)
+
+    assert settings.configured_agent_models() == ("openai/global", "openai/workspace")
 
 
 def test_requires_personalization_settings_and_litellm_files(tmp_path: Path) -> None:

@@ -165,6 +165,13 @@ class TestDetectMainBranch:
         ):
             assert detect_main_branch() == "master"
 
+    def test_preserves_slash_in_origin_default_branch(self):
+        with patch(
+            "pynchy.host.git_ops.utils.run_git",
+            return_value=_ok("refs/remotes/origin/release/main\n"),
+        ):
+            assert detect_main_branch() == "release/main"
+
     def test_falls_back_to_main_on_failure(self):
         with patch("pynchy.host.git_ops.utils.run_git", return_value=_fail()):
             assert detect_main_branch() == "main"
@@ -306,15 +313,15 @@ class TestPushLocalCommits:
             ]
             assert push_local_commits() is True
 
-    def test_rev_list_failure_returns_true(self):
-        """When rev-list fails, assume nothing to push (can't tell)."""
+    def test_rev_list_failure_returns_false(self):
+        """A failed ahead check cannot prove the repository is in sync."""
         with patch("pynchy.host.git_ops.utils.run_git") as mock:
             mock.side_effect = [
                 _ok("refs/remotes/origin/main\n"),  # detect_main_branch
                 _ok(),  # fetch
                 _fail(),  # rev-list fails
             ]
-            assert push_local_commits() is True
+            assert push_local_commits() is False
 
     def test_successful_rebase_and_push(self):
         """Happy path: fetch, rebase, push all succeed."""
@@ -335,6 +342,36 @@ class TestPushLocalCommits:
                 _fail("fetch error"),
             ]
             assert push_local_commits() is False
+
+    def test_fetch_failure_redacts_credentials_from_logs(self):
+        opaque_value = "t" * 15
+        with (
+            patch("pynchy.host.git_ops.utils.run_git") as run,
+            patch("pynchy.host.git_ops.utils.logger.warning") as warning,
+        ):
+            run.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _fail(f"fatal: ssh://x-access-token:{opaque_value}@github.com/repo.git"),
+            ]
+
+            assert push_local_commits(env={"GH_TOKEN": opaque_value}) is False
+
+        assert opaque_value not in str(warning.call_args)
+        assert "x-access-token" not in str(warning.call_args)
+
+    def test_can_suppress_git_diagnostics(self):
+        with (
+            patch("pynchy.host.git_ops.utils.run_git") as run,
+            patch("pynchy.host.git_ops.utils.logger.warning") as warning,
+        ):
+            run.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _fail("private personalization content"),
+            ]
+
+            assert push_local_commits(include_diagnostics=False) is False
+
+        warning.assert_called_once_with("push_local: git fetch failed")
 
     def test_rebase_fails_then_succeeds_on_retry(self):
         """First rebase fails (origin advanced), retry with fresh fetch succeeds."""
@@ -390,6 +427,191 @@ class TestPushLocalCommits:
                 _fail("push rejected"),  # push fails
             ]
             assert push_local_commits() is False
+
+    def test_post_rebase_check_prevents_push(self):
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("1\n"),  # rev-list: 1 commit ahead
+                _ok(),  # rebase succeeds
+            ]
+
+            assert push_local_commits(post_rebase_check=lambda: False) is False
+
+        assert mock.call_count == 4
+
+    def test_pre_push_check_prevents_push_after_source_validation(self):
+        callbacks: list[str] = []
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok(),  # fetch
+                _ok("1\n"),  # rev-list: one local commit
+                _ok(),  # rebase succeeds
+            ]
+
+            assert (
+                push_local_commits(
+                    main_branch="main",
+                    validated_source=lambda: callbacks.append("source") or "validated-sha",
+                    pre_push_check=lambda: callbacks.append("pre-push") or False,
+                )
+                is False
+            )
+
+        assert callbacks == ["source", "pre-push"]
+        assert mock.call_count == 3
+
+    def test_detect_main_branch_uses_credential_free_environment(self):
+        local_env = {"LOCAL_GIT": "safe"}
+        remote_env = {"GH_TOKEN": "remote-token"}
+        with (
+            patch(
+                "pynchy.host.git_ops.utils.git_env_without_credentials",
+                return_value=local_env,
+            ),
+            patch("pynchy.host.git_ops.utils.run_git") as mock,
+        ):
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("0\n"),  # rev-list: no local commits
+            ]
+
+            assert push_local_commits(env=remote_env) is True
+
+        detection = mock.call_args_list[0]
+        assert detection.kwargs["env"] == local_env
+        assert detection.kwargs["inherit_env"] is False
+        assert mock.call_args_list[1].kwargs["env"] == remote_env
+
+    def test_keeps_remote_token_out_of_local_git_and_disables_hooks(self):
+        remote_env = {"GH_TOKEN": "redacted"}
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok(),  # fetch
+                _ok("validated-head\n"),  # preflight HEAD
+                _ok("1\n"),  # rev-list: one local commit
+                _ok("validated-head\n"),  # pre-rebase HEAD
+                _ok(),  # rebase
+                _ok(),  # push
+            ]
+
+            assert (
+                push_local_commits(
+                    env=remote_env,
+                    main_branch="main",
+                    expected_head="validated-head",
+                    inherit_env=False,
+                )
+                is True
+            )
+
+        local_calls = [
+            item
+            for item in mock.call_args_list
+            if item.args[0] in {"rev-parse", "rev-list", "rebase"}
+        ]
+        assert len(local_calls) == 4
+        for local_call in local_calls:
+            local_env = local_call.kwargs["env"]
+            assert "GH_TOKEN" not in local_env
+            assert local_call.kwargs["inherit_env"] is False
+            local_config = {
+                local_env[f"GIT_CONFIG_KEY_{index}"]: local_env[f"GIT_CONFIG_VALUE_{index}"]
+                for index in range(int(local_env["GIT_CONFIG_COUNT"]))
+            }
+            assert not local_config["credential.helper"]
+            assert local_config["core.hooksPath"] == os.devnull
+
+        assert mock.call_args_list[0].kwargs["env"] == remote_env
+        assert mock.call_args_list[-1].kwargs["env"] == remote_env
+
+    def test_identity_lookup_uses_only_clean_fixed_global_keys(self, monkeypatch):
+        monkeypatch.setenv("GH_TOKEN", "remote-token-only")
+        with (
+            patch("pynchy.host.git_ops.utils.run_git", return_value=_ok("0\n")) as run,
+            patch(
+                "pynchy.host.git_ops._environment.subprocess.run",
+                side_effect=[_ok("Identity Name\n"), _ok("identity@example.invalid\n")],
+            ) as config,
+        ):
+            assert push_local_commits(main_branch="main", skip_fetch=True) is True
+
+        assert [call.args[0] for call in config.call_args_list] == [
+            ["git", "config", "--global", "--get", "user.name"],
+            ["git", "config", "--global", "--get", "user.email"],
+        ]
+        for config_call in config.call_args_list:
+            discovery_env = config_call.kwargs["env"]
+            assert "GH_TOKEN" not in discovery_env
+            assert "GIT_CONFIG_GLOBAL" not in discovery_env
+            assert discovery_env["GIT_CONFIG_NOSYSTEM"] == "1"
+            assert discovery_env["GIT_TERMINAL_PROMPT"] == "0"
+            assert config_call.kwargs["timeout"] == 5
+
+        local_env = run.call_args.kwargs["env"]
+        assert local_env["GIT_AUTHOR_NAME"] == "Identity Name"
+        assert local_env["GIT_COMMITTER_EMAIL"] == "identity@example.invalid"
+
+    def test_local_git_keeps_global_identity_without_credentials(self, monkeypatch, tmp_path: Path):
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".gitconfig").write_text(
+            "[user]\n\tname = Identity From Global Config\n\temail = identity@example.invalid\n"
+        )
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.setenv("GH_TOKEN", "remote-token-only")
+
+        with patch("pynchy.host.git_ops.utils.run_git", return_value=_ok("0\n")) as mock:
+            assert push_local_commits(main_branch="main", skip_fetch=True) is True
+
+        local_env = mock.call_args.kwargs["env"]
+        identity = run_git(
+            "var",
+            "GIT_COMMITTER_IDENT",
+            cwd=tmp_path,
+            env=local_env,
+            inherit_env=False,
+        )
+
+        assert identity.returncode == 0
+        assert "Identity From Global Config <identity@example.invalid>" in identity.stdout
+        assert "GH_TOKEN" not in local_env
+        assert local_env["GIT_AUTHOR_NAME"] == "Identity From Global Config"
+        assert local_env["GIT_COMMITTER_NAME"] == "Identity From Global Config"
+        assert local_env["GIT_AUTHOR_EMAIL"] == "identity@example.invalid"
+        assert local_env["GIT_COMMITTER_EMAIL"] == "identity@example.invalid"
+        assert local_env["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert local_env["GIT_CONFIG_NOSYSTEM"] == "1"
+
+    def test_pushes_validated_post_rebase_source_without_rereading_head(self):
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok(),  # fetch
+                _ok("1\n"),  # rev-list: one local commit
+                _ok(),  # rebase
+                _ok(),  # exact-source push
+            ]
+
+            assert (
+                push_local_commits(
+                    main_branch="main",
+                    remote="https://github.com/owner/personalization.git",
+                    validated_source=lambda: "validated-rebase-sha",
+                )
+                is True
+            )
+
+        assert mock.call_count == 4
+        push_call = mock.call_args_list[-1]
+        assert push_call.args == (
+            "push",
+            "--no-verify",
+            "https://github.com/owner/personalization.git",
+            "validated-rebase-sha:refs/heads/main",
+        )
 
     def test_skip_fetch_skips_initial_fetch(self):
         """skip_fetch=True goes straight to rev-list (after detect_main_branch)."""

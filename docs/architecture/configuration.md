@@ -18,8 +18,10 @@ Settings                        Pynchy-owned Pydantic schema
 
 The Pynchy repository owns `data/defaults/` and the validation logic. The
 operator owns the checkout at `data/personalization/`. The path is a convention,
-not a Git relationship: the public repository ignores the directory and
-Pynchy's runtime never performs repository operations inside it.
+not a Git relationship: the public repository ignores the directory. The
+runtime configuration loader never performs repository operations inside it;
+the host Git adapter can publish the canonical checkout through the documented
+operator workflow in [Personalization repository](../usage/personalization.md).
 
 ## Merge boundary
 

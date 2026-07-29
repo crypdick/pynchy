@@ -10,6 +10,7 @@ source_roots = [
 # Only these modules may select and wire private concrete implementations.
 composition_roots = [
   "pynchy.__main__",
+  "pynchy.personalization_cli",
   "pynchy.host.orchestrator.app",
   "pynchy.host.orchestrator.dep_factory",
   "pynchy.host.orchestrator.lifecycle",
@@ -141,6 +142,12 @@ include_descendants = false
 [[packages]]
 name = "main"
 root = "pynchy.__main__"
+role = "application"
+public_modules = []
+
+[[packages]]
+name = "personalization_cli"
+root = "pynchy.personalization_cli"
 role = "application"
 public_modules = []
 

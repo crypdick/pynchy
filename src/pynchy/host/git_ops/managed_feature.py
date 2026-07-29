@@ -13,6 +13,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from pathlib import Path
 
+from pynchy.host.git_ops._bounded_git import run_git_bounded_stdout
 from pynchy.host.git_ops.managed_feature_manifest import (
     _configured_repo_root,
     _load_feature_record,
@@ -33,7 +34,6 @@ from pynchy.host.git_ops.utils import (
     git_env_with_token,
     redact_git_diagnostic,
     run_git,
-    run_git_bounded_stdout,
 )
 
 _FEATURE_SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")

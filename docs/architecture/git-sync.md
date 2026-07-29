@@ -10,8 +10,9 @@ in worktrees.
 2. **Clear host/container naming** — Host-side functions use a `host_` prefix (e.g., `host_sync_worktree()`). Container-side scripts live in `src/pynchy/agent/scripts/`.
 3. **Self-contained error messages to containers** — Containers can't read host state (logs, config, etc.). Errors sent to containers must include enough context to act on. On conflict, the host leaves the worktree in a resolvable state (conflict markers visible to agent) rather than aborting.
 4. **Host owns publication credentials** — Agents never push directly. The host
-   publishes isolated worktree branches as pull requests. Merged remote changes
-   return through the normal origin-drift path.
+   publishes isolated worktree branches as pull requests and can publish the
+   canonical personalization checkout through its fixed operator command.
+   Merged remote changes return through the normal origin-drift path.
 
 For worktree isolation details, see `docs/usage/worktrees.md`.
 
@@ -37,7 +38,9 @@ turn.
 repository-revision updates, not direct local configuration changes.
 
 The sync loop validates, commits, and pushes local changes in the independent
-personalization repository. It does not clone that repository or pull
-remote-only changes. When local commits need publication, it fetches and
-rebases them before pushing. Invalid in-progress edits remain uncommitted and
-are retried on a later poll.
+personalization repository. The host operator invokes that same fixed-target
+operation with `pynchy publish-personalization`; it accepts no repository,
+branch, or remote override. Invalid in-progress edits remain uncommitted and
+are retried on a later poll. See
+[Personalization repository](../usage/personalization.md) for operator steps
+and divergence behavior.
