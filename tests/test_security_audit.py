@@ -72,7 +72,7 @@ async def test_record_security_event_redacts_secret_bearing_reason():
 async def test_record_security_event_uses_scanner_when_local_redaction_misses_token():
     """Provider-token formats never reach the audit log unredacted."""
     raw_secret = "".join(  # pragma: allowlist secret
-        ("xoxb-", "123456789012-123456789012-abcdefghijklmnopqrstuvwxyzABCDEF")
+        ("xoxb-", "123456789012-123456789012-abc", "defghijklmnopqrstuvwxyzABCDEF")
     )
     await record_security_event(
         chat_jid="group@test",
