@@ -89,6 +89,9 @@ async def test_runner_records_evidence_and_marks_unimplemented_scenarios_not_est
 
     history = await get_recent_canary_runs(limit=20)
     assert len(history) == len(declared_canary_scenarios())
+    assert [run.scenario_id for run in await get_recent_canary_runs(scenario_id=_SCENARIO_ID)] == [
+        _SCENARIO_ID
+    ]
     report = await get_canary_report()
     assert report["summary"] == {
         "declared_scenarios": len(declared_canary_scenarios()),
