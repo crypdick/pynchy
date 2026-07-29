@@ -50,9 +50,6 @@
 # test suite scales pytest-xdist workers to the effective cgroup memory limit.
 # memory_mb = 2048
 
-# Maximum container output size in bytes (10MB default)
-# max_output_size = 10485760
-
 # Idle timeout in milliseconds (15 minutes default)
 # idle_timeout_ms = 900000
 
@@ -146,7 +143,6 @@
 # review_after_turn = true
 # max_attempts = 3
 # packet_max_chars = 12000
-# skill_max_bytes = 200000
 #
 # [learning.obsidian]
 # vault_root = "/path/to/obsidian/vault"

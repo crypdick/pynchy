@@ -113,13 +113,11 @@ multiple field diffs takes the strongest class:
 | `repos.root`, `repos.overrides.*` | Host restart | Repository resolution can reread settings, but Git sync, scheduler repository sets, and startup worktree token maps capture related values. |
 | `learning.enabled`, `learning.obsidian.vault_root`, `learning.obsidian.mount_path`, `learning.obsidian.default_profile_root`, `learning.obsidian.memory_dir_name` | Affected-session retirement | These fields change whether and where a workspace vault mounts and where agent homes point. Publish the learning runtime, then retire every workspace whose resolved paths change. |
 | `learning.review_after_turn`, `learning.max_attempts`, `learning.packet_max_chars` | Next-turn refresh | These values affect creation of future review packets or workflows, not an existing worker. Publication must replace the app and scheduler snapshots together before the next turn. |
-| `learning.skill_max_bytes` | Host restart | No runtime consumer currently reads this validated field. Keep unsupported drift restart-sensitive; a later change should either wire the limit at the learning write boundary or remove the field. |
 | `security.blocked_patterns` | Affected-session retirement | Spawn-time mount validation receives a captured tuple. Publish the stricter snapshot before retiring affected workers; never leave an old worker mounted under relaxed policy. |
 | `security.cop_model`, `security.cop_wire_api` | Host restart | The Cop client holds one process-wide transport selection used by all security gates. |
 | `container.timeout_ms` | Next-turn refresh | Preflight chooses the query deadline for each turn. A published execution snapshot can change the next deadline without replacing the worker. |
 | `container.image`, `container.memory_mb`, `container.idle_timeout_ms` | Affected-session retirement | Image, cgroup memory, and idle reclamation attach to a worker at creation. A global change affects every container session. |
 | `container.runtime`, `container.max_concurrent`, `container.orphan_reap_age_ms`, `queue.*` | Host restart | These fields select process managers, global concurrency, queue retry policy, and host cleanup behavior. |
-| `container.max_output_size` | Host restart | No active host consumer reads this field. Keep unsupported drift restart-sensitive until the setting has one owner or gets removed. |
 
 All remaining top-level settings stay restart-sensitive in this slice. They
 configure host infrastructure or belong to the automation/topology briefs:

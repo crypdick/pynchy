@@ -286,7 +286,6 @@ def test_settings_validation_allows_learning_enabled_without_vault_root(tmp_path
                 "review_after_turn": True,
                 "max_attempts": 3,
                 "packet_max_chars": 12_000,
-                "skill_max_bytes": 200_000,
                 "obsidian": {
                     "mount_path": "/workspace/vault",
                     "default_profile_root": "systems/pynchy/profiles/{profile}",
@@ -317,8 +316,6 @@ def test_learning_operational_knobs_must_be_positive():
         {"max_attempts": -1},
         {"packet_max_chars": 0},
         {"packet_max_chars": -1},
-        {"skill_max_bytes": 0},
-        {"skill_max_bytes": -1},
     ]
 
     for kwargs in invalid_cases:

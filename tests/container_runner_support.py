@@ -242,7 +242,6 @@ def _patch_settings(
     core: str | None = None,
     container_timeout: float | None = None,
     idle_timeout: float | None = None,
-    max_output_size: int | None = None,
     learning: LearningConfig | None = None,
     profiles: dict[str, ProfileConfig] | None = None,
     workspaces: dict[str, WorkspaceConfig] | None = None,
@@ -260,8 +259,6 @@ def _patch_settings(
     s = make_settings(**overrides)
     if core is not None:
         s.agent.default_core = core
-    if max_output_size is not None:
-        s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
     configure_personalized_skills_root(s.project_root)
     configure_learning_paths_for(s)
