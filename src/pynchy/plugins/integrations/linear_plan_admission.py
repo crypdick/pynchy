@@ -51,8 +51,8 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
     description: str,
     updated_at: str,
     public_source: bool,
-) -> bool:
-    """Return whether unchanged approved work may proceed to lease acquisition."""
+) -> dict[str, Any] | None:
+    """Return the provider-confirmed plan revision admitted for execution."""
     if reviewer is None:
         result = LinearPlanReviewResult(
             decision=LinearPlanReviewDecision.ERROR,
@@ -90,9 +90,25 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
         or not isinstance(current.get("state"), dict)
         or state_id(current) != state_id(board.states[HUMAN_APPROVED_STATUS])
     ):
-        return False
+        return None
     if result.decision is LinearPlanReviewDecision.PROCEED:
-        return True
+        return current
+
+    if result.decision is LinearPlanReviewDecision.AMEND:
+        # Minor drift stays approved so routine adaptations do not consume another
+        # human decision. Persist first so the worker sees one canonical amended plan.
+        amended = await update_issue_plan(
+            client,
+            issue_id=issue_id,
+            state_id=state_id(board.states[HUMAN_APPROVED_STATUS]),
+            description=description_with_plan(current.get("description"), result.plan or ""),
+        )
+        await client.create_comment(
+            issue_id,
+            "Plan freshness review applied a non-material amendment, "
+            f"so execution will continue.\n\nReason: {result.reason}",
+        )
+        return amended
 
     awaiting_state_id = state_id(board.states[AWAITING_PLAN_APPROVAL_STATUS])
     if result.decision is LinearPlanReviewDecision.REPLAN:
@@ -108,7 +124,7 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
             state_id=awaiting_state_id,
             description=description_with_plan(description, result.plan or ""),
         )
-        return False
+        return None
 
     await client.create_comment(
         issue_id,
@@ -116,4 +132,4 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
         f"Error: {result.reason}\n\nMoved back to Awaiting Plan Approval.",
     )
     await update_issue_state(client, issue_id, awaiting_state_id)
-    return False
+    return None

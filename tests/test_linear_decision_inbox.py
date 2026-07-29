@@ -129,6 +129,48 @@ async def test_planned_work_is_reviewed_before_execution_lease() -> None:
     assert await get_active_work_item_execution("issue-execute") is not None
 
 
+async def test_minor_plan_amendment_updates_plan_and_still_leases_work() -> None:
+    client = _DecisionClient()
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = (
+        "Keep this context.\n\n"
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Call the renamed helper by its old name.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.AMEND,
+            "The helper was renamed without changing behavior.",
+            "Call the helper by its current name, then run the existing regression.",
+        )
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        review_plan=reviewer,
+    )
+
+    assert len(created) == 1
+    assert await get_active_work_item_execution("issue-execute") is not None
+    assert issue["state"]["id"] == "state-progress"
+    assert "Call the helper by its current name" in issue["description"]
+    assert "old name" not in issue["description"]
+    assert client.comments == [
+        (
+            "issue-execute",
+            (
+                "Plan freshness review applied a non-material amendment, "
+                "so execution will continue.\n\n"
+                "Reason: The helper was renamed without changing behavior."
+            ),
+        )
+    ]
+
+
 async def test_planned_work_reports_actual_review_status_to_its_thread(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
