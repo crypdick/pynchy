@@ -198,6 +198,7 @@ class DiscordVoiceManager:
             cast("PynchyVoiceClient", voice_client),
             members,
             self._speech_synthesizer,
+            self._transcribe_audio,
         )
         self._session = session
         session.start()
@@ -251,19 +252,21 @@ class DiscordVoiceManager:
 
 
 class _VoiceSession:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one session owns its channel and optional providers.
         self,
         channel: DiscordChannel,
         jid: str,
         voice_client: PynchyVoiceClient,
         allowed_members: dict[str, str],
         speech_synthesizer: SpeechSynthesizer | None,
+        transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
     ) -> None:
         self.jid = jid
         self._channel = channel
         self._voice_client = voice_client
         self._allowed_members = allowed_members
         self._speech_synthesizer = speech_synthesizer
+        self._transcribe_audio = transcribe_audio
         self._decoders: dict[str, _OpusDecoder] = {}
         self._turns: dict[str, _TurnBuffer] = {}
         self._speaking_lock = asyncio.Lock()
