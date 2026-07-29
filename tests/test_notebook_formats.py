@@ -387,6 +387,9 @@ class TestOutputsForAgent:
 
         assert result == [{"type": "display"}]
 
+    def test_unsupported_output_types_are_ignored(self):
+        assert outputs_for_agent([{"output_type": "execute_input", "code": "1 + 1"}]) == []
+
     def test_long_text_truncated(self):
         long_text = "x" * 10000
         outputs = [{"output_type": "stream", "name": "stdout", "text": long_text}]
