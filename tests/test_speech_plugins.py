@@ -115,6 +115,29 @@ async def test_pocket_tts_rejects_empty_text(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_pocket_tts_reports_an_unwritable_audio_destination(tmp_path):
+    async def synthesize(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(body=b"audio", content_type="audio/wav")
+
+    app = web.Application()
+    app.router.add_post("/tts", synthesize)
+    runner, endpoint = await _start_server(app)
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("blocked", encoding="utf-8")
+    try:
+        result = await PocketTtsProvider(f"{endpoint}/tts").synthesize(
+            "Hello", blocked_parent / "reply.wav"
+        )
+    finally:
+        await runner.cleanup()
+
+    assert result.success is False
+    assert result.error is not None
+    assert "Failed to save" in result.error
+
+
+@pytest.mark.asyncio
 async def test_pocket_tts_health_reports_ready_and_unavailable():
     async def ready_handler(request: web.Request) -> web.Response:
         await request.read()
