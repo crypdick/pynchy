@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.gateway import (
@@ -277,13 +278,14 @@ class TestCollectYamlEnvRefs:
         run_docker.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_start_forwards_phoenix_env_and_content_capture(self, tmp_path: Path):
-        """Phoenix callback env is forwarded even when not referenced by os.environ/ YAML."""
+    async def test_start_forwards_phoenix_env_without_content_capture(self, tmp_path: Path):
+        """Phoenix receives metadata without prompt or response content."""
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text('litellm_settings:\n  callbacks: ["arize_phoenix"]\n')
         (tmp_path / ".env").write_text(
             "PHOENIX_COLLECTOR_HTTP_ENDPOINT=https://phoenix.example.test/v1/traces\n"
             "PHOENIX_PROJECT_NAME=pynchy-test\n"  # pragma: allowlist secret
+            "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=SPAN_AND_EVENT\n"
         )
 
         gw = LiteLLMGateway(config_path=str(cfg), data_dir=tmp_path, **_LITELLM_KWARGS)
@@ -324,11 +326,31 @@ class TestCollectYamlEnvRefs:
         assert litellm_environment["LITELLM_OTEL_V2"] == "true"
         assert (
             litellm_environment["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"]
-            == "SPAN_AND_EVENT"
+            == "NO_CONTENT"
         )
 
 
 class TestPrepareLiteLLMConfig:
+    def test_forces_metadata_only_logging(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        runtime_dir = tmp_path / "runtime"
+        runtime_dir.mkdir()
+        cfg.write_text(
+            "model_list:\n"
+            "  - model_name: test\n"
+            "    litellm_params:\n"
+            "      model: openai/test\n"
+            "litellm_settings:\n"
+            "  turn_off_message_logging: false\n"
+            "  log_raw_request_response: true\n"
+        )
+
+        prepared = LiteLLMConfigPreparer().prepare(cfg, runtime_dir, env={})
+        settings = yaml.safe_load(prepared.read_text())["litellm_settings"]
+
+        assert settings["turn_off_message_logging"] is True
+        assert settings["log_raw_request_response"] is False
+
     def test_raises_typeerror_when_model_list_is_not_a_list(self, tmp_path: Path):
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: not-a-list\n")

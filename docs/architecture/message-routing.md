@@ -12,9 +12,10 @@ use the separate [routed conversation foundation](conversation-routing.md).
 SQLite chat history stores channel-visible messages and operational notices.
 The built-in SQLite observer also stores bounded, irreversibly redacted tool
 and text evidence for live operational review. LiteLLM exports complete LLM
-request/response traces to Phoenix, which remains the source of truth for model
-trace bodies, token usage, cost, and provider request metadata. Phoenix is not
-the application database for channel-visible chat history.
+request/response metadata to Phoenix with message bodies disabled. Phoenix
+remains the source of truth for token usage, cost, timing, model, and provider
+request metadata, but not prompt or response content. Phoenix is not the
+application database for channel-visible chat history.
 
 The sender vocabulary in the database:
 
@@ -27,7 +28,7 @@ The sender vocabulary in the database:
 | `{channel_jid}` | Yes | Channel user messages — WhatsApp phone JID, `slack:<channel_id>`, etc. (`UserMessage`) |
 
 Read SQLite to understand the chat workflow and review bounded live evidence.
-Read Phoenix to reconstruct complete model and provider traces.
+Read Phoenix to reconstruct model and provider timing without message bodies.
 
 ## Trigger Pattern
 
