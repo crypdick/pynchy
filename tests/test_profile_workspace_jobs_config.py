@@ -198,6 +198,12 @@ def test_claude_cli_accepts_workspace_model_override() -> None:
     assert resolved.model == "workspace-model"
 
 
+def test_claude_sdk_without_model_overrides_is_valid() -> None:
+    settings = validate_settings_mapping({"agent": {"default_core": "claude"}})
+
+    assert settings.agent.default_core == "claude"
+
+
 def test_agent_job_targets_configured_workspace() -> None:
     settings = _settings(
         jobs={
