@@ -66,11 +66,17 @@ def _personalization_repo(
 
 @contextmanager
 def _github_origin(repo: Path, remote: Path) -> Iterator[None]:
-    """Make a local fixture behave like a trusted GitHub checkout."""
+    """Make a local fixture behave like an authenticated GitHub checkout."""
     _git(repo, "remote", "set-url", "origin", "git@github.com:owner/personalization.git")
-    with patch(
-        "pynchy.host.git_ops._personalization_target._github_remote_url",
-        return_value=str(remote),
+    with (
+        patch(
+            "pynchy.host.git_ops._personalization_target._github_remote_url",
+            return_value=str(remote),
+        ),
+        patch(
+            "pynchy.host.git_ops._personalization_target.git_env_with_token",
+            return_value={"GH_TOKEN": "redacted"},
+        ),
     ):
         yield
 
