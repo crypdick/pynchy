@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import sys
+from types import ModuleType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -231,6 +234,93 @@ def test_channel_disconnect_and_reconnect_manage_the_socket_handler() -> None:
     asyncio.run(scenario())
 
 
+def test_channel_connect_initializes_the_socket_mode_lifecycle(monkeypatch) -> None:
+    class FakeClient:
+        async def auth_test(self) -> dict[str, str]:
+            return {"user_id": "UBOT"}
+
+    class FakeApp:
+        instances: list[FakeApp] = []
+
+        def __init__(self, *, token: str) -> None:
+            self.token = token
+            self.client = FakeClient()
+            self.instances.append(self)
+
+    class FakeHandler:
+        instances: list[FakeHandler] = []
+
+        def __init__(self, app: FakeApp, app_token: str) -> None:
+            self.app = app
+            self.app_token = app_token
+            self.close_async = AsyncMock()
+            self.instances.append(self)
+
+        async def start_async(self) -> None:
+            await asyncio.Event().wait()
+
+    bolt = ModuleType("slack_bolt")
+    adapter = ModuleType("slack_bolt.adapter")
+    socket_mode = ModuleType("slack_bolt.adapter.socket_mode")
+    handler_module = ModuleType("slack_bolt.adapter.socket_mode.async_handler")
+    app_module = ModuleType("slack_bolt.async_app")
+    handler_module.AsyncSocketModeHandler = FakeHandler
+    app_module.AsyncApp = FakeApp
+    bolt.adapter = adapter
+    adapter.socket_mode = socket_mode
+    socket_mode.async_handler = handler_module
+    monkeypatch.setitem(sys.modules, "slack_bolt", bolt)
+    monkeypatch.setitem(sys.modules, "slack_bolt.adapter", adapter)
+    monkeypatch.setitem(sys.modules, "slack_bolt.adapter.socket_mode", socket_mode)
+    monkeypatch.setitem(sys.modules, "slack_bolt.adapter.socket_mode.async_handler", handler_module)
+    monkeypatch.setitem(sys.modules, "slack_bolt.async_app", app_module)
+
+    async def scenario() -> None:
+        ch = _make_channel()
+        sync_allowed_channels = AsyncMock()
+        register_handlers = MagicMock()
+        ch.sync_allowed_channels = sync_allowed_channels
+        ch.register_inbound_handlers = register_handlers
+
+        await ch.connect()
+
+        assert ch.connected is True
+        assert ch.bot_user_id == "UBOT"
+        assert FakeApp.instances[0].token == SLACK_BOT_VALUE
+        assert FakeHandler.instances[0].app_token == SLACK_APP_VALUE
+        sync_allowed_channels.assert_awaited_once()
+        register_handlers.assert_called_once()
+
+        await ch.disconnect()
+        FakeHandler.instances[0].close_async.assert_awaited_once()
+
+    asyncio.run(scenario())
+
+
+def test_socket_mode_exit_schedules_reconnect_for_an_active_channel() -> None:
+    async def scenario() -> None:
+        ch = _make_channel()
+        ch.connected = True
+
+        async def interrupted() -> None:
+            await asyncio.sleep(0)
+            raise RuntimeError("socket closed")
+
+        task = asyncio.create_task(interrupted())
+        with contextlib.suppress(RuntimeError):
+            await task
+
+        ch.handle_socket_mode_exit(task)
+
+        assert ch.connected is False
+        assert ch.reconnect_task is not None
+        ch.reconnect_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await ch.reconnect_task
+
+    asyncio.run(scenario())
+
+
 def test_registered_slack_callbacks_ack_and_route_inbound_events(
     monkeypatch,
 ) -> None:
@@ -272,3 +362,70 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
     ack.assert_awaited_once()
     on_message.assert_called_once()
     on_reaction.assert_called_once_with("slack:C12345", "123.456", "U999", "eyes")
+
+
+def test_registered_slack_assistant_callbacks_route_sidebar_messages(monkeypatch) -> None:
+    class FakeAssistant:
+        instances: list[FakeAssistant] = []
+
+        def __init__(self) -> None:
+            self.thread_started_handler: Any = None
+            self.user_message_handler: Any = None
+            self.instances.append(self)
+
+        def thread_started(self, handler: Any) -> Any:
+            self.thread_started_handler = handler
+            return handler
+
+        def user_message(self, handler: Any) -> Any:
+            self.user_message_handler = handler
+            return handler
+
+    class AssistantContext:
+        channel_id = "C12345"
+
+    bolt = ModuleType("slack_bolt")
+    middleware = ModuleType("slack_bolt.middleware")
+    assistant = ModuleType("slack_bolt.middleware.assistant")
+    assistant_module = ModuleType("slack_bolt.middleware.assistant.async_assistant")
+    assistant_module.AsyncAssistant = FakeAssistant
+    bolt.middleware = middleware
+    middleware.assistant = assistant
+    assistant.async_assistant = assistant_module
+    monkeypatch.setitem(sys.modules, "slack_bolt", bolt)
+    monkeypatch.setitem(sys.modules, "slack_bolt.middleware", middleware)
+    monkeypatch.setitem(sys.modules, "slack_bolt.middleware.assistant", assistant)
+    monkeypatch.setitem(
+        sys.modules,
+        "slack_bolt.middleware.assistant.async_assistant",
+        assistant_module,
+    )
+
+    on_message = MagicMock()
+    on_chat_metadata = MagicMock()
+    ch = _make_channel(on_message=on_message, on_chat_metadata=on_chat_metadata)
+    ch.resolve_user_name = AsyncMock(return_value="Ada")
+    app = _RegisteringSlackApp()
+    ch.slack_app = app
+    ch.register_inbound_handlers()
+    panel = FakeAssistant.instances[0]
+    say = AsyncMock()
+    prompts = AsyncMock()
+    status = AsyncMock()
+
+    async def scenario() -> None:
+        await panel.thread_started_handler(say, prompts)
+        await panel.user_message_handler(
+            {"user": "U999", "text": "status", "ts": "123.456"},
+            AssistantContext(),
+            status,
+        )
+
+    asyncio.run(scenario())
+
+    say.assert_awaited_once_with("How can I help?")
+    prompts.assert_awaited_once()
+    status.assert_awaited_once_with("thinking...")
+    on_chat_metadata.assert_called_once()
+    on_message.assert_called_once()
+    assert on_message.call_args.args[1].metadata["slack_channel_type"] == "assistant"
