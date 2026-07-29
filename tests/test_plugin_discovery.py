@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from typing import TypeGuard
 from unittest.mock import patch
@@ -85,6 +86,22 @@ class TestPluginManager:
         assert "builtin-tailscale" not in names
         # Other plugins should still be loaded
         assert "builtin-claude" in names
+
+    @pytest.mark.parametrize("failure", [ImportError, RuntimeError])
+    def test_builtin_plugin_load_failures_are_isolated(self, failure, monkeypatch):
+        original_import_module = importlib.import_module
+
+        def load(module_path: str):
+            if module_path == "pynchy.plugins.agent_cores.claude":
+                raise failure("test plugin load failure")
+            return original_import_module(module_path)
+
+        monkeypatch.setattr(importlib, "import_module", load)
+
+        pm = get_plugin_manager()
+
+        assert pm.get_plugin("builtin-claude") is None
+        assert pm.get_plugin("builtin-openai") is not None
 
 
 class TestCustomPluginRegistration:
