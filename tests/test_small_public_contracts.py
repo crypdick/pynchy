@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -15,8 +16,16 @@ from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.plugins.integrations.linear_conversation_identity import (
     resolve_linear_issue_conversation,
 )
+from pynchy.plugins.integrations.linear_mutation_effects import (
+    LinearSelfEchoRecorder,
+    LinearWebhookEffectAttempt,
+)
+from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
+from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue
 from pynchy.state.work_item_rows import row_to_transition
+from pynchy.webhook_effects import WebhookEffectId
+from pynchy.workspace.api import WorkspaceProfile
 
 
 def test_wake_gate_ignores_payloads_without_a_wake_decision() -> None:
@@ -54,6 +63,47 @@ def test_linear_self_echo_recorder_requires_configuration(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="Linear self-echo runtime has not been configured"):
         linear_self_echo_recorder("account")
+
+
+@pytest.mark.asyncio
+async def test_linear_planning_admission_requires_configuration(monkeypatch) -> None:
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_planning_tasks._runtime.runtime", None)
+    issue = DecisionIssue(
+        id="issue-1",
+        identifier="SYN-1",
+        title="Plan this",
+        url="https://linear.app/issue/SYN-1",
+        description="",
+        updated_at="2026-07-29T00:00:00Z",
+        state_id="ready",
+        project_id="project-1",
+    )
+
+    with pytest.raises(RuntimeError, match="Linear planning-task runtime has not been configured"):
+        await admit_planning_issue(
+            issue,
+            WorkspaceProfile(jid="group@g.us", name="Project", folder="project", trigger="@Bot"),
+            observed_at=datetime(2026, 7, 29, tzinfo=UTC),
+            public_source=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_linear_effect_confirmation_requires_evidence() -> None:
+    attempt = LinearWebhookEffectAttempt(
+        recorder=LinearSelfEchoRecorder(
+            account_name="account",
+            begin=AsyncMock(),
+            mark_executing=AsyncMock(),
+            confirm=AsyncMock(),
+            fail=AsyncMock(),
+            mark_outcome_unknown=AsyncMock(),
+        ),
+        effect_id=WebhookEffectId("effect-1"),
+    )
+
+    with pytest.raises(ValueError, match="requires evidence"):
+        await attempt.confirm(None)
 
 
 def test_transition_row_rejects_non_object_receipts() -> None:

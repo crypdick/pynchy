@@ -98,7 +98,7 @@ async def test_host_task_retirement_ignores_execution_from_a_prior_workspace() -
 
 async def test_terminal_retirement_includes_a_bound_task_folder() -> None:
     conversation_id = await _conversation_id()
-    bound_folder = routed_conversation_folder("project", conversation_id)
+    bound_folder = routed_conversation_folder("secondary", conversation_id)
     await create_task(replace(_task("bound", conversation_id), bound_group_folder=bound_folder))
     await apply_conversation_control_state(
         conversation_id,
