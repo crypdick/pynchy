@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import FrozenInstanceError, replace
+from unittest.mock import Mock
 
 import pluggy
 import pytest
@@ -14,6 +15,7 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.plugins.api import (
+    ActionIntentContract,
     ApprovalContract,
     ApprovalTrigger,
     AuditContract,
@@ -111,6 +113,35 @@ def test_validation_rejects_unknown_or_mismatched_action_specs():
         "chat.matrix.route.read: ActionSpec chat.matrix.route.send does not expose tool "
         "matrix_route_read"
     ) in errors
+
+
+def test_validation_rejects_malformed_capability_and_action_intent_metadata():
+    invalid_id = _descriptor(capability_id="not")
+    blank_tool = _descriptor(
+        capability_id="chat.matrix.route.blank",
+        tool_name=" ",
+    )
+    intent = ActionIntentContract("matrix", Mock(), Mock())
+    read_with_intent = replace(_descriptor(), action_intent=intent)
+    write_with_blank_provider = replace(
+        _descriptor(
+            capability_id="chat.matrix.route.send",
+            tool_name="matrix_route_send",
+            action_id="chat.matrix.route.send",
+            access=HostActionAccess.WRITE,
+        ),
+        action_intent=replace(intent, provider=" "),
+    )
+
+    errors = validate_host_action_descriptors(
+        (invalid_id, blank_tool, read_with_intent, write_with_blank_provider),
+        ACTION_SPECS,
+    )
+
+    assert "invalid capability id: 'not'" in errors
+    assert "chat.matrix.route.blank: tool name is required" in errors
+    assert "chat.matrix.route.read: action intent requires write access" in errors
+    assert "chat.matrix.route.send: action intent provider is required" in errors
 
 
 def test_write_actions_require_idempotency_and_terminal_audit():
