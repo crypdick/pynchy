@@ -152,3 +152,25 @@ class TestWorkspaceConfigFields:
             WorkspaceConfig(
                 threads=[WorkspaceThreadConfig(name="Family"), WorkspaceThreadConfig(name="family")]
             )
+
+
+class TestWorkspaceThreadSemanticWorkspace:
+    def test_semantic_workspace_requires_profiles(self) -> None:
+        with pytest.raises(ValidationError, match="semantic workspace threads require profiles"):
+            WorkspaceThreadConfig(name="review", workspace="reviews")
+
+    def test_thread_policy_overrides_require_semantic_workspace(self) -> None:
+        with pytest.raises(ValidationError, match="require workspace"):
+            WorkspaceThreadConfig(name="review", model="gpt-5")
+
+    def test_semantic_workspace_keeps_declared_policy(self) -> None:
+        thread = WorkspaceThreadConfig(
+            name="review",
+            workspace="reviews",
+            profiles=["reviewer"],
+            model="gpt-5",
+            model_reasoning_effort="high",
+        )
+
+        assert thread.workspace == "reviews"
+        assert thread.profiles == ["reviewer"]
