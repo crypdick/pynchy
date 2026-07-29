@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import subprocess  # noqa: S404 - test double subclasses Popen; no subprocess launch.
 from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -101,6 +102,27 @@ def test_browser_reports_how_to_install_chrome_when_not_found(
         browser.chrome_path()
 
 
+def test_browser_start_reports_missing_headless_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        browser,
+        "_resolve_executables",
+        lambda *_names: (_ for _ in ()).throw(RuntimeError("Xvfb")),
+    )
+
+    with pytest.raises(RuntimeError, match="Headless display requires: Xvfb"):
+        browser.start_virtual_display()
+
+
+def test_browser_rejects_a_missing_vnc_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(browser, "_is_process_running", lambda _name: False)
+    monkeypatch.setattr(browser.shutil, "which", lambda _name: None)
+
+    with pytest.raises(RuntimeError, match="x11vnc"):
+        browser.ensure_vnc_stack_alive()
+
+
 def test_browser_profile_uses_configured_project_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
@@ -124,6 +146,30 @@ def test_browser_detects_a_live_display(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert browser.has_display() is True
     assert browser.display_is_live(":99") is True
+
+
+def test_browser_display_checks_fail_closed_without_display_or_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(browser.shutil, "which", lambda _name: None)
+
+    assert browser.has_display() is False
+    assert browser.display_is_live(":99") is False
+
+
+def test_browser_stops_processes_and_kills_stragglers() -> None:
+    waiting = MagicMock()
+    waiting.poll.return_value = None
+    waiting.wait.side_effect = [subprocess.TimeoutExpired("wait", 5), None]
+    stuck = MagicMock()
+    stuck.poll.return_value = 0
+
+    browser.stop_procs([waiting, stuck])
+
+    waiting.terminate.assert_called_once_with()
+    waiting.kill.assert_called_once_with()
+    waiting.wait.assert_called_with(timeout=2)
 
 
 def test_browser_reuses_live_virtual_display(monkeypatch: pytest.MonkeyPatch) -> None:
