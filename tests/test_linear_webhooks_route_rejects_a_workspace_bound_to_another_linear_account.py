@@ -88,6 +88,18 @@ from tests.linear_webhooks_support import (
 pytest_plugins = ("tests.linear_webhooks_support",)
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"name": " "}, "text fields cannot be empty"),
+        ({"name": "route", "max_body_bytes": 0}, "limits must be positive"),
+    ],
+)
+def test_linear_webhook_route_rejects_empty_text_and_non_positive_limits(overrides, message):
+    with pytest.raises(ValueError, match=message):
+        LinearWebhookRouteConfig(**overrides)
+
+
 def test_route_rejects_a_workspace_bound_to_another_linear_account() -> None:
 
     settings = make_settings(
