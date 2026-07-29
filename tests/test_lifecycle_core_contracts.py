@@ -13,6 +13,7 @@ from conftest import make_settings
 from pynchy.config.api import WhatsAppConnectionConfig
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -119,4 +120,179 @@ async def test_run_app_rejects_channel_setup_without_core_plugin_manager(
     monkeypatch.setattr(loop, "add_signal_handler", lambda *_args: None)
 
     with pytest.raises(RuntimeError, match=r"phase 1 \(_initialize_core\)"):
+        await lifecycle.run_app(app)
+
+
+async def test_run_app_warns_when_a_channel_lacks_credentials(monkeypatch, tmp_path: Path):
+    settings = make_settings(
+        project_root=tmp_path,
+        data_dir=tmp_path / "data",
+        connections={"phone": WhatsAppConnectionConfig(auth_db_path=str(tmp_path / "auth.db"))},
+    )
+    app = PynchyApp()
+    app.plugin_manager = pluggy.PluginManager("pynchy")
+    app.workspaces = {
+        "chat": WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="always")
+    }
+    app.message_loop_running = True
+    channel = MagicMock()
+    channel.connect = AsyncMock()
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "claim_deploy_continuation",
+        lambda _: settings.data_dir / "missing-continuation.json",
+    )
+    monkeypatch.setattr(lifecycle, "_initialize_core", AsyncMock())
+    monkeypatch.setattr(lifecycle, "load_channels", lambda _manager, _context: [channel])
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "validate_plugin_credentials",
+        lambda _: ["TOKEN"],
+    )
+    monkeypatch.setattr(lifecycle.output_handler, "init_trace_batcher", MagicMock())
+    monkeypatch.setattr(
+        lifecycle,
+        "_prepare_state_and_subsystems",
+        AsyncMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", AsyncMock())
+    monkeypatch.setattr(app, "catch_up_channels", AsyncMock())
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "dispatch_interrupted_turn_recovery",
+        AsyncMock(return_value=set()),
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", AsyncMock())
+    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", lambda *_args: None)
+
+    await lifecycle.run_app(app)
+    channel.connect.assert_awaited_once_with()
+
+
+async def test_shutdown_continues_when_admin_notification_fails(monkeypatch):
+    app = PynchyApp()
+    watchdog = MagicMock()
+    app.queue.shutdown = AsyncMock()
+
+    monkeypatch.setattr(
+        lifecycle.orchestrator_adapters,
+        "resolve_admin_notification_jid",
+        MagicMock(side_effect=RuntimeError("notification unavailable")),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "get_settings",
+        lambda: MagicMock(notifications=MagicMock(admin_workspace="admin")),
+    )
+    monkeypatch.setattr(lifecycle, "_start_shutdown_watchdog", lambda: watchdog)
+    monkeypatch.setattr(lifecycle, "_stop_subsystem_tasks", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_prepare_channels_for_shutdown", MagicMock())
+    monkeypatch.setattr(lifecycle, "_cleanup_http_runner", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_close_runtime_resources", AsyncMock())
+
+    await lifecycle.shutdown_app(app, "SIGTERM")
+
+    watchdog.cancel.assert_called_once_with()
+
+
+async def test_run_app_publishes_scheduler_and_ipc_after_runtime_gates(
+    monkeypatch,
+    tmp_path: Path,
+):
+    settings = make_settings(project_root=tmp_path, data_dir=tmp_path / "data")
+    app = PynchyApp()
+    app.plugin_manager = pluggy.PluginManager("pynchy")
+    app.workspaces = {
+        "chat": WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="always")
+    }
+    app.message_loop_running = True
+    prepared = MagicMock(spec=lifecycle.http_server.PreparedHttpServer)
+    recovery = MagicMock(spec=lifecycle.startup_handler.InterruptedTurnRecovery)
+    scheduler_started = False
+
+    async def start_scheduler(_deps, *, ready):
+        nonlocal scheduler_started
+        await asyncio.sleep(0)
+        scheduler_started = True
+        ready.set_result(None)
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "claim_deploy_continuation",
+        lambda _: settings.data_dir / "missing-continuation.json",
+    )
+    monkeypatch.setattr(lifecycle, "_initialize_core", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_setup_channels", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_reconcile_state", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        lifecycle, "_prepare_and_bind_control_plane", AsyncMock(return_value=prepared)
+    )
+    monkeypatch.setattr(lifecycle.task_scheduler, "start_scheduler_loop", start_scheduler)
+    monkeypatch.setattr(
+        lifecycle.dep_factory, "make_scheduler_deps", MagicMock(return_value=MagicMock())
+    )
+    monkeypatch.setattr(lifecycle.http_server, "recover_http_routes", AsyncMock())
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "prepare_interrupted_turn_recovery",
+        AsyncMock(return_value=recovery),
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "resolve_deploy_startup", AsyncMock())
+    monkeypatch.setattr(lifecycle.startup_handler, "finalize_deploy_startup", AsyncMock())
+    monkeypatch.setattr(lifecycle.http_server, "publish_http_server", MagicMock())
+    monkeypatch.setattr(lifecycle, "register_builtin_handlers", MagicMock())
+    monkeypatch.setattr(lifecycle.dep_factory, "make_ipc_deps", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(lifecycle, "start_ipc_watcher", AsyncMock())
+    monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", AsyncMock())
+    monkeypatch.setattr(lifecycle, "current_deploy_revision", MagicMock(return_value="revision"))
+    monkeypatch.setattr(app, "catch_up_channels", AsyncMock())
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "dispatch_interrupted_turn_recovery",
+        AsyncMock(return_value=set()),
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", AsyncMock())
+    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", lambda *_args: None)
+
+    await lifecycle.run_app(app)
+
+    assert scheduler_started
+    lifecycle.register_builtin_handlers.assert_called_once_with()
+    lifecycle.start_ipc_watcher.assert_called_once()
+    await app.startup_readiness.wait()
+
+
+async def test_startup_cleanup_errors_preserve_original_failure(monkeypatch, tmp_path: Path):
+    settings = make_settings(project_root=tmp_path, data_dir=tmp_path / "data")
+    app = PynchyApp()
+    app.workspaces = {
+        "chat": WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="always")
+    }
+    startup_error = RuntimeError("runtime owner failed")
+
+    async def fail_runtime(_app: PynchyApp, _recovery: object) -> None:
+        await asyncio.sleep(0)
+        raise startup_error
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(lifecycle, "_initialize_core", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_setup_channels", AsyncMock())
+    monkeypatch.setattr(lifecycle, "_reconcile_state", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "prepare_interrupted_turn_recovery",
+        AsyncMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(lifecycle, "_start_runtime_owners", fail_runtime)
+    monkeypatch.setattr(app, "cleanup_http_runner", AsyncMock(side_effect=OSError("http cleanup")))
+    monkeypatch.setattr(
+        app.connection_runtime_owner,
+        "close",
+        AsyncMock(side_effect=OSError("connection cleanup")),
+    )
+
+    with pytest.raises(RuntimeError, match="runtime owner failed"):
         await lifecycle.run_app(app)
