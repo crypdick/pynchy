@@ -208,7 +208,13 @@ async def test_matrix_route_control_rejects_unknown_then_ensures_registered_work
 def test_matrix_composition_rejects_routes_for_unknown_workspaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    settings = _settings()
+
+    def no_workspace(_settings: object, _workspace: str) -> None:
+        return None
+
+    monkeypatch.setattr(type(settings), "resolved_workspace_config", no_workspace)
     monkeypatch.setattr(plugin_configuration, "configure_matrix_gateway_runtime", Mock())
 
     with pytest.raises(ValueError, match="unknown workspace"):
-        plugin_configuration.configure_matrix_gateway_plugin(_settings(workspace="missing"))
+        plugin_configuration.configure_matrix_gateway_plugin(settings)

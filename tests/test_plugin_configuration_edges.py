@@ -86,9 +86,16 @@ def test_linear_composition_converts_scheduler_failures_to_false(
     linear = LinearMcpPlugin()
     configure = Mock(wraps=linear.configure)
     linear.configure = configure
+    boot_runtime: dict[str, object] = {}
+    monkeypatch.setattr(
+        plugin_configuration,
+        "configure_linear_boot_runtime",
+        lambda runtime: boot_runtime.setdefault("runtime", runtime),
+    )
     plugin_configuration.configure_linear_plugin(
         _manager(("builtin-linear", linear)), make_settings(), lambda: None
     )
+    assert boot_runtime["runtime"].account_for_workspace("missing") is None
     cancel = configure.call_args.kwargs["cancel_scheduled_workflow"]
 
     async def fail(_workflow_id: str) -> bool:
