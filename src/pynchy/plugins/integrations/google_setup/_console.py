@@ -17,6 +17,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these runtime a
 )
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import GCP_CONSOLE, download_dir
@@ -58,10 +59,10 @@ async def dismiss_modals(page: Page) -> None:
 
 async def wait_for_login(page: Page) -> None:
     """Wait until Google login is complete (if a login page appeared)."""
-    if "accounts.google.com" in page.url:
+    if urlparse(page.url).hostname == "accounts.google.com":
         logger.info("Waiting for Google login via noVNC")
         await page.wait_for_url(
-            lambda url: "accounts.google.com" not in url,
+            lambda url: urlparse(url).hostname != "accounts.google.com",
             timeout=300_000,  # 5 minutes
         )
         logger.info("Google login complete")

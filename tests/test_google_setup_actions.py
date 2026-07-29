@@ -113,6 +113,7 @@ class _SetupPage:
         project_confirmation: bool = False,
         project_exists: bool = False,
         requires_login: bool = False,
+        login_return_url: str = "https://console.cloud.google.com/home",
         save_steps: int = 0,
     ) -> None:
         self.api_already_enabled = api_already_enabled
@@ -132,6 +133,7 @@ class _SetupPage:
         self.project_confirmation = project_confirmation
         self.project_exists = project_exists
         self.requires_login = requires_login
+        self.login_return_url = login_return_url
         self.save_steps = save_steps
         self.screenshoted = False
         self.url = "about:blank"
@@ -201,7 +203,7 @@ class _SetupPage:
                 self.url = "https://console.cloud.google.com/home/dashboard?project=pynchy-gdrive"
 
     async def wait_for_url(self, predicate: Callable[[str], bool], **_kwargs: object) -> None:
-        self.url = "https://console.cloud.google.com/home"
+        self.url = self.login_return_url
         assert predicate(self.url)
 
 
@@ -275,6 +277,9 @@ def _install_playwright(monkeypatch: pytest.MonkeyPatch, page: _SetupPage) -> _B
     playwright.async_api = async_api
     monkeypatch.setitem(sys.modules, "playwright", playwright)
     monkeypatch.setitem(sys.modules, "playwright.async_api", async_api)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.chrome_path", lambda: "/mock/chrome"
+    )
     return context
 
 
@@ -422,6 +427,26 @@ async def test_setup_action_handles_console_recovery_paths(
         assert error in str(result["error"])
     if page_options.get("manual_project"):
         assert page.screenshoted is True
+
+
+@pytest.mark.action("integration.google.profile.setup")
+@pytest.mark.asyncio
+async def test_setup_action_accepts_login_completion_url_with_google_in_query(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure_runtime(tmp_path)
+    page = _SetupPage(
+        credential_contents=b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+        requires_login=True,
+        login_return_url="https://console.cloud.google.com/home?from=accounts.google.com",
+    )
+    _install_playwright(monkeypatch, page)
+    _stub_oauth(monkeypatch, [])
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.has_display", lambda: True
+    )
+
+    assert (await _handler()({"source_group": "assigned"}))["result"]["status"] == "ok"
 
 
 @pytest.mark.action("integration.google.profile.setup")
