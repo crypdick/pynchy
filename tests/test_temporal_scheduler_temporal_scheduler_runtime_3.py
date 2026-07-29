@@ -521,6 +521,18 @@ class TestTemporalSchedulerRuntime:
         assert target.chat_jid == current.jid
 
     @pytest.mark.asyncio
+    async def test_runtime_continuation_records_missing_workspace_failure(self):
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        with pytest.raises(RuntimeError, match="Interactive runtime no longer exists"):
+            await temporal_scheduler.run_interactive_runtime_turn("retired")
+
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_task_id"] == "retired"
+        assert status["last_result"] == "error"
+
+    @pytest.mark.asyncio
     async def test_run_interactive_message_activity_returns_terminal_pause(self, monkeypatch):
         monkeypatch.setattr(
             temporal_interactive,
