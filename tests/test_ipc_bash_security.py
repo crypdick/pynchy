@@ -122,6 +122,18 @@ class TestBashSecurityCorruptionTainted:
         )
 
     @pytest.mark.asyncio
+    async def test_package_install_command_is_network_capable(self):
+        gate = _make_gate(corruption=True)
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
+            new_callable=AsyncMock,
+            return_value=_cop_verdict(CopCommandDecision.APPROVE, "Approved install"),
+        ) as inspect:
+            await evaluate_bash_command(gate, "python -m pip install example-package")
+
+        assert inspect.await_args.args[2].network_capable is True
+
+    @pytest.mark.asyncio
     async def test_cop_flags_network_command(self):
         gate = _make_gate(corruption=True)
         with patch(
