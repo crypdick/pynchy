@@ -86,6 +86,12 @@ from pynchy.host.container_manager.ipc.handlers_lifecycle import (
     RepoContext,
     configure_lifecycle_runtime,
 )
+from pynchy.host.container_manager.ipc.handlers_managed_feature import (
+    ManagedFeatureRepoContext,
+    ManagedFeatureRuntime,
+    ManagedFeatureSettings,
+    configure_managed_feature_runtime,
+)
 from pynchy.host.container_manager.ipc.handlers_service import (
     ServiceSettings,
     configure_service_runtime,
@@ -160,6 +166,7 @@ from pynchy.host.git_ops.api import (
     get_local_head_sha,
     get_repo_context,
     git_env_with_token,
+    host_create_pr_from_managed_feature,
     host_create_pr_from_worktree,
     host_get_origin_main_sha,
     host_notify_worktree_updates,
@@ -170,9 +177,11 @@ from pynchy.host.git_ops.api import (
     needs_container_rebuild,
     needs_deploy,
     probe_origin_main_sha,
+    read_managed_feature_patch,
     redact_git_diagnostic,
     repo_container_path,
     repo_host_root,
+    resolve_managed_feature_publication,
     resolve_repos_for_group,
     resolve_routed_host_worktree_cwd,
     run_git,
@@ -625,6 +634,18 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             host_create_pr_from_worktree=host_create_pr_from_worktree,
             redact_git_diagnostic=redact_git_diagnostic,
             run_git=run_git,
+        )
+    )
+    configure_managed_feature_runtime(
+        ManagedFeatureRuntime(
+            settings=cast("Callable[[], ManagedFeatureSettings]", get_settings),
+            resolve_repos_for_group=cast(
+                "Callable[[str], Sequence[ManagedFeatureRepoContext]]", resolve_repos_for_group
+            ),
+            resolve_managed_feature_publication=resolve_managed_feature_publication,
+            read_managed_feature_patch=read_managed_feature_patch,
+            host_create_pr_from_managed_feature=host_create_pr_from_managed_feature,
+            redact_git_diagnostic=redact_git_diagnostic,
         )
     )
 

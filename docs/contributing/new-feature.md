@@ -127,6 +127,25 @@ uv run python scripts/runtime_harness.py status
 uv run python scripts/runtime_harness.py restart
 ```
 
+## Publish a review pull request
+
+After committing the feature work, an authorized agent runtime can call the
+`publish_managed_feature` lifecycle tool with the feature slug:
+
+```text
+publish_managed_feature(feature_slug="<slug>")
+```
+
+The tool opens or updates a review pull request only. It never merges the
+branch or deploys Pynchy. Commit all feature changes first: the host rejects
+uncommitted files and publishes only the validated committed HEAD. The host
+derives the repository, worktree, branch, and target branch from the active
+managed-feature manifest rather than from agent input. If the target branch
+advances, rebase the feature before publishing. See the [IPC
+architecture](../architecture/ipc.md#managed-feature-pr-publication) for the
+request contract and the [security model](../architecture/security.md#5c-host-mutating-operations-cop-gate)
+for its publication checks.
+
 ## Merge and remove a feature
 
 Commit the feature work, return to the control checkout, then run:
@@ -136,12 +155,13 @@ new-feature merge <slug>
 new-feature teardown <slug>
 ```
 
-Merge stops the development sandbox, starts a fresh deterministic runtime from the current
-worktree, and runs the runtime suite. Its harness always stops live runtime resources before
-prek hooks run. It then performs a no-commit merge into `main` and runs both Pynchy and
-agent-runner tests against the integrated tree. A failed check aborts the merge; runtime logs and
-data remain available for diagnosis. Merge does not push `main`, so deployment remains an
-explicit operator action.
+`new-feature merge` performs local integration; it does not publish a review pull request. It
+stops the development sandbox, starts a fresh deterministic runtime from the current worktree,
+and runs the runtime suite. Its harness always stops live runtime resources before prek hooks
+run. It then performs a no-commit merge into `main` and runs both Pynchy and agent-runner tests
+against the integrated tree. A failed check aborts the merge; runtime logs and data remain
+available for diagnosis. Merge does not push `main`, so deployment remains an explicit operator
+action.
 
 Teardown stops any remaining processes, removes only the feature's namespaced LiteLLM and
 PostgreSQL resources, and then removes the worktree, branch, manifest entry, and local databases.

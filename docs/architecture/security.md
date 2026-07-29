@@ -318,6 +318,7 @@ Some IPC operations change what code runs on the host machine. These are **host-
 | Operation | What it mutates | Cop inspects |
 |---|---|---|
 | `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The committed `base...HEAD` patch |
+| `publish_managed_feature` | Pushes one managed feature branch and opens or updates a PR | Host-derived manifest identity and committed `base...HEAD` patch |
 | `register_group` | Creates new workspace | Group config |
 | `create_periodic_agent` | Creates persistent agent | Agent name, profile, schedule, prompt |
 | `schedule_host_job` | Schedules host command | Command and schedule |
@@ -342,13 +343,63 @@ immediate no-publication result instead of waiting for its timeout. The
 payload-bound approval remains pending and can replay the exact operation if a
 human approves it later.
 
-`sync_worktree_to_main` is PR-only at the host boundary. Missing or alternate
-publication modes are rejected before approval receipts or Cop authority are
-evaluated, so this agent action cannot merge into the host branch or trigger a
-deployment.
+`sync_worktree_to_main` and `publish_managed_feature` are PR-only at the host
+boundary. Missing or alternate publication modes are rejected before approval
+receipts or Cop authority are evaluated, so neither action can merge into the
+host branch or trigger a deployment.
 
-With Cop active, the host supplies each configured repository's committed
-worktree patch with external diff drivers and text conversion disabled. A
+**Bound managed-feature publication.** The agent-facing
+`publish_managed_feature` tool accepts only a canonical feature slug. The host
+reads only `.new-feature/manifest.toml` beneath configured repository roots and
+requires one active version-2 record whose normalized key and slug match. It
+derives the repository, exact `.worktrees/<slug>` location, checked-out branch,
+and target branch itself. The resolver queries the configured repository's
+fixed GitHub URL for symbolic `HEAD`, requires the manifest target to match its
+remote default branch, and fetches that branch's exact SHA into an isolated Git
+directory. It never treats local `main` or `origin/HEAD` refs as authority. The
+agent cannot choose a repository, path, branch, target, merge mode, or
+deployment mode. Missing or ambiguous records fail closed, and the host never
+scans or falls back through worktree directories.
+
+The fetched remote target SHA must be an ancestor of the raw feature HEAD. A
+feature that predates an advanced target must be rebased before the host
+inspects or publishes it.
+
+Before Cop inspection, the host adds its derived `feature_slug`, `repository`,
+`branch`, `target_branch`, `base_sha`, and `head_sha` to the Tier 2 request. A
+pending approval receipt binds those exact fields as part of the request,
+preventing a receipt for one managed feature state from publishing another.
+The resolver disables Git replacement refs, validates the raw commits and
+repository object format, and checks worktree cleanliness through a fresh,
+host-created Git directory and index. It never loads the managed worktree's
+Git configuration while checking files, so agent-owned hooks, filesystem
+monitors, clean filters, and replacement refs cannot run as the host. A
+configured custom clean filter does not execute and does not by itself block
+publication.
+
+Before push, the publisher resolves the managed feature again and requires the
+same recorded base and HEAD SHAs. A changed branch, base, or manifest state
+blocks publication and requires a new inspection. It creates a fresh temporary
+bare repository with the validated source object format, disables system and
+global Git configuration, and exposes only the validated object store as an
+alternate source. Before every Git operation that uses that alternate, it
+revalidates the object-store directory and its `objects/info` directory, and
+rejects symlinks or any `objects/info/alternates` entry. From that isolated
+repository, it rechecks the target's remote SHA before pushing and opening a
+PR, reads the exact remote feature branch ref, and pushes the inspected HEAD
+through an exact
+`--force-with-lease=refs/heads/<branch>:<remote-sha>`. This prevents mutable
+worktree config, `url.*.pushInsteadOf` rewrites, hooks, and replacement refs
+from redirecting or changing the publication. `gh` runs from the temporary
+directory with `--repo` fixed to the configured repository. This path can only
+open or update a pull request; it cannot merge, deploy, or select a fallback
+worktree.
+
+With Cop active, `sync_worktree_to_main` supplies each configured repository's
+committed worktree patch, while `publish_managed_feature` supplies only its
+selected manifest-bound patch. Both disable Git replacement refs, external diff
+drivers, and text conversion. Managed-feature patch capture streams output and
+stops at 64 KiB instead of buffering a full committed diff in host memory. A
 missing or failed diff, binary content, or more than 64 KiB of combined patch
 text requires human approval instead of asking Cop to judge incomplete
 evidence. This inspection limit doesn't reject a change based on its size; it

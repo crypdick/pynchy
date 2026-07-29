@@ -16,7 +16,7 @@ data/ipc/{group}/
 ├── requests/          # Container → host: request envelopes
 ├── responses/         # Host → container: service request responses
 ├── input/             # Host → container: follow-up user messages
-├── merge_results/     # Host → container: git sync responses
+├── merge_results/     # Host → container: git publication responses
 ├── current_tasks.json # Host → container: read-only task snapshot
 ├── todos.json         # Shared: host writes, container reads/manages
 └── reset_prompt.json  # Host internal: context reset signal
@@ -65,7 +65,8 @@ Signals carry no payload. The host derives behavior from the signal type and the
 
 ### Tier 2: Data-carrying requests
 
-Requests carry payload data via the `type` field.
+Request envelopes use `kind` to select an operation and `payload` to carry
+handler-owned data. Outbound chat messages use a separate `type` field.
 
 #### Messages (`messages/`)
 
@@ -120,6 +121,21 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |
 | `sync_worktree_to_main` | Push worktree commits and open or update a PR | No |
+| `publish_managed_feature` | Open or update a PR for one managed feature | No |
+
+#### Managed feature PR publication
+
+The agent-facing `publish_managed_feature` tool accepts only a canonical
+`feature_slug`. The tool fixes publication to a pull request. It does not
+accept a repository, worktree path, branch, target branch, merge mode, or
+deployment mode.
+
+The host resolves the slug from an active version-2 `.new-feature/manifest.toml`
+under one configured repository root and writes the publication result to
+`merge_results/<request_id>.json`. It rejects missing or ambiguous manifest
+records; it never scans or falls back across worktree directories. See the
+[security model](security.md#5c-host-mutating-operations-cop-gate) for the
+manifest binding, approval receipt, and pre-push check.
 
 ## Authorization
 

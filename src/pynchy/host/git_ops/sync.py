@@ -9,268 +9,47 @@ containers can't read host state (logs, config, etc.).
 
 from __future__ import annotations
 
-import dataclasses
 import subprocess  # noqa: S404 - PR helpers use fixed no-shell gh argv.
-from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves git sync signatures at runtime.
+import tempfile
+from collections.abc import (  # noqa: TC003 - beartype resolves managed publication signatures at runtime.
+    Mapping,
+    Sequence,
 )
-from pathlib import Path  # noqa: TC003 - beartype resolves git sync signatures at runtime.
-from typing import Any, Protocol, runtime_checkable
+from pathlib import Path
+from typing import Any
 
+from pynchy.host.git_ops.managed_feature import resolve_managed_feature_publication
+from pynchy.host.git_ops.managed_github import (
+    created_managed_pr_failure as _created_managed_pr_failure,
+)
+from pynchy.host.git_ops.managed_github import (
+    inspect_managed_pr as _managed_existing_pr,
+)
+from pynchy.host.git_ops.managed_github import (
+    is_configured_pr_url as _is_configured_pr_url,
+)
+from pynchy.host.git_ops.managed_transport import (
+    _managed_git_env,
+    _managed_refs_match,
+    _push_managed_feature,
+)
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001 - beartype resolves git sync signatures at runtime.
 )
 from pynchy.host.git_ops.utils import (
-    count_commits,
-    count_unpushed_commits,
-    detect_main_branch,
     git_env_with_token,
-    push_local_commits,
     redact_git_diagnostic,
     run_git,
+    run_git_bounded_stdout,
+)
+from pynchy.host.git_ops.worktree_sync import (
+    _validate_sync_preconditions,
+    _WorktreeContext,
 )
 from pynchy.logger import logger
-from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
-)
 
-# Valid git_policy values
-GIT_POLICY_MERGE = "merge-to-main"
-GIT_POLICY_PR = "pull-request"
-
-
-@runtime_checkable
-class GitSyncDeps(Protocol):
-    """Dependencies for the git sync loop."""
-
-    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
-
-    async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
-
-    def has_active_session(self, group_folder: str) -> bool: ...
-
-    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
-
-    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None: ...
-
-
-# ---------------------------------------------------------------------------
-# Shared precondition validation for worktree sync operations
-# ---------------------------------------------------------------------------
-
-
-@dataclasses.dataclass(frozen=True)
-class _WorktreeContext:
-    """Validated context for worktree sync operations."""
-
-    worktree_path: Path
-    branch_name: str
-    main_branch: str
-    env: dict[str, str] | None
-    ahead: int
-
-
-def _validate_sync_preconditions(
-    group_folder: str,
-    repo_ctx: RepoContext,
-) -> _WorktreeContext | dict[str, Any]:
-    """Validate common preconditions for worktree sync operations.
-
-    Checks: worktree exists, no uncommitted changes, has commits ahead of main.
-    Returns _WorktreeContext on success, or {"success": ..., "message": ...}
-    error dict on failure.
-    """
-    worktree_path = repo_ctx.worktrees_dir / group_folder
-    branch_name = f"worktree/{group_folder}"
-    main_branch = detect_main_branch(cwd=repo_ctx.root)
-    env = git_env_with_token(repo_ctx.slug)
-
-    if not worktree_path.exists():
-        return {
-            "success": False,
-            "message": f"No worktree found for {group_folder}. Nothing to sync.",
-        }
-
-    status = run_git("status", "--porcelain", cwd=worktree_path)
-    if status.returncode == 0 and status.stdout.strip():
-        return {
-            "success": False,
-            "message": (
-                "You have uncommitted changes. Commit all changes first, "
-                "then call sync_worktree_to_main again.\n"
-                "Run `git status` to see uncommitted files."
-            ),
-        }
-
-    ahead = count_commits(f"{main_branch}..{branch_name}", cwd=repo_ctx.root)
-    if ahead is None:
-        return {
-            "success": False,
-            "message": (
-                "Failed to check commits on your branch. "
-                "Verify your branch is valid with `git log --oneline`."
-            ),
-        }
-    if ahead == 0:
-        return {
-            "success": True,
-            "message": "Already up to date — no new commits.",
-        }
-
-    return _WorktreeContext(
-        worktree_path=worktree_path,
-        branch_name=branch_name,
-        main_branch=main_branch,
-        env=env,
-        ahead=ahead,
-    )
-
-
-# ---------------------------------------------------------------------------
-# host_sync_worktree — merge a single worktree into main and push
-# ---------------------------------------------------------------------------
-
-
-def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, Any]:
-    """Host-side: merge a worktree into main and push to origin.
-
-    Container can't read host state — all feedback must be in the response.
-    On conflict, leaves the worktree with conflict markers so the agent
-    can fix them without leaving the container.
-
-    Returns {"success": bool, "message": str}.
-    """
-    ctx = _validate_sync_preconditions(group_folder, repo_ctx)
-    if isinstance(ctx, dict):
-        if ctx.get("success") and count_unpushed_commits(cwd=repo_ctx.root) > 0:
-            return _retry_pending_main_push(repo_ctx)
-        return ctx
-
-    steps: tuple[Callable[[], dict[str, Any] | None], ...] = (
-        lambda: _sync_fetch_origin(repo_ctx, ctx),
-        lambda: _sync_rebase_main(repo_ctx, ctx),
-        lambda: _sync_rebase_worktree(ctx),
-        lambda: _sync_merge_worktree(repo_ctx, ctx),
-        lambda: _sync_push_main(repo_ctx, ctx),
-    )
-    for step in steps:
-        failure = step()
-        if failure is not None:
-            return failure
-
-    logger.info(
-        "Worktree synced to main and pushed",
-        group=group_folder,
-        commits=ctx.ahead,
-    )
-    return {
-        "success": True,
-        "message": f"Merged {ctx.ahead} commit(s) into main and pushed to origin.",
-    }
-
-
-def _retry_pending_main_push(repo_ctx: RepoContext) -> dict[str, Any]:
-    pushed = push_local_commits(
-        cwd=repo_ctx.root,
-        env=git_env_with_token(repo_ctx.slug),
-    )
-    if pushed:
-        return {
-            "success": True,
-            "message": "Published commits already merged into the host main branch.",
-        }
-    return {
-        "success": False,
-        "message": (
-            "Push to origin still failed. Your commits remain on the host main branch; "
-            "inspect the reported Git state and call sync_worktree_to_main again."
-        ),
-    }
-
-
-def _sync_fetch_origin(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
-    fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=ctx.env)
-    if fetch.returncode != 0:
-        return {
-            "success": False,
-            "message": (
-                f"git fetch failed: {fetch.stderr.strip()}. "
-                "Check network connectivity and try again."
-            ),
-        }
-    return None
-
-
-def _sync_rebase_main(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
-    rebase_main = run_git("rebase", f"origin/{ctx.main_branch}", cwd=repo_ctx.root)
-    if rebase_main.returncode != 0:
-        run_git("rebase", "--abort", cwd=repo_ctx.root)
-        return {
-            "success": False,
-            "message": (
-                "Host main branch has conflicts with origin. "
-                "This requires manual intervention on the host. "
-                "Your worktree commits are preserved — try again later."
-            ),
-        }
-    return None
-
-
-def _sync_rebase_worktree(ctx: _WorktreeContext) -> dict[str, Any] | None:
-    rebase_wt = run_git("rebase", ctx.main_branch, cwd=ctx.worktree_path)
-    if rebase_wt.returncode != 0:
-        return {
-            "success": False,
-            "message": (
-                "Rebase conflict — your worktree has conflict markers. "
-                "Fix them, then run:\n"
-                "  git add <resolved files>\n"
-                "  git rebase --continue\n"
-                "Then call sync_worktree_to_main again."
-            ),
-        }
-    return None
-
-
-def _sync_merge_worktree(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
-    merge = run_git("merge", "--ff-only", ctx.branch_name, cwd=repo_ctx.root)
-    if merge.returncode != 0:
-        return {
-            "success": False,
-            "message": (
-                f"Fast-forward merge failed: {merge.stderr.strip()}. "
-                "This is unexpected after a successful rebase. "
-                "Try running `git log --oneline --graph` to inspect the state."
-            ),
-        }
-    return None
-
-
-def _sync_push_main(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
-    pushed = push_local_commits(skip_fetch=True, cwd=repo_ctx.root, env=ctx.env)
-    if not pushed:
-        return {
-            "success": False,
-            "message": (
-                "Merge succeeded but push to origin failed. "
-                "Your commits are on the host's main branch. "
-                "Call sync_worktree_to_main again to retry publication."
-            ),
-        }
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Policy resolution
-# ---------------------------------------------------------------------------
-
-
-def resolve_git_policy(_group_folder: str) -> str:
-    """Resolve the effective git policy for a workspace.
-
-    The config schema exposes one first-class git policy: merge to main.
-    """
-    return GIT_POLICY_MERGE
+_MAX_MANAGED_PR_TITLE_BYTES = 256
+_MAX_MANAGED_PR_BODY_BYTES = 64 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -292,67 +71,312 @@ def host_create_pr_from_worktree(
     ctx = _validate_sync_preconditions(group_folder, repo_ctx)
     if isinstance(ctx, dict):
         return ctx
-    token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
-
-    # 1. Push the worktree branch to origin
-    push = run_git(
-        "push",
-        "-u",
-        "origin",
-        ctx.branch_name,
-        "--force-with-lease",
-        cwd=repo_ctx.root,
-        env=ctx.env,
+    return _create_pr_from_context(
+        ctx,
+        repo_ctx,
+        source_label=f"workspace `{group_folder}`",
+        fallback_title=f"Changes from {group_folder}",
     )
-    if push.returncode != 0:
+
+
+def host_create_pr_from_managed_feature(
+    feature_slug: str,
+    repo_contexts: Sequence[RepoContext],
+    *,
+    expected_head_sha: str | None = None,
+    expected_binding: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Push one freshly validated managed feature branch and open or update its PR."""
+    resolution = resolve_managed_feature_publication(feature_slug, repo_contexts)
+    publication = resolution.publication
+    if publication is None:
+        return {"success": False, "message": resolution.error or "Publication blocked."}
+    if expected_binding is not None and publication.binding() != dict(expected_binding):
         return {
             "success": False,
-            "message": f"Push failed: {redact_git_diagnostic(push.stderr, token=token)}",
+            "message": (
+                "Publication blocked: managed feature changed after Cop inspection. "
+                "Inspect and publish it again."
+            ),
         }
-
-    # 2. Check if a PR already exists for this branch
-    # env includes GH_TOKEN which gh CLI respects
-    pr_check = subprocess.run(  # noqa: S603 - branch name comes from validated worktree context and no shell is used.
-        ["gh", "pr", "view", ctx.branch_name, "--json", "url", "--jq", ".url"],  # noqa: S607 - gh is the trusted host GitHub CLI.
-        cwd=str(repo_ctx.root),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env=ctx.env,
-        check=False,
-    )
-
-    if pr_check.returncode == 0 and pr_check.stdout.strip():
-        pr_url = pr_check.stdout.strip()
+    if expected_head_sha is not None and publication.head_sha != expected_head_sha:
         return {
-            "success": True,
-            "message": f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. PR updated: {pr_url}",
+            "success": False,
+            "message": (
+                "Publication blocked: managed feature changed after Cop inspection. "
+                "Inspect and publish it again."
+            ),
         }
-
-    # 3. Create a PR
-    title_result = run_git("log", "-1", "--format=%s", cwd=ctx.worktree_path)
-    pr_title = (
-        title_result.stdout.strip()
-        if title_result.returncode == 0
-        else f"Changes from {group_folder}"
+    return _create_pr_from_context(
+        _WorktreeContext(
+            worktree_path=publication.worktree_path,
+            branch_name=publication.branch_name,
+            main_branch=publication.main_branch,
+            env=git_env_with_token(publication.repo_ctx.slug),
+            ahead=publication.ahead,
+            log_group=publication.feature_slug,
+            base_sha=publication.base_sha,
+            head_sha=publication.head_sha,
+            object_dir=publication.git_common_dir / "objects",
+            object_format=publication.object_format,
+            remote_url=publication.remote_url,
+        ),
+        publication.repo_ctx,
+        source_label=f"managed feature `{publication.feature_slug}`",
+        fallback_title=f"Changes from managed feature {publication.feature_slug}",
     )
 
-    body_result = run_git(
-        "log",
-        f"{ctx.main_branch}..{ctx.branch_name}",
-        "--format=- %s",
-        cwd=repo_ctx.root,
-    )
-    pr_body = (
-        f"Automated PR from workspace `{group_folder}`.\n\n"
-        f"### Commits\n{body_result.stdout.strip()}"
-    )
+
+def _create_pr_from_context(
+    ctx: _WorktreeContext,
+    repo_ctx: RepoContext,
+    *,
+    source_label: str,
+    fallback_title: str,
+) -> dict[str, Any]:
+    """Push a validated branch and open or update its pull request."""
+    token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
+
+    if ctx.head_sha is None:
+        push = run_git(
+            "push",
+            "-u",
+            "origin",
+            ctx.branch_name,
+            "--force-with-lease",
+            cwd=repo_ctx.root,
+            env=ctx.env,
+        )
+        if push.returncode != 0:
+            return {
+                "success": False,
+                "message": f"Push failed: {redact_git_diagnostic(push.stderr, token=token)}",
+            }
+        return _open_or_update_pr(
+            ctx,
+            repo_ctx,
+            source_label=source_label,
+            fallback_title=fallback_title,
+            gh_cwd=repo_ctx.root,
+        )
+
+    # A managed worktree shares Git metadata with the agent. Publish from a
+    # temporary bare repository so local remotes, hooks, and URL rewrites cannot run.
+    with tempfile.TemporaryDirectory(prefix="pynchy-managed-push-") as temp_dir:
+        isolated_dir = Path(temp_dir)
+        _, preflight_failure = _managed_existing_pr(
+            ctx,
+            repo_ctx,
+            isolated_dir,
+            runner=subprocess.run,
+            require_head=False,
+        )
+        if preflight_failure is not None:
+            return {"success": False, "message": preflight_failure}
+        push_failure = _push_managed_feature(ctx, isolated_dir, token, git_runner=run_git)
+        if push_failure is not None:
+            return push_failure
+        return _open_or_update_pr(
+            ctx,
+            repo_ctx,
+            source_label=source_label,
+            fallback_title=fallback_title,
+            gh_cwd=isolated_dir,
+        )
+
+
+def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed managed PR checks need exact diagnostics.
+    ctx: _WorktreeContext,
+    repo_ctx: RepoContext,
+    *,
+    source_label: str,
+    fallback_title: str,
+    gh_cwd: Path,
+) -> dict[str, Any]:
+    """Open or update the PR for its safely published branch."""
+    token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
+    isolated_git_dir: Path | None = None
+    if ctx.head_sha is not None:
+        isolated_git_dir = gh_cwd / "repository.git"
+        if ctx.base_sha is None or not isolated_git_dir.is_dir():
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature Git identity is incomplete.",
+            }
+        if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature refs changed after inspection.",
+            }
+
+    if ctx.head_sha is not None:
+        existing_pr_url, existing_pr_failure = _managed_existing_pr(
+            ctx,
+            repo_ctx,
+            gh_cwd,
+            runner=subprocess.run,
+        )
+        if existing_pr_failure is not None:
+            return {"success": False, "message": existing_pr_failure}
+        if existing_pr_url is not None:
+            if isolated_git_dir is None:
+                return {
+                    "success": False,
+                    "message": "Publication blocked: managed feature Git identity is incomplete.",
+                }
+            if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+                return {
+                    "success": False,
+                    "message": (
+                        "Publication blocked: managed feature refs changed after inspection."
+                    ),
+                }
+            return {
+                "success": True,
+                "message": (
+                    f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. "
+                    f"PR updated: {existing_pr_url}"
+                ),
+            }
+    else:
+        # env includes GH_TOKEN which gh CLI respects
+        pr_check = subprocess.run(  # noqa: S603 - branch name comes from validated worktree context and no shell is used.
+            [  # noqa: S607 - gh is the trusted host GitHub CLI.
+                "gh",
+                "pr",
+                "view",
+                ctx.branch_name,
+                "--repo",
+                repo_ctx.slug,
+                "--json",
+                "url",
+                "--jq",
+                ".url",
+            ],
+            cwd=str(gh_cwd),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=ctx.env,
+            check=False,
+        )
+        if pr_check.returncode == 0 and pr_check.stdout.strip():
+            pr_url = pr_check.stdout.strip()
+            return {
+                "success": True,
+                "message": (
+                    f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. PR updated: {pr_url}"
+                ),
+            }
+
+    title_args: tuple[str, ...] = ("log", "-1", "--format=%s")
+    managed_git_args: tuple[str, ...] = ()
+    managed_env: dict[str, str] | None = None
+    log_cwd = ctx.worktree_path
+    log_range_start = ctx.main_branch
+    log_range_end = ctx.head_sha or ctx.branch_name
+    if ctx.head_sha is not None:
+        if isolated_git_dir is None or ctx.base_sha is None:
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature Git identity is incomplete.",
+            }
+        # Read commit text from fresh Git metadata, not agent-writable shared config.
+        managed_git_args = (
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            f"--git-dir={isolated_git_dir}",
+        )
+        managed_env = _managed_git_env(ctx)
+        if managed_env is None:
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature object store is unavailable.",
+            }
+        log_cwd = gh_cwd
+        log_range_start = ctx.base_sha
+        log_range_end = ctx.head_sha
+        title_args = (*title_args, ctx.head_sha)
+    if ctx.head_sha is None:
+        worktree_title = run_git(
+            *managed_git_args,
+            *title_args,
+            cwd=log_cwd,
+            env=managed_env,
+        )
+        pr_title = (
+            worktree_title.stdout.strip() if worktree_title.returncode == 0 else fallback_title
+        )
+    else:
+        managed_title = run_git_bounded_stdout(
+            *managed_git_args,
+            *title_args,
+            max_stdout_bytes=_MAX_MANAGED_PR_TITLE_BYTES,
+            cwd=log_cwd,
+            env=managed_env,
+        )
+        pr_title = (
+            managed_title.stdout.strip()
+            if managed_title.returncode == 0 and not managed_title.exceeded_limit
+            else fallback_title
+        )
+
+    if ctx.head_sha is not None:
+        # Revalidate immediately before each isolated Git read.
+        managed_env = _managed_git_env(ctx)
+        if managed_env is None:
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature object store is unavailable.",
+            }
+    if ctx.head_sha is None:
+        worktree_body = run_git(
+            *managed_git_args,
+            "log",
+            f"{log_range_start}..{log_range_end}",
+            "--format=- %s",
+            cwd=log_cwd,
+            env=managed_env,
+        )
+        commit_summaries = worktree_body.stdout.strip()
+    else:
+        managed_body = run_git_bounded_stdout(
+            *managed_git_args,
+            "log",
+            f"{log_range_start}..{log_range_end}",
+            "--format=- %s",
+            max_stdout_bytes=_MAX_MANAGED_PR_BODY_BYTES,
+            cwd=log_cwd,
+            env=managed_env,
+        )
+        commit_summaries = (
+            managed_body.stdout.strip()
+            if managed_body.returncode == 0 and not managed_body.exceeded_limit
+            else "Commit summaries omitted because they exceed host publication limits."
+        )
+    pr_body = f"Automated PR from {source_label}.\n\n### Commits\n{commit_summaries}"
+
+    if ctx.head_sha is not None:
+        if isolated_git_dir is None:
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature Git identity is incomplete.",
+            }
+        if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+            return {
+                "success": False,
+                "message": "Publication blocked: managed feature refs changed after inspection.",
+            }
 
     pr_create = subprocess.run(  # noqa: S603 - PR fields are argv elements, not shell-interpreted.
         [  # noqa: S607 - gh is the trusted host GitHub CLI.
             "gh",
             "pr",
             "create",
+            "--repo",
+            repo_ctx.slug,
             "--base",
             ctx.main_branch,
             "--head",
@@ -362,7 +386,7 @@ def host_create_pr_from_worktree(
             "--body",
             pr_body,
         ],
-        cwd=str(repo_ctx.root),
+        cwd=str(gh_cwd),
         capture_output=True,
         text=True,
         timeout=30,
@@ -371,6 +395,25 @@ def host_create_pr_from_worktree(
     )
 
     if pr_create.returncode != 0:
+        if ctx.head_sha is not None and isolated_git_dir is not None:
+            verified_pr_url, verification_failure = _managed_existing_pr(
+                ctx,
+                repo_ctx,
+                gh_cwd,
+                runner=subprocess.run,
+            )
+            if (
+                verification_failure is None
+                and verified_pr_url is not None
+                and _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git)
+            ):
+                return {
+                    "success": True,
+                    "message": (
+                        f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. "
+                        f"PR updated: {verified_pr_url}"
+                    ),
+                }
         return {
             "success": False,
             "message": (
@@ -380,9 +423,62 @@ def host_create_pr_from_worktree(
         }
 
     pr_url = pr_create.stdout.strip()
+    if ctx.head_sha is not None:
+        if not _is_configured_pr_url(pr_url, repo_ctx):
+            return _created_managed_pr_failure(
+                pr_url,
+                "Publication blocked: could not identify newly created managed feature PR.",
+                repo_ctx,
+                gh_cwd,
+                ctx.env,
+                runner=subprocess.run,
+            )
+        verified_pr_url, verification_failure = _managed_existing_pr(
+            ctx,
+            repo_ctx,
+            gh_cwd,
+            runner=subprocess.run,
+        )
+        if verification_failure is not None:
+            return _created_managed_pr_failure(
+                pr_url,
+                verification_failure,
+                repo_ctx,
+                gh_cwd,
+                ctx.env,
+                runner=subprocess.run,
+            )
+        if verified_pr_url is None:
+            return _created_managed_pr_failure(
+                pr_url,
+                "Publication blocked: could not verify managed feature PR after creation.",
+                repo_ctx,
+                gh_cwd,
+                ctx.env,
+                runner=subprocess.run,
+            )
+        if isolated_git_dir is None:
+            return _created_managed_pr_failure(
+                pr_url,
+                "Publication blocked: managed feature Git identity is incomplete.",
+                repo_ctx,
+                gh_cwd,
+                ctx.env,
+                runner=subprocess.run,
+            )
+        if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+            return _created_managed_pr_failure(
+                pr_url,
+                "Publication blocked: managed feature refs changed after inspection.",
+                repo_ctx,
+                gh_cwd,
+                ctx.env,
+                runner=subprocess.run,
+            )
+        pr_url = verified_pr_url
     logger.info(
         "Worktree pushed and PR created",
-        group=group_folder,
+        group=ctx.log_group,
         commits=ctx.ahead,
         pr_url=pr_url,
     )

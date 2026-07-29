@@ -648,6 +648,7 @@ class TestListToolsVisibility:
             "resume_task",
             "cancel_task",
             "sync_worktree_to_main",
+            "publish_managed_feature",
             "reset_context",
             "list_todos",
             "complete_todo",

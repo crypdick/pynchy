@@ -5,8 +5,11 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import selectors
 import signal
 import subprocess  # noqa: S404 - shared git helper uses fixed no-shell argv.
+import time
+from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves git helper signatures at runtime.
 )
@@ -21,7 +24,19 @@ _DEFAULT_GIT_SSH_COMMAND = (
 )
 _URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@")
 _MAX_GIT_DIAGNOSTIC_LENGTH = 1000
+_BOUNDED_GIT_READ_CHUNK_BYTES = 8 * 1024
+_MAX_BOUNDED_GIT_STDERR_BYTES = 4 * 1024
 _default_cwd: Path | None = None
+
+
+@dataclass(frozen=True)
+class BoundedGitOutput:
+    """Git result whose stdout capture stops one byte past a caller limit."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+    exceeded_limit: bool
 
 
 def configure_git_default_cwd(project_root: Path) -> None:
@@ -65,6 +80,86 @@ def run_git(
         cwd=str(cwd or _configured_default_cwd()),
         env=_git_subprocess_env(env),
         timeout=timeout,
+    )
+
+
+def run_git_bounded_stdout(  # noqa: PLR0912, PLR0915 - streaming two pipes needs interleaved limit and timeout cleanup.
+    *args: str,
+    max_stdout_bytes: int,
+    cwd: Path | None = None,
+    timeout: int = _SUBPROCESS_TIMEOUT,
+    env: dict[str, str] | None = None,
+) -> BoundedGitOutput:
+    """Run Git while retaining no more than one byte beyond a stdout limit."""
+    if max_stdout_bytes < 0:
+        raise ValueError("max_stdout_bytes must not be negative")
+    command = ["git", *args]
+    process = subprocess.Popen(  # noqa: S603 - Git args are fixed argv from internal callers; no shell.
+        command,
+        cwd=str(cwd or _configured_default_cwd()),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        env=_git_subprocess_env(env),
+    )
+    if process.stdout is None or process.stderr is None:
+        _terminate_unread_process_group(process)
+        raise RuntimeError("Git process did not expose requested output pipes")
+    stdout = bytearray()
+    stderr = bytearray()
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+    deadline = time.monotonic() + timeout
+    exceeded_limit = False
+    timed_out = False
+    try:
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                _terminate_unread_process_group(process)
+                break
+            for key, _event in selector.select(remaining):
+                stream = key.fileobj
+                chunk = os.read(stream.fileno(), _BOUNDED_GIT_READ_CHUNK_BYTES)
+                if not chunk:
+                    selector.unregister(stream)
+                    continue
+                if key.data == "stdout":
+                    capture_remaining = max_stdout_bytes + 1 - len(stdout)
+                    if capture_remaining > 0:
+                        stdout.extend(chunk[:capture_remaining])
+                    if len(chunk) > capture_remaining or len(stdout) > max_stdout_bytes:
+                        exceeded_limit = True
+                        _terminate_unread_process_group(process)
+                        break
+                elif len(stderr) < _MAX_BOUNDED_GIT_STDERR_BYTES:
+                    stderr.extend(chunk[: _MAX_BOUNDED_GIT_STDERR_BYTES - len(stderr)])
+            if exceeded_limit:
+                break
+        if not exceeded_limit and not timed_out:
+            try:
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                _terminate_unread_process_group(process)
+    finally:
+        selector.close()
+        process.stdout.close()
+        process.stderr.close()
+    if timed_out:
+        return BoundedGitOutput(
+            returncode=124,
+            stdout="",
+            stderr=f"git command timed out after {timeout} seconds",
+            exceeded_limit=False,
+        )
+    return BoundedGitOutput(
+        returncode=process.returncode or 0,
+        stdout=stdout.decode(errors="replace"),
+        stderr=stderr.decode(errors="replace"),
+        exceeded_limit=exceeded_limit,
     )
 
 
@@ -115,6 +210,26 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
+
+
+def _terminate_unread_process_group(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a bounded-output process without buffering unread pipe data."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (PermissionError, ProcessLookupError):
+        # macOS can reject a session-group signal after Git exits its group.
+        # The direct child still needs reaping without reading its pipes.
+        with contextlib.suppress(PermissionError, ProcessLookupError):
+            process.terminate()
+    try:
+        process.wait(timeout=_PROCESS_GROUP_TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (PermissionError, ProcessLookupError):
+            with contextlib.suppress(PermissionError, ProcessLookupError):
+                process.kill()
+        process.wait()
 
 
 def redact_git_diagnostic(text: str, *, token: str | None = None) -> str:
