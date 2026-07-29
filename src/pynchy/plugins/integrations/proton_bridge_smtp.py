@@ -6,12 +6,10 @@ import smtplib
 import ssl
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from email.message import EmailMessage  # noqa: TC003 - runtime type validation resolves it
+from typing import Protocol, runtime_checkable
 
 from pydantic import SecretStr
-
-if TYPE_CHECKING:
-    from email.message import EmailMessage
 
 _BRIDGE_HOST = "127.0.0.1"
 _SMTP_TIMEOUT_SECONDS = 30
