@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import SecretStr
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import (
+    PersonalizationError,
     ProfileConfig,
     Settings,
     WorkspaceConfig,
@@ -132,6 +135,25 @@ def test_runtime_candidate_preserves_dotenv_and_environment_precedence(
 
     monkeypatch.setenv("AGENT__NAME", "Environment")
     assert load_runtime_candidate().agent.name == "Environment"
+
+
+def test_runtime_candidate_rejects_missing_litellm_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = Mock(gateway=Mock(litellm_config=None))
+    candidate.configured_agent_models.return_value = ()
+    load_impl = load_runtime_candidate
+    while "PersonalizationPaths" not in load_impl.__globals__:
+        load_impl = load_impl.__wrapped__
+    load_globals = load_impl.__globals__
+    monkeypatch.setitem(
+        load_globals, "PersonalizationPaths", Mock(for_project=Mock(return_value=Mock()))
+    )
+    monkeypatch.setitem(load_globals, "validate_personalization_tree", Mock())
+    monkeypatch.setitem(load_globals, "Settings", Mock(return_value=candidate))
+
+    with pytest.raises(PersonalizationError, match="must select a LiteLLM configuration"):
+        load_runtime_candidate()
 
 
 @pytest.mark.parametrize(
@@ -311,6 +333,43 @@ def test_profile_identity_changes_remain_restart_sensitive(
     assert restart_fingerprint(renamed) != baseline
 
 
+def test_restart_fingerprint_ignores_thread_and_scope_model_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    settings = load_runtime_candidate()
+    settings.workspaces["test"] = WorkspaceConfig.model_validate(
+        {
+            "profiles": ["base"],
+            "threads": [
+                {
+                    "name": "thread",
+                    "workspace": "thread",
+                    "profiles": ["base"],
+                    "model": "thread-model",
+                    "model_reasoning_effort": "medium",
+                }
+            ],
+            "scopes": [
+                {
+                    "workspace": "scope",
+                    "profiles": ["base"],
+                    "model": "scope-model",
+                    "model_reasoning_effort": "medium",
+                }
+            ],
+        }
+    )
+
+    baseline = restart_fingerprint(settings)
+    settings.workspaces["test"].threads[0].model = "changed-thread-model"
+    settings.workspaces["test"].scopes[0].model = "changed-scope-model"
+
+    assert restart_fingerprint(settings) == baseline
+
+
 def test_runtime_policy_change_targets_only_resolved_consumers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -328,6 +387,46 @@ def test_runtime_policy_change_targets_only_resolved_consumers(
     assert changes.affected_workspaces == ("test",)
     assert changes.live_changed is True
     assert restart_fingerprint(candidate) == restart_fingerprint(published)
+
+
+def test_runtime_policy_changes_ignore_unregistered_workspace_folders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    settings = load_runtime_candidate()
+
+    changes = runtime_policy_changes(settings, settings.model_copy(deep=True), ("missing",))
+
+    assert changes == type(changes)((), False)
+
+
+def test_configuration_source_digest_tracks_missing_symlink_and_racing_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = configuration_source_digest(tmp_path)
+    assert baseline
+
+    defaults = tmp_path / "data/defaults"
+    defaults.mkdir(parents=True)
+    target = defaults / "target.txt"
+    target.write_text("target", encoding="utf-8")
+    (defaults / "link.txt").symlink_to(target)
+    racing = defaults / "racing.txt"
+    racing.write_text("racing", encoding="utf-8")
+    original_read_bytes = Path.read_bytes
+
+    def read_bytes(path: Path) -> bytes:
+        if path == racing:
+            raise FileNotFoundError(path)
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    changed = configuration_source_digest(tmp_path)
+
+    assert changed != baseline
 
 
 def test_restart_fingerprint_covers_raw_restart_owned_sources(
@@ -368,6 +467,62 @@ def test_automation_projection_ignores_files_absent_from_loaded_settings(
     (automations / "not-loaded.toml").touch()
 
     assert automation_projection(settings) == ()
+
+
+def test_runtime_policy_projection_reads_existing_prompt_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    settings = load_runtime_candidate()
+    prompts = tmp_path / "data/defaults/prompts/souls"
+    prompts.mkdir(parents=True)
+    (prompts / "extra.md").write_text("prompt", encoding="utf-8")
+
+    changes = runtime_policy_changes(settings, settings.model_copy(deep=True), ())
+
+    assert changes.live_changed is False
+
+
+class _FingerprintMode(Enum):
+    TEST = "test"
+
+
+def test_restart_fingerprint_normalizes_supported_value_types(tmp_path: Path) -> None:
+    class FingerprintSettings:
+        project_root = tmp_path
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "python"
+            return {
+                "profiles": {"base": {"skills": [], "mixed": {SecretStr("secret"), "plain"}}},
+                "workspaces": {"test": {"threads": [], "scopes": []}},
+                "agent": {
+                    "model_reasoning_effort": None,
+                    "enum": _FingerprintMode.TEST,
+                    "path": tmp_path,
+                },
+                "prompts": {},
+                "pipelines": {},
+                "container": {
+                    "image": "image",
+                    "timeout_ms": 1,
+                    "memory_mb": 1,
+                    "idle_timeout_ms": 1,
+                },
+                "learning": {
+                    "enabled": False,
+                    "review_after_turn": False,
+                    "max_attempts": 1,
+                    "packet_max_chars": 1,
+                    "obsidian": {},
+                },
+                "security": {"blocked_patterns": []},
+                "jobs": {},
+            }
+
+    assert restart_fingerprint(FingerprintSettings())
 
 
 async def test_automation_prompt_change_reconciles_without_restart(
