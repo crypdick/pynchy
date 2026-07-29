@@ -93,8 +93,10 @@ For file-backed jobs, the reconciler compares the database row against the autom
 
 Each scheduled run resolves the target workspace's current effective model. To
 change a schedule or prompt, edit its automation file. To change a repo mount
-or model override, edit `data/personalization/pynchy.toml`. Restart the service
-afterward. No manual database edits are required.
+or model override, edit `data/personalization/pynchy.toml`. Pynchy applies each
+valid edit using the [field-specific configuration refresh
+mechanism](../usage/personalization.md#apply-configuration-changes). No manual
+database edits are required.
 
 ## Workspace Config Fields
 
