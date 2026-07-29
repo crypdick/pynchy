@@ -12,8 +12,9 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopVerdict,
 )
-from pynchy.host.container_manager.security.cop_gate import cop_gate
+from pynchy.host.container_manager.security.cop_gate import cop_gate, verify_approval_receipt
 from pynchy.host.container_manager.security.gate import SecurityGate
+from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.plugins.api import OutboundEventType
 from pynchy.workspace.api import WorkspaceSecurity
 
@@ -51,6 +52,34 @@ async def test_cop_allows_clean_operation(mock_deps):
             mock_deps,
         )
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_invalid_approval_receipt_is_audited_and_broadcast_as_blocked(mock_deps):
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.consume_approval_receipt",
+            return_value=ReceiptVerification.INVALID,
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.record_security_event",
+            new_callable=AsyncMock,
+        ) as audit,
+    ):
+        result = await verify_approval_receipt(
+            "sync_worktree_to_main",
+            {"request_id": 42},
+            "admin-1",
+            mock_deps,
+        )
+
+    assert result is ReceiptVerification.INVALID
+    assert audit.await_args.kwargs["chat_jid"] == "jid-1"
+    assert audit.await_args.kwargs["request_id"] is None
+    mock_deps.broadcast_host_message.assert_awaited_once_with(
+        "jid-1",
+        "Blocked sync_worktree_to_main: invalid or replayed approval receipt",
+    )
 
 
 @pytest.mark.asyncio
