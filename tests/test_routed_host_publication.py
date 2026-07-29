@@ -135,3 +135,21 @@ class TestPublicationRepositorySelection:
 
         get_repo_context.assert_called_once_with(route_slug)
         resolve_repos_for_group.assert_not_called()
+
+    def test_stale_route_without_workspace_configuration_stays_blocked(self) -> None:
+        folder = "host__thread_conversation-conv_deleted"
+        with patch("pynchy.host.orchestrator.app.configure_lifecycle_runtime") as configure:
+            PynchyApp()
+        runtime = configure.call_args.args[0]
+
+        with (
+            patch("pynchy.host.orchestrator.app.load_resolved_config", return_value=None),
+            patch(
+                "pynchy.host.orchestrator.app.resolve_repos_for_group",
+                side_effect=AssertionError("stale route must not fall back to profile access"),
+            ) as resolve_repos_for_group,
+            pytest.raises(PublicationRepositoryError, match="no active workspace"),
+        ):
+            runtime.resolve_publication_repos(folder, "turn-stale")
+
+        resolve_repos_for_group.assert_not_called()

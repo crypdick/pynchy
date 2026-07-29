@@ -601,6 +601,10 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             return (repo_context,)
 
         resolved = load_resolved_config(folder)
+        if resolved is None and conversation_id_from_folder(folder) is not None:
+            raise PublicationRepositoryError(
+                "Routed publication has no active workspace configuration."
+            )
         if (
             resolved is None
             or resolved.execution_mode != "host"
