@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 import pynchy.plugins
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
-from pynchy.plugins.api import WebhookEvent, WebhookRoute
+from pynchy.plugins.api import WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.state.work_item_rows import row_to_transition
 
@@ -24,6 +26,13 @@ def test_wake_gate_rejects_a_non_json_final_line() -> None:
 def test_plugin_namespace_rejects_unknown_attributes() -> None:
     with pytest.raises(AttributeError, match="no attribute"):
         _ = pynchy.plugins.not_a_plugin
+
+
+def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
+    plugin_manager = Mock()
+    plugin_manager.hook.pynchy_connection_runtime.return_value = [None]
+
+    assert load_connection_runtimes(plugin_manager) == []
 
 
 def test_transition_row_rejects_non_object_receipts() -> None:
