@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import smtplib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from email.message import EmailMessage
 from unittest.mock import Mock, patch
 
 import pytest
@@ -15,9 +16,11 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonBridgeImapClient,
     ProtonMailError,
 )
-
-if TYPE_CHECKING:
-    from email.message import EmailMessage
+from pynchy.plugins.integrations.proton_bridge_smtp import (
+    BridgeSmtpConnection,
+    ProtonBridgeSmtpError,
+    open_bridge_smtp_connection,
+)
 
 _TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 
@@ -257,6 +260,91 @@ class TestProtonBridgeImapClient:
         assert ("STORE", ("20", "+FLAGS.SILENT", "(\\Deleted)")) in connection.calls
         assert ("EXPUNGE", ()) in connection.calls
         assert client.message_exists(mailbox="INBOX", message_id="<canary@example.test>") is False
+
+
+class TestProtonBridgeSmtpTransport:
+    def test_sends_messages_and_wraps_refused_recipients(self):
+        client = Mock(spec=smtplib.SMTP)
+        message = EmailMessage()
+        transport = BridgeSmtpConnection(client)
+        client.send_message.return_value = None
+
+        transport.send_message(
+            message, sender="sender@example.com", recipients=["recipient@example.com"]
+        )
+        client.send_message.assert_called_once_with(
+            message,
+            from_addr="sender@example.com",
+            to_addrs=["recipient@example.com"],
+        )
+
+        client.send_message.return_value = {"recipient@example.com": (550, b"denied")}
+        with pytest.raises(ProtonBridgeSmtpError, match="rejected a recipient"):
+            transport.send_message(
+                message, sender="sender@example.com", recipients=["recipient@example.com"]
+            )
+
+    def test_wraps_smtp_send_and_shutdown_failures(self):
+        client = Mock(spec=smtplib.SMTP)
+        transport = BridgeSmtpConnection(client)
+        client.send_message.side_effect = smtplib.SMTPException("bridge unavailable")
+
+        with pytest.raises(ProtonBridgeSmtpError, match="request failed"):
+            transport.send_message(EmailMessage(), sender="sender@example.com", recipients=[])
+
+        client.quit.side_effect = OSError("socket closed")
+        with pytest.raises(ProtonBridgeSmtpError, match="shutdown failed"):
+            transport.quit()
+
+    def test_opens_loopback_smtp_with_tls_before_authentication(self):
+        configuration = ProtonBridgeConfiguration(
+            username="mail@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+            smtp_port=2025,
+        )
+        client = Mock(spec=smtplib.SMTP)
+
+        with patch(
+            "pynchy.plugins.integrations.proton_bridge_smtp.smtplib.SMTP",
+            return_value=client,
+        ) as smtp:
+            connection = open_bridge_smtp_connection(
+                configuration, SecretStr("test-bridge-password")
+            )
+
+        assert isinstance(connection, BridgeSmtpConnection)
+        smtp.assert_called_once_with("127.0.0.1", 2025, timeout=30)
+        assert client.ehlo.call_count == 2
+        context = client.starttls.call_args.kwargs["context"]
+        assert context.check_hostname is False
+        assert context.verify_mode == 0
+        client.login.assert_called_once_with("mail@example.com", "test-bridge-password")
+
+    def test_open_wraps_connection_and_authentication_failures(self):
+        configuration = ProtonBridgeConfiguration(
+            username="mail@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+            smtp_port=2025,
+        )
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge_smtp.smtplib.SMTP",
+                side_effect=OSError("bridge unavailable"),
+            ),
+            pytest.raises(ProtonBridgeSmtpError, match="request failed"),
+        ):
+            open_bridge_smtp_connection(configuration, SecretStr("test-bridge-password"))
+
+        client = Mock(spec=smtplib.SMTP)
+        client.login.side_effect = smtplib.SMTPException("invalid credentials")
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge_smtp.smtplib.SMTP",
+                return_value=client,
+            ),
+            pytest.raises(ProtonBridgeSmtpError, match="request failed"),
+        ):
+            open_bridge_smtp_connection(configuration, SecretStr("test-bridge-password"))
 
 
 class TestCommandPasswordProvider:

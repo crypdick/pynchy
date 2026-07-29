@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from temporalio import activity
 
@@ -48,7 +48,7 @@ async def run_linear_work_item_reconciliation() -> str:
 
 
 @activity.defn(name="run_linear_plan_review_admission")
-async def run_linear_plan_review_admission(payload: dict[str, object]) -> str:
+async def run_linear_plan_review_admission(payload: dict[str, Any]) -> str:
     """Review and admit one Human Approved issue without blocking discovery."""
     admission = LinearPlanReviewAdmission.from_payload(payload)
     deps = cast("SchedulerDependencies", _require_scheduler_deps())

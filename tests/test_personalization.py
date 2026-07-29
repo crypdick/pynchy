@@ -241,3 +241,106 @@ def test_litellm_model_routes_allow_wildcards_and_reject_missing_models(tmp_path
     validate_litellm_model_names(litellm, ("openai/gpt-5",))
     with pytest.raises(PersonalizationError, match="missing from LiteLLM"):
         validate_litellm_model_names(litellm, ("anthropic/claude",))
+
+
+def test_requires_bundled_defaults_and_allows_an_absent_optional_overlay(tmp_path: Path) -> None:
+    with pytest.raises(PersonalizationError, match="Bundled defaults directory is missing"):
+        load_layered_settings_mapping(tmp_path)
+
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").unlink()
+
+    mapping = load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+    assert mapping["agent"]["name"] == "Default"
+
+
+def test_rejects_non_mapping_jobs_when_automation_is_declared(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    automations = defaults / "automations"
+    automations.mkdir()
+    (automations / "weekly.toml").write_text(
+        "schema_version = 1\n"
+        "\n[job]\n"
+        'workspace = "pynchy"\n'
+        'schedule = "0 9 * * 1"\n'
+        'prompt = "Run review"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="jobs setting must be a mapping"):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"jobs": []},
+        )
+
+
+def test_rejects_malformed_automation_documents(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    automations = defaults / "automations"
+    automations.mkdir()
+    (automations / "weekly.toml").write_text("schema_version =\n", encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match="Invalid automation"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_non_mapping_gateway_configuration(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+
+    with pytest.raises(PersonalizationError, match="gateway setting must be a mapping"):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"gateway": ["not-a-mapping"]},
+        )
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("- model_name: gpt-test\n", "configuration must be a mapping"),
+        ("model_list:\n  - invalid\n", r"model_list\[0\] must be a mapping"),
+        (
+            'model_list:\n  - model_name: " "\n    litellm_params: {}\n',
+            "model_name must be a non-empty string",
+        ),
+        (
+            "model_list:\n  - model_name: gpt-test\n    litellm_params: invalid\n",
+            "litellm_params must be a mapping",
+        ),
+    ],
+)
+def test_rejects_malformed_litellm_routes(tmp_path: Path, content: str, message: str) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "litellm.yaml").write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match=message):
+        validate_personalization_tree(tmp_path, personalization)
+
+
+@pytest.mark.parametrize(
+    ("skill_name", "content", "message"),
+    [
+        ("missing", None, "Skill is missing SKILL.md"),
+        ("named", "---\nname: other\ndescription: Valid.\n---\n", "Skill name must match"),
+        (
+            "description",
+            '---\nname: description\ndescription: ""\n---\n',
+            "description must be non-empty",
+        ),
+        ("tier", '---\nname: tier\ndescription: Valid.\ntier: ""\n---\n', "tier must be non-empty"),
+    ],
+)
+def test_rejects_malformed_personalized_skill_metadata(
+    tmp_path: Path, skill_name: str, content: str | None, message: str
+) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills" / skill_name
+    skill.mkdir(parents=True)
+    if content is not None:
+        (skill / "SKILL.md").write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match=message):
+        validate_personalization_tree(tmp_path, personalization)
