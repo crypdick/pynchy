@@ -5,6 +5,7 @@ import pytest
 from pynchy.workspace.api import (
     CapabilityRule,
     ContainerConfig,
+    RuntimeTarget,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -114,6 +115,21 @@ def test_workspace_profile_validation_basic():
     errors = profile.validate()
     assert any("name" in e for e in errors)
     assert any("folder" in e for e in errors)
+
+
+def test_workspace_profile_validates_and_builds_its_runtime_target():
+    profile = WorkspaceProfile(
+        jid="slack:C123",
+        name="Operations",
+        folder="operations",
+        trigger="@P",
+    )
+
+    assert profile.validate() == []
+    assert RuntimeTarget.from_workspace(profile) == RuntimeTarget.from_binding(
+        "operations", "slack:C123"
+    )
+    assert RuntimeTarget.from_workspace(profile).id == "operations"
 
 
 def test_container_config_parses_mounts_and_rejects_invalid_shapes():
