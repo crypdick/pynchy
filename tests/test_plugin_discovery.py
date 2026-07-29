@@ -286,6 +286,19 @@ class TestPluginErrors:
 
 
 class TestPluginRegistryContracts:
+    def test_collect_hook_results_skips_none_results(self) -> None:
+        pm = get_plugin_manager()
+        with patch.object(pm.hook, "pynchy_workspace_spec", return_value=[None]):
+            assert (
+                collect_hook_results(
+                    "pynchy_workspace_spec",
+                    lambda value: True,
+                    "workspace",
+                    pm=pm,
+                )
+                == []
+            )
+
     def test_collect_hook_results_filters_invalid_and_none_results(self) -> None:
         hookimpl = pluggy.HookimplMarker("pynchy")
 
