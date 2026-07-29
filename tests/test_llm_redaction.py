@@ -60,6 +60,17 @@ def test_overlapping_patterns_select_secret_class_without_echoing_value() -> Non
     assert "user@example.test" not in repr(spans)
 
 
+def test_payment_card_redaction_requires_a_valid_luhn_checksum() -> None:
+    valid = "4111 1111 1111 1111"
+    invalid = "4111 1111 1111 1112"
+
+    spans = detect_sensitive_spans(f"valid={valid} invalid={invalid}")
+
+    assert len(spans) == 1
+    assert spans[0].data_class is SensitiveDataClass.PAYMENT_CARD
+    assert f"valid={valid}"[spans[0].start : spans[0].end] == valid
+
+
 def test_placeholder_injection_is_never_treated_as_a_request_reference() -> None:
     injected = "[[PYNCHY_REDACTED:attacker:1:EMAIL]]"
     source = f"Keep {injected}; contact real@example.test"
