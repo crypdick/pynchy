@@ -24,7 +24,10 @@ instances. Docker instances use names such as
 **On-demand lifecycle.** Docker MCP containers and host MCP subprocesses
 start when the first agent needs them and stop after `idle_timeout` seconds of
 inactivity. Remote URL servers already run elsewhere, so Pynchy only
-registers their endpoint.
+registers their endpoint. Pynchy records marker-verified ownership of each host
+subprocess group before readiness checks begin. Startup reaps only groups whose
+saved PID still carries that marker, preventing a service crash from leaking
+MCP subprocesses without risking an unrelated process that reused the PID.
 
 ## Host stdio servers
 

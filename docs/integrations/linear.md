@@ -316,6 +316,13 @@ without a second approval lease. Each plan review runs independently, so a slow
 review doesn't block discovery or review of another approved issue. `Awaiting
 Plan Approval` remains idle until a human decides.
 
+Before admitting work, the same reconciliation compares every unfinished local
+execution with its current Linear state. A missed move to `Done` completes the
+exact execution; a state that no longer authorizes that execution cancels it
+locally. Both paths retire only its task, workflow, and in-flight turn. They
+preserve the routed conversation, provider session, and managed worktree so a
+later authorized attempt can resume the worker's context and files.
+
 Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
 `Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear
 execution occurrence. A clean agent exit without one records `incomplete` and

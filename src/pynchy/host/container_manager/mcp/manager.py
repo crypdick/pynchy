@@ -17,6 +17,7 @@ are in :mod:`_mcp_litellm`.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from collections.abc import (
     AsyncIterator,  # noqa: TC003 - beartype resolves lease return annotations at runtime.
@@ -37,6 +38,7 @@ from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
     ensure_script_running,
     ensure_stdio_running,
+    reap_stale_processes,
     terminate_process,
     warm_image_cache,
 )
@@ -184,6 +186,8 @@ class McpManager:
         self._active_proxy_requests: dict[str, int] = {}
         self._unavailable_until: dict[str, float] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
+        self._process_record_dir = settings.data_dir / "mcp-processes"
+        self._stale_processes_reaped = False
         self._idle_task: asyncio.Task[None] | None = None
         self._warm_task: asyncio.Task[None] | None = None
         self._proxy = McpProxy(
@@ -202,6 +206,11 @@ class McpManager:
 
     async def sync(self) -> None:
         """Sync personalized MCP state to LiteLLM. Called once at boot."""
+        if not self._stale_processes_reaped:
+            reaped = await asyncio.to_thread(reap_stale_processes, self._process_record_dir)
+            self._stale_processes_reaped = True
+            if reaped:
+                logger.warning("Reaped stale MCP process groups", count=reaped)
         all_servers = self._merged_mcp_servers
         if not all_servers:
             logger.info("No MCP servers configured — skipping MCP sync")
@@ -210,6 +219,11 @@ class McpManager:
         # 1. Resolve all instances needed across all workspaces
         state = resolve_all_instances(self._settings, all_servers)
         self._instances = state.instances
+        for instance in self._instances.values():
+            instance.process_record_path = (
+                self._process_record_dir
+                / f"{hashlib.sha256(instance.instance_id.encode()).hexdigest()[:16]}.json"
+            )
         self._workspace_instances = state.workspace_instances
         self._active_proxy_requests.clear()
         self._unavailable_until.clear()

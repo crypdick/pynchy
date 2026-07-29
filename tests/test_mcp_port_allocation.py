@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess  # noqa: S404 - test fixtures construct completed Docker command results.
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_script_running,
     ensure_stdio_running,
     expand_arg_placeholders,
+    reap_stale_processes,
     warm_image_cache,
 )
 from pynchy.host.container_manager.mcp.resolution import (
@@ -427,7 +429,7 @@ class TestStdioLifecycle:
 
         await ensure_stdio_running(instance)
 
-        command, environment = start_process.call_args.args
+        command, environment, marker = start_process.call_args.args
         assert command == [
             sys.executable,
             "-m",
@@ -445,6 +447,7 @@ class TestStdioLifecycle:
         assert environment["ANDROID_TOKEN"] == "selected-value"  # noqa: S105  # pragma: allowlist secret
         assert environment["PATH"] == "/usr/bin"
         assert "SERVICE_TOKEN" not in environment
+        assert marker.startswith("pynchy-mcp-")
         assert wait_healthy_mock.await_args.args == (
             HealthCheckRequest(
                 container_name="android",
@@ -524,7 +527,8 @@ class TestScriptLifecycle:
         assert instance.process is None
 
     @pytest.mark.asyncio
-    async def test_ensure_script_runs_with_filtered_environment(self, monkeypatch):
+    async def test_ensure_script_runs_with_filtered_environment(self, monkeypatch, tmp_path):
+        record_path = tmp_path / "processes" / "linear.json"
         instance = McpInstance(
             server_name="linear",
             server_config=McpServerConfig(
@@ -541,8 +545,10 @@ class TestScriptLifecycle:
             project_root=Path("/project"),
             port=8474,
             tool_environment={"LINEAR_API_KEY": "selected-value"},  # pragma: allowlist secret
+            process_record_path=record_path,
         )
         process = subprocess.Popen.__new__(subprocess.Popen)
+        process.pid = 123
         start_process = MagicMock(return_value=process)
         monkeypatch.setenv("PATH", "/usr/bin")
         monkeypatch.setenv("UNRELATED_HOST_TOKEN", "must-not-leak")
@@ -557,12 +563,48 @@ class TestScriptLifecycle:
 
         await ensure_script_running(instance)
 
-        command, environment = start_process.call_args.args
+        command, environment, marker = start_process.call_args.args
         assert command == ["uv", "run", "linear-server", "--port", "8474"]
         assert environment["LINEAR_API_KEY"] == "selected-value"  # pragma: allowlist secret
         assert environment["STATIC_SETTING"] == "static-value"
         assert environment["PATH"] == "/usr/bin"
         assert "UNRELATED_HOST_TOKEN" not in environment
+        assert json.loads(record_path.read_text()) == {
+            "version": 1,
+            "pid": 123,
+            "marker": marker,
+            "instance_id": "linear",
+        }
+
+    def test_reap_stale_processes_signals_only_marker_verified_groups(self, monkeypatch, tmp_path):
+        record_dir = tmp_path / "mcp-processes"
+        record_dir.mkdir()
+        owned = record_dir / "owned.json"
+        stale = record_dir / "stale.json"
+        owned.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "pid": 123,
+                    "marker": "pynchy-mcp-" + ("a" * 32),
+                    "instance_id": "linear",
+                }
+            )
+        )
+        stale.write_text(json.dumps({"pid": 456, "marker": "not-owned"}))
+        terminated: list[int] = []
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._process_has_marker",
+            lambda pid, marker: pid == 123 and marker.endswith("a" * 32),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._terminate_owned_process_group",
+            terminated.append,
+        )
+
+        assert reap_stale_processes(record_dir) == 1
+        assert terminated == [123]
+        assert list(record_dir.iterdir()) == []
 
 
 class TestMergedMcpServers:

@@ -13,6 +13,7 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
+    clear_in_flight_turn,
     get_conversation,
     get_task_by_id,
     get_tasks_for_conversation,
@@ -49,6 +50,23 @@ async def retire_conversation_tasks(conversation_id: ConversationId) -> None:
         await cancel_scheduled_agent_workflow(workflow_id)
     for task in tasks:
         await cancel_task_and_checkpoint(task.id)
+
+
+async def retire_work_item_execution(execution: WorkItemExecution) -> None:
+    """Stop exact durable work while preserving its conversation and session."""
+    workflow_ids = (
+        {execution.temporal_workflow_id} if execution.temporal_workflow_id is not None else set()
+    )
+    if execution.task_id is not None:
+        task = await get_task_by_id(execution.task_id)
+        if task is not None and task.schedule_type == "once":
+            workflow_ids.add(agent_task_workflow_id(task))
+    for workflow_id in sorted(workflow_ids):
+        await cancel_scheduled_agent_workflow(workflow_id)
+    if execution.task_id is not None:
+        await cancel_task_and_checkpoint(execution.task_id)
+    if execution.turn_id is not None:
+        await clear_in_flight_turn(execution.turn_id)
 
 
 async def _unfinished_linear_execution_for_conversation(

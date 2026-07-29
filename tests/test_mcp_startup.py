@@ -318,6 +318,17 @@ class TestWorkspaceMcpStartup:
 
 class TestMcpManagerLifecycleContracts:
     @pytest.mark.asyncio
+    async def test_sync_reaps_prior_process_ownership_once(self, tmp_path, monkeypatch):
+        reaper = MagicMock(return_value=2)
+        monkeypatch.setattr(mcp_manager, "reap_stale_processes", reaper)
+        manager = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
+
+        await manager.sync()
+        await manager.sync()
+
+        reaper.assert_called_once_with(tmp_path / "mcp-processes")
+
+    @pytest.mark.asyncio
     async def test_sync_with_no_configured_servers_is_a_noop(self, tmp_path, monkeypatch):
         manager = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
         sync_endpoints = AsyncMock()
