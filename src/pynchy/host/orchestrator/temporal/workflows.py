@@ -200,6 +200,28 @@ class LinearWorkItemReconciliationWorkflow:
 
 
 @workflow.defn
+class LinearPlanReviewWorkflow:
+    """Review one immutable Human Approved issue revision."""
+
+    @workflow.run
+    async def run(self, admission: dict[str, Any]) -> str:
+        return cast(
+            "str",
+            await workflow.execute_activity(
+                "run_linear_plan_review_admission",
+                admission,
+                start_to_close_timeout=timedelta(hours=12),
+                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=5),
+                    backoff_coefficient=2.0,
+                ),
+            ),
+        )
+
+
+@workflow.defn
 class CanaryRunWorkflow:
     """Run every declared external-service canary through one host activity."""
 

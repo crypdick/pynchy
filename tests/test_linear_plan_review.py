@@ -36,11 +36,13 @@ class _Deps:
     )
     reviewer_group: WorkspaceProfile | None = None
     input_source: str | None = None
+    system_notices: list[str] | None = None
     review_prompt: str | None = None
 
     async def run_agent(self, group, _chat_jid, messages, on_output, **kwargs) -> str:
         self.reviewer_group = group
         self.input_source = kwargs["input_source"]
+        self.system_notices = kwargs["extra_system_notices"]
         self.review_prompt = messages[0]["content"]
         await on_output(
             ContainerOutput(
@@ -76,6 +78,8 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
     assert deps.reviewer_group is not None
     assert deps.reviewer_group.jid == "linear-plan-review:issue-1"
     assert deps.input_source == "external:hidden_plan_review"
+    assert deps.system_notices is not None
+    assert "do not delegate to subagents" in deps.system_notices[0]
     assert deps.review_prompt is not None
     normalized_prompt = " ".join(deps.review_prompt.split())
     assert "HEAD or SHA movement alone is not evidence" in normalized_prompt

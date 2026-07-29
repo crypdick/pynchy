@@ -70,6 +70,8 @@ from pynchy.host.orchestrator.temporal.learning import (
     run_learning_review,
 )
 from pynchy.host.orchestrator.temporal.linear_work_items import (
+    linear_plan_review_workflow_id,
+    run_linear_plan_review_admission,
     run_linear_work_item_reconciliation,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
@@ -115,12 +117,16 @@ from pynchy.host.orchestrator.temporal.workflows import (
     InteractiveMessageWorkflow,
     InterruptedTurnWorkflow,
     LearningReviewWorkflow,
+    LinearPlanReviewWorkflow,
     LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.learning_packets import (
     LearningPacket,  # beartype resolves Temporal scheduler annotations at runtime.
     packet_to_payload,
+)
+from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+    LinearPlanReviewAdmission,
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
@@ -160,6 +166,7 @@ __all__ = [
     "interactive_message_workflow_id",
     "interrupted_turn_workflow_id",
     "learning_review_workflow_id",
+    "linear_plan_review_workflow_id",
     "publish_scheduler_config",
     "reconcile_schedules_with_config",
     "reset_temporal_scheduler_status",
@@ -169,6 +176,8 @@ __all__ = [
     "start_interactive_message_workflow",
     "start_interrupted_turn_workflow",
     "start_learning_review_workflow",
+    "start_linear_plan_review_workflow",
+    "start_linear_work_item_reconciliation_workflow",
     "start_scheduled_agent_task_workflow",
     "temporal_scheduler_runtime_active",
 ]
@@ -252,6 +261,18 @@ async def start_channel_reconciliation_workflow() -> None:
     """Start a Temporal workflow to reconcile channel history immediately."""
     runtime = await _require_active_runtime()
     await runtime.start_channel_reconciliation()
+
+
+async def start_linear_work_item_reconciliation_workflow() -> None:
+    """Start immediate managed Linear work discovery."""
+    runtime = await _require_active_runtime()
+    await runtime.start_linear_work_item_reconciliation()
+
+
+async def start_linear_plan_review_workflow(admission: LinearPlanReviewAdmission) -> None:
+    """Start one idempotent plan review for an exact provider revision."""
+    runtime = await _require_active_runtime()
+    await runtime.start_linear_plan_review(admission)
 
 
 def scheduler_workflow_runner() -> WorkflowRunner:
@@ -423,6 +444,7 @@ class TemporalSchedulerRuntime:
                     ConfigHostCronWorkflow,
                     LearningReviewWorkflow,
                     LinearWorkItemReconciliationWorkflow,
+                    LinearPlanReviewWorkflow,
                 ],
                 activities=[
                     run_deploy,
@@ -439,6 +461,7 @@ class TemporalSchedulerRuntime:
                     run_config_host_cron_job,
                     run_learning_review,
                     run_linear_work_item_reconciliation,
+                    run_linear_plan_review_admission,
                 ],
                 workflow_runner=scheduler_workflow_runner(),
             )
@@ -570,6 +593,25 @@ class TemporalSchedulerRuntime:
             workflow_id=f"{channel_reconciliation_schedule_id()}-manual",
             status_id=channel_reconciliation_schedule_id(),
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
+    async def start_linear_work_item_reconciliation(self) -> None:
+        """Start immediate managed Linear work discovery."""
+        await self._start_workflow(
+            LinearWorkItemReconciliationWorkflow.run,
+            workflow_id="pynchy-linear-work-item-reconciliation-webhook",
+            status_id="linear-work-item-reconciliation",
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
+    async def start_linear_plan_review(self, admission: LinearPlanReviewAdmission) -> None:
+        """Start one review workflow, deduplicated by issue revision."""
+        await self._start_workflow(
+            LinearPlanReviewWorkflow.run,
+            admission.to_payload(),
+            workflow_id=linear_plan_review_workflow_id(admission),
+            status_id=admission.identifier,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
         )
 
     async def reconcile_schedules(self) -> None:

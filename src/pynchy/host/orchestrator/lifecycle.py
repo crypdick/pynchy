@@ -194,7 +194,9 @@ async def _initialize_core(app: PynchyApp) -> None:
     plugin_configuration.configure_caldav_plugin(settings)
     plugin_configuration.configure_gog_plugin(settings)
     plugin_configuration.configure_desktop_screenshot_plugin(app.plugin_manager, settings)
-    plugin_configuration.configure_linear_plugin(app.plugin_manager, settings)
+    plugin_configuration.configure_linear_plugin(
+        app.plugin_manager, settings, app.start_linear_work_item_reconciliation
+    )
     plugin_configuration.configure_observer_plugins(app.plugin_manager)
     plugin_configuration.configure_marketplace_health_plugin(app.plugin_manager, settings)
     plugin_configuration.configure_matrix_gateway_plugin(settings)

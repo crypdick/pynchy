@@ -10,9 +10,7 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
     LinearPlanReviewResult,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import (
-    reconcile_linear_decision_inbox,
-)
+from pynchy.plugins.integrations.linear_decision_inbox import reconcile_linear_decision_inbox
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,

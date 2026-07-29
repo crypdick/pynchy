@@ -70,6 +70,7 @@ class LinearWebhookEffectsRuntime:
     cancel_execution: Callable[..., Awaitable[object]]
     cancel_execution_if_lifecycle_current: Callable[..., Awaitable[object]]
     get_active_execution: Callable[[str], Awaitable[Any]]
+    start_work_item_reconciliation: Callable[[], Awaitable[None]]
 
 
 @dataclass
@@ -288,9 +289,11 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
             # later Human Approved transition may acquire a fresh execution.
             return True
         if current_state_id != in_progress_state_id:
-            # The periodic controller reviews any stored plan before it leases
-            # approved work. Webhook admission must not bypass that boundary.
-            return current_state_id == approved_state_id
+            return await _owns_nonprogress_controller_state(
+                event,
+                workspace,
+                approved=current_state_id == approved_state_id,
+            )
         actor = event.actor
         if not _is_human_state_transition(event) or actor is None:
             # In Progress is controller-owned even when its lease invariant
@@ -315,6 +318,26 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
         )
     if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         raise WebhookProcessingError("Linear execution lease did not become active")
+    return True
+
+
+async def _owns_nonprogress_controller_state(
+    event: WebhookEvent,
+    workspace: str,
+    *,
+    approved: bool,
+) -> bool:
+    """Wake review discovery for approved work while retaining the poll backstop."""
+    if not approved:
+        return False
+    try:
+        await _configured_runtime().start_work_item_reconciliation()
+    except Exception:  # noqa: BLE001 - the periodic poll remains the durable backstop.
+        logger.exception(
+            "Immediate Linear work item reconciliation failed",
+            workspace=workspace,
+            issue_id=event.subject_id,
+        )
     return True
 
 
