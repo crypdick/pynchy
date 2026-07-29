@@ -27,6 +27,7 @@ from pynchy.logger import logger
 # Warn when a token expires within this many days
 _EXPIRY_WARNING_DAYS = 30
 _GITHUB_SCP_ORIGIN = re.compile(r"git@github\.com:(?P<path>[^?#]+)", re.IGNORECASE)
+_GITHUB_SLUG_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _UNSUPPORTED_GITHUB_ORIGIN = "checkout origin URL is not a supported GitHub HTTPS or SSH URL"
 
 
@@ -106,8 +107,8 @@ class RepoContext:
 
 def _slug_to_parts(slug: str) -> tuple[str, str]:
     """Split "owner/repo" into ("owner", "repo"). Raises ValueError if malformed."""
-    parts = slug.split("/", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
+    parts = slug.split("/")
+    if len(parts) != 2 or not all(_GITHUB_SLUG_PART.fullmatch(part) for part in parts):
         msg = f"Invalid repo slug {slug!r}: expected 'owner/repo' format"
         raise ValueError(msg)
     return parts[0], parts[1]

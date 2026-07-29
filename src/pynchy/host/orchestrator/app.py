@@ -1283,13 +1283,13 @@ class PynchyApp(ThreadRouting):
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
         from pynchy.config.api import (  # noqa: PLC0415 - composition root selects the validator.
-            validate_personalization_tree,
+            validate_personalization_configuration,
         )
         from pynchy.host.git_ops.api import (  # noqa: PLC0415 - composition root selects the Git adapter.
             sync_personalization_repo,
         )
 
-        return sync_personalization_repo(project_root, validate_personalization_tree)
+        return sync_personalization_repo(project_root, validate_personalization_configuration)
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""

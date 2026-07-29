@@ -3,6 +3,7 @@
 Subcommands:
     pynchy              Run the service (default)
     pynchy build        Build the container image
+    pynchy publish-personalization  Publish the canonical personalization checkout
     pynchy status       Read service status through the authenticated control plane
     pynchy deploy       Request deployment through the authenticated control plane
     pynchy doctor       Explain effective workspace host-action capabilities
@@ -19,6 +20,8 @@ import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
+
+from pynchy.personalization_cli import publish_personalization, validate_personalization
 
 _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
@@ -44,21 +47,13 @@ def _run() -> None:
 
     load_dotenv()  # Materialize host credentials for explicitly declared tool access.
 
-    from pynchy.config.api import (  # noqa: PLC0415 - startup validates deployment-owned configuration before app imports.  # noqa: PLC0415 - startup validates the composed settings before app construction.
-        LITELLM_FILENAME,
+    from pynchy.config.api import (  # noqa: PLC0415 - startup validates composed settings before app construction.
         PersonalizationError,
-        validate_litellm_model_names,
-        validate_personalization_tree,
-        validate_settings_mapping,
+        validate_personalization_configuration,
     )
 
     try:
-        mapping = validate_personalization_tree(Path.cwd(), Path("data/personalization"))
-        settings = validate_settings_mapping(mapping)
-        validate_litellm_model_names(
-            Path("data/personalization") / LITELLM_FILENAME,
-            settings.configured_agent_models(),
-        )
+        validate_personalization_configuration(Path.cwd(), Path("data/personalization"))
     except (OSError, PersonalizationError, ValueError) as exc:
         _stderr_line(f"Personalization validation failed: {exc}")
         sys.exit(2)
@@ -156,33 +151,6 @@ def _build() -> None:
         _stderr_line("Error: Could not clean container build state after the build")
         sys.exit(1)
     sys.exit(result.returncode)
-
-
-def _validate_personalization(path: Path) -> int:
-    from pynchy.config.api import (  # noqa: PLC0415 - validation command keeps service imports lazy.  # noqa: PLC0415 - validation command explicitly validates the composed mapping.
-        LITELLM_FILENAME,
-        PersonalizationError,
-        validate_litellm_model_names,
-        validate_personalization_tree,
-        validate_settings_mapping,
-    )
-
-    try:
-        mapping = validate_personalization_tree(Path.cwd(), path)
-        settings = validate_settings_mapping(mapping)
-        validate_litellm_model_names(
-            path / LITELLM_FILENAME,
-            settings.configured_agent_models(),
-        )
-    except (OSError, PersonalizationError, ValueError) as exc:
-        _stderr_line(f"Personalization validation failed: {exc}")
-        return 1
-    _stdout_line(
-        "Personalization valid: "
-        f"{path.resolve()} ({len(settings.jobs)} automation(s), "
-        f"{len(settings.workspaces)} workspace(s))"
-    )
-    return 0
 
 
 def _bootstrap_control_plane_token(*, rotate: bool) -> int:
@@ -405,13 +373,19 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("build", help="Build the container image")
+    sub.add_parser(
+        "publish-personalization",
+        help=(
+            "Validate and publish the canonical personalization repository from this host checkout"
+        ),
+    )
     sub.add_parser("status", help="Read service status through the authenticated control plane")
     sub.add_parser("deploy", help="Request deployment through the authenticated control plane")
-    validate_personalization = sub.add_parser(
+    validate_personalization_parser = sub.add_parser(
         "validate-personalization",
         help="Validate a personalization repository against this Pynchy checkout",
     )
-    validate_personalization.add_argument(
+    validate_personalization_parser.add_argument(
         "path",
         nargs="?",
         type=Path,
@@ -474,6 +448,8 @@ def main() -> None:
     match args.command:
         case "build":
             _build()
+        case "publish-personalization":
+            sys.exit(publish_personalization())
         case "status":
             sys.exit(
                 _control_command(
@@ -495,7 +471,7 @@ def main() -> None:
                 )
             )
         case "validate-personalization":
-            sys.exit(_validate_personalization(args.path))
+            sys.exit(validate_personalization(args.path))
         case "control-plane":
             if args.control_plane_command == "bootstrap":
                 sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))

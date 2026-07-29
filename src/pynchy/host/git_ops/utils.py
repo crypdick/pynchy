@@ -7,10 +7,15 @@ import os
 import re
 import signal
 import subprocess  # noqa: S404 - shared git helper uses fixed no-shell argv.
+from collections.abc import Callable  # noqa: TC003 - beartype resolves this runtime annotation.
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves git helper signatures at runtime.
 )
 
+from pynchy.host.git_ops._environment import (  # noqa: F401 - preserve utility-module imports.
+    git_env_with_token,
+    git_env_without_credentials,
+)
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
@@ -19,7 +24,7 @@ _DEFAULT_GIT_SSH_COMMAND = (
     "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 "
     "-o ServerAliveInterval=5 -o ServerAliveCountMax=1"
 )
-_URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@")
+_URL_USERINFO = re.compile(r"((?:https?|ssh)://)[^/\s@]+@")
 _MAX_GIT_DIAGNOSTIC_LENGTH = 1000
 _default_cwd: Path | None = None
 
@@ -36,9 +41,13 @@ def _configured_default_cwd() -> Path:
     return _default_cwd
 
 
-def _git_subprocess_env(env: dict[str, str] | None) -> dict[str, str]:
+def _git_subprocess_env(
+    env: dict[str, str] | None,
+    *,
+    inherit_env: bool,
+) -> dict[str, str]:
     """Return a noninteractive git environment with bounded SSH handshakes."""
-    merged = os.environ.copy()
+    merged = os.environ.copy() if inherit_env else {}
     if env:
         merged.update(env)
     merged.setdefault("GIT_TERMINAL_PROMPT", "0")
@@ -51,6 +60,7 @@ def run_git(
     cwd: Path | None = None,
     timeout: int = _SUBPROCESS_TIMEOUT,
     env: dict[str, str] | None = None,
+    inherit_env: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command with standard timeout and error capture.
 
@@ -63,7 +73,7 @@ def run_git(
     return _run_git_process(
         command,
         cwd=str(cwd or _configured_default_cwd()),
-        env=_git_subprocess_env(env),
+        env=_git_subprocess_env(env, inherit_env=inherit_env),
         timeout=timeout,
     )
 
@@ -124,56 +134,26 @@ def redact_git_diagnostic(text: str, *, token: str | None = None) -> str:
     return " ".join(redacted.split())[:_MAX_GIT_DIAGNOSTIC_LENGTH]
 
 
-def git_env_with_token(slug: str) -> dict[str, str] | None:
-    """Build env dict for authenticated git remote operations.
-
-    Returns None if no token is available (callers fall back to ambient
-    credentials). Uses GIT_ASKPASS with a small inline script that echoes the
-    token — safer than embedding tokens in URLs since the token never appears
-    in .git/config or ``git remote -v`` output.
-    """
-    from pynchy.host.git_ops import (  # noqa: PLC0415 - keep repo dependency lazy to avoid tightening git_ops package initialization.
-        repo as git_repo,
-    )
-
-    token = git_repo.get_repo_token(slug)
-    if not token:
-        return None
-
-    env = os.environ.copy()
-    # GIT_ASKPASS is called with a prompt arg; we ignore it and always return
-    # the token. Using printf avoids the token appearing in /proc/cmdline
-    # (unlike echo in a temp script).
-    env["GIT_ASKPASS"] = "/bin/sh"
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    # The askpass "script" is /bin/sh, which reads from stdin... that doesn't
-    # work. Instead, use a credential helper via environment:
-    env["GH_TOKEN"] = token
-    # gh auth git-credential respects GH_TOKEN. But for raw git operations
-    # (not going through gh), we set up a minimal credential helper:
-    env["GIT_CONFIG_COUNT"] = "4"
-    env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.username"
-    env["GIT_CONFIG_VALUE_0"] = "x-access-token"
-    env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
-    env["GIT_CONFIG_VALUE_1"] = (
-        f"!f() {{ echo protocol=https; echo host=github.com; "
-        f"echo username=x-access-token; echo password={token}; }}; f"
-    )
-    # A token must win over a read-only SSH deploy key on unattended hosts.
-    env["GIT_CONFIG_KEY_2"] = "url.https://github.com/.insteadOf"
-    env["GIT_CONFIG_VALUE_2"] = "git@github.com:"
-    env["GIT_CONFIG_KEY_3"] = "url.https://github.com/.insteadOf"
-    env["GIT_CONFIG_VALUE_3"] = "ssh://git@github.com/"
-    return env
-
-
-def count_commits(range_expr: str, *, cwd: Path | None = None) -> int | None:
+def count_commits(
+    range_expr: str,
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    inherit_env: bool = True,
+) -> int | None:
     """Count commits in a rev-list range (e.g. ``"main..branch"``).
 
     Returns ``None`` if the git command fails or its output can't be parsed,
     letting callers treat "couldn't determine" with a single ``is None`` guard.
     """
-    result = run_git("rev-list", range_expr, "--count", cwd=cwd)
+    result = run_git(
+        "rev-list",
+        range_expr,
+        "--count",
+        cwd=cwd,
+        env=env,
+        inherit_env=inherit_env,
+    )
     if result.returncode != 0:
         return None
     try:
@@ -182,13 +162,24 @@ def count_commits(range_expr: str, *, cwd: Path | None = None) -> int | None:
         return None
 
 
-def detect_main_branch(cwd: Path | None = None) -> str:
+def detect_main_branch(
+    cwd: Path | None = None,
+    *,
+    env: dict[str, str] | None = None,
+    inherit_env: bool = True,
+) -> str:
     """Detect the main branch name via origin/HEAD, defaulting to 'main'."""
-    result = run_git("symbolic-ref", "refs/remotes/origin/HEAD", cwd=cwd)
+    result = run_git(
+        "symbolic-ref",
+        "refs/remotes/origin/HEAD",
+        cwd=cwd,
+        env=env,
+        inherit_env=inherit_env,
+    )
     if result.returncode == 0:
         # Output like "refs/remotes/origin/main"
         ref = result.stdout.strip()
-        return ref.split("/")[-1]
+        return ref.removeprefix("refs/remotes/origin/")
     return "main"
 
 
@@ -242,8 +233,21 @@ def files_changed_between(old_sha: str, new_sha: str, path: str) -> bool:
     return bool(result.stdout.strip()) if result.returncode == 0 else False
 
 
-def push_local_commits(
-    *, skip_fetch: bool = False, cwd: Path | None = None, env: dict[str, str] | None = None
+def push_local_commits(  # noqa: PLR0913 - preserve the public Git-helper call shape.
+    *,
+    skip_fetch: bool = False,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    local_env: dict[str, str] | None = None,
+    post_rebase_check: Callable[[], bool] | None = None,
+    validated_source: Callable[[], str | None] | None = None,
+    pre_push_check: Callable[[], bool] | None = None,
+    include_diagnostics: bool = True,
+    remote: str = "origin",
+    fetch_refspec: str | None = None,
+    main_branch: str | None = None,
+    expected_head: str | None = None,
+    inherit_env: bool = True,
 ) -> bool:
     """Best-effort push of local commits to origin/main.
 
@@ -254,56 +258,277 @@ def push_local_commits(
 
     Args:
         env: Optional environment for remote-facing git calls (fetch, push).
+        local_env: Optional credential-free environment for local Git calls.
+            Defaults to an isolated environment with hooks disabled.
+        post_rebase_check: Optional check to run after every successful rebase
+            and before its push.
+        validated_source: Optional callback returning the exact validated commit
+            SHA to push after a rebase. This prevents a mutable ``HEAD`` from
+            selecting different content after validation.
+        pre_push_check: Optional check to run after source validation and
+            immediately before push.
+        include_diagnostics: Whether failure logs may include redacted Git output.
+        remote: Remote name or validated URL used for fetch and push.
+        fetch_refspec: Optional refspec used when fetching a URL instead of a remote name.
+        main_branch: Optional already-validated target branch. When omitted, use
+            the checkout's origin/HEAD as before.
+        expected_head: Fail unless HEAD still names this validated commit before rebase.
     """
-    main = _detect_main_branch_safe(cwd=cwd)
+    if local_env is None:
+        local_env = git_env_without_credentials()
+    main = main_branch or _detect_main_branch_safe(
+        cwd=cwd,
+        env=local_env,
+        include_diagnostics=include_diagnostics,
+        inherit_env=False,
+    )
     if main is None:
         return False
 
     if not skip_fetch:
-        fetch = run_git("fetch", "origin", cwd=cwd, env=env)
+        fetch = _fetch_git_remote(
+            remote,
+            fetch_refspec,
+            cwd=cwd,
+            env=env,
+            inherit_env=inherit_env,
+        )
         if fetch.returncode != 0:
-            logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
+            _log_push_failure(
+                "push_local: git fetch failed",
+                stderr=fetch.stderr,
+                env=env,
+                include_diagnostics=include_diagnostics,
+            )
             return False
 
-    ahead = count_commits(f"origin/{main}..HEAD", cwd=cwd)
-    if not ahead:
-        return True  # nothing to push (or can't tell)
+    if expected_head is not None and (
+        _current_head(cwd=cwd, env=local_env, inherit_env=False) != expected_head
+    ):
+        logger.warning("push_local: validated HEAD changed before publication")
+        return False
 
-    return _rebase_and_push_local_commits(main, cwd=cwd, env=env)
+    ahead = count_commits(
+        f"origin/{main}..HEAD",
+        cwd=cwd,
+        env=local_env,
+        inherit_env=False,
+    )
+    if ahead is None:
+        logger.warning("push_local: could not determine local commits ahead of origin")
+        return False
+    if ahead == 0:
+        return True
+
+    return _rebase_and_push_local_commits(
+        main,
+        cwd=cwd,
+        local_env=local_env,
+        remote_env=env,
+        post_rebase_check=post_rebase_check,
+        validated_source=validated_source,
+        pre_push_check=pre_push_check,
+        include_diagnostics=include_diagnostics,
+        remote=remote,
+        fetch_refspec=fetch_refspec,
+        expected_head=expected_head,
+        inherit_env=inherit_env,
+    )
 
 
-def _detect_main_branch_safe(cwd: Path | None) -> str | None:
+def _detect_main_branch_safe(
+    *,
+    cwd: Path | None,
+    env: dict[str, str] | None,
+    include_diagnostics: bool,
+    inherit_env: bool,
+) -> str | None:
     try:
-        return detect_main_branch(cwd=cwd)
+        return detect_main_branch(cwd=cwd, env=env, inherit_env=inherit_env)
     except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("push_local: unexpected error", err=str(exc))
+        _log_push_failure(
+            "push_local: unexpected error",
+            stderr=str(exc),
+            env=None,
+            include_diagnostics=include_diagnostics,
+        )
         return None
 
 
-def _rebase_and_push_local_commits(
-    main: str, *, cwd: Path | None, env: dict[str, str] | None
+def _rebase_and_push_local_commits(  # noqa: PLR0911, PLR0913 - bounded retry states need distinct exits.
+    main: str,
+    *,
+    cwd: Path | None,
+    local_env: dict[str, str] | None,
+    remote_env: dict[str, str] | None,
+    post_rebase_check: Callable[[], bool] | None,
+    validated_source: Callable[[], str | None] | None,
+    pre_push_check: Callable[[], bool] | None,
+    include_diagnostics: bool,
+    remote: str,
+    fetch_refspec: str | None,
+    expected_head: str | None,
+    inherit_env: bool,
 ) -> bool:
     # Try rebase+push, retry once if origin advanced mid-operation.
     for attempt in range(2):
-        rebase = run_git("rebase", f"origin/{main}", cwd=cwd)
+        if expected_head is not None and (
+            _current_head(cwd=cwd, env=local_env, inherit_env=False) != expected_head
+        ):
+            logger.warning("push_local: validated HEAD changed before rebase")
+            return False
+        rebase = run_git(
+            "rebase",
+            f"origin/{main}",
+            cwd=cwd,
+            env=local_env,
+            inherit_env=False,
+        )
         if rebase.returncode != 0:
-            run_git("rebase", "--abort", cwd=cwd)
+            run_git("rebase", "--abort", cwd=cwd, env=local_env, inherit_env=False)
             if attempt == 0:
                 logger.info("push_local: rebase failed, retrying after fresh fetch")
-                retry_fetch = run_git("fetch", "origin", cwd=cwd, env=env)
+                retry_fetch = _fetch_git_remote(
+                    remote,
+                    fetch_refspec,
+                    cwd=cwd,
+                    env=remote_env,
+                    inherit_env=inherit_env,
+                )
                 if retry_fetch.returncode != 0:
-                    logger.warning(
-                        "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
+                    _log_push_failure(
+                        "push_local: retry fetch failed",
+                        stderr=retry_fetch.stderr,
+                        env=remote_env,
+                        include_diagnostics=include_diagnostics,
                     )
                     return False
                 continue
-            logger.warning("push_local: rebase failed after retry", stderr=rebase.stderr.strip())
+            _log_push_failure(
+                "push_local: rebase failed after retry",
+                stderr=rebase.stderr,
+                env=local_env,
+                include_diagnostics=include_diagnostics,
+            )
             return False
 
-        push = run_git("push", cwd=cwd, env=env)
+        if not _post_rebase_check_succeeds(post_rebase_check):
+            return False
+
+        source = _validated_source(validated_source)
+        if validated_source is not None and source is None:
+            return False
+        if not _post_rebase_check_succeeds(pre_push_check):
+            return False
+
+        push = _push_git_remote(
+            remote,
+            main,
+            cwd=cwd,
+            env=remote_env,
+            inherit_env=inherit_env,
+            source=source,
+        )
         if push.returncode != 0:
-            logger.warning("push_local: git push failed", stderr=push.stderr.strip())
+            _log_push_failure(
+                "push_local: git push failed",
+                stderr=push.stderr,
+                env=remote_env,
+                include_diagnostics=include_diagnostics,
+            )
             return False
         logger.info("push_local: pushed local commits")
         return True
     return False
+
+
+def _fetch_git_remote(
+    remote: str,
+    refspec: str | None,
+    *,
+    cwd: Path | None,
+    env: dict[str, str] | None,
+    inherit_env: bool,
+) -> subprocess.CompletedProcess[str]:
+    args = ("fetch", remote) if refspec is None else ("fetch", remote, refspec)
+    return run_git(*args, cwd=cwd, env=env, inherit_env=inherit_env)
+
+
+def _current_head(
+    *,
+    cwd: Path | None,
+    env: dict[str, str] | None,
+    inherit_env: bool,
+) -> str | None:
+    head = run_git(
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+        cwd=cwd,
+        env=env,
+        inherit_env=inherit_env,
+    )
+    return head.stdout.strip() if head.returncode == 0 and head.stdout.strip() else None
+
+
+def _push_git_remote(  # noqa: PLR0913 - remote call requires its explicit trust inputs.
+    remote: str,
+    main: str,
+    *,
+    cwd: Path | None,
+    env: dict[str, str] | None,
+    inherit_env: bool,
+    source: str | None,
+) -> subprocess.CompletedProcess[str]:
+    if source is None:
+        return run_git("push", remote, cwd=cwd, env=env, inherit_env=inherit_env)
+    return run_git(
+        "push",
+        "--no-verify",
+        remote,
+        f"{source}:refs/heads/{main}",
+        cwd=cwd,
+        env=env,
+        inherit_env=inherit_env,
+    )
+
+
+def _post_rebase_check_succeeds(check: Callable[[], bool] | None) -> bool:
+    if check is None:
+        return True
+    try:
+        valid = check()
+    except (OSError, ValueError):
+        valid = False
+    if not valid:
+        logger.warning("push_local: post-rebase validation failed")
+    return valid
+
+
+def _validated_source(check: Callable[[], str | None] | None) -> str | None:
+    """Return a post-rebase commit selected by a validation callback."""
+    if check is None:
+        return None
+    try:
+        source = check()
+    except (OSError, ValueError):
+        source = None
+    if source is None:
+        logger.warning("push_local: post-rebase validation failed")
+    return source
+
+
+def _log_push_failure(
+    message: str,
+    *,
+    stderr: str,
+    env: dict[str, str] | None,
+    include_diagnostics: bool,
+) -> None:
+    if not include_diagnostics or not stderr:
+        logger.warning(message)
+        return
+    logger.warning(
+        message,
+        stderr=redact_git_diagnostic(stderr, token=env.get("GH_TOKEN") if env else None),
+    )

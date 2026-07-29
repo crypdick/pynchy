@@ -28,6 +28,22 @@ The container boundary limits the attack surface to what's mounted, rather than 
 
 Admin workspaces can set `execution_mode = "host"` with an explicit `cwd`. This mode runs the selected agent core as a host child process and does not use container isolation, file IPC, mounts, or Pynchy's built-in MCP server. Use it only for trusted operator workspaces where direct host access is the point of the workspace.
 
+`pynchy publish-personalization` is a host-operator command. Standard agent
+Bash hooks deny its supported CLI invocation. This hook does not isolate trusted
+direct-host or raw host-mount contexts, which can alter host files; grant those
+contexts only to operators trusted with the personalization checkout.
+
+The Bash hook provides command-policy feedback, not a sandbox for arbitrary
+executables or interpreter code. Normal containers lack the canonical checkout
+and host publication token; treat the host-execution boundary, not shell text
+inspection, as the authorization boundary.
+
+Treat the independent personalization checkout's Git metadata, including
+`origin`, as host-operator metadata. Non-admin containers receive only its
+`skills/` directory. Admin containers receive a trusted raw host-repository
+mount, while direct-host workspaces access host files without mount isolation.
+Both modes must be trusted not to alter that checkout.
+
 ### 2. Mount Security
 
 **External Allowlist** — Mount permissions live at `~/.config/pynchy/mount-allowlist.toml`:
