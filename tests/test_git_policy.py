@@ -464,6 +464,53 @@ class TestIpcPolicyRouting:
         result = json.loads((merge_results_dir / "req-pr.json").read_text())
         assert "pull/7" in result["repos"]["owner/repo"]["message"]
 
+    async def test_routed_conversation_publishes_its_parent_workspace_worktree(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        source_group = "agent-1__thread_conversation-conv_1"
+        result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+        result_dir.mkdir(parents=True)
+        repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch:\\n+safe change", None),
+            ) as patch_context,
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": True, "message": "Opened PR"},
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-routed-pr",
+                    "publication": "pull-request",
+                },
+                source_group,
+                False,
+                deps,
+            )
+
+        patch_context.assert_called_once_with("agent-1", [repo_ctx])
+        create_pr.assert_called_once_with("agent-1", repo_ctx)
+
     async def test_publication_failure_diagnostic_is_redacted_and_bounded(
         self,
         deps: MockDeps,
