@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pluggy
@@ -156,6 +157,35 @@ async def test_missing_plugin_manager_fails_closed() -> None:
                 folder="test",
                 trigger="@pynchy",
             ),
+        )
+
+
+async def test_context_reset_rejects_a_hook_result_count_mismatch() -> None:
+    hook = MagicMock()
+    hook.get_hookimpls.return_value = [object(), object()]
+    hook.return_value = [asyncio.sleep(0)]
+    manager = MagicMock()
+    manager.hook.pynchy_before_context_reset = hook
+
+    with pytest.raises(TypeError, match="must return an awaitable"):
+        await prepare_context_reset(
+            manager,
+            WorkspaceProfile(jid="slack:C123", name="Test", folder="test", trigger="@pynchy"),
+        )
+
+
+async def test_context_reset_closes_pending_hooks_after_a_non_awaitable() -> None:
+    hook = MagicMock()
+    hook.get_hookimpls.return_value = [object(), object()]
+    pending = asyncio.sleep(0)
+    hook.return_value = [object(), pending]
+    manager = MagicMock()
+    manager.hook.pynchy_before_context_reset = hook
+
+    with pytest.raises(TypeError, match="must return an awaitable"):
+        await prepare_context_reset(
+            manager,
+            WorkspaceProfile(jid="slack:C123", name="Test", folder="test", trigger="@pynchy"),
         )
 
 

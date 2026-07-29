@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pluggy
+import pytest
 from conftest import NullChannel
 
 from pynchy.plugins import channel_runtime
@@ -44,6 +45,14 @@ def test_load_channels_sorts_by_name() -> None:
     assert [ch.name for ch in channels] == ["alpha", "zeta"]
 
 
+def test_load_channels_flattens_plugin_batches() -> None:
+    channels = channel_runtime.load_channels(
+        _PM([[_FakeChannel("zeta"), None], (_FakeChannel("alpha"),)]), _context()
+    )
+
+    assert [ch.name for ch in channels] == ["alpha", "zeta"]
+
+
 def test_load_channels_returns_empty_when_none_discovered() -> None:
     channels = channel_runtime.load_channels(_PM([None]), _context())
     assert channels == []
@@ -63,3 +72,8 @@ def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
 
 def test_resolve_default_channel_returns_none_for_empty_channels() -> None:
     assert channel_runtime.resolve_default_channel([], None) is None
+
+
+def test_resolve_default_channel_rejects_an_unknown_configured_channel() -> None:
+    with pytest.raises(RuntimeError, match="not found"):
+        channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")], " signal ")
