@@ -65,10 +65,13 @@ def restart_fingerprint(settings: Settings) -> str:
             profile.pop(field, None)
     for workspace in payload["workspaces"].values():
         workspace.pop("model", None)
+        workspace.pop("model_reasoning_effort", None)
         for thread in workspace["threads"]:
             thread.pop("model", None)
+            thread.pop("model_reasoning_effort", None)
         for scope in workspace["scopes"]:
             scope.pop("model", None)
+            scope.pop("model_reasoning_effort", None)
     payload["agent"].pop("model_reasoning_effort", None)
     for field in ("image", "timeout_ms", "memory_mb", "idle_timeout_ms"):
         payload["container"].pop(field, None)
@@ -153,6 +156,7 @@ def _workspace_retirement_projection(
         tuple(resolved.prompts),
         tuple(resolved.repo),
         resolved.model,
+        resolved.model_reasoning_effort,
         resolved.execution_mode,
         resolved.cwd,
         resolved.contains_secrets,

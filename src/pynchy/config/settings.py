@@ -308,6 +308,7 @@ class Settings(BaseSettings):
         return replace(
             resolved,
             model=workspace.model if workspace.model is not None else resolved.model,
+            model_reasoning_effort=workspace.model_reasoning_effort,
         )
 
     def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:
@@ -319,7 +320,13 @@ class Settings(BaseSettings):
         if semantic is None:
             return None
         _parent, thread = semantic
-        return WorkspaceConfig.model_validate({"profiles": thread.profiles, "model": thread.model})
+        return WorkspaceConfig.model_validate(
+            {
+                "profiles": thread.profiles,
+                "model": thread.model,
+                "model_reasoning_effort": thread.model_reasoning_effort,
+            }
+        )
 
     def workspace_parent(self, workspace_name: str) -> str | None:
         """Return the physical root that owns a semantic child workspace."""

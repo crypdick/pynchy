@@ -47,7 +47,7 @@ async def update_issue_plan(
     state_id: str,
     description: str,
 ) -> dict[str, Any]:
-    """Persist a plan and its approval-wait state in one provider mutation."""
+    """Persist a plan and its workflow state in one provider mutation."""
     async with linear_webhook_effect(
         client,
         "Issue",

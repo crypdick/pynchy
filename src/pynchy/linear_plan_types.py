@@ -57,6 +57,7 @@ class LinearPlanReviewDecision(StrEnum):
     """Admission decisions returned by an independent Linear plan review."""
 
     PROCEED = "proceed"
+    AMEND = "amend"
     REPLAN = "replan"
     ERROR = "error"
 
@@ -86,8 +87,11 @@ class LinearPlanReviewResult:
     def __post_init__(self) -> None:
         if not self.reason.strip():
             raise ValueError("Linear plan review reason cannot be empty")
-        if self.decision is LinearPlanReviewDecision.REPLAN:
+        if self.decision in {
+            LinearPlanReviewDecision.AMEND,
+            LinearPlanReviewDecision.REPLAN,
+        }:
             if self.plan is None or not self.plan.strip():
-                raise ValueError("A replan decision requires a replacement plan")
+                raise ValueError("A plan-changing decision requires a replacement plan")
         elif self.plan is not None:
-            raise ValueError("Only a replan decision may include a replacement plan")
+            raise ValueError("Only a plan-changing decision may include a replacement plan")

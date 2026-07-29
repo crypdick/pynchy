@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, call
 
 from pynchy.linear_plan_types import (
-    LinearPlanReviewAdmission,
     LinearPlanReviewDecision,
     LinearPlanReviewResult,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import (
-    process_linear_plan_review_admission,
-    reconcile_linear_decision_inbox,
-)
+from pynchy.plugins.integrations.linear_decision_inbox import reconcile_linear_decision_inbox
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
@@ -132,24 +127,21 @@ async def test_planned_work_is_reviewed_before_execution_lease() -> None:
     assert await get_active_work_item_execution("issue-execute") is not None
 
 
-async def test_planned_work_is_deferred_by_issue_revision_without_inline_review() -> None:
+async def test_minor_plan_amendment_updates_plan_and_still_leases_work() -> None:
     client = _DecisionClient()
-    client.issues_by_state["state-approved"][0]["description"] = (
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = (
+        "Keep this context.\n\n"
         "<!-- pynchy.plan:start -->\n"
         "## Pynchy implementation plan\n\n"
-        "Implement the approved change.\n"
+        "Call the renamed helper by its old name.\n"
         "<!-- pynchy.plan:end -->"
     )
-    reviewer = AsyncMock()
-    defer = AsyncMock()
-    client.issues_by_state["state-approved"].append(
-        _issue(
-            "issue-execute-2",
-            "SYN-5",
-            "Execute another approved task",
-            "human_approved",
-            "project-beta",
-            description=client.issues_by_state["state-approved"][0]["description"],
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.AMEND,
+            "The helper was renamed without changing behavior.",
+            "Call the helper by its current name, then run the existing regression.",
         )
     )
 
@@ -158,52 +150,23 @@ async def test_planned_work_is_deferred_by_issue_revision_without_inline_review(
         [_Workspace("beta", "Beta", "linear:beta")],
         {"beta": _board("project-beta")},
         review_plan=reviewer,
-        defer_plan_review=defer,
     )
 
-    assert created == []
-    reviewer.assert_not_awaited()
-    assert [queued.args[0].identifier for queued in defer.await_args_list] == ["SYN-3", "SYN-5"]
-    assert await get_active_work_item_execution("issue-execute") is None
-
-
-async def test_deferred_review_skips_a_superseded_provider_revision(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = _DecisionClient()
-    issue = client.issues_by_state["state-approved"][0]
-    issue["description"] = "<!-- pynchy.plan:start -->approved<!-- pynchy.plan:end -->"
-    issue["updatedAt"] = "2026-07-28T12:01:00Z"
-    reviewer = AsyncMock()
-
-    @asynccontextmanager
-    async def client_context(**_kwargs):
-        yield client
-
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
-        client_context,
-    )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_decision_inbox.workspace_issue",
-        AsyncMock(return_value=(issue, _board("project-beta"))),
-    )
-
-    task = await process_linear_plan_review_admission(
-        LinearPlanReviewAdmission(
-            workspace="beta",
-            issue_id="issue-execute",
-            identifier="SYN-3",
-            updated_at="2026-07-28T12:00:00Z",
-            public_source=True,
-        ),
-        [_Workspace("beta", "Beta", "linear:beta")],
-        review_plan=reviewer,
-        broadcast_host_message=AsyncMock(),
-    )
-
-    assert task is None
-    reviewer.assert_not_awaited()
+    assert len(created) == 1
+    assert await get_active_work_item_execution("issue-execute") is not None
+    assert issue["state"]["id"] == "state-progress"
+    assert "Call the helper by its current name" in issue["description"]
+    assert "old name" not in issue["description"]
+    assert client.comments == [
+        (
+            "issue-execute",
+            (
+                "Plan freshness review applied a non-material amendment, "
+                "so execution will continue.\n\n"
+                "Reason: The helper was renamed without changing behavior."
+            ),
+        )
+    ]
 
 
 async def test_planned_work_reports_actual_review_status_to_its_thread(

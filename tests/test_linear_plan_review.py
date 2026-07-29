@@ -37,24 +37,26 @@ class _Deps:
     reviewer_group: WorkspaceProfile | None = None
     input_source: str | None = None
     system_notices: list[str] | None = None
+    review_prompt: str | None = None
 
-    async def run_agent(self, group, _chat_jid, _messages, on_output, **kwargs) -> str:
+    async def run_agent(self, group, _chat_jid, messages, on_output, **kwargs) -> str:
         self.reviewer_group = group
         self.input_source = kwargs["input_source"]
         self.system_notices = kwargs["extra_system_notices"]
+        self.review_prompt = messages[0]["content"]
         await on_output(
             ContainerOutput(
                 status="success",
                 result=(
-                    '{"decision":"replan","reason":"The old module is gone",'
-                    '"plan":"Use the current module."}'
+                    '{"decision":"amend","reason":"The helper moved",'
+                    '"plan":"Use the renamed helper."}'
                 ),
             )
         )
         return "success"
 
 
-async def test_hidden_reviewer_returns_replacement_plan_without_visible_runtime() -> None:
+async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() -> None:
     deps = _Deps()
 
     result = await review_linear_plan(
@@ -71,10 +73,21 @@ async def test_hidden_reviewer_returns_replacement_plan_without_visible_runtime(
         ),
     )
 
-    assert result.decision is LinearPlanReviewDecision.REPLAN
-    assert result.plan == "Use the current module."
+    assert result.decision is LinearPlanReviewDecision.AMEND
+    assert result.plan == "Use the renamed helper."
     assert deps.reviewer_group is not None
     assert deps.reviewer_group.jid == "linear-plan-review:issue-1"
     assert deps.input_source == "external:hidden_plan_review"
     assert deps.system_notices is not None
     assert "do not delegate to subagents" in deps.system_notices[0]
+    assert deps.review_prompt is not None
+    normalized_prompt = " ".join(deps.review_prompt.split())
+    assert "HEAD or SHA movement alone is not evidence" in normalized_prompt
+    assert "implementation worker owns those adaptations" in normalized_prompt
+    assert "not reasons for another human approval cycle" in normalized_prompt
+    assert "Return amend with a complete updated plan" in normalized_prompt
+    assert "host applies that amendment and proceeds" in normalized_prompt
+    assert "decision that requires human approval" in normalized_prompt
+    assert "Escalate major product or technical tradeoffs back to the human" in normalized_prompt
+    assert "do the planning now" in normalized_prompt
+    assert "Never return instructions to rerun this review" in normalized_prompt
