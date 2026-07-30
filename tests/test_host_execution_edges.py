@@ -116,6 +116,29 @@ def test_host_environment_preserves_existing_git_ceiling(tmp_path: Path) -> None
     assert env["GIT_CEILING_DIRECTORIES"].split(":")[-1] == "/parent"
 
 
+def test_host_environment_preserves_local_gateway_urls(tmp_path: Path) -> None:
+    operations = HostRuntimeOperations(
+        build_agent_environment=lambda **_kwargs: {
+            "OPENAI_BASE_URL": "http://localhost:4000",
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:3000/path",
+        },
+        prepare_mcp=AsyncMock(),
+        sessions_root=tmp_path / "sessions",
+        project_root=tmp_path,
+        gateway_port=4000,
+        prepare_host_codex_home=lambda _folder, _plugins: tmp_path / ".codex",
+        host_learning_vault=lambda _folder: None,
+        resolve_routed_host_cwd=lambda *_args, **_kwargs: HostExecutionCwd(tmp_path),
+    )
+
+    env = host_execution.host_agent_env_vars(
+        is_admin=False, group_folder="group", operations=operations
+    )
+
+    assert env["OPENAI_BASE_URL"] == "http://localhost:4000"
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:3000/path"
+
+
 def test_host_turn_reports_pending_input_after_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
