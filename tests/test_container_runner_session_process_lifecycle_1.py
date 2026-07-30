@@ -76,6 +76,18 @@ class TestSessionProcessLifecycle:
             self.container_record_cleanup = cleanup
             yield cleanup
 
+    async def test_start_rejects_a_process_without_stderr_pipe(self):
+        session = session_mod.ContainerSession(
+            "missing-stderr-test",
+            "pynchy-missing-stderr-test",
+            runtime_probe=AsyncMock(return_value=False),
+        )
+        proc = FakeProcess()
+        proc.stderr = None
+
+        with pytest.raises(RuntimeError, match="stderr pipe"):
+            session.start(proc)  # type: ignore[arg-type]
+
     async def test_proc_monitor_detects_death_during_query(self):
         """A crash before a completion pulse should fail the active query."""
         session = session_mod.ContainerSession(
