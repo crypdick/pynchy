@@ -104,6 +104,53 @@ def git_env(tmp_path: Path):
 
 
 class TestHostSyncWorktree:
+    @pytest.mark.parametrize(
+        ("failure", "expected"),
+        [
+            ("count", "Failed to check commits"),
+            ("fetch", "git fetch failed"),
+            ("main-rebase", "conflicts with origin"),
+            ("worktree-rebase", "Rebase conflict"),
+            ("merge", "Fast-forward merge failed"),
+        ],
+    )
+    def test_sync_reports_each_preparation_failure(
+        self, git_env: dict, failure: str, expected: str
+    ):
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("agent-1", repo_ctx)
+
+        success = subprocess.CompletedProcess(["git"], 0, "", "")
+        failed = subprocess.CompletedProcess(["git"], 1, "", "network down")
+
+        def run_git(command: str, *args: str, **_kwargs: object):
+            if command == "status":
+                return success
+            if failure == "fetch" and command == "fetch":
+                return failed
+            if failure == "main-rebase" and command == "rebase" and args == ("origin/main",):
+                return failed
+            if failure == "worktree-rebase" and command == "rebase" and args == ("main",):
+                return failed
+            if failure == "merge" and command == "merge":
+                return failed
+            return success
+
+        with (
+            patch("pynchy.host.git_ops.sync.detect_main_branch", return_value="main"),
+            patch(
+                "pynchy.host.git_ops.sync.count_commits",
+                return_value=None if failure == "count" else 1,
+            ),
+            patch("pynchy.host.git_ops.sync.run_git", side_effect=run_git) as git,
+        ):
+            result = host_sync_worktree("agent-1", repo_ctx)
+
+        assert result["success"] is False
+        assert expected in result["message"]
+        if failure == "main-rebase":
+            assert any(call.args[:2] == ("rebase", "--abort") for call in git.call_args_list)
+
     def test_sync_success(self, git_env: dict):
         """Commits merge into main and push to origin."""
         project = git_env["project"]

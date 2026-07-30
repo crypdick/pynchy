@@ -138,3 +138,4 @@ async def test_channel_cursor_seed_handles_invalid_then_valid_timestamp_maps() -
         assert await cursor.fetchall() == [
             ("slack", "slack:C123", "inbound", "2026-07-29T00:00:00Z")
         ]
+        await create_schema(database)
