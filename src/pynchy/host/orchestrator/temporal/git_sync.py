@@ -18,6 +18,7 @@ from temporalio.exceptions import ApplicationError
 from pynchy.deployments import DeployRevision
 from pynchy.host.orchestrator.api import SessionManager, resolve_admin_notification_jid
 from pynchy.host.orchestrator.config_refresh import ConfigRefreshStatus
+from pynchy.host.orchestrator.scheduler_deps import HostSyncState
 from pynchy.host.orchestrator.temporal.deploy import (
     DeployFailureDeps,
     DeployRequest,
@@ -46,15 +47,6 @@ HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
-
-
-@dataclass
-class HostSyncState:
-    last_origin_sha: str | None
-    deployed_sha: str
-    config_hash: str
-    local_head: str | None
-    offered_sha: str
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
