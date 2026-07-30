@@ -53,6 +53,16 @@ def test_event_payload_rejects_missing_required_text() -> None:
         webhook_event_from_payload(payload)
 
 
+def test_event_payload_accepts_event_without_optional_entities() -> None:
+    payload = _payload()
+    payload["ignored_reason"] = "not actionable"
+    event = webhook_event_from_payload(payload)
+
+    assert event.conversation is None
+    assert event.actor is None
+    assert event.effect_evidence is None
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
