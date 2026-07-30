@@ -496,10 +496,13 @@ class TestAppleRuntime:
         output = json.dumps(
             [
                 None,
+                {"configuration": "malformed"},
                 {
-                    "configuration": {"id": "pynchy-invalid-date"},
+                    "configuration": {
+                        "id": "pynchy-invalid-date",
+                        "creationDate": "not-a-date",
+                    },
                     "status": "running",
-                    "creationDate": "not-a-date",
                 },
             ]
         )
