@@ -42,6 +42,7 @@ from pynchy.plugins.api import (  # beartype resolves router annotations at runt
     OutboundEvent,
     OutboundEventType,
 )
+from pynchy.redaction import irreversibly_redact
 from pynchy.state.api import mark_work_item_delivery_delivered_for_turn, store_message_direct
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves router annotations at runtime.
@@ -259,6 +260,14 @@ async def _handle_tool_result(deps: OutputDeps, chat_jid: str, result: Container
     """Handle a tool_result trace event."""
     content = result.tool_result_content or ""
     preceding_tool = _last_tool_name.pop(chat_jid, "")
+    if result.tool_result_is_error:
+        logger.error(
+            "Agent tool failure",
+            chat_jid=chat_jid,
+            tool_name=preceding_tool or "unknown",
+            tool_result_id=result.tool_result_id or "unknown",
+            error=irreversibly_redact(content),
+        )
 
     # For select tools, broadcast the result content instead of the
     # generic placeholder so users can review it (e.g. plan files).
@@ -457,6 +466,19 @@ async def handle_streamed_output(
     Returns True if a user-visible result was produced.
     """
     ts = datetime.now(UTC).isoformat()
+
+    if result.status == "error" and result.type != "tool_result":
+        logger.error(
+            "Agent terminal failure",
+            chat_jid=chat_jid,
+            error=irreversibly_redact(
+                result.error
+                or result.result
+                or result.text
+                or result.tool_result_content
+                or "unknown"
+            ),
+        )
 
     # --- Trace events: broadcast live; LiteLLM/Phoenix owns trace persistence ---
     if result.type == "thinking":
