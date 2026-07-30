@@ -38,6 +38,7 @@ from pynchy.host.orchestrator import (
     http_server,
     job_sources,
     plugin_configuration,
+    routed_workspace_policy,
     service_installer,
     startup_handler,
     status,
@@ -124,15 +125,6 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
         logger.debug("Shutdown notification failed", exc_info=True)
 
 
-async def _stop_subsystem_tasks(app: PynchyApp) -> None:
-    await app.subsystem_tasks.stop()
-
-
-def _prepare_channels_for_shutdown(app: PynchyApp) -> None:
-    for channel in app.channels:
-        channel.prepare_shutdown()
-
-
 async def _cleanup_http_runner(app: PynchyApp) -> None:
     await asyncio.sleep(0.3)
     await app.cleanup_http_runner()
@@ -140,7 +132,6 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
     await app.connection_runtime_owner.close()
-    await gateway_manager.stop_gateway()
     await app.close_observers()
     await app.close_memory_provider()
     batcher = output_handler.get_trace_batcher()
@@ -164,12 +155,18 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
     try:
         await _notify_admin_shutdown(app, sig_name)
-        await _stop_subsystem_tasks(app)
-        _prepare_channels_for_shutdown(app)
+        await app.subsystem_tasks.stop()
+        for channel in app.channels:
+            channel.prepare_shutdown()
         await _cleanup_http_runner(app)
 
-        await app.queue.shutdown()
-        await _close_runtime_resources(app)
+        try:
+            await gateway_manager.stop_gateway()
+        finally:
+            try:
+                await app.queue.shutdown()
+            finally:
+                await _close_runtime_resources(app)
     finally:
         watchdog.cancel()
 
@@ -339,9 +336,8 @@ async def _setup_channels(app: PynchyApp) -> None:
 
 async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     """Reconcile worktrees and workspaces, returning live Linear board identities."""
-    s = get_settings()
-
-    repo_groups = workspace_config.get_repo_access_groups(s.workspace_names())
+    await routed_workspace_policy.restore_routed_workspace_policy_owners(app.workspaces.values())
+    repo_groups = workspace_config.get_repo_access_groups(get_settings().workspace_names())
 
     await asyncio.to_thread(
         reconcile_worktrees_at_startup,

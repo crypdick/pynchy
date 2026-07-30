@@ -5,10 +5,6 @@ from pynchy.host.git_ops._worktree_notify import (
     build_rebase_notice,
     host_notify_worktree_updates,
 )
-from pynchy.host.git_ops.sync import (
-    GitSyncDeps,
-    host_sync_worktree,
-)
 from pynchy.host.git_ops.sync_poll import (
     needs_container_rebuild,
     needs_deploy,
@@ -30,6 +26,10 @@ from pynchy.host.git_ops.worktree import (
     ensure_worktree,
     install_repo_hooks,
     reconcile_worktrees_at_startup,
+)
+from pynchy.host.git_ops.worktree_sync import (
+    GitSyncDeps,
+    host_sync_worktree,
 )
 
 __all__ = [

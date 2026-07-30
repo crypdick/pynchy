@@ -297,6 +297,7 @@ class TestRequestEnvelope:
         assert request_requires_idempotency_ledger("schedule_host_job") is True
         assert request_requires_idempotency_ledger("register_group") is True
         assert request_requires_idempotency_ledger("sync_worktree_to_main") is True
+        assert request_requires_idempotency_ledger("publish_managed_feature") is True
 
     def test_read_only_requests_do_not_require_idempotency_ledger(self):
         """Read-only service calls can be replayed without mutating host state."""

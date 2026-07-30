@@ -154,8 +154,9 @@ class AgentConfig(_StrictModel):
 
 class ContainerConfig(_StrictModel):
     image: str = "pynchy-agent:latest"
-    # Maximum silence during a query. Structured output refreshes this deadline;
-    # a separate four-times hard ceiling still bounds continuously noisy wedges.
+    # Maximum silence after an agent starts producing structured output. Initial
+    # startup silence has a fixed one-minute bound, and a separate four-times
+    # hard ceiling still bounds continuously noisy wedges.
     timeout_ms: int = 1800000  # 30 minutes
     # Agent containers must fit alongside host services on the deployment
     # machine. Full test suites scale their xdist workers to this cgroup cap.

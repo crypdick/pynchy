@@ -41,6 +41,10 @@ from pynchy.host.container_manager.ipc.handlers_lifecycle import (
     LifecycleRuntime,
     configure_lifecycle_runtime,
 )
+from pynchy.host.container_manager.ipc.handlers_managed_feature import (
+    ManagedFeatureRuntime,
+    configure_managed_feature_runtime,
+)
 from pynchy.host.container_manager.ipc.handlers_service import configure_service_runtime
 from pynchy.host.container_manager.ipc.write import configure_ipc_base_dir
 from pynchy.host.container_manager.mcp.manager import configure_mcp_manager_runtime
@@ -68,6 +72,7 @@ from pynchy.host.git_ops.api import (
     get_local_head_sha,
     get_repo_context,
     git_env_with_token,
+    host_create_pr_from_managed_feature,
     host_create_pr_from_worktree,
     host_get_origin_main_sha,
     host_notify_worktree_updates,
@@ -76,7 +81,9 @@ from pynchy.host.git_ops.api import (
     last_notified_sha,
     needs_deploy,
     probe_origin_main_sha,
+    read_managed_feature_patch,
     redact_git_diagnostic,
+    resolve_managed_feature_publication,
     run_git,
 )
 from pynchy.host.git_ops.utils import configure_git_default_cwd
@@ -578,6 +585,16 @@ def reset_settings(monkeypatch):
                 host_create_pr_from_worktree=host_create_pr_from_worktree,
                 redact_git_diagnostic=redact_git_diagnostic,
                 run_git=run_git,
+            )
+        )
+        configure_managed_feature_runtime(
+            ManagedFeatureRuntime(
+                settings=settings_source,
+                resolve_repos_for_group=resolve_repositories,
+                resolve_managed_feature_publication=resolve_managed_feature_publication,
+                read_managed_feature_patch=read_managed_feature_patch,
+                host_create_pr_from_managed_feature=host_create_pr_from_managed_feature,
+                redact_git_diagnostic=redact_git_diagnostic,
             )
         )
         configure_vault_mount_mirror(enabled=False)

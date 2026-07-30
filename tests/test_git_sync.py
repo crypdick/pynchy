@@ -213,7 +213,7 @@ class TestHostSyncWorktree:
         _git(wt_path, "commit", "-m", "add feature")
 
         with patch(
-            "pynchy.host.git_ops.sync.push_local_commits",
+            "pynchy.host.git_ops.worktree_sync.push_local_commits",
             side_effect=[False, True],
         ) as push:
             failed = host_sync_worktree("agent-1", repo_ctx)

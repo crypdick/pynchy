@@ -89,6 +89,28 @@ def test_routed_host_execution_resolves_selected_repository_cwd(
     )
 
 
+def test_routed_execution_without_policy_refuses_container_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operations = _runtime_operations(make_settings())
+    monkeypatch.setattr(
+        host_execution.workspace_config,
+        "load_resolved_config",
+        lambda _folder: None,
+    )
+
+    with pytest.raises(
+        host_execution.HostExecutionCwdError,
+        match="refusing container fallback",
+    ):
+        host_execution.host_execution_cwd(
+            "host__thread_conversation-conv_missing-policy",
+            operations,
+            repo_accesses=[],
+            recovered=True,
+        )
+
+
 @pytest.mark.parametrize(
     ("folder", "repo_accesses"),
     [

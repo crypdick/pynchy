@@ -213,6 +213,7 @@ async def _claimed_external_message(
     metadata: dict[str, object] = {
         "authenticated_external_route": True,
         "external_provider": provider,
+        "conversation_id": admission.conversation.id,
         "conversation_claim_id": claim_id,
     }
     if public_source_input is not None:

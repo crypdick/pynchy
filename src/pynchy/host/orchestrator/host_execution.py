@@ -166,7 +166,13 @@ def host_execution_cwd(
 ) -> HostExecutionCwd | None:
     """Prepare host CWD, isolating only stable repository-backed routed conversations."""
     resolved = workspace_config.load_resolved_config(group_folder)
-    if resolved is None or resolved.execution_mode != "host":
+    if resolved is None:
+        if conversation_id_from_folder(group_folder) is not None:
+            raise HostExecutionCwdError(
+                "Routed conversation workspace policy is unavailable; refusing container fallback."
+            )
+        return None
+    if resolved.execution_mode != "host":
         return None
     if not resolved.cwd:
         return None

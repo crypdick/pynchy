@@ -195,3 +195,17 @@ def test_linear_executor_contracts_are_public_prompts(
 
     assert result is not None
     assert required_text in " ".join(result.split())
+
+
+def test_delivery_prompt_bounds_worker_orchestration() -> None:
+    project_root = Path(__file__).parents[1]
+    result = read_prompts(
+        ["executors/delivery"],
+        PersonalizationPaths.for_project(project_root),
+    )
+
+    assert result is not None
+    normalized = " ".join(result.split())
+    assert "at most two bounded subagents" in normalized
+    assert "one broad repository gate" in normalized
+    assert "at most one independent review pass" in normalized

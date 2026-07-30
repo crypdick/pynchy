@@ -15,9 +15,6 @@ from pynchy.host.git_ops.repo import (
     RepoContext,  # beartype resolves git sync helpers at runtime.
     get_repo_context,
 )
-from pynchy.host.git_ops.sync import (
-    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
-)
 from pynchy.host.git_ops.utils import (
     detect_main_branch,
     files_changed_between,
@@ -25,6 +22,12 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
     redact_git_diagnostic,
     run_git,
+)
+from pynchy.host.git_ops.worktree_sync import (
+    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
+)
+from pynchy.host.orchestrator.scheduler_deps import (
+    HostSyncState,  # noqa: TC001 - beartype resolves the scheduler port at runtime.
 )
 from pynchy.logger import logger
 
@@ -234,17 +237,6 @@ def _find_pynchy_repo_ctx(
         if ctx and ctx.root.resolve() == pynchy_root.resolve():
             return ctx
     return None
-
-
-@dataclass
-class HostSyncState:
-    """Mutable baseline tracked across polling iterations."""
-
-    last_origin_sha: str | None
-    deployed_sha: str
-    config_hash: str
-    local_head: str | None = None
-    offered_sha: str = ""
 
 
 async def _check_local_head_drift(

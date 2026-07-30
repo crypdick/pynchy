@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
+import subprocess  # noqa: S404 - tests construct inert subprocess result/process fixtures.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -143,6 +143,35 @@ async def test_docker_wait_healthy_can_accept_non_server_errors() -> None:
                 any_non_5xx=True,
             )
         )
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_rejects_an_unrelated_healthy_listener() -> None:
+    async def healthy(_request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
+        return web.Response(status=200)
+
+    app = web.Application()
+    app.router.add_get("/health", healthy)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.poll = MagicMock(return_value=1)
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        with pytest.raises(RuntimeError, match="exited unexpectedly"):
+            await docker.wait_healthy(
+                docker.HealthCheckRequest(
+                    container_name="owned-process",
+                    url=f"http://127.0.0.1:{port}/health",
+                    health_timeout_seconds=1.0,
+                    process=process,
+                )
+            )
     finally:
         await runner.cleanup()
 

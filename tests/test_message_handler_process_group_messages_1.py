@@ -281,6 +281,7 @@ class TestProcessGroupMessages:
             metadata={
                 "authenticated_external_route": True,
                 "external_provider": "matrix",
+                "conversation_id": admission.conversation.id,
                 "conversation_claim_id": claim_id,
             },
         )

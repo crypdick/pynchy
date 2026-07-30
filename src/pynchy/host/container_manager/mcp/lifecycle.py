@@ -10,16 +10,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import re
+import secrets
+import shutil
 import signal
 import subprocess  # noqa: S404 - MCP lifecycle starts configured no-shell processes.
 import sys
+import time
 from collections.abc import (  # noqa: TC003 - beartype resolves MCP environment annotations at runtime.
     Mapping,
 )
 from pathlib import Path
 
+from pynchy.atomic_json import write_json_atomic
 from pynchy.host.container_manager.docker import (
     HealthCheckRequest,
     ensure_image,
@@ -39,6 +44,10 @@ from pynchy.plugins.api import (
 )
 from pynchy.process_environment import filtered_process_environment
 from pynchy.runtime_names import runtime_network_name
+
+_PROCESS_MARKER = re.compile(r"pynchy-mcp-[0-9a-f]{32}")
+_PROCESS_SUPERVISOR_SCRIPT = '"$@" &\nchild=$!\nwait "$child"\n'
+_PROCESS_STOP_TIMEOUT_SECONDS = 5.0
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle
@@ -94,7 +103,7 @@ async def ensure_script_running(instance: McpInstance) -> None:
         command=cmd,
     )
 
-    instance.process = await asyncio.to_thread(_start_script_process, cmd, merged_env)
+    await asyncio.to_thread(_start_owned_process, instance, cmd, merged_env)
 
     # Health-check via localhost using instance port (unique per workspace)
     health_url = f"http://localhost:{instance.port}"
@@ -138,8 +147,9 @@ async def ensure_stdio_running(instance: McpInstance) -> None:
         instance_id=instance.instance_id,
         command=cmd,
     )
-    instance.process = await asyncio.to_thread(
-        _start_script_process,
+    await asyncio.to_thread(
+        _start_owned_process,
+        instance,
         cmd,
         build_stdio_env(instance.server_config, instance.tool_environment),
     )
@@ -165,14 +175,46 @@ async def ensure_stdio_running(instance: McpInstance) -> None:
 def _start_script_process(
     cmd: list[str],
     env: dict[str, str],
+    marker: str,
 ) -> subprocess.Popen[bytes]:
+    shell = shutil.which("sh")
+    if shell is None:
+        raise RuntimeError("MCP process supervision requires sh")
     return subprocess.Popen(  # noqa: S603 - MCP script command comes from trusted config and runs without a shell.
-        cmd,
+        [shell, "-c", _PROCESS_SUPERVISOR_SCRIPT, marker, *cmd],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         start_new_session=True,  # own process group for clean shutdown
     )
+
+
+def _start_owned_process(
+    instance: McpInstance,
+    cmd: list[str],
+    env: dict[str, str],
+) -> None:
+    """Persist exact process-group ownership before readiness can block or crash."""
+    marker = f"pynchy-mcp-{secrets.token_hex(16)}"
+    process = _start_script_process(cmd, env, marker)
+    instance.process = process
+    instance.process_marker = marker
+    record_path = instance.process_record_path
+    if record_path is None:
+        return
+    try:
+        write_json_atomic(
+            record_path,
+            {
+                "version": 1,
+                "pid": process.pid,
+                "marker": marker,
+                "instance_id": instance.instance_id,
+            },
+        )
+    except OSError:
+        terminate_process(instance)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -205,10 +247,14 @@ def terminate_process(instance: McpInstance) -> None:
     proc = instance.process
     if proc is None or proc.poll() is not None:
         instance.process = None
+        instance.process_marker = None
+        _remove_process_record(instance.process_record_path)
         return
     with contextlib.suppress(ProcessLookupError, OSError):
         _terminate_process_group(proc)
     instance.process = None
+    instance.process_marker = None
+    _remove_process_record(instance.process_record_path)
 
 
 def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
@@ -219,6 +265,77 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGKILL)
         proc.wait(timeout=2)
+
+
+def reap_stale_processes(record_dir: Path) -> int:
+    """Stop process groups proven to belong to an exited Pynchy process."""
+    reaped = 0
+    if not record_dir.is_dir():
+        return reaped
+    for record_path in sorted(record_dir.glob("*.json")):
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            _remove_process_record(record_path)
+            continue
+        pid = record.get("pid") if isinstance(record, dict) else None
+        marker = record.get("marker") if isinstance(record, dict) else None
+        if (
+            isinstance(pid, int)
+            and pid > 1
+            and isinstance(marker, str)
+            and _process_has_marker(pid, marker)
+        ):
+            _terminate_owned_process_group(pid)
+            reaped += 1
+        _remove_process_record(record_path)
+    return reaped
+
+
+def _process_has_marker(pid: int, marker: str) -> bool:
+    if _PROCESS_MARKER.fullmatch(marker) is None:
+        return False
+    ps = shutil.which("ps")
+    if ps is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed process-status probe with validated PID.
+            [ps, "-ww", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and marker in result.stdout
+
+
+def _terminate_owned_process_group(pid: int) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGTERM)
+    deadline = time.monotonic() + _PROCESS_STOP_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if not _process_group_exists(pid):
+            return
+        time.sleep(0.1)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGKILL)
+
+
+def _process_group_exists(pid: int) -> bool:
+    try:
+        os.killpg(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _remove_process_record(record_path: Path | None) -> None:
+    if record_path is not None:
+        record_path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

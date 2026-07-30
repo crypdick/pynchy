@@ -5,7 +5,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.conversation.events import ConversationEvent, ConversationEventKind
+from pynchy.conversation.models import (
+    ConversationClaimId,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalDeliveryReceipt,
+    ExternalProvider,
+    ExternalRoute,
+)
+from pynchy.identifiers import GroupFolder
 from pynchy.state import (
+    admit_conversation_delivery,
+    admit_external_delivery_receipt,
+    claim_next_conversation_delivery,
+    complete_conversation_delivery,
+    get_chat_history,
     get_conversation_event_pointers_since,
     get_messages_since,
     init_test_database,
@@ -184,6 +201,70 @@ async def test_get_messages_since_reads_sqlite_rows_after_rollback() -> None:
 
     assert [message.id for message in messages] == ["legacy_1"]
     assert [message.content for message in messages] == ["legacy body"]
+
+
+async def test_get_messages_since_excludes_retired_claim_projection() -> None:
+    await init_test_database()
+    subject = ConversationSubject(
+        namespace=ConversationSubjectNamespace("linear:team:issue"),
+        key=ConversationSubjectKey("SYN-1"),
+    )
+
+    async def admit(delivery_id: str):
+        identity = ExternalDeliveryIdentity(
+            provider=ExternalProvider("linear"),
+            route=ExternalRoute("team"),
+            delivery_id=ExternalDeliveryId(delivery_id),
+        )
+        await admit_external_delivery_receipt(
+            ExternalDeliveryReceipt(
+                identity=identity,
+                payload_sha256=f"sha-{delivery_id}",
+                received_at="2026-07-10T00:00:00+00:00",
+            )
+        )
+        return await admit_conversation_delivery(identity, subject, GroupFolder("triage"))
+
+    first = await admit("delivery-1")
+    second = await admit("delivery-2")
+    first_claim = ConversationClaimId("claim-1")
+    assert await claim_next_conversation_delivery(first.conversation.id, first_claim)
+    await store_message_direct(
+        message_id="delivery-1",
+        chat_jid="slack:C123",
+        sender="linear",
+        sender_name="Linear",
+        content="old projection",
+        timestamp="2026-07-10T00:00:01+00:00",
+        is_from_me=False,
+        metadata={
+            "conversation_id": first.conversation.id,
+            "conversation_claim_id": first_claim,
+        },
+    )
+    assert await complete_conversation_delivery(first_claim)
+
+    second_claim = ConversationClaimId("claim-2")
+    assert await claim_next_conversation_delivery(second.conversation.id, second_claim)
+    await store_message_direct(
+        message_id="delivery-2",
+        chat_jid="slack:C123",
+        sender="linear",
+        sender_name="Linear",
+        content="current projection",
+        timestamp="2026-07-10T00:00:02+00:00",
+        is_from_me=False,
+        metadata={
+            "conversation_id": second.conversation.id,
+            "conversation_claim_id": second_claim,
+        },
+    )
+
+    pending = await get_messages_since("slack:C123", "")
+    history = await get_chat_history("slack:C123")
+
+    assert [message.id for message in pending] == ["delivery-2"]
+    assert [message.id for message in history] == ["delivery-1", "delivery-2"]
 
 
 async def test_get_messages_since_excludes_projected_assistant_events() -> None:

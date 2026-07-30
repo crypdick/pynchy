@@ -56,6 +56,7 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )
+from pynchy.host.orchestrator.terminal_task_retirement import retire_work_item_execution
 from pynchy.identifiers import (
     ChatJid,  # beartype resolves composition callback annotations at runtime.
     GroupFolder,
@@ -99,6 +100,10 @@ from pynchy.plugins.integrations.linear_boot import (
 from pynchy.plugins.integrations.linear_conversation_identity import (
     LinearConversationRuntime,
     configure_linear_conversation_runtime,
+)
+from pynchy.plugins.integrations.linear_decision_inbox import (
+    LinearDecisionInboxRuntime,
+    configure_linear_decision_inbox_runtime,
 )
 from pynchy.plugins.integrations.linear_legacy_work_items import (
     LinearLegacyWorkItemRuntime,
@@ -412,6 +417,13 @@ def configure_linear_plugin(
             get_active_execution=get_active_work_item_execution,
             resume_once_task=resume_once_task_after_unclaimed_scheduled_turn,
             get_execution_for_issue=get_work_item_execution_for_issue,
+        )
+    )
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=list_work_item_executions,
+            cancel_execution=cancel_work_item_execution,
+            retire_execution=retire_work_item_execution,
         )
     )
     configure_linear_work_items_runtime(

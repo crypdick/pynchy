@@ -39,27 +39,13 @@ def _publication_result_message(result: dict[str, Any]) -> str:
     return str(message) if message else "Publication failed without a diagnostic."
 
 
-@tool(
-    "sync_worktree_to_main",
-    (
-        "Publish committed workspace changes for review. The host pushes the isolated "
-        "worktree branch and opens or updates a pull request, returning its canonical URL. "
-        "Attach every returned PR URL to the current Linear issue before moving it to "
-        "Awaiting Review. Resolve any reported conflict or publication failure and retry."
-    ),
-    {"type": "object", "properties": {}},
-)
-async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def _request_publication(
+    kind: str, payload: dict[str, str]
+) -> list[TextContent] | CallToolResult:
+    """Send one PR-only publication request and wait for its host result."""
     request_id = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}"
-    runtime = _ipc.get_agent_tool_runtime()
-    payload: dict[str, str] = {
-        "groupFolder": runtime.group_folder,
-        "publication": "pull-request",
-    }
-    if runtime.turn_id:
-        payload["turn_id"] = runtime.turn_id
     _ipc.write_request_file(
-        "sync_worktree_to_main",
+        kind,
         payload,
         request_id=request_id,
         reply_to="merge_results",
@@ -78,16 +64,67 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
                 continue
 
             if result.get("success"):
-                return [
-                    TextContent(
-                        type="text",
-                        text=_publication_result_message(result),
-                    )
-                ]
+                return [TextContent(type="text", text=_publication_result_message(result))]
             return tool_error(_publication_result_message(result))
         await asyncio.sleep(0.3)
 
     return tool_error("Timed out (120s). Retry or check with the host.")
+
+
+@tool(
+    "sync_worktree_to_main",
+    (
+        "Publish committed workspace changes for review. The host pushes the isolated "
+        "worktree branch and opens or updates a pull request, returning its canonical URL. "
+        "Attach every returned PR URL to the current Linear issue before moving it to "
+        "Awaiting Review. Resolve any reported conflict or publication failure and retry."
+    ),
+    {"type": "object", "properties": {}},
+)
+async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+    runtime = _ipc.get_agent_tool_runtime()
+    payload = {
+        "groupFolder": runtime.group_folder,
+        "publication": "pull-request",
+    }
+    if runtime.turn_id:
+        payload["turn_id"] = runtime.turn_id
+    return await _request_publication(
+        "sync_worktree_to_main",
+        payload,
+    )
+
+
+@tool(
+    "publish_managed_feature",
+    (
+        "Publish one committed managed new-feature branch for review. The host derives its "
+        "repository, worktree, branch, and target from the active feature manifest, then opens "
+        "or updates a pull request. This never merges or deploys."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "feature_slug": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            }
+        },
+        "required": ["feature_slug"],
+        "additionalProperties": False,
+    },
+)
+async def _publish_managed_feature_handle(
+    arguments: dict[str, Any],
+) -> list[TextContent] | CallToolResult:
+    return await _request_publication(
+        "publish_managed_feature",
+        {
+            "feature_slug": arguments["feature_slug"],
+            "publication": "pull-request",
+        },
+    )
 
 
 def _exit_container() -> NoReturn:

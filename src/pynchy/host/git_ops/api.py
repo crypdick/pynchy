@@ -17,6 +17,12 @@ from pynchy.host.git_ops._worktree_notify import (
     host_notify_worktree_updates,
     last_notified_sha,
 )
+from pynchy.host.git_ops.managed_feature import (
+    ManagedFeaturePublication,
+    ManagedFeatureResolution,
+    read_managed_feature_patch,
+    resolve_managed_feature_publication,
+)
 from pynchy.host.git_ops.personalization import sync_personalization_repo
 from pynchy.host.git_ops.repo import (
     RepoContext,
@@ -31,12 +37,8 @@ from pynchy.host.git_ops.repo import (
     resolve_repos_for_group,
 )
 from pynchy.host.git_ops.sync import (
-    GIT_POLICY_MERGE,
-    GIT_POLICY_PR,
-    GitSyncDeps,
+    host_create_pr_from_managed_feature,
     host_create_pr_from_worktree,
-    host_sync_worktree,
-    resolve_git_policy,
 )
 from pynchy.host.git_ops.sync_poll import (
     GitSyncRuntime,
@@ -73,6 +75,13 @@ from pynchy.host.git_ops.worktree import (
     WorktreeResult,
     install_repo_hooks,
     reconcile_worktrees_at_startup,
+)
+from pynchy.host.git_ops.worktree_sync import (
+    GIT_POLICY_MERGE,
+    GIT_POLICY_PR,
+    GitSyncDeps,
+    host_sync_worktree,
+    resolve_git_policy,
 )
 
 check_local_head_drift = _check_local_head_drift
@@ -116,6 +125,8 @@ __all__ = [
     "GitSyncDeps",
     "GitSyncRuntime",
     "HostSyncState",
+    "ManagedFeaturePublication",
+    "ManagedFeatureResolution",
     "RepoContext",
     "RepoSettings",
     "ResolvedRepoWorkspace",
@@ -143,6 +154,7 @@ __all__ = [
     "get_repo_context",
     "get_repo_token",
     "git_env_with_token",
+    "host_create_pr_from_managed_feature",
     "host_create_pr_from_worktree",
     "host_get_origin_main_sha",
     "host_notify_worktree_updates",
@@ -157,12 +169,14 @@ __all__ = [
     "needs_deploy",
     "probe_origin_main_sha",
     "push_local_commits",
+    "read_managed_feature_patch",
     "reconcile_worktrees_at_startup",
     "redact_git_diagnostic",
     "repo",
     "repo_container_path",
     "repo_host_root",
     "resolve_git_policy",
+    "resolve_managed_feature_publication",
     "resolve_repos_for_group",
     "resolve_routed_host_worktree_cwd",
     "run_git",

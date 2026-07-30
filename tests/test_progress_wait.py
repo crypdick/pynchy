@@ -60,6 +60,19 @@ async def test_progress_arriving_during_wait_refreshes_the_deadline() -> None:
     )
 
 
+async def test_wait_times_out_when_initial_progress_never_arrives() -> None:
+    with pytest.raises(ProgressTimeoutError, match="initial_progress timeout") as exc_info:
+        await wait_for_progress(
+            asyncio.Event().wait(),
+            progress_event=asyncio.Event(),
+            inactivity_timeout_seconds=1,
+            initial_progress_timeout_seconds=0.01,
+            hard_timeout_seconds=2,
+        )
+
+    assert exc_info.value.reason == "initial_progress"
+
+
 async def test_zero_inactivity_budget_times_out_without_starting_work() -> None:
     with pytest.raises(ProgressTimeoutError, match="inactivity timeout"):
         await wait_for_progress(

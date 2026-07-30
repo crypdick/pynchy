@@ -25,7 +25,7 @@ async def _write_publication_result(ipc_dir: Path, result: dict[str, object]) ->
             result_path.write_text(json.dumps(result), encoding="utf-8")
             return
         await asyncio.sleep(0.02)
-    raise AssertionError("sync_worktree_to_main never wrote an IPC request")
+    raise AssertionError("publication tool never wrote an IPC request")
 
 
 @pytest.fixture
@@ -96,3 +96,57 @@ async def test_publication_failure_without_repository_result_keeps_aggregate_dia
     assert result.content[0].text == (
         "Publication requires human approval; no branch was published."
     )
+
+
+@pytest.mark.asyncio
+async def test_publish_managed_feature_emits_only_bound_slug_and_returns_result(
+    agent_tool_runtime: Path,
+) -> None:
+    responder = asyncio.create_task(
+        _write_publication_result(
+            agent_tool_runtime,
+            {
+                "success": True,
+                "message": "Opened PR: https://github.com/owner/repo/pull/42",
+            },
+        )
+    )
+
+    result = await asyncio.wait_for(
+        call_tool("publish_managed_feature", {"feature_slug": "safe-feature"}),
+        timeout=2,
+    )
+    await responder
+
+    request_path = next((agent_tool_runtime / "requests").glob("*.json"))
+    request = json.loads(request_path.read_text(encoding="utf-8"))
+    assert request["kind"] == "publish_managed_feature"
+    assert request["reply_to"] == "merge_results"
+    assert request["source_group"] == "pynchy-thread"
+    assert request["payload"] == {
+        "feature_slug": "safe-feature",
+        "publication": "pull-request",
+    }
+    assert result[0].text.endswith("pull/42")
+
+
+@pytest.mark.asyncio
+async def test_publish_managed_feature_returns_host_error(agent_tool_runtime: Path) -> None:
+    responder = asyncio.create_task(
+        _write_publication_result(
+            agent_tool_runtime,
+            {
+                "success": False,
+                "message": "Publication blocked: managed feature is not active.",
+            },
+        )
+    )
+
+    result = await asyncio.wait_for(
+        call_tool("publish_managed_feature", {"feature_slug": "safe-feature"}),
+        timeout=2,
+    )
+    await responder
+
+    assert result.isError is True
+    assert result.content[0].text == "Publication blocked: managed feature is not active."
