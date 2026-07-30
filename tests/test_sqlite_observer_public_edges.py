@@ -33,7 +33,7 @@ async def test_observer_persists_message_activity_and_clear_events() -> None:
         bus,
         MessageEvent(
             chat_jid="chat",
-            sender_name="Ricardo",
+            sender_name="Test Sender",
             content="x" * 501,
             timestamp="now",
             is_bot=False,
@@ -46,7 +46,7 @@ async def test_observer_persists_message_activity_and_clear_events() -> None:
         call(
             "message",
             "chat",
-            {"sender_name": "Ricardo", "content": "x" * 500, "is_bot": False},
+            {"sender_name": "Test Sender", "content": "x" * 500, "is_bot": False},
         ),
         call("agent_activity", "chat", {"active": True}),
         call("chat_cleared", "chat", {}),
