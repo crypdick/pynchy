@@ -6,6 +6,7 @@ import asyncio
 import socket
 import subprocess  # noqa: S404 - test starts a local stdio MCP fixture.
 import sys
+from contextlib import asynccontextmanager
 from unittest.mock import ANY, Mock
 
 import aiohttp
@@ -135,3 +136,58 @@ def test_stdio_bridge_cli_requires_a_backend_command(
 
     with pytest.raises(SystemExit):
         stdio_bridge.main()
+
+
+@pytest.mark.asyncio
+async def test_stdio_bridge_cli_lifespan_initializes_and_closes_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Mock()
+    monkeypatch.setattr(stdio_bridge.uvicorn, "run", started)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["stdio-bridge", "--port", "8765", "--", "backend"],
+    )
+
+    @asynccontextmanager
+    async def fake_stdio_client(_parameters):
+        yield object(), object()
+
+    class FakeSession:
+        instances = []
+
+        def __init__(self, *_args):
+            self.initialized = False
+            self.instances.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc_info):
+            return None
+
+        async def initialize(self):
+            self.initialized = True
+
+    class FakeSessionManager:
+        def __init__(self, _server, *, json_response):
+            assert json_response is True
+
+        async def handle_request(self, _scope, _receive, _send):
+            return None
+
+        @asynccontextmanager
+        async def run(self):
+            yield
+
+    monkeypatch.setattr(stdio_bridge, "stdio_client", fake_stdio_client)
+    monkeypatch.setattr(stdio_bridge, "ClientSession", FakeSession)
+    monkeypatch.setattr(stdio_bridge, "StreamableHTTPSessionManager", FakeSessionManager)
+
+    stdio_bridge.main()
+    app = started.call_args.args[0]
+
+    async with app.router.lifespan_context(app):
+        session = FakeSession.instances[-1]
+        assert session.initialized
