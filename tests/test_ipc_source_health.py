@@ -6,6 +6,7 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 from conftest import NullChannel, NullIpcDeps, make_settings
@@ -372,6 +373,118 @@ async def test_rejects_non_list_source_filter(source_health_setup: Settings) -> 
     assert json.loads(response_path.read_text(encoding="utf-8")) == {
         "error": "sources must be a list of source names"
     }
+
+
+@pytest.mark.asyncio
+async def test_source_health_rejects_dependencies_without_the_health_capability(tmp_path) -> None:
+    await init_test_database()
+    with pytest.raises(TypeError, match="requires SourceHealthDeps"):
+        await dispatch(
+            {"type": "messaging_source_health", "request_id": "request-1"},
+            "chat-manager",
+            False,
+            NullIpcDeps(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_source_health_reports_missing_channel_runtime_and_invalid_statuses(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+
+    class InvalidStatusesDeps(_SourceHealthDeps):
+        def connection_statuses(self) -> list[str]:
+            return ["not-a-status-map"]
+
+    settings = make_settings(
+        data_dir=tmp_path,
+        connections={"missing": WhatsAppConnectionConfig()},
+    )
+    _configure_test_settings(monkeypatch, settings)
+    await dispatch(
+        {
+            "type": "messaging_source_health",
+            "request_id": "missing-runtime-request",
+            "sources": ["missing"],
+        },
+        "chat-manager",
+        False,
+        InvalidStatusesDeps(),
+    )
+
+    result = json.loads(
+        (settings.data_dir / "ipc/chat-manager/responses/missing-runtime-request.json").read_text(
+            encoding="utf-8"
+        )
+    )["result"]
+    assert result["sources"][0]["status"] == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_source_health_skips_missing_request_ids(tmp_path) -> None:
+    await init_test_database()
+    with patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", tmp_path / "ipc"):
+        await dispatch(
+            {"type": "messaging_source_health", "request_id": ""},
+            "chat-manager",
+            False,
+            _SourceHealthDeps(),
+        )
+
+    assert not (tmp_path / "ipc/chat-manager/responses/.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_source_health_ignores_invalid_and_normalizes_naive_timestamps(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+
+    class Health:
+        def configured_connections(self) -> dict[str, str]:
+            return {}
+
+        def personal_providers(self) -> tuple[str, ...]:
+            return ()
+
+        def personal_provider_for(self, source_name: str) -> str | None:
+            return source_name if source_name in {"whatsapp", "signal"} else None
+
+        async def project_personal_source(self, provider: str) -> dict[str, object]:
+            timestamp = "invalid" if provider == "whatsapp" else "2026-07-29T00:00:00"
+            return {
+                "name": provider,
+                "provider": provider,
+                "latest_inbound_at": timestamp,
+            }
+
+        async def get_latest_inbound_timestamp(self, _chat_jids: tuple[str, ...]) -> str | None:
+            return None
+
+    class Deps(_SourceHealthDeps):
+        def messaging_source_health(self) -> Health:
+            return Health()
+
+    settings = make_settings(data_dir=tmp_path)
+    _configure_test_settings(monkeypatch, settings)
+    await dispatch(
+        {
+            "type": "messaging_source_health",
+            "request_id": "timestamp-request",
+            "sources": ["whatsapp", "signal"],
+        },
+        "chat-manager",
+        False,
+        Deps(),
+    )
+
+    result = json.loads(
+        (settings.data_dir / "ipc/chat-manager/responses/timestamp-request.json").read_text(
+            encoding="utf-8"
+        )
+    )["result"]
+    assert result["latest_inbound"]["provider"] == "signal"
 
 
 async def test_unknown_source_remains_not_established(monkeypatch, tmp_path) -> None:
