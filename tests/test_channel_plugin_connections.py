@@ -130,6 +130,37 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
     assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
+def test_slack_plugin_skips_connections_without_required_configuration() -> None:
+    context = _context(
+        slack_connections={
+            "empty-env": SlackConnectionSettings(
+                bot_token_env="",
+                app_token_env=SLACK_APP_ENV,
+                chat_names=("general",),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+            "empty-chats": SlackConnectionSettings(
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
+                chat_names=(),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+            "missing-tokens": SlackConnectionSettings(
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
+                chat_names=("general",),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+        }
+    )
+
+    with patch.dict("os.environ", {}, clear=True):
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+
 def test_discord_plugin_uses_flat_connection_name_and_type(tmp_path: Path) -> None:
     config = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
     audio_cache_dir = tmp_path / "discord"
