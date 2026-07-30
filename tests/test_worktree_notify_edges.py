@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import Mock, patch
 
-from pynchy.host.git_ops.api import RepoContext, host_notify_worktree_updates
+from pynchy.host.git_ops.api import RepoContext, build_rebase_notice, host_notify_worktree_updates
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,3 +43,18 @@ async def test_worktree_notifications_skip_non_directory_entries(
     repo_ctx = RepoContext("owner/repo", tmp_path, worktrees_dir)
 
     await host_notify_worktree_updates(None, _NotifyDeps(), repo_ctx)
+
+
+def test_rebase_notice_omits_commit_message_when_log_lookup_fails(tmp_path: Path) -> None:
+    with patch(
+        "pynchy.host.git_ops._worktree_notify.run_git",
+        side_effect=(
+            Mock(returncode=0, stdout="2 files changed\n"),
+            Mock(returncode=1, stdout=""),
+        ),
+    ):
+        notice = build_rebase_notice(tmp_path, "old-head", 1)
+
+    assert "Auto-rebased 1 commit(s)" in notice
+    assert "2 files changed" in notice
+    assert "Commit:" not in notice
