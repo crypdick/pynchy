@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from typing import TYPE_CHECKING
 
@@ -41,7 +42,7 @@ from pynchy.state import (
     set_session,
     store_message_direct,
 )
-from pynchy.state.connection import StateRuntimeConfig
+from pynchy.state.connection import StateRuntimeConfig, atomic_write
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +67,28 @@ async def test_init_database_uses_explicit_runtime_config(tmp_path: Path) -> Non
 
         assert await get_all_chats() == []
         assert database_path.is_file()
+    finally:
+        close_test_database()
+
+
+@pytest.mark.asyncio
+async def test_atomic_write_rolls_back_task_cancellation(tmp_path: Path) -> None:
+    database_path = tmp_path / "cancelled-write.db"
+    close_test_database()
+
+    try:
+        await init_database(StateRuntimeConfig(database_path=database_path))
+        try:
+            async with atomic_write() as database:
+                await database.execute("INSERT INTO chats (jid) VALUES ('abandoned')")
+                raise asyncio.CancelledError
+        except asyncio.CancelledError:
+            pass
+
+        async with atomic_write() as database:
+            await database.execute("INSERT INTO chats (jid) VALUES ('committed')")
+
+        assert {chat["jid"] for chat in await get_all_chats()} == {"committed"}
     finally:
         close_test_database()
 

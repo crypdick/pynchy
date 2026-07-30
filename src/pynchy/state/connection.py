@@ -67,7 +67,7 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
         try:
             yield db
             await db.commit()
-        except Exception:
+        except BaseException:
             await db.rollback()
             raise
 

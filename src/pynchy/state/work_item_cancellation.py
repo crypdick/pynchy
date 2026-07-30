@@ -49,21 +49,34 @@ async def _cancel_work_item_execution(
     blocker: str,
     now: str,
 ) -> WorkItemExecution:
-    cursor = await database.execute(
+    update_cursor = await database.execute(
         """
         UPDATE work_item_executions
         SET status = ?, blocker = ?, updated_at = ?, completed_at = ?
         WHERE id = ?
+          AND status IN (?, ?, ?, ?, ?, ?)
         """,
-        (WorkItemExecutionStatus.CANCELLED.value, blocker, now, now, execution_id),
+        (
+            WorkItemExecutionStatus.CANCELLED.value,
+            blocker,
+            now,
+            now,
+            execution_id,
+            WorkItemExecutionStatus.CLAIMING.value,
+            WorkItemExecutionStatus.IN_PROGRESS.value,
+            WorkItemExecutionStatus.AWAITING_REVIEW.value,
+            WorkItemExecutionStatus.FOLLOW_UPS.value,
+            WorkItemExecutionStatus.BLOCKED.value,
+            WorkItemExecutionStatus.UNKNOWN.value,
+        ),
     )
-    if cursor.rowcount != 1:
-        raise ValueError("Linear work item execution does not exist")
     cursor = await database.execute(
         "SELECT * FROM work_item_executions WHERE id = ?",
         (execution_id,),
     )
     row = await cursor.fetchone()
     if row is None:
-        raise RuntimeError("Linear work item execution disappeared during cancellation")
+        if update_cursor.rowcount == 1:
+            raise RuntimeError("Linear work item execution disappeared during cancellation")
+        raise ValueError("Linear work item execution does not exist")
     return row_to_execution(row)
