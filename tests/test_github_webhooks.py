@@ -358,11 +358,32 @@ async def test_missing_fallback_message_is_rejected(
     malformed = replace(event, external_context={})
     monkeypatch.setattr(
         "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
-        lambda _workspace: None,
+        lambda _workspace: _LinearAccount(name="linear"),
     )
 
     with pytest.raises(WebhookProcessingError, match="lacks its fallback notification"):
         await prepare_github_webhook_event(malformed, config=_config())
+
+
+async def test_missing_pull_request_url_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    malformed = replace(
+        event,
+        external_context={"fallback_host_message": "Review needs attention."},
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+
+    prepared = await prepare_github_webhook_event(malformed, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message == "Review needs attention."
 
 
 async def test_malformed_linked_issue_falls_back_to_notification(
