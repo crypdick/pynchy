@@ -161,6 +161,17 @@ async def test_bot_author_denied_even_when_dm_open():
     assert await _is_delivered(_dm(is_bot=True), dm_policy="open") is False
 
 
+async def test_registered_workspace_still_denies_bot_messages():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1", is_bot=True),
+            group_policy="allowlist",
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
+    )
+
+
 # --- DM policy ---------------------------------------------------------------
 
 
