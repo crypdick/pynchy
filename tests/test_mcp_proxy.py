@@ -49,6 +49,36 @@ class TestMcpProxyRouting:
         finally:
             await client.close()
 
+    async def test_invalid_backend_json_is_returned_unchanged(self):
+        def handle(_request: web.Request) -> web.Response:
+            return web.Response(body=b"not-json", content_type="text/plain")
+
+        backend_app = web.Application()
+        backend_app.router.add_route("*", "/mcp", handle)
+        backend = TestServer(backend_app)
+        await backend.start_server()
+        security = WorkspaceSecurity(
+            services={"browser": ServiceTrustConfig(public_source=True, dangerous_writes=False)}
+        )
+        create_gate("test-ws", 1000.0, security)
+        proxy = create_proxy_app(
+            {"browser": f"http://localhost:{backend.port}/mcp"},
+            trust_map={"browser": {"public_source": True}},
+        )
+        client = TestClient(TestServer(proxy))
+        await client.start_server()
+
+        try:
+            response = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+            assert response.status == 200
+            assert await response.read() == b"not-json"
+        finally:
+            await client.close()
+            await backend.close()
+
     async def test_proxy_uses_configured_service_for_hashed_instance(self, mock_backend):
         """Workspace-scoped instance IDs must retain their configured trust policy."""
         security = WorkspaceSecurity(services={"linear": _SAFE_TRUST})
