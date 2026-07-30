@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from asyncio import sleep
 from dataclasses import dataclass
 from unittest.mock import AsyncMock
 
@@ -13,7 +14,11 @@ from pynchy.plugins.integrations.linear_decision_inbox import (
     reconcile_all_linear_work_items,
     reconcile_linear_decision_inbox,
 )
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    UnavailableExecutionProbe,
+)
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
+from pynchy.work_items.api import WorkItemExecution, WorkItemExecutionStatus
 from tests.linear_decision_inbox_support import (
     _board,
     _DecisionClient,
@@ -57,6 +62,37 @@ class _MalformedDecisionClient(_DecisionClient):
                 raise AssertionError("test response must be a mapping")
             return response
         return await super().query(query, **variables)
+
+
+def _execution() -> WorkItemExecution:
+    return WorkItemExecution(
+        id="execution-1",
+        workspace="removed",
+        linear_issue_id="issue-1",
+        linear_issue_identifier="SYN-1",
+        linear_issue_url="https://linear.app/example/issue/SYN-1",
+        turn_id=None,
+        task_id=None,
+        attempt=1,
+        flow_id=None,
+        temporal_workflow_id=None,
+        initiated_by="test",
+        observed_state_id="state-progress",
+        observed_state_name="In Progress",
+        observed_updated_at=None,
+        status=WorkItemExecutionStatus.IN_PROGRESS,
+        summary=None,
+        blocker=None,
+        handoff_to=None,
+        evidence_refs=(),
+        requester_delivery_status="not_requested",
+        requester_delivery_turn_id=None,
+        requester_delivery_error=None,
+        requester_delivered_at=None,
+        created_at="2026-07-29T00:00:00+00:00",
+        updated_at="2026-07-29T00:00:00+00:00",
+        completed_at=None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -214,7 +250,7 @@ async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monke
     )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
-        lambda *, workspace: client_context,
+        lambda *, account_name: client_context,
     )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_decision_inbox.reconcile_provider_work_item_state",
@@ -234,7 +270,9 @@ async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monke
     )
 
     assert admitted == [admitted_task]
-    provider_recovery.assert_awaited_once_with(client, {"beta": _board("project-beta")})
+    provider_recovery.assert_awaited_once()
+    assert provider_recovery.await_args.args == (client, {"beta": _board("project-beta")})
+    assert provider_recovery.await_args.kwargs["account_name"] == "primary"
     inbox.assert_awaited_once()
     assert inbox.await_args.kwargs["public_source"] is False
 
@@ -249,8 +287,8 @@ async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
         async def __aexit__(self, *_exc_info: object) -> None:
             return None
 
-    def failing_client(*, workspace: object) -> FailingClientContext:
-        del workspace
+    def failing_client(*, account_name: object) -> FailingClientContext:
+        del account_name
         return FailingClientContext()
 
     monkeypatch.setattr(
@@ -271,3 +309,61 @@ async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
     )
 
     assert admitted == []
+
+
+async def test_removed_workspace_issue_retires_only_after_every_account_reports_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accounts = (
+        _Account("primary", _AccountConfig(public_source=True)),
+        _Account("secondary", _AccountConfig(public_source=True)),
+    )
+    execution = _execution()
+    clients = {account.name: object() for account in accounts}
+    retire = AsyncMock(return_value=True)
+
+    async def reconcile(
+        _client: object,
+        _boards: object,
+        *,
+        account_name: str,
+        unavailable_probes: dict[str, UnavailableExecutionProbe],
+    ) -> int:
+        await sleep(0)
+        probe = unavailable_probes.setdefault(
+            "execution-1",
+            UnavailableExecutionProbe(execution, set()),
+        )
+        probe.account_names.add(account_name)
+        return 0
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.configured_linear_accounts",
+        lambda: accounts,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
+        lambda _workspace: None,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
+        lambda *, account_name: _ClientContext(clients[account_name]),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_provider_work_item_state",
+        reconcile,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.retire_globally_unavailable_work_item",
+        retire,
+    )
+
+    await reconcile_all_linear_work_items(
+        {},
+        {},
+        review_plan=AsyncMock(),
+        broadcast_host_message=AsyncMock(),
+        defer_plan_review=AsyncMock(),
+    )
+
+    retire.assert_awaited_once_with(execution)

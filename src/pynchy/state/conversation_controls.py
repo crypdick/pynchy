@@ -244,10 +244,10 @@ async def conversation_control_state_matches(
 async def retire_conversation_for_terminal(
     conversation_id: ConversationId,
     *,
-    preserve_delivery: ExternalDeliveryIdentity,
+    preserve_delivery: ExternalDeliveryIdentity | None,
     control_state_revision: str | None = None,
 ) -> TerminalConversationRetirement:
-    """Terminally retire earlier routed work while retaining one lifecycle delivery."""
+    """Terminally retire routed work, optionally retaining one lifecycle delivery."""
     async with atomic_write() as database:
         return await _retire_conversation_for_terminal(
             database,
@@ -261,7 +261,7 @@ async def _retire_conversation_for_terminal(
     database: Connection,
     conversation_id: ConversationId,
     *,
-    preserve_delivery: ExternalDeliveryIdentity,
+    preserve_delivery: ExternalDeliveryIdentity | None,
     control_state_revision: str | None = None,
 ) -> TerminalConversationRetirement:
     """Retire durable conversation work inside the caller's write transaction."""
@@ -302,20 +302,21 @@ async def _retire_conversation_for_terminal(
         observed_closed=True,
         observed_revision=expected_revision,
     ):
-        await database.execute(
-            """
-            UPDATE conversation_deliveries
-            SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
-            WHERE provider = ? AND route = ? AND delivery_id = ?
-              AND status != 'completed'
-            """,
-            (
-                now,
-                preserve_delivery.provider,
-                preserve_delivery.route,
-                preserve_delivery.delivery_id,
-            ),
-        )
+        if preserve_delivery is not None:
+            await database.execute(
+                """
+                UPDATE conversation_deliveries
+                SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
+                WHERE provider = ? AND route = ? AND delivery_id = ?
+                  AND status != 'completed'
+                """,
+                (
+                    now,
+                    preserve_delivery.provider,
+                    preserve_delivery.route,
+                    preserve_delivery.delivery_id,
+                ),
+            )
         return TerminalConversationRetirement(
             runtime_folders=tuple(sorted(folders)),
             runtime_workspace_jids=tuple(sorted(workspace_jids)),
@@ -345,21 +346,31 @@ async def _retire_conversation_for_terminal(
         """,
         (now, conversation_id),
     )
-    await database.execute(
-        """
-        UPDATE conversation_deliveries
-        SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
-        WHERE conversation_id = ? AND status != 'completed'
-          AND NOT (provider = ? AND route = ? AND delivery_id = ?)
-        """,
-        (
-            now,
-            conversation_id,
-            preserve_delivery.provider,
-            preserve_delivery.route,
-            preserve_delivery.delivery_id,
-        ),
-    )
+    if preserve_delivery is None:
+        await database.execute(
+            """
+            UPDATE conversation_deliveries
+            SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
+            WHERE conversation_id = ? AND status != 'completed'
+            """,
+            (now, conversation_id),
+        )
+    else:
+        await database.execute(
+            """
+            UPDATE conversation_deliveries
+            SET status = 'completed', claim_id = NULL, claimed_at = NULL, completed_at = ?
+            WHERE conversation_id = ? AND status != 'completed'
+              AND NOT (provider = ? AND route = ? AND delivery_id = ?)
+            """,
+            (
+                now,
+                conversation_id,
+                preserve_delivery.provider,
+                preserve_delivery.route,
+                preserve_delivery.delivery_id,
+            ),
+        )
     for folder in folders:
         await database.execute("DELETE FROM in_flight_turns WHERE group_folder = ?", (folder,))
         await database.execute("DELETE FROM sessions WHERE group_folder = ?", (folder,))

@@ -5,10 +5,13 @@ from __future__ import annotations
 # allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
 import subprocess  # noqa: S404 - status adapter catches Docker command timeouts.
 from collections.abc import (
+    Awaitable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
+    Callable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
     Sequence,  # noqa: TC003 - beartype resolves channel collections at runtime.
 )
 from datetime import UTC, datetime
-from typing import Any, Protocol, cast, runtime_checkable
+from functools import partial
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
@@ -94,7 +97,10 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_scheduled_agent_task_workflow,
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
-from pynchy.host.orchestrator.terminal_task_retirement import retire_conversation_tasks
+from pynchy.host.orchestrator.terminal_task_retirement import (
+    retire_conversation_tasks,
+    retire_provider_work_item_execution,
+)
 from pynchy.identifiers import (  # beartype resolves dependency adapter annotations at runtime.
     GroupFolder,
     RuntimeId,
@@ -144,10 +150,18 @@ from pynchy.state.api import (
     update_host_job,
     update_task,
 )
+from pynchy.work_items.api import (  # noqa: TC001 - beartype resolves factory annotations.
+    WorkItemExecution,
+)
 from pynchy.workspace.api import (  # beartype resolves dependency adapter annotations at runtime.
     WorkspaceProfile,
     WorkspaceSecurity,
 )
+
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.webhook_terminal_retirement import (
+        TerminalConversationRetirementDeps,
+    )
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -458,6 +472,14 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             await app.on_inbound(jid, message)
 
     return HttpDeps()
+
+
+def make_provider_execution_retirement(
+    app: PynchyApp,
+) -> Callable[[WorkItemExecution, str | None], Awaitable[None]]:
+    """Bind provider terminal cleanup to the app's shared HTTP runtime adapters."""
+    deps = cast("TerminalConversationRetirementDeps", make_http_deps(app))
+    return partial(retire_provider_work_item_execution, deps)
 
 
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:

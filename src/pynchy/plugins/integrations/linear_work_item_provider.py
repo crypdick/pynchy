@@ -383,6 +383,7 @@ async def reconcile_work_item(
     if (
         not matches_target
         and transition.operation == "claim"
+        and transition.status is WorkItemTransitionStatus.UNKNOWN
         and state_id(issue) == state_id(board.states[HUMAN_APPROVED_STATUS])
     ):
         # Human Approved proves an uncertain claim write did not land.

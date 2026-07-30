@@ -108,10 +108,7 @@ from pynchy.state.deployments import (
     initialize_deployment_state,
 )
 from pynchy.state.events import store_event
-from pynchy.state.external_cursors import (
-    get_external_provider_cursor,
-    set_external_provider_cursor,
-)
+from pynchy.state.external_cursors import get_external_provider_cursor, set_external_provider_cursor
 from pynchy.state.external_deliveries import (
     admit_external_delivery_receipt,
     get_external_delivery_receipt,
@@ -247,6 +244,10 @@ from pynchy.state.work_item_models import (
     WorkItemTransitionRequest,
     WorkItemTransitionResolution,
 )
+from pynchy.state.work_item_terminal_recovery import (
+    retire_latest_terminal_work_item_conversation,
+    retire_terminal_execution_resources_if_unowned,
+)
 from pynchy.state.work_item_transitions import (
     begin_work_item_transition,
     begin_work_item_transition_if_lifecycle_current,
@@ -262,6 +263,7 @@ from pynchy.state.work_items import (
     get_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_execution_for_task,
+    list_terminal_work_item_executions_needing_repair,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
 )
@@ -460,8 +462,11 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_work_item_execution_for_task",
     "get_unfinished_work_item_execution",
     "get_work_item_transition_by_request",
+    "list_terminal_work_item_executions_needing_repair",
     "list_work_item_executions",
     "mark_work_item_delivery_delivered_for_turn",
+    "retire_latest_terminal_work_item_conversation",
+    "retire_terminal_execution_resources_if_unowned",
     "resolve_work_item_transition",
     "resolve_work_item_transition_if_lifecycle_current",
     # sessions

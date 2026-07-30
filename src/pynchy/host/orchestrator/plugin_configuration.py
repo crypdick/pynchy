@@ -56,7 +56,10 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )
-from pynchy.host.orchestrator.terminal_task_retirement import retire_work_item_execution
+from pynchy.host.orchestrator.terminal_task_retirement import (
+    retire_terminal_work_item_execution_if_unowned,
+    retire_work_item_execution,
+)
 from pynchy.identifiers import (
     ChatJid,  # beartype resolves composition callback annotations at runtime.
     GroupFolder,
@@ -217,6 +220,7 @@ from pynchy.state.api import (
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     list_pending_conversation_ids,
+    list_terminal_work_item_executions_needing_repair,
     list_work_item_executions,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
@@ -236,6 +240,8 @@ from pynchy.workspace.api import (
 
 if TYPE_CHECKING:
     import pluggy
+
+    from pynchy.work_items.api import WorkItemExecution
 
 
 def configure_computer_use_plugins(
@@ -349,9 +355,21 @@ def configure_linear_plugin(
     plugin_manager: pluggy.PluginManager,
     settings: Settings,
     start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: (
+        Callable[[WorkItemExecution, str | None], Awaitable[None]] | None
+    ) = None,
 ) -> None:
     """Inject the named Linear accounts resolved at application composition."""
     plugin = settings.plugins.get("linear")
+
+    async def retire_terminal_execution(
+        execution: WorkItemExecution,
+        control_state_revision: str | None,
+    ) -> None:
+        if retire_provider_execution is None:
+            await retire_work_item_execution(execution)
+            return
+        await retire_provider_execution(execution, control_state_revision)
 
     def workspace_tools(workspace: str) -> tuple[str, ...] | None:
         resolved = settings.resolved_workspace_config(workspace)
@@ -422,9 +440,12 @@ def configure_linear_plugin(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=list_work_item_executions,
+            list_terminal_repair_candidates=(list_terminal_work_item_executions_needing_repair),
             get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_work_item_execution,
+            retire_terminal_execution_if_unowned=(retire_terminal_work_item_execution_if_unowned),
+            retire_terminal_execution=retire_terminal_execution,
         )
     )
     configure_linear_work_items_runtime(
@@ -772,3 +793,27 @@ def configure_builtin_canaries(settings: Settings) -> None:
         ),
     )
     register_security_canary_scenarios(register_security)
+
+
+def configure_startup_plugins(
+    plugin_manager: pluggy.PluginManager,
+    settings: Settings,
+    start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: Callable[[WorkItemExecution, str | None], Awaitable[None]],
+) -> None:
+    """Configure every plugin runtime owned by core startup."""
+    configure_computer_use_plugins(plugin_manager, settings)
+    configure_caldav_plugin(settings)
+    configure_gog_plugin(settings)
+    configure_desktop_screenshot_plugin(plugin_manager, settings)
+    configure_linear_plugin(
+        plugin_manager,
+        settings,
+        start_work_item_reconciliation,
+        retire_provider_execution,
+    )
+    configure_observer_plugins(plugin_manager)
+    configure_marketplace_health_plugin(plugin_manager, settings)
+    configure_matrix_gateway_plugin(settings)
+    configure_google_setup_plugin(plugin_manager, settings)
+    configure_builtin_canaries(settings)
