@@ -139,6 +139,47 @@ class TestPathAContainerAlive:
         )
         deps.enqueue_message.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_marks_skill_access_persistence_errors_in_ipc_response(
+        self, settings, pending_question
+    ):
+        deps = _FakeAskUserDeps()
+        deps.has_live_session.return_value = True
+        deps.persist_skill_access.side_effect = ValueError("invalid choice")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
+                return_value=pending_question,
+            ),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
+        ):
+            await handle_ask_user_answer("req-abc123", {"choice": "A"}, deps)
+
+        deps.write_response.assert_called_once_with(
+            "test-group",
+            "req-abc123",
+            {"answers": {"choice": "A"}, "skill_access_status": "error"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_cold_start_when_ipc_write_fails(self, settings, pending_question):
+        deps = _FakeAskUserDeps()
+        deps.has_live_session.return_value = True
+        deps.write_response.side_effect = OSError("container disappeared")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
+                return_value=pending_question,
+            ),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
+        ):
+            await handle_ask_user_answer("req-abc123", {"choice": "A"}, deps)
+
+        deps.enqueue_message.assert_called_once()
+        assert "The user answered" in deps.enqueue_message.call_args.args[1]
+
 
 # ---------------------------------------------------------------------------
 # Path B: container dead -> cold-start with answer context
