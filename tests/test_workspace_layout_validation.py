@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config.api import WorkspaceMigrationConfig, validate_settings_mapping
+from pynchy.config.workspace_layout import semantic_workspace_configs
 
 
 def test_semantic_scope_becomes_a_routable_workspace() -> None:
@@ -26,6 +27,7 @@ def test_physical_thread_without_semantic_policy_is_accepted() -> None:
     )
 
     assert settings.workspace_parent("engineering") is None
+    assert semantic_workspace_configs(settings.workspaces) == {}
 
 
 @pytest.mark.parametrize(
