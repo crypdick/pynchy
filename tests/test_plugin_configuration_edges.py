@@ -16,6 +16,7 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
 )
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
+from pynchy.work_items.api import WorkItemExecution
 
 
 def _manager(*plugins: tuple[str, object]) -> pluggy.PluginManager:
@@ -123,6 +124,29 @@ def test_linear_composition_preserves_successful_scheduler_cancellation(
     )
 
     assert asyncio.run(cancel("workflow-1")) is True
+
+
+async def test_linear_terminal_retirement_callback_is_beartype_resolvable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure = Mock()
+    monkeypatch.setattr(
+        plugin_configuration,
+        "configure_linear_decision_inbox_runtime",
+        configure,
+    )
+    retire = AsyncMock()
+    plugin_configuration.configure_linear_plugin(
+        _manager(),
+        make_settings(),
+        lambda: None,
+        retire_provider_execution=retire,
+    )
+    execution = object.__new__(WorkItemExecution)
+
+    await configure.call_args.args[0].retire_terminal_execution(execution, "revision-1")
+
+    retire.assert_awaited_once_with(execution, "revision-1")
 
 
 def test_builtin_canary_registration_is_idempotent() -> None:
