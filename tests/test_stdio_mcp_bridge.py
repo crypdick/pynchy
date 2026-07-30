@@ -126,3 +126,12 @@ def test_stdio_bridge_cli_starts_a_loopback_server_for_its_backend_command(
         log_level="warning",
         access_log=False,
     )
+
+
+def test_stdio_bridge_cli_requires_a_backend_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["stdio-bridge", "--port", "8765"])
+
+    with pytest.raises(SystemExit):
+        stdio_bridge.main()
