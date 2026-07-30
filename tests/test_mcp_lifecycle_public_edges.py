@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess  # noqa: S404 - tests model configured process ownership.
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,6 +13,7 @@ import pytest
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
     build_stdio_env,
+    ensure_docker_running,
     ensure_script_running,
     ensure_stdio_running,
     expand_arg_placeholders,
@@ -120,6 +122,51 @@ async def test_stdio_start_requires_a_host_port():
 
     with pytest.raises(RuntimeError, match="has no host port"):
         await ensure_stdio_running(instance)
+
+
+async def test_stdio_start_builds_the_bridge_command_and_waits_for_health():
+    instance = McpInstance(
+        server_name="stdio",
+        server_config=McpServerConfig(
+            type="stdio",
+            command="backend",
+            args=["--workspace", "{workspace}"],
+            port=8000,
+            transport="streamable_http",
+        ),
+        kwargs={"workspace": "research"},
+        instance_id="stdio",
+        container_name="unused",
+        project_root=Path("/project"),
+        port=9000,
+    )
+    start = MagicMock()
+
+    with (
+        patch("pynchy.host.container_manager.mcp.lifecycle._start_owned_process", start),
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            new=AsyncMock(),
+        ),
+    ):
+        await ensure_stdio_running(instance)
+
+    command = start.call_args.args[1]
+    assert command[:6] == [
+        command[0],
+        "-m",
+        "pynchy.host.container_manager.mcp.stdio_bridge",
+        "--port",
+        "9000",
+        "--",
+    ]
+    assert command[6:] == [
+        "backend",
+        "--workspace",
+        "research",
+        "--workspace",
+        "research",
+    ]
 
 
 async def test_script_start_fails_when_process_supervision_shell_is_missing(monkeypatch):
@@ -248,6 +295,87 @@ def test_reap_stale_processes_rejects_invalid_and_uninspectable_markers(
     assert list(record_dir.iterdir()) == []
 
 
+def test_reap_stale_processes_removes_records_when_process_inspection_fails(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "uninspectable.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(side_effect=OSError("ps unavailable")),
+    )
+
+    assert reap_stale_processes(record_dir) == 0
+    assert not list(record_dir.iterdir())
+
+
+def test_reap_stale_processes_escalates_after_a_group_survives_grace_period(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "owned.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess([], 0, marker, "")),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.time.monotonic",
+        MagicMock(side_effect=[0, 1, 6]),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle._process_group_exists",
+        MagicMock(return_value=True),
+    )
+    sleep = MagicMock()
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.time.sleep", sleep)
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.os.killpg") as killpg:
+        assert reap_stale_processes(record_dir) == 1
+
+    sleep.assert_called_once_with(0.1)
+    assert killpg.call_args_list == [
+        ((1234, signal.SIGTERM),),
+        ((1234, signal.SIGKILL),),
+    ]
+
+
+def test_reap_stale_processes_treats_permission_denied_as_an_existing_group(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "owned.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess([], 0, marker, "")),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.time.monotonic",
+        MagicMock(side_effect=[0, 1, 6]),
+    )
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.time.sleep", MagicMock())
+
+    with patch(
+        "pynchy.host.container_manager.mcp.lifecycle.os.killpg",
+        side_effect=[None, PermissionError, None],
+    ) as killpg:
+        assert reap_stale_processes(record_dir) == 1
+
+    assert killpg.call_args_list == [
+        ((1234, signal.SIGTERM),),
+        ((1234, 0),),
+        ((1234, signal.SIGKILL),),
+    ]
+
+
 def test_reap_stale_processes_reaps_a_verified_owned_group(monkeypatch, tmp_path: Path):
     record_dir = tmp_path / "records"
     record_dir.mkdir()
@@ -271,6 +399,92 @@ def test_reap_stale_processes_reaps_a_verified_owned_group(monkeypatch, tmp_path
 
 def test_reap_stale_processes_ignores_a_missing_record_directory(tmp_path: Path):
     assert reap_stale_processes(tmp_path / "missing") == 0
+
+
+async def test_warm_image_cache_skips_a_local_image_that_is_already_present():
+    instance = _instance(server_name="notebook")
+    instance.server_config = McpServerConfig(
+        type="docker",
+        image="local/notebook:latest",
+        dockerfile="src/Dockerfile",
+        port=8000,
+    )
+    inspect = AsyncMock(return_value=subprocess.CompletedProcess([], 0))
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.run_docker", inspect):
+        await warm_image_cache({"notebook": instance})
+
+    inspect.assert_awaited_once_with("image", "inspect", "local/notebook:latest", check=False)
+
+
+async def test_docker_mount_resolution_handles_existing_and_file_sources(tmp_path: Path):
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    file_source = tmp_path / "nested" / "settings.json"
+    instance = _instance()
+    instance.project_root = tmp_path
+    instance.server_config = McpServerConfig(
+        type="docker",
+        image="image:latest",
+        port=8000,
+        volumes=[f"{existing}:/existing", f"{file_source}:/settings.json"],
+    )
+    run_docker = AsyncMock(return_value=subprocess.CompletedProcess([], 0))
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle.is_container_running",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("pynchy.host.container_manager.mcp.lifecycle._ensure_mcp_image", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.ensure_network", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.remove_container", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.run_docker", run_docker),
+        patch("pynchy.host.container_manager.mcp.lifecycle.wait_healthy", new=AsyncMock()),
+    ):
+        await ensure_docker_running(instance)
+
+    assert file_source.parent.is_dir()
+    assert f"{existing}:/existing" in run_docker.await_args.args
+    assert f"{file_source}:/settings.json" in run_docker.await_args.args
+
+
+async def test_docker_health_failure_redacts_secret_values_from_diagnostics():
+    instance = _instance()
+    run_docker = AsyncMock(
+        return_value=subprocess.CompletedProcess(
+            [], 0, stdout="authorization: bearer-token", stderr="password=hunter2"
+        )
+    )
+    error = MagicMock()
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle.is_container_running",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("pynchy.host.container_manager.mcp.lifecycle._ensure_mcp_image", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.ensure_network", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.remove_container", new=AsyncMock()),
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle._start_docker_container",
+            new=AsyncMock(),
+        ),
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            new=AsyncMock(side_effect=RuntimeError("not ready")),
+        ),
+        patch("pynchy.host.container_manager.mcp.lifecycle.run_docker", run_docker),
+        patch("pynchy.host.container_manager.mcp.lifecycle.stop_container", new=AsyncMock()),
+        patch("pynchy.host.container_manager.mcp.lifecycle.logger.error", error),
+        pytest.raises(RuntimeError, match="not ready"),
+    ):
+        await ensure_docker_running(instance)
+
+    log_tail = error.call_args.kwargs["log_tail"]
+    assert "bearer-token" not in log_tail
+    assert "hunter2" not in log_tail
+    assert "<redacted>" in log_tail
 
 
 def test_expand_arg_placeholders_preserves_unknown_placeholders():
