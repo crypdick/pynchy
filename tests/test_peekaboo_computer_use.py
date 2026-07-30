@@ -473,3 +473,35 @@ async def test_peekaboo_list_windows_requires_a_target() -> None:
         result = await _handler()({"source_group": "admin", "action": "list_windows"})
 
     assert result == {"error": "Peekaboo list_windows requires app or pid"}
+
+
+@pytest.mark.asyncio
+async def test_peekaboo_click_accepts_a_coordinate_target() -> None:
+    process = AsyncMock(return_value=_FakeProcess())
+    with (
+        patch("pynchy.plugins.integrations.peekaboo.platform.system", return_value="Darwin"),
+        patch("pynchy.plugins.integrations.peekaboo.shutil.which", return_value="/bin/peekaboo"),
+        patch(
+            "pynchy.plugins.integrations.peekaboo.asyncio.create_subprocess_exec",
+            new=process,
+        ),
+    ):
+        result = await _handler()(
+            {"source_group": "admin", "action": "click", "coordinate": [12, 34]}
+        )
+
+    assert result["result"]["output"] == {"ok": True}
+    assert process.call_args.args[:5] == ("/bin/peekaboo", "click", "--coords", "12,34", "--json")
+
+
+@pytest.mark.asyncio
+async def test_peekaboo_set_value_requires_an_element_or_query() -> None:
+    with (
+        patch("pynchy.plugins.integrations.peekaboo.platform.system", return_value="Darwin"),
+        patch("pynchy.plugins.integrations.peekaboo.shutil.which", return_value="/bin/peekaboo"),
+    ):
+        result = await _handler()(
+            {"source_group": "admin", "action": "set_value", "value": "hello"}
+        )
+
+    assert "set_value requires element or query" in result["error"]
