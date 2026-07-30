@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_session_reset import (
     LinearSessionResetState,
@@ -141,3 +143,48 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
         blocker=request.blocker,
     )
     assert worktree_file.read_text() == "preserve me"
+
+
+@pytest.mark.parametrize(
+    ("binding", "conversation", "execution"),
+    [
+        (None, None, None),
+        (
+            _Binding(conversation_id="conversation-1"),
+            _Conversation(_Subject("discord", "issue-1")),
+            None,
+        ),
+        (
+            _Binding(conversation_id="conversation-1"),
+            _Conversation(_Subject("linear:tenant:issue", "issue-1")),
+            None,
+        ),
+    ],
+)
+async def test_reset_returns_false_when_no_linear_execution_is_owned(
+    binding: _Binding | None,
+    conversation: _Conversation | None,
+    execution: WorkItemExecution | None,
+) -> None:
+    state = LinearSessionResetState(
+        get_control_by_thread=AsyncMock(return_value=binding),
+        get_conversation=AsyncMock(return_value=conversation),
+        get_active_execution=AsyncMock(return_value=execution),
+        cancel_task=AsyncMock(),
+        cancel_execution=AsyncMock(),
+        transition_request=WorkItemTransitionRequest,
+    )
+
+    assert (
+        await cancel_linear_execution_for_reset(
+            WorkspaceProfile(
+                jid="discord:channel:issue-thread",
+                name="SYN-89",
+                folder="linear-thread",
+                trigger="@Pynchy",
+            ),
+            cancel_scheduled_workflow=AsyncMock(return_value=True),
+            state=state,
+        )
+        is False
+    )
