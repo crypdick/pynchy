@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from pynchy.conversation.api import (
+    ConversationClaimId,
+    ConversationDelivery,
+    ConversationDeliveryStatus,
+    ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -17,6 +21,11 @@ from pynchy.conversation.api import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.host.orchestrator.webhook_conversation_admission import (
+    conversation_admission_request,
+    process_deferred_event,
+)
+from pynchy.host.orchestrator.webhook_event_payloads import webhook_event_payload
 from pynchy.identifiers import GroupFolder
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
@@ -27,8 +36,24 @@ from pynchy.state import (
     admit_webhook_receipt,
     init_test_database,
 )
+from tests.webhook_lifecycle_support import _lifecycle_event, _message_event, _route
 
 pytest_plugins = ("tests.state_support",)
+
+
+def _delivery(payload: dict[str, object]) -> ConversationDelivery:
+    return ConversationDelivery(
+        sequence=1,
+        identity=ExternalDeliveryIdentity(
+            provider=ExternalProvider("test-provider"),
+            route=ExternalRoute("project"),
+            delivery_id=ExternalDeliveryId("delivery-1"),
+        ),
+        conversation_id=ConversationId("conversation-1"),
+        status=ConversationDeliveryStatus.HELD,
+        received_at="2026-07-29T00:00:00Z",
+        payload=payload,
+    )
 
 
 def _receipt(
@@ -136,3 +161,48 @@ async def test_conversation_admission_requires_a_routed_or_lifecycle_receipt() -
             _receipt(disposition="accepted", task_id="task-1"),
             _request(),
         )
+
+
+def test_conversation_admission_request_rejects_missing_routing_contracts() -> None:
+    event = _message_event("delivery-admission")
+    assert (
+        conversation_admission_request(_route(), replace(event, conversation=None), "prompt")
+        is None
+    )
+
+    conversation = replace(event.conversation, workspace=None)
+    assert conversation is not None
+    with pytest.raises(RuntimeError, match="no workspace owner"):
+        conversation_admission_request(
+            replace(_route(), workspace=None),
+            replace(event, conversation=conversation),
+            "prompt",
+        )
+
+    with pytest.raises(ValueError, match="no prompt"):
+        conversation_admission_request(_route(), event, None)
+
+
+@pytest.mark.asyncio
+async def test_process_deferred_event_rejects_invalid_payload_and_processor_contracts() -> None:
+    claim_id = ConversationClaimId("claim-1")
+    route = _route()
+    with pytest.raises(TypeError, match="not an object"):
+        await process_deferred_event(
+            _delivery({"deferred_process_event": "invalid"}), claim_id, route
+        )
+
+    event = _message_event("delivery-deferred")
+    payload = {"deferred_process_event": webhook_event_payload(event)}
+    with pytest.raises(RuntimeError, match="lost its trusted processor"):
+        await process_deferred_event(_delivery(payload), claim_id, route)
+
+    unroutable = replace(event, conversation=None)
+    route = replace(route, process_event=AsyncMock(return_value=unroutable))
+    with pytest.raises(TypeError, match="unroutable"):
+        await process_deferred_event(_delivery(payload), claim_id, route)
+
+    lifecycle = _lifecycle_event("delivery-deferred")
+    route = replace(route, process_event=AsyncMock(return_value=lifecycle))
+    with pytest.raises(TypeError, match="became a lifecycle"):
+        await process_deferred_event(_delivery(payload), claim_id, route)
