@@ -66,37 +66,36 @@ def _row_to_turn(row: Row) -> InFlightTurn:
 
 async def begin_in_flight_turn(turn: InFlightTurn) -> None:
     """Persist a turn before its agent invocation starts."""
-    db = _get_db()
-    await db.execute(
-        """
-        INSERT INTO in_flight_turns (
-            turn_id, chat_jid, group_folder, work_kind, input_messages,
-            input_start_cursor, input_end_cursor, started_at, task_id,
-            session_id, output_sent, interrupted_at, deploy_id, claimed_at,
-            conversation_claim_id, input_source, control_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            turn.turn_id,
-            turn.chat_jid,
-            turn.group_folder,
-            turn.work_kind.value,
-            json.dumps(turn.input_messages),
-            turn.input_start_cursor,
-            turn.input_end_cursor,
-            turn.started_at,
-            turn.task_id,
-            turn.session_id,
-            int(turn.output_sent),
-            turn.interrupted_at,
-            turn.deploy_id,
-            turn.claimed_at,
-            turn.conversation_claim_id,
-            turn.input_source,
-            turn.control_state.value,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            INSERT INTO in_flight_turns (
+                turn_id, chat_jid, group_folder, work_kind, input_messages,
+                input_start_cursor, input_end_cursor, started_at, task_id,
+                session_id, output_sent, interrupted_at, deploy_id, claimed_at,
+                conversation_claim_id, input_source, control_state
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                turn.turn_id,
+                turn.chat_jid,
+                turn.group_folder,
+                turn.work_kind.value,
+                json.dumps(turn.input_messages),
+                turn.input_start_cursor,
+                turn.input_end_cursor,
+                turn.started_at,
+                turn.task_id,
+                turn.session_id,
+                int(turn.output_sent),
+                turn.interrupted_at,
+                turn.deploy_id,
+                turn.claimed_at,
+                turn.conversation_claim_id,
+                turn.input_source,
+                turn.control_state.value,
+            ),
+        )
 
 
 async def get_in_flight_turn(turn_id: str) -> InFlightTurn | None:
@@ -191,39 +190,41 @@ async def get_oldest_resumable_turn_for_group(
 
 async def claim_in_flight_turn(turn_id: str) -> bool:
     """Atomically claim a turn so competing Temporal workflows cannot duplicate it."""
-    db = _get_db()
-    cursor = await db.execute(
-        """
-        UPDATE in_flight_turns
-        SET claimed_at = ?
-        WHERE turn_id = ? AND claimed_at IS NULL AND control_state = ?
-        """,
-        (_timestamp(), turn_id, CheckpointControlState.ACTIVE.value),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
+            UPDATE in_flight_turns
+            SET claimed_at = ?
+            WHERE turn_id = ? AND claimed_at IS NULL AND control_state = ?
+            """,
+            (_timestamp(), turn_id, CheckpointControlState.ACTIVE.value),
+        )
     return cursor.rowcount == 1
 
 
 async def release_in_flight_turn_claim(turn_id: str) -> None:
-    db = _get_db()
-    await db.execute("UPDATE in_flight_turns SET claimed_at = NULL WHERE turn_id = ?", (turn_id,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE in_flight_turns SET claimed_at = NULL WHERE turn_id = ?",
+            (turn_id,),
+        )
 
 
 async def mark_in_flight_output_sent(turn_id: str) -> None:
-    db = _get_db()
-    await db.execute("UPDATE in_flight_turns SET output_sent = 1 WHERE turn_id = ?", (turn_id,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE in_flight_turns SET output_sent = 1 WHERE turn_id = ?",
+            (turn_id,),
+        )
 
 
 async def update_in_flight_session(group_folder: str, session_id: str) -> None:
     """Attach a newly learned agent thread ID to work currently running for a group."""
-    db = _get_db()
-    await db.execute(
-        "UPDATE in_flight_turns SET session_id = ? WHERE group_folder = ?",
-        (session_id, group_folder),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE in_flight_turns SET session_id = ? WHERE group_folder = ?",
+            (session_id, group_folder),
+        )
 
 
 async def _get_in_flight_turn_in_transaction(
@@ -237,56 +238,53 @@ async def _get_in_flight_turn_in_transaction(
 
 async def prepare_in_flight_turn_recovery(deploy_id: str | None) -> list[InFlightTurn]:
     """Complete pause transitions and prepare only active rows for automatic recovery."""
-    db = _get_db()
     interrupted_at = _timestamp()
-    await db.execute(
-        """
-        UPDATE in_flight_turns
-        SET interrupted_at = COALESCE(interrupted_at, ?),
-            deploy_id = COALESCE(?, deploy_id),
-            claimed_at = NULL
-        WHERE control_state = ?
-        """,
-        (interrupted_at, deploy_id, CheckpointControlState.ACTIVE.value),
-    )
-    await db.execute(
-        """
-        UPDATE in_flight_turns
-        SET control_state = ?, claimed_at = NULL
-        WHERE control_state = ?
-        """,
-        (
-            CheckpointControlState.PAUSED.value,
-            CheckpointControlState.PAUSE_REQUESTED.value,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            UPDATE in_flight_turns
+            SET interrupted_at = COALESCE(interrupted_at, ?),
+                deploy_id = COALESCE(?, deploy_id),
+                claimed_at = NULL
+            WHERE control_state = ?
+            """,
+            (interrupted_at, deploy_id, CheckpointControlState.ACTIVE.value),
+        )
+        await db.execute(
+            """
+            UPDATE in_flight_turns
+            SET control_state = ?, claimed_at = NULL
+            WHERE control_state = ?
+            """,
+            (
+                CheckpointControlState.PAUSED.value,
+                CheckpointControlState.PAUSE_REQUESTED.value,
+            ),
+        )
     turns = await get_in_flight_turns()
     return [turn for turn in turns if turn.control_state is CheckpointControlState.ACTIVE]
 
 
 async def clear_in_flight_turn(turn_id: str) -> None:
-    db = _get_db()
-    await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
 
 
 async def clear_unclaimed_in_flight_turn_for_task(task_id: str) -> bool:
     """Clear a terminal scheduled checkpoint unless a recovery worker owns it."""
-    db = _get_db()
-    cursor = await db.execute(
-        """
-        DELETE FROM in_flight_turns
-        WHERE task_id = ? AND work_kind = ? AND claimed_at IS NULL
-          AND control_state = ?
-        """,
-        (
-            task_id,
-            InFlightWorkKind.SCHEDULED.value,
-            CheckpointControlState.ACTIVE.value,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
+            DELETE FROM in_flight_turns
+            WHERE task_id = ? AND work_kind = ? AND claimed_at IS NULL
+              AND control_state = ?
+            """,
+            (
+                task_id,
+                InFlightWorkKind.SCHEDULED.value,
+                CheckpointControlState.ACTIVE.value,
+            ),
+        )
     return cursor.rowcount > 0
 
 

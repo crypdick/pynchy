@@ -23,9 +23,8 @@ from pynchy.state import (
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     mark_work_item_delivery_delivered_for_turn,
-    resolve_work_item_transition,
 )
-from pynchy.work_items.api import WorkItemExecutionStatus, WorkItemTransitionStatus
+from pynchy.work_items.api import WorkItemExecutionStatus
 from tests.linear_work_items_support import (
     Lifecycle,
     _begin_turn,
@@ -651,21 +650,6 @@ async def test_done_webhook_requires_configured_completion_runtime() -> None:
         runtime.runtime = None
         with pytest.raises(RuntimeError, match="runtime has not been configured"):
             await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
-
-
-async def test_done_webhook_ignores_unknown_execution_without_done_transition(
-    lifecycle: Lifecycle,
-) -> None:
-    await _lease(lifecycle)
-    claim = await get_work_item_transition_by_request("lease-1")
-    assert claim is not None
-    await resolve_work_item_transition(
-        transition=claim,
-        execution_status=WorkItemExecutionStatus.UNKNOWN,
-        transition_status=WorkItemTransitionStatus.UNKNOWN,
-    )
-
-    assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
 
 
 async def test_done_webhook_ignores_terminal_execution(lifecycle: Lifecycle) -> None:

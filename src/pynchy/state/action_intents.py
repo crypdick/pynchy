@@ -356,23 +356,22 @@ async def mark_action_intent_outcome_unknown(
 async def recover_incomplete_action_intents() -> int:
     """Fail closed on startup for actions interrupted around provider execution."""
     now = _timestamp()
-    db = _get_db()
-    cursor = await db.execute(
-        """
-        UPDATE action_intents
-        SET status = ?, error = ?, updated_at = ?, resolved_at = ?
-        WHERE status IN (?, ?)
-        """,
-        (
-            ActionIntentStatus.OUTCOME_UNKNOWN.value,
-            "Pynchy stopped before recording a provider receipt; reconcile before retrying.",
-            now,
-            now,
-            ActionIntentStatus.CLAIMED.value,
-            ActionIntentStatus.EXECUTING.value,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
+            UPDATE action_intents
+            SET status = ?, error = ?, updated_at = ?, resolved_at = ?
+            WHERE status IN (?, ?)
+            """,
+            (
+                ActionIntentStatus.OUTCOME_UNKNOWN.value,
+                "Pynchy stopped before recording a provider receipt; reconcile before retrying.",
+                now,
+                now,
+                ActionIntentStatus.CLAIMED.value,
+                ActionIntentStatus.EXECUTING.value,
+            ),
+        )
     return cursor.rowcount
 
 
