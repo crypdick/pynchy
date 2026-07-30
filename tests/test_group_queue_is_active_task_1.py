@@ -34,6 +34,7 @@ class TestIsActiveTask:
     def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         """Not active when no container is running for the group."""
         assert queue.is_active_task(_runtime("group1@g.us")) is False
+        assert queue.has_active_run(_runtime("group1@g.us")) is False
 
     async def test_returns_true_when_task_is_active(self, queue: GroupQueue):
         """Returns True when the active container is a scheduled task."""
@@ -153,6 +154,13 @@ class TestStopActiveProcess:
         mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
         mock_proc.returncode = None
         queue.register_process(_runtime("test-group"), mock_proc, "my-container")
+
+        assert queue.has_active_run(_runtime("test-group")) is True
+        container_runtime.write_message.side_effect = OSError("IPC unavailable")
+        assert queue.send_message(_runtime("test-group"), "follow-up") is False
+        container_runtime.write_close_sentinel.side_effect = OSError("IPC unavailable")
+        queue.close_stdin(_runtime("test-group"))
+        container_runtime.write_close_sentinel.reset_mock()
 
         await queue.stop_active_process(_runtime("test-group"))
 
