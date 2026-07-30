@@ -100,6 +100,18 @@ def test_linear_webhook_route_rejects_empty_text_and_non_positive_limits(overrid
         LinearWebhookRouteConfig(**overrides)
 
 
+def test_linear_webhook_route_accepts_positive_limits() -> None:
+    config = LinearWebhookRouteConfig(
+        name="route",
+        timestamp_tolerance_seconds=1,
+        max_body_bytes=1,
+        rate_limit_requests=1,
+        rate_limit_window_seconds=1,
+    )
+
+    assert config.max_body_bytes == 1
+
+
 def test_route_rejects_a_workspace_bound_to_another_linear_account() -> None:
 
     settings = make_settings(
