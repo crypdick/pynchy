@@ -163,6 +163,36 @@ async def test_reconcile_all_skips_workspaces_without_a_configured_account(monke
     assert admitted == []
 
 
+async def test_reconcile_all_skips_forbidden_accounts(monkeypatch) -> None:
+    account = _Account("primary", _AccountConfig(public_source="forbidden"))
+    provider_recovery = AsyncMock()
+    inbox = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
+        lambda _workspace: account,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_provider_work_item_state",
+        provider_recovery,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_linear_decision_inbox",
+        inbox,
+    )
+
+    admitted = await reconcile_all_linear_work_items(
+        {"beta": _Workspace("beta", "Beta", "linear:beta")},
+        {"beta": _board("project-beta")},
+        review_plan=AsyncMock(),
+        broadcast_host_message=AsyncMock(),
+        defer_plan_review=AsyncMock(),
+    )
+
+    assert admitted == []
+    provider_recovery.assert_not_awaited()
+    inbox.assert_not_awaited()
+
+
 async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monkeypatch) -> None:
     account = _Account("primary", _AccountConfig(public_source=False))
     client = object()
