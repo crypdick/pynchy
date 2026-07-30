@@ -7,6 +7,7 @@ import pytest
 from pynchy.plugins.integrations import gog
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.linear_boot import linear_workspace_enabled
+from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.marketplace_health import MarketplaceHealthPlugin
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -42,6 +43,13 @@ def test_linear_workspace_lookup_rejects_requests_before_runtime_configuration(m
                 trigger="@Pynchy",
             )
         )
+
+
+def test_linear_webhook_routes_reject_runtime_before_configuration(monkeypatch) -> None:
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_webhooks._runtime.runtime", None)
+
+    with pytest.raises(RuntimeError, match="Linear webhook runtime has not been configured"):
+        linear_webhook_routes()
 
 
 @pytest.mark.asyncio
