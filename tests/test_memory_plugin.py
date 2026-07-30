@@ -138,6 +138,11 @@ class TestMcpHandlers:
 
 
 class TestDiscovery:
+    def test_get_memory_provider_returns_none_without_valid_plugins(self, tmp_path):
+        plugin_manager = get_plugin_manager()
+        with patch.object(plugin_manager.hook, "pynchy_memory", return_value=[]):
+            assert get_memory_provider(plugin_manager, tmp_path / "memories.db") is None
+
     def test_get_memory_provider_ignores_plugin_failure(self, tmp_path):
         plugin_manager = get_plugin_manager()
         with patch.object(
