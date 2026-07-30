@@ -291,7 +291,7 @@ async def test_stale_plan_is_replaced_without_acquiring_a_lease() -> None:
     ]
 
 
-async def test_failed_plan_reviewer_returns_issue_to_awaiting_approval() -> None:
+async def test_failed_plan_reviewer_keeps_issue_approved_for_temporal_retry() -> None:
     client = _DecisionClient()
     issue = client.issues_by_state["state-approved"][0]
     issue["description"] = (
@@ -311,12 +311,11 @@ async def test_failed_plan_reviewer_returns_issue_to_awaiting_approval() -> None
 
     assert created == []
     assert await get_active_work_item_execution("issue-execute") is None
-    assert issue["state"]["id"] == "state-awaiting-plan"
-    assert client.comments[0][0] == "issue-execute"
-    assert "RuntimeError: plan reviewer failed" in client.comments[0][1]
+    assert issue["state"]["id"] == "state-approved"
+    assert client.comments == []
 
 
-async def test_missing_plan_reviewer_returns_issue_to_awaiting_approval() -> None:
+async def test_missing_plan_reviewer_keeps_issue_approved_for_temporal_retry() -> None:
     client = _DecisionClient()
     issue = client.issues_by_state["state-approved"][0]
     issue["description"] = (
@@ -334,8 +333,8 @@ async def test_missing_plan_reviewer_returns_issue_to_awaiting_approval() -> Non
 
     assert created == []
     assert await get_active_work_item_execution("issue-execute") is None
-    assert issue["state"]["id"] == "state-awaiting-plan"
-    assert "Plan reviewer is unavailable" in client.comments[0][1]
+    assert issue["state"]["id"] == "state-approved"
+    assert client.comments == []
 
 
 async def test_reconcile_recovers_ready_planning_without_execution_authority() -> None:

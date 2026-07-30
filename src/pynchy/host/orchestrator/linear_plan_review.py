@@ -32,6 +32,7 @@ from pynchy.workspace.api import (
 )
 
 _REVIEWER_RESULT_ERROR = "Plan reviewer did not return one valid JSON decision"
+_REVIEWER_REASONING_EFFORT = "medium"
 
 
 @runtime_checkable
@@ -55,6 +56,7 @@ class PlanReviewDeps(Protocol):
         is_scheduled_task: bool = False,
         repo_access_override: str | None = None,
         input_source: str = "user",
+        model_reasoning_effort_override: str | None = None,
     ) -> str: ...
 
 
@@ -101,14 +103,14 @@ def _parse_result(raw: str) -> LinearPlanReviewResult:
             text = text[:-3].strip()
     payload = json.loads(text)
     if not isinstance(payload, dict):
-        raise TypeError(_REVIEWER_RESULT_ERROR)
+        raise TypeError("reviewer output must be a JSON object")
     raw_decision = payload.get("decision")
     reason = payload.get("reason")
     plan = payload.get("plan")
     if not isinstance(raw_decision, str) or not isinstance(reason, str):
-        raise TypeError(_REVIEWER_RESULT_ERROR)
+        raise TypeError("reviewer decision and reason must be strings")
     if plan is not None and not isinstance(plan, str):
-        raise TypeError(_REVIEWER_RESULT_ERROR)
+        raise TypeError("reviewer plan must be a string when present")
     return LinearPlanReviewResult(
         decision=LinearPlanReviewDecision(raw_decision),
         reason=reason,
@@ -124,19 +126,22 @@ async def _run_queued_review(
     group = _reviewer_profile(request)
 
     async def run_review() -> LinearPlanReviewResult:
-        final_results: list[str] = []
+        async def run_turn(prompt: str) -> str:
+            final_results: list[str] = []
+            runner_errors: list[str] = []
 
-        async def on_output(  # noqa: RUF029 - run_agent requires an async callback.
-            output: ContainerOutput,
-        ) -> None:
-            if output.type == "result" and output.result:
-                final_results.append(output.result)
+            async def on_output(  # noqa: RUF029 - run_agent requires an async callback.
+                output: ContainerOutput,
+            ) -> None:
+                if output.error:
+                    runner_errors.append(output.error)
+                if output.type == "result" and output.result:
+                    final_results.append(output.result)
 
-        try:
             result = await deps.run_agent(
                 group,
                 group.jid,
-                [{"role": "user", "content": _review_prompt(request, reviewer_prompt)}],
+                [{"role": "user", "content": prompt}],
                 on_output=on_output,
                 extra_system_notices=None,
                 is_scheduled_task=True,
@@ -144,19 +149,38 @@ async def _run_queued_review(
                 input_source=(
                     "external:hidden_plan_review" if request.public_source else "hidden_plan_review"
                 ),
+                model_reasoning_effort_override=_REVIEWER_REASONING_EFFORT,
             )
-            if result != "success" or not final_results:
-                raise RuntimeError(_REVIEWER_RESULT_ERROR)
-            return _parse_result(final_results[-1])
+            if result != "success":
+                detail = runner_errors[-1] if runner_errors else f"agent returned {result}"
+                raise RuntimeError(detail)
+            if not final_results:
+                detail = runner_errors[-1] if runner_errors else "reviewer returned no final result"
+                raise RuntimeError(detail)
+            return final_results[-1]
+
+        try:
+            raw = await run_turn(_review_prompt(request, reviewer_prompt))
+            try:
+                return _parse_result(raw)
+            except (TypeError, ValueError) as exc:
+                repair_prompt = (
+                    "Your previous response was invalid. Correct it and return exactly one "
+                    "JSON object with decision, reason, and plan when required.\n\n"
+                    f"Validation error: {type(exc).__name__}: {exc}\n\n"
+                    f"Previous response:\n{raw}"
+                )
+                return _parse_result(await run_turn(repair_prompt))
         except Exception as exc:  # noqa: BLE001 - reviewer failures become typed admission results.
             logger.exception(
                 "Hidden Linear plan review failed",
                 issue=request.identifier,
                 error_type=type(exc).__name__,
+                error=str(exc),
             )
             return LinearPlanReviewResult(
                 decision=LinearPlanReviewDecision.ERROR,
-                reason=f"{type(exc).__name__}: {_REVIEWER_RESULT_ERROR}",
+                reason=f"{type(exc).__name__}: {str(exc) or _REVIEWER_RESULT_ERROR}",
             )
 
     return await deps.queue.run_serialized_task(

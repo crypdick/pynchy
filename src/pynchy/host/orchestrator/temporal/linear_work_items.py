@@ -57,7 +57,7 @@ async def run_linear_plan_review_admission(payload: dict[str, Any]) -> str:
         async with activity_heartbeats(activity_id):
             admitted = await deps.process_linear_plan_review_admission(admission)
     except Exception as exc:
-        _record_tracked_activity_result(activity_id, "error", type(exc).__name__)
+        _record_tracked_activity_result(activity_id, "error", str(exc))
         raise
     result = "admitted" if admitted else "stale"
     _record_tracked_activity_result(activity_id, result)

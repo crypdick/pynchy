@@ -540,6 +540,8 @@ class TestTemporalSchedulerRuntime:
                     "public_source": True,
                 }
             )
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["tracked_results"]["linear-plan-review:SYN-1"]["error"] == "review failed"
 
     @pytest.mark.asyncio
     async def test_run_linear_plan_review_admission_isolated_by_issue(self, monkeypatch):
