@@ -127,6 +127,22 @@ async def test_create_group_reports_missing_configured_workspace_guild():
 
 
 @pytest.mark.asyncio
+async def test_create_group_uses_the_single_configured_workspace_guild():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"synapse": {}},
+        )
+    )
+    guild = _FakeDiscordGuild(123, "Synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.create_group("System Review") == "discord:channel:789"
+    assert guild.created == ["system-review"]
+
+
+@pytest.mark.asyncio
 async def test_create_group_rejects_ambiguous_workspace_guilds():
     ch = _channel()
     ch.client = _FakeDiscordClient(

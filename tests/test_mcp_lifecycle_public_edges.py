@@ -105,6 +105,23 @@ async def test_stdio_start_preserves_a_live_process():
     start.assert_not_called()
 
 
+async def test_stdio_start_requires_a_host_port():
+    instance = McpInstance(
+        server_name="stdio",
+        server_config=McpServerConfig(
+            type="stdio", command="bridge", port=8000, transport="streamable_http"
+        ),
+        kwargs={},
+        instance_id="stdio",
+        container_name="unused",
+        project_root=Path("/project"),
+        port=None,
+    )
+
+    with pytest.raises(RuntimeError, match="has no host port"):
+        await ensure_stdio_running(instance)
+
+
 async def test_script_start_fails_when_process_supervision_shell_is_missing(monkeypatch):
     monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: None)
 
@@ -127,6 +144,35 @@ async def test_warm_image_cache_deduplicates_images_and_continues_after_failure(
 
     assert warm.await_args_list[0].args == (first.server_config, first.project_root)
     assert warm.await_args_list[1].args == (second.server_config, second.project_root)
+
+
+async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
+    instance = _instance(server_name="notebook")
+    instance.server_config = McpServerConfig(
+        type="docker",
+        image="local/notebook:latest",
+        dockerfile="src/Dockerfile",
+        port=8000,
+    )
+    run_docker = AsyncMock(
+        side_effect=[
+            subprocess.CompletedProcess([], 1, stdout="", stderr="missing"),
+            subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+        ]
+    )
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.run_docker", run_docker):
+        await warm_image_cache({"notebook": instance})
+
+    assert run_docker.await_args_list[0].args == ("image", "inspect", "local/notebook:latest")
+    assert run_docker.await_args_list[1].args == (
+        "build",
+        "-t",
+        "local/notebook:latest",
+        "-f",
+        "/project/src/Dockerfile",
+        "/project",
+    )
 
 
 def test_terminate_process_clears_an_already_exited_process_and_record(tmp_path: Path):
@@ -180,6 +226,23 @@ def test_reap_stale_processes_removes_invalid_records(tmp_path: Path):
     (record_dir / "invalid-pid.json").write_text(
         json.dumps({"pid": 1, "marker": "pynchy-mcp-" + "a" * 32})
     )
+
+    assert reap_stale_processes(record_dir) == 0
+    assert list(record_dir.iterdir()) == []
+
+
+def test_reap_stale_processes_rejects_invalid_and_uninspectable_markers(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    (record_dir / "invalid-marker.json").write_text(
+        json.dumps({"pid": 1234, "marker": "not-owned"})
+    )
+    (record_dir / "missing-ps.json").write_text(
+        json.dumps({"pid": 1234, "marker": "pynchy-mcp-" + "a" * 32})
+    )
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: None)
 
     assert reap_stale_processes(record_dir) == 0
     assert list(record_dir.iterdir()) == []
