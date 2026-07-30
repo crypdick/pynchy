@@ -137,3 +137,50 @@ def test_user_replacement_survives_plugin_reconfiguration() -> None:
         configure_plugin_jobs(plugin_manager)
 
     assert settings.jobs["same-name"] == user_job
+
+
+def test_plugin_jobs_drop_old_contributions_and_ignore_invalid_specs() -> None:
+    settings = make_settings(
+        profiles={"fam": ProfileConfig()},
+        workspaces={"fam": WorkspaceConfig(profiles=["fam"])},
+    )
+    valid_spec = JobSpec(
+        name="old-plugin-job",
+        config=JobConfig(
+            schedule="0 8 * * *",
+            workspace="fam",
+            prompt="Plugin prompt.",
+        ).model_dump(),
+    )
+    invalid_workspace = JobSpec(
+        name="unknown-workspace",
+        config=JobConfig(
+            schedule="0 8 * * *",
+            workspace="missing",
+            prompt="Plugin prompt.",
+        ).model_dump(),
+    )
+    unnamed = JobSpec(name="   ", config={})
+    plugin_manager = _PluginManager(
+        hook=_Hooks(
+            pynchy_job_specs=lambda: [
+                object(),
+                (object(), unnamed, invalid_workspace),
+            ]
+        )
+    )
+
+    with patch(
+        "pynchy.host.orchestrator.job_sources.get_settings",
+        return_value=settings,
+    ):
+        configure_plugin_jobs(_PluginManager(hook=_Hooks(pynchy_job_specs=lambda: [(valid_spec,)])))
+        assert "old-plugin-job" in settings.jobs
+
+        configure_plugin_jobs(None)
+        assert "old-plugin-job" not in settings.jobs
+
+        configure_plugin_jobs(plugin_manager)
+
+    assert "old-plugin-job" not in settings.jobs
+    assert "unknown-workspace" not in settings.jobs
