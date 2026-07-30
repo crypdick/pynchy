@@ -25,6 +25,14 @@ from pynchy.state import (
 _SCENARIO_ID = "calendar.round.trip"
 
 
+@pytest.mark.asyncio
+async def test_runner_requires_configured_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pynchy.canaries._runner._runtime", None)
+
+    with pytest.raises(RuntimeError, match="runtime has not been configured"):
+        await run_declared_canaries(target_profile="canary-profile", scenario_ids=[])
+
+
 class PassingScenario:
     def __init__(self) -> None:
         self.calls: list[str] = []
