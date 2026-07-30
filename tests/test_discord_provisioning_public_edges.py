@@ -31,6 +31,22 @@ async def test_create_group_reuses_an_existing_workspace_channel():
 
 
 @pytest.mark.asyncio
+async def test_create_group_reuses_an_existing_configured_channel():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"synapse": {"channels": {"review": {}}}},
+        )
+    )
+    guild = _FakeDiscordGuild(123, "synapse", [_FakeDiscordTextChannel(456, "review")])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.create_group("synapse.channels.review") == "discord:channel:456"
+    assert guild.created == []
+
+
+@pytest.mark.asyncio
 async def test_create_group_rejects_an_unconfigured_channel_ref():
     ch = _channel(
         config=DiscordConnectionConfig(
@@ -92,6 +108,21 @@ async def test_create_group_reports_when_bot_has_no_workspace_guild():
     ch.client = _FakeDiscordClient([])
 
     with pytest.raises(RuntimeError, match="not in any guild"):
+        await ch.create_group("System Review")
+
+
+@pytest.mark.asyncio
+async def test_create_group_reports_missing_configured_workspace_guild():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"synapse": {}},
+        )
+    )
+    ch.client = _FakeDiscordClient([])
+
+    with pytest.raises(RuntimeError, match="Configured Discord guild not found"):
         await ch.create_group("System Review")
 
 

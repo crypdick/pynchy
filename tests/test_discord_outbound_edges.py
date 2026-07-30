@@ -23,3 +23,24 @@ async def test_empty_approval_content_does_not_send_a_blank_discord_message() ->
     )
 
     assert destination.sends == []
+
+
+@pytest.mark.asyncio
+async def test_long_approval_content_puts_controls_only_on_the_first_chunk() -> None:
+    channel = _channel()
+    channel.client = object()
+    destination = _FakeStreamChannel()
+    channel.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+
+    await channel.send_event(
+        "discord:channel:1",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="word " * 1000,
+            metadata={"short_id": "approve-1"},
+        ),
+    )
+
+    assert len(destination.sends) > 1
+    assert destination.sends[0][1]["view"] is not None
+    assert all("view" not in kwargs for _, kwargs in destination.sends[1:])
