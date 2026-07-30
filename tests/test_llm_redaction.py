@@ -139,7 +139,11 @@ def test_complete_streamed_request_redacts_system_prompt_and_tool_results() -> N
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Call 415-555-2671"},
+                        {
+                            "type": "text",
+                            "text": "Call 415-555-2671",
+                            "metadata": {"attempts": 1},
+                        },
                         {
                             "type": "tool_result",
                             "tool_use_id": "tool-1",
