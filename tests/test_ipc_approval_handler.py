@@ -277,7 +277,7 @@ class TestProcessApprovalDecision:
         pending_file = _write_pending(ipc_dir, "grp", "tainted", "my_tool", {})
         pending = json.loads(pending_file.read_text())
         pending["corruption_tainted"] = True
-        pending["secret_tainted"] = True
+        pending["redaction_required"] = "required"
         pending_file.write_text(json.dumps(pending))
         decision_file = _write_decision(ipc_dir, "grp", "tainted", approved=True)
         replay_gate = MagicMock(return_value=SecurityGate(WorkspaceSecurity()))
