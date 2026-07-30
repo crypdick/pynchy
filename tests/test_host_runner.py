@@ -212,6 +212,252 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
 
 
 @pytest.mark.asyncio
+async def test_run_host_input_reports_structured_errors_and_ignores_blank_lines(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess(
+        [b"\n", b'{"status":"error","error":"agent failed"}\n'],
+    )
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=on_output,
+        timeout_seconds=5,
+        on_process_started=lambda _proc: True,
+    )
+
+    assert status == "error"
+    assert [output.error for output in outputs] == ["agent failed"]
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_allows_a_runner_without_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([])
+    fake_proc.stderr = None
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=AsyncMock(),
+        timeout_seconds=5,
+    )
+
+    assert status == "success"
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_rejects_a_process_before_writing_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=0)
+    seen: list[_FakeProcess] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=AsyncMock(),
+        timeout_seconds=5,
+        on_process_started=lambda proc: seen.append(proc) or False,
+    )
+
+    assert status == "interrupted"
+    assert seen == [fake_proc]
+    assert fake_proc.stdin.closed is False
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_stops_process_when_start_callback_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=None)
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    def fail_start(_proc: _FakeProcess) -> bool:
+        raise RuntimeError("registration failed")
+
+    with pytest.raises(RuntimeError, match="registration failed"):
+        await run_host_input(
+            ContainerInput(
+                messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
+            on_process_started=fail_start,
+        )
+
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_rejects_missing_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=0)
+    fake_proc.stdin = None
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(RuntimeError, match="missing stdin"):
+        await run_host_input(
+            ContainerInput(
+                messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_rejects_missing_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=0)
+    fake_proc.stdout = None
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    with pytest.raises(RuntimeError, match="missing stdout"):
+        await run_host_input(
+            ContainerInput(
+                messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_reports_runner_exit_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=7)
+    fake_proc.stderr = _FakeStderr(b"runner crashed")
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=on_output,
+        timeout_seconds=5,
+    )
+
+    assert status == "error"
+    assert outputs[0].error == "Host agent runner exited with code 7: runner crashed"
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_reports_runner_that_does_not_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=None)
+    fake_proc.wait = AsyncMock(side_effect=[TimeoutError, 0])  # type: ignore[method-assign]
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=on_output,
+        timeout_seconds=5,
+    )
+
+    assert status == "error"
+    assert outputs[0].error == "Host agent runner did not exit"
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+
+
+@pytest.mark.asyncio
 async def test_run_host_input_reports_a_planned_boundary_interrupt_without_an_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
