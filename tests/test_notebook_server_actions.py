@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 from pynchy.plugins.integrations.notebook_server import KernelSession
 
@@ -84,6 +85,18 @@ class _FakeKernelManager:
         self.shutdown = True
 
 
+class _FailingKernelClient(_FakeKernelClient):
+    def wait_for_ready(self, *, timeout: int) -> None:
+        assert timeout == 30
+        raise RuntimeError("kernel unavailable")
+
+
+class _FailingKernelManager(_FakeKernelManager):
+    def __init__(self, *, kernel_name: str) -> None:
+        super().__init__(kernel_name=kernel_name)
+        self.client_instance = _FailingKernelClient()
+
+
 @pytest.fixture
 def notebook_server(monkeypatch: pytest.MonkeyPatch, tmp_path) -> dict[str, Any]:
     """Load the sidecar entry point with its optional process dependencies faked."""
@@ -140,6 +153,54 @@ async def test_start_kernel_generates_a_date_prefixed_notebook_name(
     assert started["status"] == "started"
     assert started["notebook"].startswith(f"{datetime.now(UTC).date().isoformat()}-")
     assert started["notebook"].endswith(".qmd")
+
+
+@pytest.mark.asyncio
+async def test_start_kernel_reports_readiness_failure_and_shuts_down_kernel(
+    notebook_server: dict[str, Any],
+) -> None:
+    notebook_server["KernelManager"] = _FailingKernelManager
+
+    result = await notebook_server["start_kernel"]("unavailable")
+
+    assert result == {"error": "Kernel failed to start: kernel unavailable"}
+    assert _FailingKernelManager.instances[0].shutdown is True
+
+
+@pytest.mark.asyncio
+async def test_start_kernel_rehydrates_code_and_reports_replay_errors(
+    notebook_server: dict[str, Any],
+) -> None:
+    notebook = new_notebook(
+        cells=[
+            new_markdown_cell(source="Context"),
+            new_code_cell(source="1 / 0"),
+        ]
+    )
+    notebook_server["save_notebook"](
+        notebook,
+        notebook_server["NOTEBOOK_DIR"] / "restore.qmd",
+    )
+    notebook_server["execute_code"] = AsyncMock(
+        side_effect=[
+            [],
+            [
+                {
+                    "output_type": "error",
+                    "ename": "ZeroDivisionError",
+                    "evalue": "division by zero",
+                    "traceback": [],
+                }
+            ],
+        ]
+    )
+
+    result = await notebook_server["start_kernel"]("restore.qmd")
+
+    assert result["status"] == "rehydrated"
+    assert result["cells_total"] == 2
+    assert result["code_cells_executed"] == 1
+    assert result["replay_errors"] == ["Cell 1: ZeroDivisionError: division by zero"]
 
 
 @pytest.mark.action("notebook.file.save")
@@ -341,3 +402,31 @@ async def test_notebook_actions_persist_and_clean_up_one_kernel(
     assert stopped == {"notebook": "coverage.qmd", "cells": 2, "status": "shutdown"}
     assert kernel_client.channels_stopped is True
     assert kernel_manager.shutdown is True
+
+
+@pytest.mark.asyncio
+async def test_notebook_actions_report_unknown_kernel_ids(
+    notebook_server: dict[str, Any],
+) -> None:
+    assert "No active kernel" in (await notebook_server["execute_cell"]("missing", "1"))["error"]
+    assert "No active kernel" in (await notebook_server["add_markdown"]("missing", "text"))["error"]
+    assert "No active kernel" in (await notebook_server["save_as"]("missing", "copy"))["error"]
+    assert (await notebook_server["shutdown_kernel"]("missing")) == {
+        "error": "No active kernel with id 'missing'."
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_notebook_tries_the_other_format_before_reporting_missing(
+    notebook_server: dict[str, Any],
+) -> None:
+    notebook_server["save_notebook"](
+        new_notebook(cells=[new_markdown_cell(source="Context")]),
+        notebook_server["NOTEBOOK_DIR"] / "alternate.qmd",
+    )
+
+    alternate = await notebook_server["read_notebook"]("alternate.ipynb")
+    missing = await notebook_server["read_notebook"]("missing.ipynb")
+
+    assert alternate["notebook"] == "alternate.qmd"
+    assert missing["error"].startswith("Notebook 'missing.ipynb' not found")
