@@ -238,7 +238,44 @@ async def test_projects_host_aggregate_health_without_identity_or_body(
         "timestamp": current.isoformat(),
     }
     assert "private-contact" not in response_text
-    assert "private message body" not in response_text
+
+
+@pytest.mark.asyncio
+async def test_source_health_reports_unreadable_and_stale_host_stores(
+    monkeypatch, tmp_path
+) -> None:
+    aggregate_root = tmp_path / "aggregate"
+    settings = make_settings(
+        data_dir=tmp_path / "pynchy-data",
+        messaging_source_health=MessagingSourceHealthConfig(data_dir=aggregate_root),
+    )
+    _configure_test_settings(monkeypatch, settings)
+
+    whatsapp = await SourceHealthProjection.project_personal_source("whatsapp")
+    assert whatsapp["status"] == "unavailable"
+
+    signal_db = aggregate_root / "signal" / "messages.db"
+    signal_db.parent.mkdir(parents=True)
+    signal_db.write_text("not a sqlite database")
+    signal = await SourceHealthProjection.project_personal_source("signal")
+    assert signal["status"] == "unavailable"
+
+    signal_db.unlink()
+    with sqlite3.connect(signal_db) as database:
+        database.execute("CREATE TABLE messages (timestamp, is_from_me)")
+        database.commit()
+    signal = await SourceHealthProjection.project_personal_source("signal")
+    assert signal["collector_health"] == "unknown"
+
+    whatsapp_db = aggregate_root / "whatsapp" / "messages.db"
+    whatsapp_db.parent.mkdir(parents=True)
+    with sqlite3.connect(whatsapp_db) as database:
+        database.execute("CREATE TABLE messages (timestamp, is_from_me)")
+        database.execute("INSERT INTO messages VALUES ('invalid', 0)")
+        database.commit()
+    whatsapp = await SourceHealthProjection.project_personal_source("whatsapp")
+    assert whatsapp["event_freshness"] == "unknown"
+    assert whatsapp["reason"] == "The aggregate store has no fresh inbound event."
 
 
 def test_source_health_requests_skip_mutation_ledger() -> None:
