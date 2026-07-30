@@ -2,30 +2,34 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from pynchy.config.api import (
+    BuiltinTool,
     CanaryConfig,
     ChannelOverrideConfig,
     DiscordConnectionConfig,
     JobConfig,
     MatrixConnectionConfig,
+    McpTool,
+    McpToolConfig,
     ProfileConfig,
     RepoConfig,
     ReposConfig,
     SchedulerConfig,
+    Settings,
     WorkspaceConfig,
+    WorkspaceTool,
+    get_settings,
+    reset_settings,
     validate_settings_mapping,
 )
 from pynchy.config.models import CapabilityTomlConfig
 
 DISCORD_BOT_ENV = "X"
-
-if TYPE_CHECKING:
-    from pynchy.config.api import Settings
 
 
 def _settings(**overrides) -> Settings:
@@ -81,6 +85,65 @@ def test_discord_runtime_settings_preserve_security_allowlist() -> None:
 
     assert runtime.security is not None
     assert runtime.security.allowed_users == ["user"]
+
+
+def test_mcp_tool_lookup_returns_mcp_configs_and_rejects_unknown_tools() -> None:
+    settings = _settings(
+        tools={
+            "reader": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(runtime="script", command="reader", port=8475),
+            ),
+            "shell": BuiltinTool(type="builtin"),
+        }
+    )
+
+    assert set(settings.mcp_tools_for_names(["reader", "shell"])) == {"reader"}
+    with pytest.raises(ValueError, match="unknown tool: missing"):
+        settings.mcp_tools_for_names(["missing"])
+
+
+def test_admin_clean_room_allows_workspace_tools() -> None:
+    settings = _settings(
+        profiles={"admin": ProfileConfig(is_admin=True, tools=["workspace"])},
+        tools={"workspace": WorkspaceTool(type="workspace")},
+    )
+
+    assert settings.workspace_config("admin") is not None
+
+
+def test_semantic_child_without_static_workspace_is_skipped() -> None:
+    settings = _settings(
+        workspaces={
+            "admin": WorkspaceConfig(
+                profiles=["admin"],
+                scopes=[{"workspace": "child", "profiles": ["admin"]}],
+            )
+        }
+    )
+
+    assert "child" in settings.workspace_names()
+
+
+def test_admin_clean_room_fails_closed_when_resolution_disappears() -> None:
+    resolved = Mock(is_admin=True, tools=(), execution_mode="container")
+    with patch.object(Settings, "resolved_workspace_config", side_effect=[None, resolved, None]):
+        settings = _settings()
+
+    assert settings.workspace_config("admin") is not None
+
+
+def test_timezone_uses_configured_value() -> None:
+    assert _settings(scheduler=SchedulerConfig(timezone="UTC")).timezone == "UTC"
+
+
+def test_get_settings_initializes_the_lazy_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
+    reset_settings()
+    sentinel = Mock(spec=Settings)
+    monkeypatch.setattr("pynchy.config.settings.Settings", lambda: sentinel)
+
+    assert get_settings() is sentinel
+    assert get_settings() is sentinel
 
 
 def test_workspace_pipeline_rejects_blank_text() -> None:
