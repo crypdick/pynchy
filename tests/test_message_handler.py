@@ -21,6 +21,10 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.host_shell import ShellResult
+from pynchy.host.orchestrator.messaging.host_controls import (
+    intercept_immediate_checkpoint_controls,
+    reclassify_host_control,
+)
 from pynchy.host.orchestrator.messaging.pipeline import (
     execute_direct_command,
     intercept_special_command,
@@ -141,6 +145,9 @@ class TestInterceptSpecialCommand:
         jid = "g@g.us"
         group = _make_group()
         deps = _make_deps(groups={jid: group})
+        channel = MagicMock()
+        channel.owns_jid.return_value = True
+        deps.channels = [channel]
         deps.queue.has_active_run.return_value = True
         await begin_in_flight_turn(
             InFlightTurn(
@@ -175,7 +182,35 @@ class TestInterceptSpecialCommand:
         assert deps.last_agent_timestamp[jid] == msg.timestamp
         deps.queue.stop_active_process_for_control.assert_awaited_once_with(RuntimeId(group.folder))
         deps.queue.destroy_runtime_session.assert_awaited_once_with(RuntimeId(group.folder))
-        deps.broadcast_host_message.assert_awaited_once_with(jid, "⏸️")
+        deps.send_reaction_to_channels.assert_awaited_once_with(jid, msg.id, msg.sender, "⏸️")
+
+    @pytest.mark.asyncio
+    async def test_context_reset_clears_an_idle_checkpoint(self):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-reset",
+                chat_jid=jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-25T10:00:00+00:00",
+            )
+        )
+        msg = _make_message("reset context", chat_jid=jid, message_id="reset-command")
+        await store_message(msg)
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
+            return_value=True,
+        ):
+            assert await intercept_special_command(deps, jid, group, msg) is True
+
+        assert await get_in_flight_turn("turn-reset") is None
 
     @pytest.mark.asyncio
     async def test_repeated_pause_is_idempotent(self):
@@ -346,6 +381,111 @@ class TestInterceptSpecialCommand:
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_pending_query_is_intercepted(self):
+        group = _make_group()
+        deps = _make_deps()
+        msg = _make_message("pending")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.host_controls.approval_handler."
+            "handle_pending_query",
+            new_callable=AsyncMock,
+        ) as handle:
+            assert await intercept_special_command(deps, "g@g.us", group, msg) is True
+
+        handle.assert_awaited_once_with(deps, "g@g.us")
+
+    @pytest.mark.asyncio
+    async def test_immediate_controls_skip_host_messages_and_enqueue_remaining_input(self):
+        group = _make_group()
+        deps = _make_deps()
+        host = _make_message("pause", message_id="already-host")
+        host.message_type = "host"
+        pending = _make_message("pause", message_id="pause-command")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.host_controls.get_messages_since",
+                new_callable=AsyncMock,
+                return_value=[host, pending],
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.host_controls.intercept_special_command",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await intercept_immediate_checkpoint_controls(deps, "g@g.us", group, [pending])
+
+        assert result is True
+        deps.queue.enqueue_message_check.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_immediate_controls_return_none_when_no_command_is_handled(self):
+        group = _make_group()
+        deps = _make_deps()
+        pending = _make_message("pause")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.host_controls.get_messages_since",
+                new_callable=AsyncMock,
+                return_value=[pending],
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.host_controls.intercept_special_command",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await intercept_immediate_checkpoint_controls(deps, "g@g.us", group, [pending])
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_reclassify_host_control_ignores_external_messages(self):
+        group = _make_group()
+        deps = _make_deps()
+        message = _make_message(
+            "!status",
+            metadata={"authenticated_external_route": True},
+        )
+
+        assert await reclassify_host_control(deps, "g@g.us", group, message) is False
+
+    @pytest.mark.asyncio
+    async def test_reclassify_host_control_returns_false_when_interception_fails(self):
+        group = _make_group()
+        deps = _make_deps()
+        message = _make_message("!status")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.host_controls.intercept_special_command",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            assert await reclassify_host_control(deps, "g@g.us", group, message) is False
+
+    @pytest.mark.asyncio
+    async def test_reclassify_host_control_marks_deferred_command_metadata(self):
+        group = _make_group()
+        deps = _make_deps()
+        message = _make_message("pause")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.host_controls.mark_message_as_host",
+            new_callable=AsyncMock,
+        ) as mark_host:
+            assert await reclassify_host_control(deps, "g@g.us", group, message) is True
+
+        mark_host.assert_awaited_once_with(
+            message.id,
+            "g@g.us",
+            deferred_control=True,
+        )
+        assert message.metadata == {"deferred_host_control": True}
 
     @pytest.mark.asyncio
     async def test_normal_message_not_intercepted(self):
