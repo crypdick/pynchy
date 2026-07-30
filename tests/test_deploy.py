@@ -35,6 +35,19 @@ from pynchy.host.orchestrator.deploy import (
 
 _CONFIG_HASH = "config-hash-001"
 
+
+def test_current_deploy_revision_requires_configured_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.deploy._runtime.runtime",
+        None,
+    )
+
+    with pytest.raises(RuntimeError, match="Deploy Git runtime has not been configured"):
+        current_deploy_revision()
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
