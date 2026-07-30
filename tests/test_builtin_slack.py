@@ -357,6 +357,15 @@ class TestSlackInboundBoundary:
 
         on_message.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_ingest_inbound_event_ignores_events_without_channel_or_user(self) -> None:
+        on_message = MagicMock()
+        ch = _make_channel(on_message=on_message)
+
+        await ch.ingest_inbound_event({"channel": "C12345", "user": ""})
+
+        on_message.assert_not_called()
+
 
 # ------------------------------------------------------------------
 # SlackChannelPlugin hook

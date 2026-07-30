@@ -182,6 +182,19 @@ async def test_approval_controls_explain_when_no_decision_callback_is_available(
 
 
 @pytest.mark.asyncio
+async def test_approval_timeout_does_not_edit_after_decision():
+    ch, view = await _approval_view(callback=MagicMock())
+    interaction = _interaction()
+
+    await view.children[0].callback(interaction)
+    ch.resolve_channel.reset_mock()  # type: ignore[union-attr]
+
+    await view.on_timeout()
+
+    ch.resolve_channel.assert_not_awaited()  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
 async def test_approval_timeout_disables_controls_and_marks_the_original_message():
     ch, view = await _approval_view(callback=MagicMock())
     message = MagicMock()

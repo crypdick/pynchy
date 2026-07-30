@@ -70,6 +70,7 @@ async def test_security_canary_verifiers_reject_invalid_artifacts() -> None:
         "security.cop.degraded-approval": "Degraded Cop",
         "security.gateway.posture": "Gateway redaction",
         "security.package.metadata": "Package metadata",
+        "security.file-secret-taint": "Artifact IPC",
     }
     for scenario_id, message in expected_failures.items():
         scenario = scenarios[scenario_id]
