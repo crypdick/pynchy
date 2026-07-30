@@ -9,7 +9,10 @@ import pytest
 from conftest import configure_workspace_placement_for, init_test_database, make_settings
 
 from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig
+from pynchy.host.orchestrator import config_jobs
+from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
+from pynchy.host.orchestrator.workspace_placement import WorkspacePlacement
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
@@ -95,7 +98,7 @@ class TestJobReconcile:
             tmp_path,
             jobs={
                 "watchdog": JobConfig(
-                    schedule="0 8 * * *",
+                    interval_minutes=15,
                     workspace="admin",
                     agent=False,
                     command="scripts/watchdog.py",
@@ -118,6 +121,8 @@ class TestJobReconcile:
         await reconcile_workspaces(registered, [], AsyncMock())
 
         task = (await get_all_tasks())[0]
+        assert task.schedule_type == "interval"
+        assert task.schedule_value == "900000"
         assert task.config_job_is_deterministic is True
         assert task.config_job_command == "scripts/watchdog.py"
         assert task.config_job_cwd == str((settings.project_root / "runtime").resolve())
@@ -312,7 +317,7 @@ class TestJobReconcile:
                 chat_jid="slack:COLD",
                 prompt="Run the daily triage memo.",
                 schedule_type="cron",
-                schedule_value="0 8 * * *",
+                schedule_value="0 7 * * *",
                 session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=datetime(2026, 7, 8, 8, 0, tzinfo=UTC).isoformat(),
                 status="active",
@@ -337,6 +342,7 @@ class TestJobReconcile:
         assert task.chat_jid == "slack:CNEW"
         assert task.config_job_name == "daily-triage"
         assert task.memory_enabled is False
+        assert task.schedule_value == "0 8 * * *"
 
     async def test_job_reconcile_rebinds_an_explicit_parent_workspace(
         self, db, monkeypatch, tmp_path
@@ -478,3 +484,54 @@ class TestJobReconcile:
         logs = await get_task_run_logs("job-daily-triage")
         assert task is not None
         assert [log.status for log in logs] == ["resumed", "error"]
+
+    async def test_reconcile_skips_host_and_unavailable_workspace_jobs(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        settings = self._patch_settings(monkeypatch, tmp_path, jobs={})
+        settings.jobs["host-check"] = JobConfig(
+            workspace="host",
+            schedule="0 8 * * *",
+            command="scripts/check.py",
+        )
+        settings.jobs["orphaned"] = JobConfig(
+            schedule="0 9 * * *",
+            workspace="missing",
+            prompt="Check the missing workspace.",
+        )
+
+        assert await reconcile_agent_jobs({}, settings, lambda _folder: None) == set()
+
+    async def test_reconcile_skips_job_without_resolved_workspace_config(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        settings = self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "unresolved": JobConfig(
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    prompt="Check the unresolved workspace.",
+                )
+            },
+        )
+        group = WorkspaceProfile(
+            jid="slack:CADMIN",
+            name="Admin",
+            folder="admin",
+            trigger="@Pynchy",
+            is_admin=True,
+        )
+        monkeypatch.setattr(
+            config_jobs,
+            "resolve_workspace_placement",
+            lambda _workspaces, _folder: WorkspacePlacement(
+                owner=group,
+                control_parent=group,
+            ),
+        )
+
+        assert (
+            await reconcile_agent_jobs({group.jid: group}, settings, lambda _folder: None) == set()
+        )
