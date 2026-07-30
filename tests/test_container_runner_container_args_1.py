@@ -75,6 +75,29 @@ _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=Non
 
 
 class TestContainerArgs:
+    def test_agent_environment_ignores_git_config_start_errors(self, tmp_path: Path):
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}.subprocess.run", side_effect=OSError("git unavailable")),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert "GIT_AUTHOR_NAME" not in environment
+        assert "GIT_AUTHOR_EMAIL" not in environment
+
+    def test_agent_environment_ignores_failed_git_config(self, tmp_path: Path):
+        failed = MagicMock(returncode=1, stdout="", stderr="not configured")
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}.subprocess.run", return_value=failed),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert "GIT_AUTHOR_NAME" not in environment
+        assert "GIT_AUTHOR_EMAIL" not in environment
+
     def test_agent_environment_includes_anthropic_gateway_and_extra_values(
         self,
         tmp_path: Path,
