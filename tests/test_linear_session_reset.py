@@ -68,7 +68,10 @@ def _execution() -> WorkItemExecution:
     )
 
 
-async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_path) -> None:
+@pytest.mark.parametrize("cancel_workflow_result", [True, False])
+async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(
+    tmp_path, cancel_workflow_result: bool
+) -> None:
     execution = _execution()
     worktree_file = tmp_path / "unfinished-change.txt"
     worktree_file.write_text("preserve me")
@@ -80,7 +83,7 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
         assert workspace == execution.workspace
         yield client
 
-    cancel_workflow = AsyncMock(return_value=True)
+    cancel_workflow = AsyncMock(return_value=cancel_workflow_result)
     get_control = AsyncMock(return_value=_Binding(conversation_id="conversation-1"))
     get_conversation = AsyncMock(
         return_value=_Conversation(
