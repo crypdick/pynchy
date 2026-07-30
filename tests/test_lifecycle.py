@@ -246,6 +246,11 @@ async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
         lambda *_args: record("temporal:ready"),
     )
     monkeypatch.setattr(
+        app,
+        "start_linear_work_item_reconciliation",
+        lambda: record("linear:reconcile"),
+    )
+    monkeypatch.setattr(
         lifecycle.startup_handler,
         "finalize_deploy_startup",
         lambda *_args: record("deploy:finalize"),
@@ -289,6 +294,7 @@ async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
         "channels",
         "state",
         "temporal:ready",
+        "linear:reconcile",
         "http:recover",
         "connections:ingest",
         "start:matrix",
@@ -506,6 +512,11 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
         lifecycle,
         "_start_temporal_scheduler",
         lambda _app: _completed_awaitable(),
+    )
+    monkeypatch.setattr(
+        app,
+        "start_linear_work_item_reconciliation",
+        AsyncMock(),
     )
     monkeypatch.setattr(lifecycle, "start_connection_runtimes", fail_runtime_start)
     monkeypatch.setattr(

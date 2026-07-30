@@ -317,11 +317,13 @@ review doesn't block discovery or review of another approved issue. `Awaiting
 Plan Approval` remains idle until a human decides.
 
 Before admitting work, the same reconciliation compares every unfinished local
-execution with its current Linear state. A missed move to `Done` completes the
-exact execution; a state that no longer authorizes that execution cancels it
-locally. Both paths retire only its task, workflow, and in-flight turn. They
-preserve the routed conversation, provider session, and managed worktree so a
-later authorized attempt can resume the worker's context and files.
+execution with its current Linear state and settles interrupted provider
+transitions after the live request grace period. A missed move to `Done` or
+another typed terminal state closes the routed conversation and retires its
+session, task, workflow, and in-flight turn. A nonterminal state that no longer
+authorizes the execution cancels only that execution's work, preserving the
+conversation and provider session for a later authorized attempt.
+Both paths preserve the managed worktree and its artifacts.
 
 Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
 `Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear

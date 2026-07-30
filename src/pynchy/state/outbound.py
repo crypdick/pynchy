@@ -104,14 +104,13 @@ async def record_outbound_deliveries(
 
 async def mark_delivered(ledger_id: int, channel_name: str) -> None:
     """Mark a delivery as successful."""
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute(
-        "UPDATE outbound_deliveries SET delivered_at = ?, error = NULL"
-        " WHERE ledger_id = ? AND channel_name = ?",
-        (now, ledger_id, channel_name),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE outbound_deliveries SET delivered_at = ?, error = NULL"
+            " WHERE ledger_id = ? AND channel_name = ?",
+            (now, ledger_id, channel_name),
+        )
 
 
 async def mark_delivery_succeeded(
@@ -121,25 +120,23 @@ async def mark_delivery_succeeded(
     remote_message_id: str | None,
 ) -> None:
     """Record the mutation that actually succeeded for one delivery attempt."""
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute(
-        "UPDATE outbound_deliveries"
-        " SET delivered_at = ?, error = NULL, operation = ?, remote_message_id = ?"
-        " WHERE ledger_id = ? AND channel_name = ?",
-        (now, operation, remote_message_id, ledger_id, channel_name),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE outbound_deliveries"
+            " SET delivered_at = ?, error = NULL, operation = ?, remote_message_id = ?"
+            " WHERE ledger_id = ? AND channel_name = ?",
+            (now, operation, remote_message_id, ledger_id, channel_name),
+        )
 
 
 async def mark_delivery_error(ledger_id: int, channel_name: str, error: str) -> None:
     """Record a delivery failure (leaves delivered_at NULL for retry)."""
-    db = _get_db()
-    await db.execute(
-        "UPDATE outbound_deliveries SET error = ? WHERE ledger_id = ? AND channel_name = ?",
-        (error, ledger_id, channel_name),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE outbound_deliveries SET error = ? WHERE ledger_id = ? AND channel_name = ?",
+            (error, ledger_id, channel_name),
+        )
 
 
 async def get_pending_outbound(

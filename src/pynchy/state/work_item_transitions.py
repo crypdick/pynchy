@@ -184,6 +184,8 @@ async def _resolve_work_item_transition(
     issue = resolution.issue
     error = resolution.error
     now = _timestamp()
+    if transition_status is WorkItemTransitionStatus.PENDING:
+        raise ValueError("A work item transition cannot resolve to pending")
     clears_blocked_outcome = (
         transition_status is WorkItemTransitionStatus.SUCCEEDED
         and execution_status
@@ -204,21 +206,47 @@ async def _resolve_work_item_transition(
         }
         else None
     )
-    receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
     async with atomic_write() as db:
         if lifecycle_fence is not None and not await lifecycle_fence_matches(db, lifecycle_fence):
             return None
-        # Provider receipts may arrive out of order. Keep their evidence, but
-        # never let an older intent overwrite a newer or terminal execution.
-        await db.execute(
+        # Provider reconciliation may retry an unresolved intent, but its first
+        # settled receipt owns the resulting execution projection.
+        cursor = await db.execute(
             """
             UPDATE work_item_transitions
-            SET status = ?, receipt = ?, error = ?, resolved_at = ?
+            SET status = ?, resolved_at = ?
             WHERE id = ?
+              AND status IN (?, ?)
             """,
-            (transition_status.value, receipt, error, now, transition.id),
+            (
+                transition_status.value,
+                now,
+                transition.id,
+                WorkItemTransitionStatus.PENDING.value,
+                WorkItemTransitionStatus.UNKNOWN.value,
+            ),
         )
-        if issue is None:
+        if cursor.rowcount == 1:
+            receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
+            issue_projection: tuple[str, str, str, str, str | None] | None = None
+            if issue is not None:
+                state = _issue_state(issue)
+                issue_projection = (
+                    _issue_str(issue, "identifier"),
+                    _issue_str(issue, "url"),
+                    _issue_str(state, "id"),
+                    _issue_str(state, "name"),
+                    _optional_str(issue, "updatedAt"),
+                )
+            await db.execute(
+                """
+                UPDATE work_item_transitions
+                SET receipt = ?, error = ?
+                WHERE id = ?
+                """,
+                (receipt, error, transition.id),
+            )
+        if cursor.rowcount == 1 and issue is None:
             await db.execute(
                 """
                 UPDATE work_item_executions
@@ -249,8 +277,7 @@ async def _resolve_work_item_transition(
                     transition.id,
                 ),
             )
-        else:
-            state = _issue_state(issue)
+        elif cursor.rowcount == 1 and issue_projection is not None:
             await db.execute(
                 """
                 UPDATE work_item_executions
@@ -270,11 +297,7 @@ async def _resolve_work_item_transition(
                   )
                 """,
                 (
-                    _issue_str(issue, "identifier"),
-                    _issue_str(issue, "url"),
-                    _issue_str(state, "id"),
-                    _issue_str(state, "name"),
-                    _optional_str(issue, "updatedAt"),
+                    *issue_projection,
                     execution_status.value,
                     clears_blocked_outcome,
                     clears_blocked_outcome,

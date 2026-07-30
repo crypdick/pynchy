@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -26,7 +25,6 @@ from pynchy.conversation.models import (
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.host.orchestrator.api import (
     prepare_action_intent,
 )
@@ -66,6 +64,7 @@ from pynchy.state import (
 from pynchy.workspace.api import (
     WorkspaceSecurity,
 )
+from tests.approval_support import write_encrypted_pending_approval
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -206,32 +205,19 @@ async def _write_matrix_approval(
     assert replay is None
     assert intent is not None
     await mark_action_intent_awaiting_approval(request_id, policy_decision="human required")
-    pending = {
-        "request_id": request_id,
-        "guarded_action_id": request_id,
-        "request_payload_hash": str(request_payload_hash(request_data)),
-        "short_id": "mx",
-        "tool_name": "matrix_route_send",
-        "source_group": _MATRIX_FOLDER,
-        "approval_chat_jid": str(_MATRIX_CONTROL),
-        "origin_conversation_id": str(_MATRIX_CONVERSATION),
-        "handler_type": "service",
-        "request_data": request_data,
-        "action_payload": intent.payload,
-        "action_payload_sha256": hashlib.sha256(
-            json.dumps(intent.payload, sort_keys=True).encode()
-        ).hexdigest(),
-        "timestamp": timestamp or datetime.now(UTC).isoformat(),
-        "expires_after_seconds": 300,
-        "approval_scope": "exact_request",
-        "corruption_tainted": False,
-        "secret_tainted": False,
-    }
-    pending_path = (
-        tmp_path / "approvals" / _MATRIX_FOLDER / "pending_approvals" / f"{request_id}.json"
+    _pending_path, pending = write_encrypted_pending_approval(
+        tmp_path / "approvals",
+        request_id=request_id,
+        tool_name="matrix_route_send",
+        source_group=_MATRIX_FOLDER,
+        approval_chat_jid=str(_MATRIX_CONTROL),
+        request_data=request_data,
+        handler_type="service",
+        expires_after_seconds=300,
+        origin_conversation_id=str(_MATRIX_CONVERSATION),
+        action_payload=intent.payload,
+        timestamp=timestamp,
     )
-    pending_path.parent.mkdir(parents=True, exist_ok=True)
-    pending_path.write_text(json.dumps(pending), encoding="utf-8")
     decision = {
         "request_id": request_id,
         "guarded_action_id": pending["guarded_action_id"],

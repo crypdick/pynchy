@@ -15,7 +15,10 @@ from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this a
     LinearPlanReviewAdmission,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
+from pynchy.plugins.integrations.linear_accounts import (
+    configured_linear_accounts,
+    linear_account_for_workspace,
+)
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves inbox annotations at runtime.
     LinearWorkspaceBoard,
     WorkspaceLike,
@@ -25,7 +28,9 @@ from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001 -
 )
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
 from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    UnavailableExecutionProbe,
     reconcile_provider_work_item_state,
+    retire_globally_unavailable_work_item,
 )
 from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
@@ -207,37 +212,60 @@ async def reconcile_all_linear_work_items(
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
-    for account_name, account_boards in _boards_by_account(boards).items():
+    boards_by_account = _boards_by_account(boards)
+    accounts = {account.name: account for account in configured_linear_accounts()}
+    for account_boards in boards_by_account.values():
         workspace = next(iter(account_boards))
         account = linear_account_for_workspace(workspace)
-        if account is None or account.config.public_source == "forbidden":
-            continue
-        try:
-            async with linear_client(workspace=workspace) as client:
-                retired = await reconcile_provider_work_item_state(client, account_boards)
+        if account is not None:
+            accounts.setdefault(account.name, account)
+    eligible_accounts = {
+        name: account
+        for name, account in accounts.items()
+        if account.config.public_source != "forbidden"
+    }
+    reconciled_accounts: set[str] = set()
+    unavailable_probes: dict[str, UnavailableExecutionProbe] = {}
+    for account_name, account in eligible_accounts.items():
+        account_boards = boards_by_account.get(account_name, {})
+        workspace = next(iter(account_boards), account_name)
+        try:  # noqa: PLW0717 - one account client owns recovery and admission.
+            async with linear_client(account_name=account_name) as client:
+                retired = await reconcile_provider_work_item_state(
+                    client,
+                    account_boards,
+                    account_name=account_name,
+                    unavailable_probes=unavailable_probes,
+                )
+                reconciled_accounts.add(account_name)
                 if retired:
                     logger.warning(
                         "Retired Linear work after provider-state reconciliation",
                         account=account_name,
                         count=retired,
                     )
-                admitted.extend(
-                    await reconcile_linear_decision_inbox(
-                        client,
-                        workspaces.values(),
-                        account_boards,
-                        public_source=account.config.public_source is not False,
-                        review_plan=review_plan,
-                        broadcast_host_message=broadcast_host_message,
-                        defer_plan_review=defer_plan_review,
+                if account_boards:
+                    admitted.extend(
+                        await reconcile_linear_decision_inbox(
+                            client,
+                            workspaces.values(),
+                            account_boards,
+                            public_source=account.config.public_source is not False,
+                            review_plan=review_plan,
+                            broadcast_host_message=broadcast_host_message,
+                            defer_plan_review=defer_plan_review,
+                        )
                     )
-                )
         except Exception:  # noqa: BLE001 - one optional account must not stop other accounts.
             logger.exception(
                 "Linear work item reconciliation failed",
                 account=account_name,
                 workspace=workspace,
             )
+    if reconciled_accounts == set(eligible_accounts):
+        for probe in unavailable_probes.values():
+            if probe.account_names == reconciled_accounts:
+                await retire_globally_unavailable_work_item(probe.execution)
     if admitted:
         logger.info("Linear work item tasks admitted", count=len(admitted))
     return admitted
