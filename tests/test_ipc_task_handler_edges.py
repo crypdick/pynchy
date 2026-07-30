@@ -57,6 +57,19 @@ async def test_schedule_host_job_rejects_invalid_schedule_values(
     assert await get_all_host_jobs() == []
 
 
+async def test_schedule_host_job_accepts_positive_interval(deps) -> None:
+    request = _schedule_request()
+    request["schedule_type"] = "interval"
+    request["schedule_value"] = "60"
+
+    await dispatch(request, "admin-1", True, deps)
+
+    jobs = await get_all_host_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].schedule_type == "interval"
+    assert jobs[0].schedule_value == "60"
+
+
 async def test_invalid_schedule_receipt_stops_before_persistence(deps) -> None:
     with patch(
         "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
