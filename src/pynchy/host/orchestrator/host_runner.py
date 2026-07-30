@@ -26,6 +26,8 @@ IsInterrupted = Callable[[], bool]
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _HOST_RUNNER_PROJECT = Path("src/pynchy/agent/agent_runner")
+_STDERR_DRAIN_TIMEOUT_SECONDS = 0.1
+_ERROR_DETAIL_LIMIT = 500
 
 
 @runtime_checkable
@@ -93,6 +95,17 @@ async def _read_stderr(proc: _HostRunnerProcess) -> str:
     if proc.stderr is None:
         return ""
     return (await proc.stderr.read()).decode(errors="replace")
+
+
+async def _drain_stderr(stderr_task: asyncio.Task[str]) -> str:
+    """Keep diagnostics from a stopped runner without waiting on a broken pipe."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.shield(stderr_task),
+            timeout=_STDERR_DRAIN_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        return ""
 
 
 async def _stream_outputs(
@@ -179,17 +192,22 @@ async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution
         stderr_text = await stderr_task
     except ProgressTimeoutError as exc:
         await stop_host_process(proc)
+        stderr_text = await _drain_stderr(stderr_task)
+        error = f"Host agent runner {exc.reason} timeout"
+        if detail := stderr_text.strip()[:_ERROR_DETAIL_LIMIT]:
+            error = f"{error}: {detail}"
         logger.error(
             "Host agent runner timed out",
             group=input_data.group_folder,
             timeout_reason=exc.reason,
             inactivity_timeout_seconds=exc.inactivity_timeout_seconds,
             hard_timeout_seconds=exc.hard_timeout_seconds,
+            stderr=detail or None,
         )
         await on_output(
             ContainerOutput(
                 status="error",
-                error=f"Host agent runner {exc.reason} timeout",
+                error=error,
                 query_id=input_data.query_id,
             )
         )
@@ -222,7 +240,10 @@ async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution
         await on_output(
             ContainerOutput(
                 status="error",
-                error=f"Host agent runner exited with code {return_code}: {stderr_text[:500]}",
+                error=(
+                    f"Host agent runner exited with code {return_code}: "
+                    f"{stderr_text[:_ERROR_DETAIL_LIMIT]}"
+                ),
             )
         )
         return "error"

@@ -14,7 +14,6 @@ from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves this annotation at runtime.
     LinearWorkspaceBoard,
 )
-from pynchy.plugins.integrations.linear_issue_mutations import update_issue_state
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (
     AWAITING_PLAN_APPROVAL_STATUS,
@@ -80,7 +79,7 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
             )
             result = LinearPlanReviewResult(
                 decision=LinearPlanReviewDecision.ERROR,
-                reason=f"{type(exc).__name__}: plan reviewer failed",
+                reason=f"{type(exc).__name__}: {exc}",
             )
 
     current = await client.get_issue(issue_id)
@@ -126,10 +125,9 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
         )
         return None
 
-    await client.create_comment(
-        issue_id,
-        "Plan freshness review failed, so execution was not leased.\n\n"
-        f"Error: {result.reason}\n\nMoved back to Awaiting Plan Approval.",
+    logger.error(
+        "Linear plan freshness review rejected admission",
+        issue=identifier,
+        error=result.reason,
     )
-    await update_issue_state(client, issue_id, awaiting_state_id)
-    return None
+    raise RuntimeError(f"Plan freshness review failed for {identifier}: {result.reason}")

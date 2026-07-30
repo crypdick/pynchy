@@ -42,18 +42,31 @@ class _Deps:
     input_source: str | None = None
     system_notices: list[str] | None = None
     review_prompt: str | None = None
+    review_prompts: list[str] = field(default_factory=list)
+    reasoning_efforts: list[str | None] = field(default_factory=list)
     agent_result: str = "success"
     agent_output: str | None = (
         '{"decision":"amend","reason":"The helper moved","plan":"Use the renamed helper."}'
     )
+    agent_outputs: list[str | None] | None = None
+    agent_error: str | None = None
 
     async def run_agent(self, group, _chat_jid, messages, on_output, **kwargs) -> str:
         self.reviewer_group = group
         self.input_source = kwargs["input_source"]
         self.system_notices = kwargs["extra_system_notices"]
         self.review_prompt = messages[0]["content"]
-        if self.agent_output is not None:
-            await on_output(ContainerOutput(status="success", result=self.agent_output))
+        self.review_prompts.append(self.review_prompt)
+        self.reasoning_efforts.append(kwargs["model_reasoning_effort_override"])
+        output = (
+            self.agent_outputs[len(self.review_prompts) - 1]
+            if self.agent_outputs is not None
+            else self.agent_output
+        )
+        if self.agent_error is not None:
+            await on_output(ContainerOutput(status="error", error=self.agent_error))
+        if output is not None:
+            await on_output(ContainerOutput(status="success", result=output))
         return self.agent_result
 
 
@@ -84,6 +97,7 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
     assert deps.reviewer_group.jid == "linear-plan-review:issue-1"
     assert deps.input_source == "external:hidden_plan_review"
     assert deps.system_notices is None
+    assert deps.reasoning_efforts == ["medium"]
     assert deps.review_prompt is not None
     normalized_prompt = " ".join(deps.review_prompt.split())
     assert "do not delegate to subagents" in normalized_prompt
@@ -176,6 +190,63 @@ async def test_hidden_reviewer_returns_error_when_agent_has_no_valid_result(
 
     assert result.decision is LinearPlanReviewDecision.ERROR
     assert result.reason.startswith("RuntimeError:")
+
+
+@pytest.mark.asyncio
+async def test_hidden_reviewer_returns_validation_error_for_one_correction_turn() -> None:
+    deps = _Deps(
+        agent_outputs=[
+            '{"decision":"proceed"}',
+            '{"decision":"proceed","reason":"The approved plan is current."}',
+        ]
+    )
+
+    result = await review_linear_plan(
+        deps,
+        LinearPlanReviewRequest(
+            workspace="project",
+            issue_id="issue-repair",
+            identifier="SYN-5",
+            title="Repair reviewer output",
+            url="https://linear.app/example/issue/SYN-5",
+            description="Approved plan",
+            updated_at="2026-07-26T20:00:00Z",
+            public_source=False,
+        ),
+        "Review this plan.",
+    )
+
+    assert result.decision is LinearPlanReviewDecision.PROCEED
+    assert deps.reasoning_efforts == ["medium", "medium"]
+    assert "reviewer decision and reason must be strings" in deps.review_prompts[1]
+    assert '{"decision":"proceed"}' in deps.review_prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_hidden_reviewer_preserves_runner_error_details() -> None:
+    deps = _Deps(
+        agent_result="error",
+        agent_output=None,
+        agent_error="Host agent runner initial_progress timeout: codex startup blocked",
+    )
+
+    result = await review_linear_plan(
+        deps,
+        LinearPlanReviewRequest(
+            workspace="project",
+            issue_id="issue-runner-error",
+            identifier="SYN-6",
+            title="Report runner failure",
+            url="https://linear.app/example/issue/SYN-6",
+            description="Approved plan",
+            updated_at="2026-07-26T20:00:00Z",
+            public_source=False,
+        ),
+        "Review this plan.",
+    )
+
+    assert result.decision is LinearPlanReviewDecision.ERROR
+    assert "codex startup blocked" in result.reason
 
 
 @pytest.mark.asyncio

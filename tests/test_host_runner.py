@@ -346,6 +346,47 @@ async def test_host_silence_timeout_stops_process_group_and_stderr(
 
 
 @pytest.mark.asyncio
+async def test_host_silence_timeout_reports_stderr_from_stopped_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=None)
+    fake_proc.stdout = _BlockingStdout()
+    fake_proc.stderr = _FakeStderr(b"codex failed before startup")
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda _pid, _sig: None)
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[],
+            group_folder="admin-host",
+            chat_jid="slack:C123",
+            is_admin=True,
+            query_id="query-stderr",
+        ),
+        cwd=tmp_path,
+        project_root=tmp_path,
+        on_output=on_output,
+        timeout_seconds=0.02,
+    )
+
+    assert status == "error"
+    assert outputs[-1].error == (
+        "Host agent runner inactivity timeout: codex failed before startup"
+    )
+
+
+@pytest.mark.asyncio
 async def test_host_silent_inflight_tool_does_not_self_refresh(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

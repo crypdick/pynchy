@@ -26,6 +26,7 @@ from pynchy.host.container_manager import session as session_mod
 from pynchy.host.container_manager.api import McpStartupFailure
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerResult,
+    build_container_input,
     run_agent,
 )
 from pynchy.identifiers import (
@@ -106,6 +107,33 @@ class TestContainerInputAgentCoreConfig:
             snapshot_ms=0.0,
             turn_id=turn_id,
         )
+
+    def test_invocation_reasoning_effort_overrides_workspace_effort(self):
+        settings = make_settings(
+            profiles={"code": ProfileConfig()},
+            workspaces={
+                TEST_GROUP.folder: WorkspaceConfig(
+                    profiles=["code"],
+                    model_reasoning_effort="ultra",
+                )
+            },
+        )
+
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
+        ):
+            result = build_container_input(
+                [],
+                self._ctx(),
+                "chat",
+                TEST_GROUP,
+                runtime=_agent_runtime(settings),
+                model_reasoning_effort_override="medium",
+            )
+
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model_reasoning_effort"] == "medium"
 
     @pytest.mark.asyncio
     async def test_scheduled_run_reuses_durable_host_session(self, tmp_path: Path):

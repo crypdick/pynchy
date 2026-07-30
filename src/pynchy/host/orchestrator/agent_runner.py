@@ -14,6 +14,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves container-opera
     Callable,
 )
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves public runner annotations.
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -30,6 +31,9 @@ from pynchy.host.orchestrator.agent_core_config import (
 )
 from pynchy.host.orchestrator.agent_core_config import (
     session_model_mismatch as _session_model_mismatch,
+)
+from pynchy.host.orchestrator.host_agent_dispatch import (
+    BuildContainerInput,
 )
 from pynchy.host.orchestrator.host_agent_dispatch import run_host_execution as _run_host_execution
 from pynchy.host.orchestrator.host_execution import (
@@ -203,6 +207,7 @@ def build_container_input(  # noqa: PLR0913 - explicit runner wire inputs keep t
     *,
     runtime: AgentExecutionRuntime,
     is_scheduled_task: bool = False,
+    model_reasoning_effort_override: str | None = None,
 ) -> ContainerInput:
     """Build a runner input through this module's patchable settings seam."""
     return _preflight.build_container_input(
@@ -211,7 +216,10 @@ def build_container_input(  # noqa: PLR0913 - explicit runner wire inputs keep t
         chat_jid,
         group,
         agent_core_config=agent_core_config(
-            runtime.model, runtime.model_reasoning_effort, group.folder
+            runtime.model,
+            runtime.model_reasoning_effort,
+            group.folder,
+            model_reasoning_effort_override=model_reasoning_effort_override,
         ),
         is_scheduled_task=is_scheduled_task,
     )
@@ -377,10 +385,11 @@ async def _cold_start(  # noqa: PLR0913 - cold-start values remain explicit at t
     ctx: PreContainerResult,
     runtime: AgentExecutionRuntime,
     operations: ContainerAgentOperations,
+    build_input: BuildContainerInput,
 ) -> str:
     """Spawn a container, create a persistent session, and wait for the first query."""
     container_name = await operations.fresh_container_name(group.folder)
-    input_data = build_container_input(messages, ctx, chat_jid, group, runtime=runtime)
+    input_data = build_input(messages, ctx, chat_jid, group, runtime=runtime)
 
     # Remove stale container with the same name before spawning.
     # After a service restart or container crash, a dead Docker container may
@@ -421,6 +430,7 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
     turn_id: str | None = None,
     resume_session_id: str | None = None,
     automation_memory_dir: Path | None = None,
+    model_reasoning_effort_override: str | None = None,
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
 
@@ -441,6 +451,10 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
     resolved_turn_id = turn_id or new_turn_id()
     runtime = deps.agent_execution_runtime
     operations = deps.container_agent_operations
+    build_input = partial(
+        build_container_input,
+        model_reasoning_effort_override=model_reasoning_effort_override,
+    )
 
     # Pre-container setup is shared by all durable worker paths.
     ctx = await pre_container_setup(
@@ -466,7 +480,10 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
     recovered_host_session = ctx.session_id is not None
 
     resolved_agent_core_config = agent_core_config(
-        runtime.model, runtime.model_reasoning_effort, group.folder
+        runtime.model,
+        runtime.model_reasoning_effort,
+        group.folder,
+        model_reasoning_effort_override=model_reasoning_effort_override,
     )
     if _session_model_mismatch(ctx.session_id, resolved_agent_core_config):
         logger.info(
@@ -504,7 +521,7 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
                 messages,
                 ctx,
                 host_cwd.path,
-                build_container_input,
+                build_input,
                 runtime,
                 is_scheduled_task=is_scheduled_task,
                 destroy_session=operations.destroy_session,
@@ -545,7 +562,16 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
                     ctx=ctx,
                 )
             )
-        return await _cold_start(deps, group, chat_jid, messages, ctx, runtime, operations)
+        return await _cold_start(
+            deps,
+            group,
+            chat_jid,
+            messages,
+            ctx,
+            runtime,
+            operations,
+            build_input,
+        )
     except Exception:  # noqa: BLE001 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"

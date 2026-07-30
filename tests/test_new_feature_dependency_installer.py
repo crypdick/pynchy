@@ -33,6 +33,8 @@ def _fake_tool_commands(monkeypatch: pytest.MonkeyPatch) -> None:
             return subprocess.CompletedProcess(
                 command, 0, stdout="new-feature 999.0.0\n", stderr=""
             )
+        if command[-1] == "--version" and Path(command[0]).name == "codex":
+            return subprocess.CompletedProcess(command, 0, stdout="codex-cli 999.0.0\n", stderr="")
         raise AssertionError(f"Unexpected dependency command: {command}")
 
     monkeypatch.setattr(installer.shutil, "which", command_exists)
@@ -148,3 +150,39 @@ def test_full_profile_install_creates_missing_selected_clis(
     assert (bin_dir / "new-feature").is_file()
     assert (bin_dir / "codex").is_file()
     assert f"new-feature: {bin_dir / 'new-feature'}" in capsys.readouterr().out
+
+
+def test_full_profile_install_replaces_a_codex_that_cannot_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for command in ("temporal", "new-feature"):
+        (bin_dir / command).touch()
+    _fake_tool_commands(monkeypatch)
+
+    def command_exists(name: str) -> str | None:
+        return {
+            "codex": "/opt/homebrew/bin/codex",
+            "docker": "/usr/bin/docker",
+            "npm": "/usr/bin/npm",
+            "uv": "/usr/bin/uv",
+        }.get(name)
+
+    original_run = installer.subprocess.run
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command == ["/opt/homebrew/bin/codex", "--version"]:
+            raise subprocess.TimeoutExpired(command, 10)
+        return original_run(command, **kwargs)
+
+    def install_codex(_npm: str, destination: Path) -> None:
+        (destination / "codex").touch()
+
+    monkeypatch.setattr(installer.shutil, "which", command_exists)
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    monkeypatch.setattr(installer, "_install_codex", install_codex)
+
+    _invoke_main(monkeypatch, "--bin-dir", str(bin_dir))
+
+    assert (bin_dir / "codex").is_file()

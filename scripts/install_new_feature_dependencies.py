@@ -219,6 +219,21 @@ def _new_feature_version(new_feature: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _codex_ready(codex: str) -> bool:
+    """Return whether Codex can reach its version command promptly."""
+    try:
+        result = subprocess.run(  # noqa: S603 - selected tool command is locally resolved.
+            [codex, "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and bool(f"{result.stdout}\n{result.stderr}".strip())
+
+
 def _ensure_pinned_temporal(bin_dir: Path, *, check_only: bool) -> Path:
     """Install or verify the exact Temporal version used by the runtime profile."""
     temporal = bin_dir / "temporal"
@@ -255,6 +270,28 @@ def _ensure_new_feature(uv: str, bin_dir: Path, *, check_only: bool) -> str:
     return new_feature
 
 
+def _ensure_codex(bin_dir: Path, *, check_only: bool) -> str:
+    """Install a user-local Codex when the selected executable cannot start."""
+    codex = _resolved_command("codex", bin_dir)
+    if codex is not None and _codex_ready(codex):
+        return codex
+    if check_only:
+        if codex is None:
+            raise DependencyError("Codex CLI is missing")
+        raise DependencyError(f"Codex CLI at {codex} has unreadable version output")
+
+    npm = shutil.which("npm")
+    if npm is None:
+        raise DependencyError(
+            "Codex CLI is unavailable and npm is missing; install Node.js or Codex manually"
+        )
+    _install_codex(npm, bin_dir)
+    codex = _selected_command("codex", bin_dir)
+    if codex is None or not _codex_ready(codex):
+        raise DependencyError("Codex installation completed without a functioning executable")
+    return codex
+
+
 def _ensure_runtime_dependencies(*, bin_dir: Path, check_only: bool) -> None:
     """Install or verify the Docker and Temporal dependencies shared by CI and development."""
     docker = shutil.which("docker")
@@ -279,19 +316,7 @@ def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
     new_feature = _ensure_new_feature(uv, bin_dir, check_only=check_only)
     _line(f"new-feature: {new_feature}")
 
-    codex = _resolved_command("codex", bin_dir)
-    if codex is None:
-        if check_only:
-            raise DependencyError("Codex CLI is missing")
-        npm = shutil.which("npm")
-        if npm is None:
-            raise DependencyError(
-                "Codex CLI is missing and npm is unavailable; install Node.js or Codex manually"
-            )
-        _install_codex(npm, bin_dir)
-        codex = _resolved_command("codex", bin_dir)
-    if codex is None:
-        raise DependencyError("Codex installation completed without an executable")
+    codex = _ensure_codex(bin_dir, check_only=check_only)
     _line(f"Codex CLI: {codex}")
 
     if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
