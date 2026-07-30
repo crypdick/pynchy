@@ -380,6 +380,15 @@ class TestAppleRuntime:
     def test_satisfies_orphan_reaping_contract(self):
         assert isinstance(AppleContainerRuntime(), OrphanReapingRuntime)
 
+    @pytest.mark.parametrize("available", [True, False])
+    def test_reports_cli_availability(self, monkeypatch, available):
+        monkeypatch.setattr(
+            "pynchy.plugins.runtimes.apple_runtime.runtime.shutil.which",
+            lambda _cli: "container" if available else None,
+        )
+
+        assert AppleContainerRuntime().is_available() is available
+
     def test_ensure_running_bounds_status_probe(self):
         rt = AppleContainerRuntime()
         with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
@@ -404,6 +413,20 @@ class TestAppleRuntime:
             rt.ensure_running()
 
         assert mock_run.call_args_list[1].kwargs["timeout"] == 30
+
+    def test_start_failure_is_reported_after_status_failure(self):
+        rt = AppleContainerRuntime()
+        with (
+            patch(
+                "pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run",
+                side_effect=[
+                    subprocess.SubprocessError("status unavailable"),
+                    OSError("container unavailable"),
+                ],
+            ),
+            pytest.raises(RuntimeError, match="failed to start"),
+        ):
+            rt.ensure_running()
 
     def test_parses_container_status_object_format(self):
         rt = AppleContainerRuntime()
@@ -467,6 +490,26 @@ class TestAppleRuntime:
             "pynchy-labeled",
             "pynchy-legacy",
         ]
+
+    def test_list_containers_skips_nonobjects_and_invalid_creation_dates(self):
+        rt = AppleContainerRuntime()
+        output = json.dumps(
+            [
+                None,
+                {
+                    "configuration": {"id": "pynchy-invalid-date"},
+                    "status": "running",
+                    "creationDate": "not-a-date",
+                },
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = output
+
+            result = rt.list_containers("pynchy-")
+
+        assert len(result) == 1
+        assert result[0].created_at is None
 
     def test_cleanup_builder_stops_and_removes_buildkit(self):
         rt = AppleContainerRuntime()
