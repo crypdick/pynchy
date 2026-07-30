@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -15,6 +16,7 @@ from pynchy.host.container_manager.litellm_config import (
     LiteLLMConfigPreparer,
     ResponseModelRoute,
 )
+from pynchy.host.container_manager.litellm_responses import LiteLLMResponsesAvailability
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -209,7 +211,7 @@ class TestLiteLLMResponsesAvailability:
         gateway = await self._start_gateway(
             tmp_path,
             self._response_session(
-                lines=(b"data: response.created\n\n", b"data: [DONE]\n\n"),
+                lines=(b"\n", b"data: response.created\n\n", b"data: [DONE]\n\n"),
                 requests=requests,
             ),
         )
@@ -321,6 +323,7 @@ class TestLiteLLMResponsesAvailability:
         ("status", "lines", "failure"),
         [
             (503, (b"data: raw-upstream-body\n\n",), "http_5xx"),
+            (600, (b"data: raw-upstream-body\n\n",), "http_other"),
             (200, (b"data: response.created\n\n",), "protocol"),
         ],
     )
@@ -388,3 +391,125 @@ class TestLiteLLMResponsesAvailability:
             "test-master-key",
         ):
             assert forbidden not in rendered
+
+    @pytest.mark.asyncio
+    async def test_status_schedules_one_stale_refresh_without_blocking(self):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+        availability.set_routes(
+            (ResponseModelRoute(model="openai/*", route_count=1, canary_model=None),)
+        )
+
+        assert availability.status["stale"] is True
+        assert availability.status["stale"] is True
+        for _ in range(5):
+            await asyncio.sleep(0)
+            status = availability.status
+            if not status["stale"]:
+                break
+
+        assert status["state"] == "unavailable"
+        assert status["stale"] is False
+        assert status["aliases"] == [
+            {
+                "alias": "openai/*",
+                "route_count": 1,
+                "state": "unavailable",
+                "checked_at": status["checked_at"],
+                "failure": "not_probeable",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_a_pending_stale_refresh(self, monkeypatch: pytest.MonkeyPatch):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+        availability.set_routes(
+            (ResponseModelRoute(model="responses-model", route_count=1, canary_model="model"),)
+        )
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def blocked_refresh() -> None:
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(availability, "refresh", blocked_refresh)
+        assert availability.status["stale"] is True
+        await started.wait()
+
+        await availability.stop()
+
+        assert availability.state == "unavailable"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            TimeoutError("session timeout"),
+            aiohttp.ClientError("offline"),
+            RuntimeError("bad stream"),
+        ],
+    )
+    async def test_refresh_sanitizes_session_setup_failures(
+        self,
+        error: Exception,
+    ):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+        availability.set_routes(
+            (ResponseModelRoute(model="responses-model", route_count=1, canary_model="model"),)
+        )
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(side_effect=error)
+        session.__aexit__ = AsyncMock()
+
+        with patch(f"{_RESPONSES_MOD}.aiohttp.ClientSession", return_value=session):
+            await availability.refresh()
+
+        assert availability.status["aliases"] == [
+            {
+                "alias": "responses-model",
+                "route_count": 1,
+                "state": "unavailable",
+                "checked_at": availability.status["checked_at"],
+                "failure": (
+                    "timeout"
+                    if isinstance(error, TimeoutError)
+                    else "network"
+                    if isinstance(error, aiohttp.ClientError)
+                    else "protocol"
+                ),
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_unconfigured_availability_has_a_stable_empty_status(self):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+
+        assert availability.state == "not_configured"
+        assert availability.status == {
+            "state": "not_configured",
+            "checked_at": None,
+            "stale": False,
+            "aliases": [],
+        }
+
+        await availability.refresh()
+        assert availability.status["checked_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_stop_is_a_noop_without_a_pending_refresh(self):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+
+        await availability.stop()
+
+        assert availability.state == "not_configured"
+
+    def test_status_does_not_schedule_refresh_without_a_running_loop(self):
+        availability = LiteLLMResponsesAvailability(port=4000, key="test-master-key")
+        availability.set_routes(
+            (ResponseModelRoute(model="responses-model", route_count=1, canary_model="model"),)
+        )
+
+        status = availability.status
+
+        assert status["state"] == "unavailable"
+        assert status["stale"] is True
