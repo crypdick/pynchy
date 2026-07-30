@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config.api import WorkspaceMigrationConfig, validate_settings_mapping
+from pynchy.config.workspace_layout import semantic_workspace_configs
 
 
 def test_semantic_scope_becomes_a_routable_workspace() -> None:
@@ -18,6 +19,15 @@ def test_semantic_scope_becomes_a_routable_workspace() -> None:
 
     assert settings.workspace_parent("reviews") == "engineering"
     assert settings.workspace_config("reviews").profiles == ["reviewer"]  # type: ignore[union-attr]
+
+
+def test_physical_thread_without_semantic_policy_is_accepted() -> None:
+    settings = validate_settings_mapping(
+        {"workspaces": {"engineering": {"threads": [{"name": "review"}]}}}
+    )
+
+    assert settings.workspace_parent("engineering") is None
+    assert semantic_workspace_configs(settings.workspaces) == {}
 
 
 @pytest.mark.parametrize(
@@ -88,3 +98,19 @@ def test_workspace_migration_requires_a_declared_destination(source, migration, 
                 "workspace_migrations": {source: migration},
             }
         )
+
+
+def test_workspace_migrations_validate_multiple_sources() -> None:
+    settings = validate_settings_mapping(
+        {
+            "workspaces": {
+                "relationships": {"threads": [{"name": "family"}]},
+            },
+            "workspace_migrations": {
+                "legacy-a": {"target_workspace": "relationships", "target_thread": "family"},
+                "legacy-b": {"target_workspace": "relationships", "target_thread": "family"},
+            },
+        }
+    )
+
+    assert settings.workspace_config("relationships").threads[0].name == "family"

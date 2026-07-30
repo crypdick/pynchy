@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from pynchy.config.api import (
     PersonalizationError,
+    PromptCatalog,
     Settings,
     load_layered_settings_mapping,
     repository_settings_sources,
@@ -16,9 +18,6 @@ from pynchy.config.api import (
     validate_personalization_tree,
     validate_settings_mapping,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _write_tree(root: Path) -> tuple[Path, Path]:
@@ -319,6 +318,23 @@ def test_rejects_non_mapping_jobs_when_automation_is_declared(tmp_path: Path) ->
         )
 
 
+def test_rejects_non_mapping_workspaces_when_workspace_is_declared(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    workspaces = defaults / "workspaces"
+    workspaces.mkdir()
+    (workspaces / "team.toml").write_text(
+        "schema_version = 1\n[workspace]\nprofiles = []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="workspaces setting must be a mapping"):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"workspaces": []},
+        )
+
+
 def test_rejects_malformed_automation_documents(tmp_path: Path) -> None:
     defaults, personalization = _write_tree(tmp_path)
     automations = defaults / "automations"
@@ -343,6 +359,7 @@ def test_rejects_non_mapping_gateway_configuration(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("content", "message"),
     [
+        ("model_list: [", "Could not parse LiteLLM configuration"),
         ("- model_name: gpt-test\n", "configuration must be a mapping"),
         ("model_list:\n  - invalid\n", r"model_list\[0\] must be a mapping"),
         (
@@ -387,3 +404,265 @@ def test_rejects_malformed_personalized_skill_metadata(
 
     with pytest.raises(PersonalizationError, match=message):
         validate_personalization_tree(tmp_path, personalization)
+
+
+def _prompt_catalog() -> PromptCatalog:
+    ids = (
+        "souls/default",
+        "executors/default",
+        "reviewers/cop-inbound",
+        "reviewers/cop-outbound",
+        "reviewers/cop-bash",
+        "reviewers/cop-taint",
+        "reviewers/learning",
+        "reviewers/plan-freshness",
+        "executors/delivery",
+        "reviewers/review",
+    )
+    return PromptCatalog(content=dict.fromkeys(ids, "content"), sources={})
+
+
+def test_loads_workspace_and_pipeline_documents(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        '[prompts]\ndefault_pipeline = "delivery"\n',
+        encoding="utf-8",
+    )
+    workspaces = personalization / "workspaces"
+    pipelines = personalization / "pipelines"
+    workspaces.mkdir()
+    pipelines.mkdir()
+    (workspaces / "team.toml").write_text(
+        "schema_version = 1\n"
+        '[workspace]\nprofiles = []\nsoul = "souls/default"\npipeline = "delivery"\n',
+        encoding="utf-8",
+    )
+    (pipelines / "delivery.toml").write_text(
+        "schema_version = 1\n"
+        "[pipeline]\n"
+        "[[pipeline.stages]]\n"
+        'name = "delivery"\nexecutor = "executors/delivery"\n'
+        'reviewers = ["reviewers/review"]\n',
+        encoding="utf-8",
+    )
+
+    with patch("pynchy.config.personalization.load_prompt_catalog", return_value=_prompt_catalog()):
+        mapping = load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            require_personalization=True,
+        )
+
+    assert mapping["workspaces"]["team"]["pipeline"] == "delivery"
+    assert mapping["pipelines"]["delivery"]["stages"][0]["executor"] == "executors/delivery"
+
+
+@pytest.mark.parametrize(
+    ("directory", "filename", "content", "message"),
+    [
+        (
+            "workspaces",
+            "team.toml",
+            "schema_version = 1\n[workspace]\nprofiles = [",
+            "Invalid workspace",
+        ),
+        (
+            "pipelines",
+            "delivery.toml",
+            "schema_version = 1\n[pipeline]\nstages = []\n",
+            "Invalid pipeline",
+        ),
+        (
+            "automations",
+            ".broken.toml",
+            "schema_version = 1\n[job]\n",
+            "Invalid automation filename",
+        ),
+    ],
+)
+def test_rejects_invalid_layer_documents(
+    tmp_path: Path,
+    directory: str,
+    filename: str,
+    content: str,
+    message: str,
+) -> None:
+    _, personalization = _write_tree(tmp_path)
+    target = personalization / directory
+    target.mkdir()
+    (target / filename).write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match=message):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_colliding_workspace_and_pipeline_layers(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    for root, name, content in (
+        (
+            defaults / "workspaces",
+            "same.toml",
+            "schema_version = 1\n[workspace]\nprofiles = []\n",
+        ),
+        (
+            personalization / "workspaces",
+            "same.toml",
+            "schema_version = 1\n[workspace]\nprofiles = []\n",
+        ),
+    ):
+        root.mkdir(exist_ok=True)
+        (root / name).write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match="Workspace files must be globally unique"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_colliding_pipeline_layers(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    content = (
+        "schema_version = 1\n[pipeline]\n[[pipeline.stages]]\n"
+        "name = 'interactive'\nexecutor = 'executors/default'\n"
+    )
+    for root in (defaults / "pipelines", personalization / "pipelines"):
+        root.mkdir()
+        (root / "same.toml").write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match="Pipeline files must be globally unique"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_non_mapping_pipelines_when_pipeline_is_declared(tmp_path: Path) -> None:
+    defaults, personalization = _write_tree(tmp_path)
+    pipelines = defaults / "pipelines"
+    pipelines.mkdir()
+    (pipelines / "team.toml").write_text(
+        "schema_version = 1\n[pipeline]\n[[pipeline.stages]]\n"
+        "name = 'interactive'\nexecutor = 'executors/default'\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="pipelines setting must be a mapping"):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"pipelines": []},
+        )
+
+
+def test_rejects_invalid_workspace_filename(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    workspaces = personalization / "workspaces"
+    workspaces.mkdir()
+    (workspaces / ".broken.toml").write_text("", encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match="Invalid workspace filename"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_unknown_selected_pipeline(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        '[prompts]\ndefault_pipeline = "missing"\n',
+        encoding="utf-8",
+    )
+    with (
+        patch("pynchy.config.personalization.load_prompt_catalog", return_value=_prompt_catalog()),
+        pytest.raises(PersonalizationError, match="Selected pipeline names do not resolve"),
+    ):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+
+def test_rejects_invalid_prompt_configuration(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    with (
+        patch("pynchy.config.personalization.load_prompt_catalog", return_value=_prompt_catalog()),
+        pytest.raises(PersonalizationError, match="Invalid prompt configuration"),
+    ):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"prompts": {"default_soul": "invalid"}},
+        )
+
+
+def test_rejects_missing_prompt_ids(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    with (
+        patch("pynchy.config.personalization.load_prompt_catalog", return_value=_prompt_catalog()),
+        pytest.raises(PersonalizationError, match="Required prompt IDs do not resolve"),
+    ):
+        load_layered_settings_mapping(
+            tmp_path,
+            personalization_root=personalization,
+            personalization_settings={"prompts": {"default_soul": "souls/missing"}},
+        )
+
+
+def test_rejects_invalid_yaml_frontmatter_in_skill(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills" / "broken"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: [broken\n---\ncontent\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersonalizationError, match="invalid YAML frontmatter"):
+        validate_personalization_tree(tmp_path, personalization)
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("plain text", "invalid YAML frontmatter"),
+        ("---\n- item\n---\n", "frontmatter must be a mapping"),
+    ],
+)
+def test_rejects_invalid_skill_frontmatter_shape(
+    tmp_path: Path, content: str, message: str
+) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills" / "broken"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match=message):
+        validate_personalization_tree(tmp_path, personalization)
+
+
+def test_reports_skill_read_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills" / "unreadable"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("content", encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if path.name == "SKILL.md":
+            raise OSError("boom")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    with pytest.raises(PersonalizationError, match="Could not read skill"):
+        validate_personalization_tree(tmp_path, personalization)
+
+
+def test_allows_valid_skill_without_optional_tier(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    skill = personalization / "skills" / "valid"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: valid\ndescription: Valid skill.\n---\ncontent\n",
+        encoding="utf-8",
+    )
+
+    validate_personalization_tree(tmp_path, personalization)
+
+
+def test_allows_environment_key_suffix(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    (personalization / "pynchy.toml").write_text(
+        f'[gateway]\n{"api" + "_key_env"} = "ENVIRONMENT_VARIABLE"\n', encoding="utf-8"
+    )
+
+    validate_personalization_tree(tmp_path, personalization)

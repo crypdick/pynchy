@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -152,6 +153,44 @@ async def test_confirmed_evidence_suppresses_every_route_without_consumption() -
     assert first.outbound_effect_suppressed is True
     assert second.outbound_effect_suppressed is True
     assert first.receipt.disposition == second.receipt.disposition == "routed"
+
+
+@pytest.mark.parametrize(
+    ("decision", "suppressed", "held"),
+    [("suppressed", True, False), ("held", False, True)],
+)
+async def test_receipt_reuses_an_existing_effect_decision(
+    decision: str,
+    suppressed: bool,
+    held: bool,
+) -> None:
+    with patch(
+        "pynchy.state.webhook_effect_admission.webhook_effect_decision",
+        new=AsyncMock(return_value=decision),
+    ):
+        admission = await admit_webhook_receipt(
+            _receipt("project", f"decision-{decision}"),
+            None,
+            effect_evidence=_evidence(),
+        )
+
+    assert admission.outbound_effect_suppressed is suppressed
+    assert admission.outbound_effect_held is held
+
+
+async def test_receipt_rejects_mismatched_effect_evidence() -> None:
+    evidence = _evidence()
+    mismatched = replace(
+        evidence,
+        scope=replace(evidence.scope, event_action="update"),
+    )
+
+    with pytest.raises(ValueError, match="does not match its receipt"):
+        await admit_webhook_receipt(
+            _receipt("project", "mismatched-evidence"),
+            None,
+            effect_evidence=mismatched,
+        )
 
 
 async def test_callback_before_response_is_held_then_completed_without_a_claim() -> None:

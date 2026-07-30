@@ -7,6 +7,7 @@ import io
 import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import pytest
 
@@ -71,6 +72,14 @@ def _write_valid_credentials(tmp_path: Path) -> None:
         '"client_secret": "client-secret"}}'  # pragma: allowlist secret
     )
     (profile_dir / "credentials.json").write_text('{"refresh_token": "refresh-token"}')
+
+
+@pytest.mark.asyncio
+async def test_setup_action_requires_configured_runtime() -> None:
+    with patch("pynchy.plugins.integrations.google_setup._paths._runtime") as runtime:
+        runtime.runtime = None
+        with pytest.raises(RuntimeError, match="runtime has not been configured"):
+            await _handler()({"source_group": "assigned"})
 
 
 def _successful_rest_response(request: urllib.request.Request) -> _Response:

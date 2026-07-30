@@ -81,3 +81,111 @@ async def test_request_inspection_reads_responses_json_content_parts() -> None:
         result = await request_inspection(system_prompt="Inspect", user_content="content")
 
     assert result == {"flagged": True}
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_non_object_messages_json() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="messages")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(json_data={"content": [{"text": "[]"}]}),
+        ),
+        pytest.raises(ValueError, match="must be a JSON object"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_reads_responses_sse_completion_text() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    payload = "\n".join(
+        [
+            "data: 1",
+            'data: {"type":"response.output_text.done","text":"{\\"flagged\\":false}"}',
+            "data: [DONE]",
+        ]
+    )
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text=payload),
+        ),
+    ):
+        result = await request_inspection(system_prompt="Inspect", user_content="content")
+
+    assert result == {"flagged": False}
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_responses_without_text() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text='data: {"type":"other"}\n\ndata: [DONE]'),
+        ),
+        pytest.raises(TypeError, match="omitted text content"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_reads_responses_top_level_text() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text='{"output_text":"{\\"flagged\\":true}"}'),
+        ),
+    ):
+        result = await request_inspection(system_prompt="Inspect", user_content="content")
+
+    assert result == {"flagged": True}
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_non_object_responses_json() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text="[]"),
+        ),
+        pytest.raises(TypeError, match="result must be an object"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_malformed_responses_json_shapes() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    payload = '{"output": [1, {"content": "wrong"}, {"content": [1, {"type": "other"}]}]}'
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text=payload),
+        ),
+        pytest.raises(TypeError, match="omitted text content"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_missing_messages_text() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="messages")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(json_data={"content": [{"type": "text"}]}),
+        ),
+        pytest.raises(TypeError, match="Messages response omitted text"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")

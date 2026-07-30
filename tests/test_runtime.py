@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -64,6 +65,40 @@ class TestDetectRuntime:
         assert r.name == "docker"
         assert r.cli == "docker"
 
+    def test_blank_and_duplicate_runtime_names_are_ignored(self):
+        apple = FakePluginRuntime(name="apple")
+        duplicate = FakePluginRuntime(name=" apple ")
+        with patch(
+            "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+            return_value=[FakePluginRuntime(name=""), apple, duplicate],
+        ):
+            assert detect_runtime("apple") is apple
+
+    def test_darwin_falls_back_to_docker_when_apple_is_unavailable(self):
+        apple = FakePluginRuntime(name="apple", available=False)
+        docker = FakePluginRuntime(name="docker")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is docker
+
+    def test_linux_falls_back_to_an_available_non_docker_runtime(self):
+        custom = FakePluginRuntime(name="podman")
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[custom],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "linux"
+            assert detect_runtime() is custom
+
     def test_darwin_prefers_apple_plugin_runtime(self):
         apple = FakePluginRuntime(name="apple")
         docker = _docker_plugin()
@@ -87,6 +122,44 @@ class TestDetectRuntime:
             mock_sys.platform = "darwin"
             r = detect_runtime()
         assert r.name == "docker"
+
+    def test_darwin_returns_unavailable_apple_when_docker_is_unavailable(self):
+        apple = FakePluginRuntime(name="apple", available=False)
+        docker = FakePluginRuntime(name="docker", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[apple, docker],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is apple
+
+    def test_linux_uses_first_runtime_when_none_are_available(self):
+        first = FakePluginRuntime(name="podman", available=False)
+        second = FakePluginRuntime(name="nerdctl", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[first, second],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "linux"
+            assert detect_runtime() is first
+
+    def test_darwin_falls_back_when_only_custom_runtime_is_unavailable(self):
+        custom = FakePluginRuntime(name="podman", available=False)
+        with (
+            patch(
+                "pynchy.plugins.runtimes.detection._iter_plugin_runtimes",
+                return_value=[custom],
+            ),
+            patch("pynchy.plugins.runtimes.detection.sys") as mock_sys,
+        ):
+            mock_sys.platform = "darwin"
+            assert detect_runtime() is custom
 
     def test_unknown_runtime_override_falls_back_to_docker(self):
         docker = _docker_plugin()
@@ -139,6 +212,23 @@ class TestDockerRuntime:
             mock_run.return_value.stdout = ""
             result = rt.list_running_containers("pynchy-")
         assert result == []
+
+    def test_list_containers_skips_blank_records_and_parses_timestamp_fallback(self):
+        rt = DockerContainerRuntime()
+        record = json.dumps(
+            {
+                "Names": "pynchy-group",
+                "State": "running",
+                "CreatedAt": "2026-01-01 12:00:00 +0000",
+            }
+        )
+        ndjson = record + "\n\n" + record
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = ndjson
+
+            result = rt.list_containers("pynchy-")
+
+        assert [item.created_at for item in result] == [datetime(2026, 1, 1, 12, tzinfo=UTC)] * 2
 
     def test_list_containers_marks_agent_by_label_or_legacy_image(self):
         rt = DockerContainerRuntime()
@@ -290,6 +380,15 @@ class TestAppleRuntime:
     def test_satisfies_orphan_reaping_contract(self):
         assert isinstance(AppleContainerRuntime(), OrphanReapingRuntime)
 
+    @pytest.mark.parametrize("available", [True, False])
+    def test_reports_cli_availability(self, monkeypatch, available):
+        monkeypatch.setattr(
+            "pynchy.plugins.runtimes.apple_runtime.runtime.shutil.which",
+            lambda _cli: "container" if available else None,
+        )
+
+        assert AppleContainerRuntime().is_available() is available
+
     def test_ensure_running_bounds_status_probe(self):
         rt = AppleContainerRuntime()
         with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
@@ -314,6 +413,20 @@ class TestAppleRuntime:
             rt.ensure_running()
 
         assert mock_run.call_args_list[1].kwargs["timeout"] == 30
+
+    def test_start_failure_is_reported_after_status_failure(self):
+        rt = AppleContainerRuntime()
+        with (
+            patch(
+                "pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run",
+                side_effect=[
+                    subprocess.SubprocessError("status unavailable"),
+                    OSError("container unavailable"),
+                ],
+            ),
+            pytest.raises(RuntimeError, match="failed to start"),
+        ):
+            rt.ensure_running()
 
     def test_parses_container_status_object_format(self):
         rt = AppleContainerRuntime()
@@ -377,6 +490,29 @@ class TestAppleRuntime:
             "pynchy-labeled",
             "pynchy-legacy",
         ]
+
+    def test_list_containers_skips_nonobjects_and_invalid_creation_dates(self):
+        rt = AppleContainerRuntime()
+        output = json.dumps(
+            [
+                None,
+                {"configuration": "malformed"},
+                {
+                    "configuration": {
+                        "id": "pynchy-invalid-date",
+                        "creationDate": "not-a-date",
+                    },
+                    "status": "running",
+                },
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = output
+
+            result = rt.list_containers("pynchy-")
+
+        assert len(result) == 1
+        assert result[0].created_at is None
 
     def test_cleanup_builder_stops_and_removes_buildkit(self):
         rt = AppleContainerRuntime()

@@ -49,6 +49,9 @@ def test_package_coordinate_boundary_rejects_extra_and_path_values() -> None:
     assert PackageCoordinate.from_wire(valid) is not None
     assert PackageCoordinate.from_wire({**valid, "command": "cat .env"}) is None
     assert PackageCoordinate.from_wire({**valid, "version": "../../workspace"}) is None
+    assert PackageCoordinate.from_wire({**valid, "name": "../workspace"}) is None
+    assert PackageCoordinate.from_wire({**valid, "lock_pinned": "false"}) is None
+    assert PackageCoordinate.from_wire({**valid, "name": "a" * 215}) is None
 
 
 @pytest.mark.asyncio

@@ -266,6 +266,30 @@ class TestLoadResolvedConfig:
         assert resolved is None
 
 
+def test_pipeline_context_maps_linear_sources_and_rejects_bad_reviewers():
+    settings = make_settings(
+        prompts=PromptConfig(default_pipeline="delivery"),
+        pipelines={
+            "delivery": PipelineConfig(
+                stages=[
+                    PipelineStageConfig(name=name, executor=f"executors/{name}")
+                    for name in ("interactive", "planning", "delivery", "follow-up")
+                ]
+            )
+        },
+    )
+
+    for source, expected in (
+        ("external:linear:authorized", "delivery"),
+        ("external:linear:follow-ups", "follow-up"),
+        ("external:other", "interactive"),
+    ):
+        assert f"executors/{expected}" in prompt_ids_for_context(None, source, settings=settings)
+
+    with pytest.raises(ValueError, match="reviewers/ scope"):
+        prompt_ids_for_context(None, "hidden:pipeline-review:executors/default", settings=settings)
+
+
 class TestWorkspaceConfigModel:
     def test_defaults(self):
         cfg = WorkspaceConfig()

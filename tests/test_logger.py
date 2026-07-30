@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from pynchy.logger import configure_error_log, logger
 
@@ -52,6 +54,48 @@ def test_configuring_the_same_error_log_is_idempotent(tmp_path: Path):
         _remove_error_log_handler(error_log)
 
     assert handlers == [first_handler]
+
+
+def test_configuring_a_new_error_log_replaces_the_existing_handler(tmp_path: Path):
+    first_log = (tmp_path / "first.log").resolve()
+    second_log = (tmp_path / "second.log").resolve()
+    try:
+        configure_error_log(first_log)
+        configure_error_log(second_log)
+
+        handlers = [
+            handler
+            for handler in logging.getLogger().handlers
+            if isinstance(handler, logging.FileHandler)
+        ]
+        assert not any(Path(handler.baseFilename) == first_log for handler in handlers)
+        assert any(Path(handler.baseFilename) == second_log for handler in handlers)
+    finally:
+        _remove_error_log_handler(first_log)
+        _remove_error_log_handler(second_log)
+
+
+def test_keyboard_interrupt_uses_the_original_exception_hook(monkeypatch):
+    original_hook = Mock()
+    monkeypatch.setattr(sys, "__excepthook__", original_hook)
+    exception = KeyboardInterrupt()
+
+    sys.excepthook(KeyboardInterrupt, exception, None)
+
+    original_hook.assert_called_once_with(KeyboardInterrupt, exception, None)
+
+
+def test_uncaught_exception_is_logged_and_exits(monkeypatch):
+    critical = Mock()
+    exit_process = Mock()
+    monkeypatch.setattr(sys, "exit", exit_process)
+    exception = RuntimeError("uncaught")
+
+    with patch("pynchy.logger.logger.critical", critical):
+        sys.excepthook(RuntimeError, exception, None)
+
+    critical.assert_called_once_with("Uncaught exception", exc_info=(RuntimeError, exception, None))
+    exit_process.assert_called_once_with(1)
 
 
 def test_error_log_does_not_render_traceback_locals(tmp_path: Path):

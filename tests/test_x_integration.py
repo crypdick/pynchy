@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
@@ -50,11 +51,16 @@ class _FakeLocator:
 
 class _FakePage:
     def __init__(
-        self, *, visible: tuple[bool, ...] = (), navigation_error: str | None = None
+        self,
+        *,
+        visible: tuple[bool, ...] = (),
+        navigation_error: str | None = None,
+        selector_error: str | None = None,
     ) -> None:
         self.calls: list[tuple[str, str, str | None]] = []
         self._visible = iter(visible)
         self._navigation_error = navigation_error
+        self._selector_error = selector_error
 
     def locator(self, selector: str) -> _FakeLocator:
         locator = _FakeLocator(selector, self.calls)
@@ -71,6 +77,10 @@ class _FakePage:
 
     async def wait_for_timeout(self, _milliseconds: int) -> None:
         return None
+
+    async def wait_for_selector(self, _selector: str, **_kwargs: object) -> None:
+        if self._selector_error:
+            raise RuntimeError(self._selector_error)
 
 
 def _handler(tool_name: str) -> Callable[[dict[str, Any]], Any]:
@@ -255,6 +265,100 @@ async def test_x_post_uses_the_configured_persistent_browser(
 
 
 @pytest.mark.asyncio
+async def test_x_session_setup_reports_existing_login_with_vnc(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    page = _FakePage(visible=(True,))
+    profile_path = tmp_path / "x-profile"
+    closed, launches = _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(
+        action_globals,
+        "start_vnc_layer",
+        lambda: ([], "http://host:6080/vnc.html?autoconnect=true"),
+    )
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=True))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result == {
+        "result": {
+            "status": "ok",
+            "message": f"Already logged in to X. Profile saved at {profile_path}",
+            "novnc_url": "http://host:6080/vnc.html?autoconnect=true",
+        }
+    }
+    assert launches == [{"headless": False}]
+    assert closed == [True]
+
+
+@pytest.mark.asyncio
+async def test_x_session_setup_waits_for_login_and_reports_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_path = tmp_path / "x-profile"
+    page = _FakePage(visible=(False,), selector_error="timed out")
+    _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=False))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result == {"error": "Login not completed within 1s. Try again with a longer timeout."}
+
+
+@pytest.mark.asyncio
+async def test_x_session_setup_saves_completed_login_and_surfaces_setup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_path = tmp_path / "x-profile"
+    page = _FakePage(visible=(False,))
+    _install_playwright(monkeypatch, page, profile_path)
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(
+        action_globals,
+        "start_vnc_layer",
+        lambda: ([], "http://host:6080/vnc.html?autoconnect=true"),
+    )
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=False))
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    result = await _handler("setup_x_session")({"timeout_seconds": 1})
+
+    assert result["result"]["profile_dir"] == str(profile_path)
+    assert result["result"]["novnc_url"] == "http://host:6080/vnc.html?autoconnect=true"
+
+    def fail_setup() -> None:
+        raise RuntimeError("display missing")
+
+    monkeypatch.setitem(action_globals, "ensure_xvfb", fail_setup)
+    assert await _handler("setup_x_session")({}) == {"error": "display missing"}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("data", "page", "expected"),
     [
@@ -285,3 +389,204 @@ async def test_x_actions_surface_input_and_navigation_failures(
         result = await _handler("x_post")(data)
 
     assert result == {"error": expected}
+
+
+@pytest.mark.asyncio
+async def test_x_post_treats_detached_login_locators_as_not_visible(monkeypatch):
+    handler = _handler("x_post")
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def detached(_self):
+        await asyncio.sleep(0)
+        raise RuntimeError("detached")
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setattr(_FakeLocator, "is_visible", detached)
+
+    result = await handler({"content": "posted after reload"})
+
+    assert result["result"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_x_like_normalizes_a_host_without_an_http_scheme(monkeypatch):
+    handler = _handler("x_like")
+    action_handler = _action_handler(handler)
+    page = _FakePage(visible=(True,))
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(action_handler.__globals__, "is_visible", AsyncMock(return_value=True))
+
+    result = await handler({"tweet_url": "x.com/status/123"})
+
+    assert result["result"]["message"] == "Tweet already liked"
+    assert page.calls[0][1] == "https://x.com/status/123"
+
+
+@pytest.mark.asyncio
+async def test_x_post_reports_an_expired_login_from_the_public_action(monkeypatch):
+    handler = _handler("x_post")
+    action_handler = _action_handler(handler)
+    page = _FakePage(visible=(False, True))
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+
+    assert await handler({"content": "hello"}) == {
+        "error": "X login expired. Run setup_x_session to re-authenticate."
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "data"),
+    [
+        ("x_reply", {"tweet_url": "123", "content": "reply"}),
+        ("x_retweet", {"tweet_url": "123"}),
+        ("x_quote", {"tweet_url": "123", "comment": "quote"}),
+    ],
+)
+async def test_x_actions_surface_navigation_failures_for_all_tweet_actions(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+    data: dict[str, str],
+) -> None:
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value="bad nav")
+    )
+
+    assert await handler(data) == {"error": "bad nav"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "data", "expected"),
+    [
+        ("x_like", {}, "Please provide a tweet URL"),
+        ("x_reply", {}, "Please provide a tweet URL"),
+        ("x_reply", {"tweet_url": "123"}, "Reply content cannot be empty"),
+        ("x_retweet", {}, "Please provide a tweet URL"),
+        ("x_quote", {}, "Please provide a tweet URL"),
+        ("x_quote", {"tweet_url": "123"}, "Comment content cannot be empty"),
+        ("x_post", {"content": "x" * 281}, "Tweet exceeds 280 char limit (current: 281)"),
+    ],
+)
+async def test_x_actions_validate_public_input(tool_name, data, expected):
+    assert await _handler(tool_name)(data) == {"error": expected}
+
+
+@pytest.mark.asyncio
+async def test_x_post_reports_login_and_disabled_button_states(monkeypatch):
+    action_handler = _action_handler(_handler("x_post"))
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__,
+        "check_login",
+        AsyncMock(return_value="Please log in to X first"),
+    )
+    assert await _handler("x_post")({"content": "hello"}) == {"error": "Please log in to X first"}
+
+    monkeypatch.setitem(action_handler.__globals__, "check_login", AsyncMock(return_value=None))
+
+    async def disabled(_self, _name):
+        await asyncio.sleep(0)
+        return "true"
+
+    monkeypatch.setattr(_FakeLocator, "get_attribute", disabled)
+    assert await _handler("x_post")({"content": "hello"}) == {
+        "error": "Post button disabled. Content may be empty or exceed limit."
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "visibility", "expected"),
+    [
+        ("x_like", (True,), "Tweet already liked"),
+        (
+            "x_like",
+            (False, False),
+            "Like action completed but could not verify success",
+        ),
+        ("x_retweet", (True,), "Tweet already retweeted"),
+        (
+            "x_retweet",
+            (False, False),
+            "Retweet action completed but could not verify success",
+        ),
+    ],
+)
+async def test_x_actions_report_existing_and_unverified_effects(
+    monkeypatch, tool_name, visibility, expected
+):
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value=None)
+    )
+    monkeypatch.setitem(action_handler.__globals__, "is_visible", AsyncMock(side_effect=visibility))
+
+    result = await handler({"tweet_url": "123"})
+
+    assert result["result"]["message"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["x_reply", "x_quote"])
+async def test_x_modal_actions_report_disabled_submit_button(monkeypatch, tool_name):
+    handler = _handler(tool_name)
+    action_handler = _action_handler(handler)
+    page = _FakePage()
+
+    async def fake_with_browser(action):
+        return await action(page)
+
+    async def disabled(_self, _name):
+        await asyncio.sleep(0)
+        return "true"
+
+    monkeypatch.setitem(action_handler.__globals__, "with_browser", fake_with_browser)
+    monkeypatch.setitem(
+        action_handler.__globals__, "navigate_to_tweet", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(_FakeLocator, "get_attribute", disabled)
+    data = (
+        {"tweet_url": "123", "content": "reply"}
+        if tool_name == "x_reply"
+        else {
+            "tweet_url": "123",
+            "comment": "quote",
+        }
+    )
+
+    assert await handler(data) == {
+        "error": "Submit button disabled. Content may be empty or exceed limit."
+    }

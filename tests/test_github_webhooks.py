@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
@@ -26,7 +26,12 @@ from pynchy.host.orchestrator.http_control import (
     RequestRateLimiter,
 )
 from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.plugins.api import WebhookAuthenticationError, WebhookPayloadError, WebhookRoute
+from pynchy.plugins.api import (
+    WebhookAuthenticationError,
+    WebhookPayloadError,
+    WebhookProcessingError,
+    WebhookRoute,
+)
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
@@ -35,6 +40,8 @@ from pynchy.plugins.integrations.github_webhooks import (
     parse_github_webhook,
     prepare_github_webhook_event,
 )
+from pynchy.plugins.integrations.linear_errors import LinearError
+from pynchy.plugins.integrations.linear_work_item_provider import LinearWorkspaceIssueError
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -329,6 +336,152 @@ async def test_unlinked_actionable_review_falls_back_to_workspace_notification(
         "GitHub PR update — example/project#42: new inline review comment.\n"
         "https://github.com/example/project/pull/42"
     )
+
+
+async def test_non_actionable_event_is_left_unchanged() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(), "pull_request")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    non_actionable = replace(event, event_type="push")
+
+    prepared = await prepare_github_webhook_event(non_actionable, config=_config())
+
+    assert prepared is non_actionable
+
+
+async def test_missing_fallback_message_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    malformed = replace(event, external_context="unexpected context")
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+
+    with pytest.raises(WebhookProcessingError, match="lacks its fallback notification"):
+        await prepare_github_webhook_event(malformed, config=_config())
+
+
+async def test_unconfigured_linear_account_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: None,
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message is not None
+
+
+async def test_missing_pull_request_url_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    malformed = replace(
+        event,
+        external_context={"fallback_host_message": "Review needs attention."},
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+
+    prepared = await prepare_github_webhook_event(malformed, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message == "Review needs attention."
+
+
+async def test_malformed_linked_issue_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    linear_client = AsyncMock()
+    linear_client.find_issues_by_attachment_url.return_value = [{"issue": {}}]
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_client",
+        lambda **_kwargs: _linear_client_context(linear_client),
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message is not None
+
+
+async def test_linked_issue_lookup_failure_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    linear_client = AsyncMock()
+    linear_client.find_issues_by_attachment_url.side_effect = LinearWorkspaceIssueError("bad issue")
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_client",
+        lambda **_kwargs: _linear_client_context(linear_client),
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message is not None
+
+
+@pytest.mark.parametrize("provider_error", [LinearError("down")])
+async def test_linked_issue_provider_failures_are_reported(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_error: Exception,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    linear_client = AsyncMock()
+    linear_client.find_issues_by_attachment_url.side_effect = provider_error
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_client",
+        lambda **_kwargs: _linear_client_context(linear_client),
+    )
+
+    with pytest.raises(WebhookProcessingError, match="down"):
+        await prepare_github_webhook_event(event, config=_config())
 
 
 class _WebhookDeps:

@@ -15,6 +15,7 @@ from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.host.orchestrator.plugin_configuration import configure_observer_plugins
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import ChannelPluginContext, attach_observers
+from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
 
 
@@ -70,10 +71,35 @@ class TestInRepoPluginDiscovery:
 class TestObserverPluginRuntimeTypes:
     """Observer plugin entrypoints should accept runtime EventBus instances."""
 
+    def test_unconfigured_sqlite_observer_fails_before_attachment(self):
+        with pytest.raises(RuntimeError, match="not been configured"):
+            SqliteObserverPlugin().pynchy_observer()
+
     def test_attach_observers_accepts_event_bus(self):
         """attach_observers should not crash resolving the EventBus annotation."""
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             plugin_manager = get_plugin_manager({"sqlite-observer": False})
+
+        assert attach_observers(plugin_manager, EventBus()) == []
+
+    def test_attach_observers_ignores_discovery_failure(self):
+        plugin_manager = MagicMock()
+        plugin_manager.hook.pynchy_observer.side_effect = RuntimeError("broken plugin")
+
+        assert attach_observers(plugin_manager, EventBus()) == []
+
+    def test_attach_observers_isolates_subscription_failure(self):
+        class BrokenObserver:
+            name = "broken"
+
+            def subscribe(self, _event_bus):
+                raise RuntimeError("broken subscription")
+
+            async def close(self):
+                return None
+
+        plugin_manager = MagicMock()
+        plugin_manager.hook.pynchy_observer.return_value = [BrokenObserver()]
 
         assert attach_observers(plugin_manager, EventBus()) == []
 

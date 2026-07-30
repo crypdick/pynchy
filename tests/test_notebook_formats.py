@@ -382,6 +382,14 @@ class TestOutputsForAgent:
         assert "html" not in result[0]
         assert result[0]["text"] == "   a  b\n0  1  2"
 
+    def test_display_without_text_or_image_is_kept_as_empty_display(self):
+        result = outputs_for_agent([{"output_type": "display_data", "data": {}}])
+
+        assert result == [{"type": "display"}]
+
+    def test_unsupported_output_types_are_ignored(self):
+        assert outputs_for_agent([{"output_type": "execute_input", "code": "1 + 1"}]) == []
+
     def test_long_text_truncated(self):
         long_text = "x" * 10000
         outputs = [{"output_type": "stream", "name": "stdout", "text": long_text}]

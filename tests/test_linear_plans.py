@@ -41,3 +41,8 @@ def test_plan_markers_cannot_create_an_ambiguous_issue_description(
 ) -> None:
     with pytest.raises(ValueError, match=error):
         description_with_plan(description, plan)
+
+
+def test_empty_plan_is_rejected() -> None:
+    with pytest.raises(ValueError, match="plan is required"):
+        description_with_plan("Context", " \n\t")

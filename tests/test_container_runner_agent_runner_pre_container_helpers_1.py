@@ -33,6 +33,7 @@ from pynchy.identifiers import (
     GroupFolder,
     SessionId,
 )
+from pynchy.state.api import SessionSecurityTaint
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )
@@ -82,6 +83,109 @@ _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=Non
 
 
 class TestAgentRunnerPreContainerHelpers:
+    @pytest.mark.asyncio
+    async def test_external_matrix_input_marks_security_taint(self):
+        deps = _AgentRunnerDeps()
+        taint = SessionSecurityTaint(corruption_tainted=True, secret_tainted=True)
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.mark_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=taint,
+            ) as mark_taint,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.prompt_ids_for_context",
+                return_value=["executor/default"],
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.read_prompts",
+                return_value="executor prompt",
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
+                new_callable=AsyncMock,
+                return_value=1.0,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_tool_access",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_agent_core",
+                return_value=("agent_runner.cores.claude", "ClaudeAgentCore"),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_container_timeout",
+                return_value=30.0,
+            ),
+        ):
+            result = await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    group=TEST_GROUP,
+                    chat_jid="test@g.us",
+                    messages=[{"content": "external"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="external:matrix",
+                    is_scheduled_task=False,
+                    repo_access_override=None,
+                    runtime=deps.agent_execution_runtime,
+                )
+            )
+
+        mark_taint.assert_awaited_once_with(
+            GroupFolder("test-group"), corruption_tainted=True, secret_tainted=True
+        )
+        assert result.corruption_tainted is True
+        assert result.secret_tainted is True
+
+    @pytest.mark.asyncio
+    async def test_missing_executor_prompt_fails_before_broadcast(self):
+        deps = _AgentRunnerDeps()
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=SessionSecurityTaint(),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.prompt_ids_for_context",
+                return_value=["soul/default", "executor/default"],
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.read_prompts",
+                side_effect=["system prompt", None],
+            ),
+            pytest.raises(RuntimeError, match="Selected executor prompt"),
+        ):
+            await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    group=TEST_GROUP,
+                    chat_jid="test@g.us",
+                    messages=[{"content": "missing prompt"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="user",
+                    is_scheduled_task=False,
+                    repo_access_override=None,
+                    runtime=deps.agent_execution_runtime,
+                )
+            )
+
+        assert deps.session_cleared == set()
+
     @pytest.mark.asyncio
     async def test_terminal_control_blocks_preflight_before_side_effects(self):
         deps = _AgentRunnerDeps()

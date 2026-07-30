@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from unittest.mock import AsyncMock
 
 import pytest
 from temporalio.service import RPCError, RPCStatusCode
 
+import pynchy.host.orchestrator.temporal.workflow_control as workflow_control
 from pynchy.host.orchestrator.temporal.api import cancel_scheduled_agent_workflow
 from pynchy.host.orchestrator.temporal.workflow_control import (
+    TemporalRuntimeUnavailableError,
     bind_workflow_client,
     unbind_workflow_client,
 )
@@ -84,3 +87,44 @@ async def test_stopping_an_older_runtime_keeps_the_new_runtime_bound() -> None:
     assert cancelled is True
     assert old_client.requested_workflow_ids == []
     assert current_handle.cancelled is True
+
+
+@pytest.mark.asyncio
+async def test_cancellation_waits_for_startup_then_reports_unavailable_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Loop:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def time(self) -> float:
+            self.calls += 1
+            return 0.0 if self.calls < 3 else 11.0
+
+    loop = _Loop()
+    sleep = AsyncMock()
+
+    def get_loop() -> _Loop:
+        return loop
+
+    monkeypatch.setattr(workflow_control, "_active_client", None)
+    monkeypatch.setattr(workflow_control.asyncio, "get_running_loop", get_loop)
+    monkeypatch.setattr(workflow_control.asyncio, "sleep", sleep)
+
+    with pytest.raises(TemporalRuntimeUnavailableError, match="has not been started"):
+        await cancel_scheduled_agent_workflow("scheduled-task-not-started")
+
+    sleep.assert_awaited_once_with(0.05)
+
+
+@pytest.mark.asyncio
+async def test_cancellation_propagates_non_not_found_rpc_errors() -> None:
+    error = RPCError("unavailable", RPCStatusCode.INTERNAL, b"")
+    client = _Client(handles={"scheduled-task-error": _Handle(error)})
+    bind_workflow_client(client)
+
+    try:
+        with pytest.raises(RPCError, match="unavailable"):
+            await cancel_scheduled_agent_workflow("scheduled-task-error")
+    finally:
+        unbind_workflow_client(client)

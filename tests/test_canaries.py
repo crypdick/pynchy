@@ -11,10 +11,12 @@ from pynchy.canaries.api import (
     declared_canary_scenarios,
     get_canary_report,
     register_canary_scenario,
+    register_security_canary_scenario,
     run_declared_canaries,
 )
 from pynchy.canary_contracts import CanaryOutcome
 from pynchy.config.api import CanaryConfig, validate_settings_mapping
+from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 from pynchy.state import (
     get_recent_canary_runs,
     get_unresolved_canary_regressions,
@@ -22,6 +24,14 @@ from pynchy.state import (
 )
 
 _SCENARIO_ID = "calendar.round.trip"
+
+
+@pytest.mark.asyncio
+async def test_runner_requires_configured_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pynchy.canaries._runner._runtime", None)
+
+    with pytest.raises(RuntimeError, match="runtime has not been configured"):
+        await run_declared_canaries(target_profile="canary-profile", scenario_ids=[])
 
 
 class PassingScenario:
@@ -45,6 +55,16 @@ class VerificationFailureScenario(PassingScenario):
     async def verify(self, _context, exercise):
         self.calls.append(f"verify:{exercise.artifact}")
         raise RuntimeError("provider response must never reach the report")
+
+
+class ExerciseFailureScenario(PassingScenario):
+    async def exercise(self, _context):
+        raise RuntimeError("provider unavailable")
+
+
+class VerificationSkippedScenario(PassingScenario):
+    async def verify(self, _context, _exercise):
+        raise CanarySkippedError("verification temporarily unavailable")
 
 
 class CleanupFailureScenario(PassingScenario):
@@ -116,6 +136,48 @@ async def test_runner_executes_only_the_configured_scenarios():
     )
 
     assert [result.scenario_id for result in results] == [_SCENARIO_ID]
+
+
+@pytest.mark.asyncio
+async def test_runner_records_exercise_failure_without_provider_details():
+    await init_test_database()
+
+    results = await run_declared_canaries(
+        target_profile="canary-profile",
+        scenario_ids=[_SCENARIO_ID],
+        executors={_SCENARIO_ID: ExerciseFailureScenario()},
+    )
+
+    result = results[0]
+    assert result.outcome is CanaryOutcome.FAILED
+    assert result.error_class == "RuntimeError"
+    assert "provider unavailable" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_runner_records_verification_skip_with_exercise_evidence():
+    await init_test_database()
+
+    results = await run_declared_canaries(
+        target_profile="canary-profile",
+        scenario_ids=[_SCENARIO_ID],
+        executors={_SCENARIO_ID: VerificationSkippedScenario()},
+    )
+
+    result = results[0]
+    assert result.outcome is CanaryOutcome.SKIPPED
+    assert result.evidence_refs == ("created:event-1", "deleted:event-1")
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_unknown_selected_scenario():
+    await init_test_database()
+
+    with pytest.raises(ValueError, match="Unknown canary scenarios"):
+        await run_declared_canaries(
+            target_profile="canary-profile",
+            scenario_ids=["unknown.round.trip"],
+        )
 
 
 @pytest.mark.asyncio
@@ -203,6 +265,20 @@ def test_enabled_canary_requires_explicit_scenario_selection():
         )
 
 
+def test_enabled_canary_rejects_unknown_scenarios():
+    with pytest.raises(ValueError, match="includes unknown scenarios"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {}},
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["unknown.round.trip"],
+                },
+            }
+        )
+
+
 def test_enabled_proton_round_trip_requires_a_delivery_recipient():
     with pytest.raises(ValueError, match="proton_recipient is required"):
         validate_settings_mapping(
@@ -267,3 +343,31 @@ def test_enabled_google_drive_round_trip_requires_a_readable_fixture():
 def test_canary_registration_rejects_a_scenario_without_action_coverage():
     with pytest.raises(ValueError, match="not declared"):
         register_canary_scenario("mail.send.self", PassingScenario())
+
+
+def test_canary_registration_rejects_duplicate_scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "pynchy.canaries._runner._SCENARIO_EXECUTORS",
+        {_SCENARIO_ID: PassingScenario()},
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_canary_scenario(_SCENARIO_ID, PassingScenario())
+
+
+def test_security_canary_registration_rejects_an_undeclared_scenario():
+    with pytest.raises(ValueError, match="not declared"):
+        register_security_canary_scenario("mail.send.self", PassingScenario())
+
+
+def test_security_canary_registration_rejects_duplicate_scenarios(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario_id = SECURITY_CANARY_IDS[0]
+    monkeypatch.setattr(
+        "pynchy.canaries._runner._SCENARIO_EXECUTORS",
+        {scenario_id: PassingScenario()},
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_security_canary_scenario(scenario_id, PassingScenario())

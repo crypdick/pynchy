@@ -34,6 +34,7 @@ from pynchy.state import (
     approve_action_intent,
     claim_action_intent,
     expire_action_intent,
+    fail_action_intent,
     get_action_intent_by_request,
     mark_action_intent_awaiting_approval,
     mark_action_intent_executing,
@@ -364,6 +365,30 @@ async def test_prepare_replays_awaiting_approval_without_creating_a_second_inten
 
 
 @pytest.mark.asyncio
+async def test_prepare_replays_terminal_record_returned_by_create_race():
+    action = _transactional_action(AsyncMock())
+    existing_request_id = "request-create-race-source"
+    await _prepared_approved_intent(action, existing_request_id)
+    failed = await fail_action_intent(existing_request_id, reason="Provider setup failed")
+    assert failed is not None
+
+    with patch(
+        "pynchy.host.orchestrator.action_intents.create_action_intent",
+        AsyncMock(return_value=(failed, False)),
+    ):
+        replayed, replay = await prepare_action_intent(
+            action,
+            {"room_id": "!room:test", "body": "private payload"},
+            workspace="test-workspace",
+            chat_jid="test@g.us",
+            request_id="request-create-race",
+        )
+
+    assert replayed == failed
+    assert replay == {"error": "Provider setup failed"}
+
+
+@pytest.mark.asyncio
 async def test_invalid_action_arguments_do_not_create_a_durable_intent():
     handler = AsyncMock()
     action = _transactional_action(handler)
@@ -440,6 +465,27 @@ async def test_missing_durable_intent_refuses_provider_execution():
         {"room_id": "!room:test", "body": "private payload"},
         request_id="request-missing-durable-intent",
     )
+
+    assert response == {"error": "External action record is missing; refusing to send."}
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execution_refuses_when_claim_disappears():
+    handler = AsyncMock()
+    action = _transactional_action(handler)
+    request_id = "request-missing-claim"
+    await _prepared_approved_intent(action, request_id)
+
+    with patch(
+        "pynchy.host.orchestrator.action_intents.claim_action_intent",
+        AsyncMock(return_value=None),
+    ):
+        response = await execute_action_intent(
+            action,
+            {"room_id": "!room:test", "body": "private payload"},
+            request_id=request_id,
+        )
 
     assert response == {"error": "External action record is missing; refusing to send."}
     handler.assert_not_awaited()

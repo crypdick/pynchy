@@ -37,7 +37,11 @@ class McpCanaryClient:
 
     async def __aenter__(self) -> McpCanaryClient:
         self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
-        await self._initialize()
+        try:
+            await self._initialize()
+        except Exception:
+            await self.__aexit__()
+            raise
         return self
 
     async def __aexit__(self, *_exc_info: object) -> None:

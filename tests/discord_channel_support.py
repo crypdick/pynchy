@@ -168,6 +168,9 @@ class _FakePynchyVoiceClient(PynchyVoiceClient):
     def start_receiving(self, listener: object) -> None:
         self.received_listener = listener
 
+    def stop_receiving(self) -> None:
+        self.received_listener = None
+
     def play(self, audio: object, *, after) -> None:
         self.played_audio.append(audio)
         after(None)

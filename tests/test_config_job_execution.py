@@ -95,6 +95,31 @@ async def test_pre_run_failure_is_attached_to_the_agent_prompt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pre_run_output_is_bounded() -> None:
+    task = _task(
+        config_job_pre_run_command="scripts/inspect.py",
+        config_job_pre_run_cwd="/workspace/ops",
+    )
+    with patch(
+        "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+        AsyncMock(return_value=ShellResult(returncode=0, stdout="x" * 13_000, stderr="")),
+    ):
+        prepared, outcome = await prepare_config_job(task)
+
+    assert outcome is None
+    assert prepared is not None
+    assert "pre-run output truncated" in prepared.prompt
+
+
+@pytest.mark.asyncio
+async def test_pre_run_requires_a_working_directory() -> None:
+    task = _task(config_job_pre_run_command="scripts/inspect.py", config_job_pre_run_cwd=None)
+
+    with pytest.raises(RuntimeError, match="pre-run execution is incomplete"):
+        await prepare_config_job(task)
+
+
+@pytest.mark.asyncio
 async def test_deterministic_job_broadcasts_output_and_reports_timeout() -> None:
     deps = _Deps()
     result = ShellResult(
@@ -145,3 +170,38 @@ async def test_only_complete_deterministic_jobs_reach_the_shell() -> None:
     )
     with pytest.raises(RuntimeError, match="execution is incomplete"):
         await run_deterministic_config_job(_task(config_job_command=None), deps)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "error"),
+    [
+        (ShellResult(returncode=1, stdout="", stderr=""), "exited with code 1"),
+        (
+            ShellResult(returncode=0, stdout="", stderr="", start_error="spawn failed"),
+            "failed to start",
+        ),
+    ],
+)
+async def test_deterministic_job_reports_shell_failures(result: ShellResult, error: str) -> None:
+    with patch(
+        "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+        AsyncMock(return_value=result),
+    ):
+        execution = await run_deterministic_config_job(_task(), _Deps())
+
+    assert execution is not None
+    assert error in (execution.error or "")
+
+
+@pytest.mark.asyncio
+async def test_deterministic_job_false_gate_skips_execution() -> None:
+    with patch(
+        "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+        AsyncMock(return_value=ShellResult(returncode=0, stdout='{"wakeAgent": false}', stderr="")),
+    ):
+        execution = await run_deterministic_config_job(_task(), _Deps())
+
+    assert execution is not None
+    assert execution.result == "Skipped: wakeAgent=false"
+    assert execution.error is None

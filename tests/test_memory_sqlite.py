@@ -93,6 +93,13 @@ class TestRecall:
         results = await backend.recall("group-a", "example.com")
         assert len(results) >= 1
 
+    async def test_recall_like_fallback_respects_category(self, backend):
+        await backend.save("group-a", "url-bookmark", "https://example.com/path", category="daily")
+
+        results = await backend.recall("group-a", "example.com", category="daily")
+
+        assert [result["key"] for result in results] == ["url-bookmark"]
+
     async def test_recall_empty_query(self, backend):
         await backend.save("group-a", "k1", "hello world")
         results = await backend.recall("group-a", "")

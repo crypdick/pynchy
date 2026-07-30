@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
+from typing import TypeGuard
 from unittest.mock import patch
 
 import pluggy
 import pytest
 
-from pynchy.plugins import get_plugin_manager
+from pynchy.plugins import collect_hook_results, get_plugin_manager
 from pynchy.plugins.api import AgentCoreSpec
 
 
@@ -84,6 +86,22 @@ class TestPluginManager:
         assert "builtin-tailscale" not in names
         # Other plugins should still be loaded
         assert "builtin-claude" in names
+
+    @pytest.mark.parametrize("failure", [ImportError, RuntimeError])
+    def test_builtin_plugin_load_failures_are_isolated(self, failure, monkeypatch):
+        original_import_module = importlib.import_module
+
+        def load(module_path: str):
+            if module_path == "pynchy.plugins.agent_cores.claude":
+                raise failure("test plugin load failure")
+            return original_import_module(module_path)
+
+        monkeypatch.setattr(importlib, "import_module", load)
+
+        pm = get_plugin_manager()
+
+        assert pm.get_plugin("builtin-claude") is None
+        assert pm.get_plugin("builtin-openai") is not None
 
 
 class TestCustomPluginRegistration:
@@ -265,3 +283,87 @@ class TestPluginErrors:
         assert isinstance(skill_paths, list)
         assert channels == []
         assert workspace_specs == []
+
+
+class TestPluginRegistryContracts:
+    def test_collect_hook_results_skips_none_results(self) -> None:
+        pm = get_plugin_manager()
+        with patch.object(pm.hook, "pynchy_workspace_spec", return_value=[None]):
+            assert (
+                collect_hook_results(
+                    "pynchy_workspace_spec",
+                    lambda value: True,
+                    "workspace",
+                    pm=pm,
+                )
+                == []
+            )
+
+    def test_collect_hook_results_filters_invalid_and_none_results(self) -> None:
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class ValidContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return AgentCoreSpec(name="valid", module="m", class_name="Valid")
+
+        class EmptyContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return None
+
+        class InvalidContribution:
+            @hookimpl
+            def pynchy_agent_core_info(self):
+                return {"not": "an AgentCoreSpec"}
+
+        def is_agent_core(value: object) -> TypeGuard[AgentCoreSpec]:
+            return isinstance(value, AgentCoreSpec)
+
+        pm = get_plugin_manager()
+        pm.register(ValidContribution(), name="valid-contribution")
+        pm.register(EmptyContribution(), name="empty-contribution")
+        pm.register(InvalidContribution(), name="invalid-contribution")
+
+        results = collect_hook_results(
+            "pynchy_agent_core_info",
+            is_agent_core,
+            "agent core",
+            pm=pm,
+        )
+
+        assert [item.name for item in results if item.name == "valid"] == ["valid"]
+
+    def test_collect_hook_results_isolates_hook_failures(self) -> None:
+        hookimpl = pluggy.HookimplMarker("pynchy")
+
+        class Broken:
+            @hookimpl
+            def pynchy_workspace_spec(self):
+                raise RuntimeError("broken plugin")
+
+        pm = get_plugin_manager()
+        pm.register(Broken(), name="broken")
+
+        assert (
+            collect_hook_results(
+                "pynchy_workspace_spec",
+                lambda value: isinstance(value, dict),
+                "workspace",
+                pm=pm,
+            )
+            == []
+        )
+
+    def test_plugin_manager_drops_class_entrypoint_registrations(self) -> None:
+        class InvalidClassPlugin:
+            pass
+
+        def discover(manager: pluggy.PluginManager, _project_name: str) -> int:
+            manager.register(InvalidClassPlugin, name="invalid-class")
+            return 1
+
+        with patch.object(pluggy.PluginManager, "load_setuptools_entrypoints", discover):
+            pm = get_plugin_manager()
+
+        assert pm.get_plugin("invalid-class") is None

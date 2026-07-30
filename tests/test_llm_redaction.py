@@ -8,6 +8,7 @@ import pytest
 
 from pynchy.plugins.api import CapabilityId
 from pynchy.redaction import (
+    GatewayRedactionPosture,
     RedactionRequestError,
     RedactionSession,
     RestorationCapability,
@@ -17,6 +18,7 @@ from pynchy.redaction import (
     detect_sensitive_spans,
     irreversibly_redact_llm_request_body,
     redact_llm_request_body,
+    redaction_posture_for_gateway_mode,
 )
 
 
@@ -58,6 +60,28 @@ def test_overlapping_patterns_select_secret_class_without_echoing_value() -> Non
     assert len(spans) == 1
     assert spans[0].data_class is SensitiveDataClass.CREDENTIAL
     assert "user@example.test" not in repr(spans)
+
+
+def test_gateway_mode_requires_an_explicit_redaction_posture() -> None:
+    assert redaction_posture_for_gateway_mode("builtin") is GatewayRedactionPosture.ENFORCED
+    assert redaction_posture_for_gateway_mode("litellm") is GatewayRedactionPosture.NOT_ENFORCED
+
+    with pytest.raises(ValueError, match="Unknown gateway mode"):
+        redaction_posture_for_gateway_mode("other")
+
+
+def test_payment_card_redaction_requires_a_valid_luhn_checksum() -> None:
+    valid = "4111 1111 1111 1111"
+    valid_with_digit_doubling = "5555 5555 5555 4444"
+    invalid = "4111 1111 1111 1112"
+    all_identical = "1111 1111 1111 1111"
+
+    spans = detect_sensitive_spans(
+        f"valid={valid} valid2={valid_with_digit_doubling} invalid={invalid} same={all_identical}"
+    )
+
+    assert len(spans) == 2
+    assert all(span.data_class is SensitiveDataClass.PAYMENT_CARD for span in spans)
 
 
 def test_placeholder_injection_is_never_treated_as_a_request_reference() -> None:
@@ -115,7 +139,11 @@ def test_complete_streamed_request_redacts_system_prompt_and_tool_results() -> N
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Call 415-555-2671"},
+                        {
+                            "type": "text",
+                            "text": "Call 415-555-2671",
+                            "metadata": {"attempts": 1},
+                        },
                         {
                             "type": "tool_result",
                             "tool_use_id": "tool-1",
@@ -147,6 +175,9 @@ def test_invalid_request_error_never_echoes_input() -> None:
 
     assert _credential() not in str(caught.value)
     assert repr(RedactionSession()) == "RedactionSession(redaction_count=0)"
+
+    with pytest.raises(RedactionRequestError, match="JSON object"):
+        redact_llm_request_body(b"[]")
 
 
 def test_production_body_transform_returns_no_restoration_session() -> None:

@@ -114,7 +114,9 @@ class _QRCode:
         assert self.border == 1
         assert self.data == b"scan this code"
         assert invert is True
-        out.write("QR")
+        out.write(self.output)
+
+    output = "QR"
 
 
 qrcode.QRCode = _QRCode
@@ -222,6 +224,22 @@ async def test_authenticate_reports_the_provider_terminal_outcome(
     assert "QR\n" in output
     assert "Paired as 15551234567" in output
     assert expected_message in output
+
+
+async def test_authenticate_preserves_qr_output_that_already_ends_with_newline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _AuthenticationClient.logged_in = False
+    _AuthenticationClient.outcome = "connected"
+    monkeypatch.setattr(auth, "NewAClient", _AuthenticationClient)
+    monkeypatch.setattr(_QRCode, "output", "QR\n")
+
+    with pytest.raises(SystemExit) as exited:
+        await auth.authenticate("data/neonize.db")
+
+    assert exited.value.code == 0
+    assert "QR\n" in capsys.readouterr().out
 
 
 def test_main_turns_keyboard_interrupt_into_a_cancelled_authentication_message(

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import imaplib
 import smtplib
+import subprocess  # noqa: S404 - tests patch the administrator-configured command runner.
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from unittest.mock import Mock, patch
@@ -15,6 +17,7 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonBridgeConfiguration,
     ProtonBridgeImapClient,
     ProtonMailError,
+    create_proton_mail_client,
 )
 from pynchy.plugins.integrations.proton_bridge_smtp import (
     BridgeSmtpConnection,
@@ -91,6 +94,28 @@ class FakeSmtpConnection:
         self.calls.append("QUIT")
 
 
+class SearchWithoutDataConnection(FakeImapConnection):
+    def uid(self, command: str, *args: object) -> tuple[str, list[object]]:
+        if command == "SEARCH":
+            self.calls.append((command, args))
+            return "OK", []
+        return super().uid(command, *args)
+
+
+class UnexpectedFetchConnection(FakeImapConnection):
+    def uid(self, command: str, *args: object) -> tuple[str, list[object]]:
+        if command == "FETCH":
+            self.calls.append((command, args))
+            return "OK", [(b"metadata", "not bytes"), b"unexpected"]
+        return super().uid(command, *args)
+
+
+class FailedListConnection(FakeImapConnection):
+    def list_mailboxes(self) -> tuple[str, list[bytes]]:
+        self.calls.append(("LIST", ()))
+        return "NO", []
+
+
 def _client(
     connection: FakeImapConnection,
     smtp_connection: FakeSmtpConnection | None = None,
@@ -160,6 +185,35 @@ class TestProtonBridgeImapClient:
 
         assert result.mailboxes[0].name == "☺"
         assert result.mailboxes[0].mailbox == "&Jjo-"
+
+    @pytest.mark.parametrize(
+        ("response", "message"),
+        [
+            (b"", "invalid mailbox response"),
+            (b'(\\HasNoChildren) "/" NIL', "without a name"),
+            (b'(\\HasNoChildren) "/" \xff', "invalid mailbox identifier"),
+            (b'(\\HasNoChildren) "/" "&bad', "invalid international mailbox name"),
+            (b'(\\HasNoChildren) "/" "&!!!-"', "invalid international mailbox name"),
+        ],
+    )
+    def test_rejects_malformed_mailbox_responses(self, response, message):
+        with pytest.raises(ProtonMailError, match=message):
+            _client(FakeImapConnection(mailbox_responses=[response])).list_mailboxes()
+
+    def test_decodes_literal_ampersands_and_plain_mailbox_names(self):
+        connection = FakeImapConnection(
+            mailbox_responses=[
+                b'(\\HasNoChildren) "/" "&-"',
+                b'(\\HasNoChildren) "/" INBOX',
+            ]
+        )
+
+        result = _client(connection).list_mailboxes()
+
+        assert [(mailbox.name, mailbox.mailbox) for mailbox in result.mailboxes] == [
+            ("&", "&-"),
+            ("INBOX", "INBOX"),
+        ]
 
     def test_uses_the_returned_raw_mailbox_identifier_for_select(self):
         connection = FakeImapConnection(search_results=[b""])
@@ -243,6 +297,180 @@ class TestProtonBridgeImapClient:
                 message_id="<event@example.com>\r\nALL",
                 include_headers=False,
             )
+
+    def test_rejects_a_message_without_a_message_id(self):
+        connection = FakeImapConnection(
+            search_results=[b"20"],
+            fetched_messages={"20": (b"20 (UID 20 FLAGS ())", b"Subject: Missing ID\r\n\r\nbody")},
+        )
+
+        with pytest.raises(ProtonMailError, match="without a Message-ID"):
+            _client(connection).read_mail(
+                mailbox="INBOX",
+                message_id="<missing@example.com>",
+                include_headers=False,
+            )
+
+    def test_rejects_a_missing_message_id(self):
+        connection = FakeImapConnection(search_results=[b""])
+
+        with pytest.raises(ProtonMailError, match="was not found"):
+            _client(connection).read_mail(
+                mailbox="INBOX",
+                message_id="<missing@example.com>",
+                include_headers=False,
+            )
+
+    def test_handles_a_search_response_without_data(self):
+        with pytest.raises(ProtonMailError, match="was not found"):
+            _client(SearchWithoutDataConnection()).read_mail(
+                mailbox="INBOX",
+                message_id="<missing@example.com>",
+                include_headers=False,
+            )
+
+    def test_returns_no_messages_for_a_list_search_without_data(self):
+        result = _client(SearchWithoutDataConnection()).list_mail(
+            mailbox="INBOX", limit=1, offset=0, unread=False
+        )
+
+        assert result.messages == []
+
+    def test_rejects_an_unexpected_fetch_response(self):
+        connection = UnexpectedFetchConnection(search_results=[b"20"])
+
+        with pytest.raises(ProtonMailError, match="unexpected message response"):
+            _client(connection).read_mail(
+                mailbox="INBOX",
+                message_id="<event@example.com>",
+                include_headers=False,
+            )
+
+    def test_wraps_imap_connection_failures(self):
+        configuration = ProtonBridgeConfiguration(
+            username="hi@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+        )
+        for failure in (OSError("socket closed"), imaplib.IMAP4.error("bad response")):
+            client = ProtonBridgeImapClient(
+                configuration,
+                _password_reader,
+                connection_factory=lambda _configuration, _password, failure=failure: (
+                    _ for _ in ()
+                ).throw(failure),
+            )
+            with pytest.raises(ProtonMailError, match="IMAP request failed"):
+                client.list_mailboxes()
+
+    def test_wraps_smtp_connection_failures(self):
+        configuration = ProtonBridgeConfiguration(
+            username="hi@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+        )
+        client = ProtonBridgeImapClient(
+            configuration,
+            _password_reader,
+            connection_factory=lambda _configuration, _password: FakeImapConnection(),
+            smtp_connection_factory=lambda _configuration, _password: (_ for _ in ()).throw(
+                ProtonBridgeSmtpError("SMTP unavailable")
+            ),
+        )
+
+        with pytest.raises(ProtonMailError, match="SMTP request failed"):
+            client.send_mail(recipients=["recipient@example.com"], subject="s", body="b")
+
+    def test_preserves_password_reader_errors_during_smtp_setup(self):
+        configuration = ProtonBridgeConfiguration(
+            username="hi@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+        )
+
+        def password_reader() -> SecretStr:
+            raise ProtonMailError("credential unavailable")
+
+        client = ProtonBridgeImapClient(
+            configuration,
+            password_reader,
+            connection_factory=lambda _configuration, _password: FakeImapConnection(),
+            smtp_connection_factory=lambda _configuration, _password: FakeSmtpConnection(),
+        )
+
+        with pytest.raises(ProtonMailError, match="credential unavailable"):
+            client.send_mail(recipients=["recipient@example.com"], subject="s", body="b")
+
+    def test_wraps_a_failed_list_status(self):
+        with pytest.raises(ProtonMailError, match="could not list mailboxes"):
+            _client(FailedListConnection()).list_mailboxes()
+
+    def test_uses_the_default_tls_imap_adapter(self):
+        configuration = ProtonBridgeConfiguration(
+            username="mail@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+        )
+        imap_client = Mock(spec=imaplib.IMAP4)
+        imap_client.list.return_value = ("OK", [b'(\\HasNoChildren) "/" "INBOX"', "ignored"])
+        imap_client.logout.return_value = ("BYE", [b"logged out", "ignored"])
+        imap_client.select.return_value = ("OK", [b"1"])
+        imap_client.expunge.return_value = ("OK", [b"1"])
+        tls_context = Mock()
+
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge.imaplib.IMAP4",
+                return_value=imap_client,
+            ) as imap,
+            patch(
+                "pynchy.plugins.integrations.proton_bridge.ssl.create_default_context",
+                return_value=tls_context,
+            ),
+        ):
+            result = ProtonBridgeImapClient(configuration, _password_reader).list_mailboxes()
+
+            imap_client.uid.side_effect = [
+                ("OK", [b"20"]),
+                (
+                    "OK",
+                    [(b"20 (UID 20 FLAGS (\\Seen))", b"Message-ID: <event@example.com>\r\n\r\n")],
+                ),
+            ]
+            listed = ProtonBridgeImapClient(configuration, _password_reader).list_mail(
+                mailbox="INBOX", limit=1, offset=0, unread=False
+            )
+
+            imap_client.uid.side_effect = [
+                ("OK", [b"20"]),
+                ("OK", [b"20"]),
+            ]
+            ProtonBridgeImapClient(configuration, _password_reader).delete_mail(
+                mailbox="INBOX", message_id="<event@example.com>"
+            )
+
+        assert result.mailboxes[0].mailbox == "INBOX"
+        assert imap.call_count == 3
+        assert imap.call_args_list == [
+            (("127.0.0.1", 1143), {"timeout": 30}),
+            (("127.0.0.1", 1143), {"timeout": 30}),
+            (("127.0.0.1", 1143), {"timeout": 30}),
+        ]
+        assert imap_client.starttls.call_count == 3
+        assert imap_client.login.call_count == 3
+        imap_client.login.assert_called_with("mail@example.com", "test-bridge-password")
+        assert tls_context.check_hostname is False
+        assert tls_context.verify_mode == 0
+        assert listed.messages[0].seen is True
+        assert imap_client.logout.call_count == 3
+
+    def test_creates_a_client_from_the_mcp_environment(self):
+        client = create_proton_mail_client(
+            environment={
+                "PYNCHY_PROTON_BRIDGE_USERNAME": "mail@example.com",
+                (
+                    "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND"
+                ): "read-password",  # pragma: allowlist secret
+            }
+        )
+
+        assert isinstance(client, ProtonBridgeImapClient)
 
     def test_sends_plain_text_mail_through_the_bridge_smtp_identity(self):
         connection = FakeImapConnection()
@@ -390,5 +618,40 @@ class TestCommandPasswordProvider:
                 return_value=completed_process,
             ),
             pytest.raises(ProtonMailError, match="Could not retrieve"),
+        ):
+            CommandPasswordProvider("security find-generic-password -w").get_password()
+
+    @pytest.mark.parametrize(
+        ("command", "message"),
+        [
+            ("'unterminated", "not valid"),
+            ("   ", "is empty"),
+        ],
+    )
+    def test_rejects_invalid_or_empty_password_commands(self, command, message):
+        with pytest.raises(ProtonMailError, match=message):
+            CommandPasswordProvider(command).get_password()
+
+    @pytest.mark.parametrize(
+        "failure",
+        [OSError("command unavailable"), subprocess.TimeoutExpired("command", 15)],
+    )
+    def test_wraps_password_command_process_failures(self, failure):
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge.subprocess.run",
+                side_effect=failure,
+            ),
+            pytest.raises(ProtonMailError, match="Could not retrieve"),
+        ):
+            CommandPasswordProvider("security find-generic-password -w").get_password()
+
+    def test_rejects_password_command_output_without_a_password(self):
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge.subprocess.run",
+                return_value=Mock(returncode=0, stdout="\n"),
+            ),
+            pytest.raises(ProtonMailError, match="returned no password"),
         ):
             CommandPasswordProvider("security find-generic-password -w").get_password()

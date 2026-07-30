@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -78,6 +79,34 @@ def _turn(
         conversation_claim_id=conversation_claim_id,
         input_source=input_source,
     )
+
+
+class _Cursor:
+    def __init__(self, *, rowcount: int = 0, row: dict[str, str] | None = None) -> None:
+        self.rowcount = rowcount
+        self._row = row
+
+    async def fetchone(self) -> dict[str, str] | None:
+        return self._row
+
+
+class _Database:
+    def __init__(self, *cursors: _Cursor) -> None:
+        self._cursors = list(cursors)
+
+    async def execute(self, *_args: object) -> _Cursor:
+        return self._cursors.pop(0)
+
+
+class _AtomicWrite:
+    def __init__(self, database: _Database) -> None:
+        self.database = database
+
+    async def __aenter__(self) -> _Database:
+        return self.database
+
+    async def __aexit__(self, *_args: object) -> bool:
+        return False
 
 
 @pytest.mark.asyncio
@@ -264,6 +293,86 @@ async def test_control_guards_preserve_reset_and_reject_unavailable_pause_work()
     )
     assert retained is not None
     assert retained.control_state is CheckpointControlState.RESET_REQUESTED
+
+
+@pytest.mark.asyncio
+async def test_control_rejects_missing_message_and_unsupported_state() -> None:
+    await init_test_database()
+
+    with pytest.raises(ValueError, match="disappeared"):
+        await consume_in_flight_control_message(
+            "missing-command",
+            "slack:C123",
+            "2026-07-14T10:01:00+00:00",
+            {},
+            CheckpointControlState.PAUSE_REQUESTED,
+        )
+
+    with pytest.raises(ValueError, match="Unsupported requested checkpoint state"):
+        await request_in_flight_turn_control("slack:C123", CheckpointControlState.ACTIVE)
+
+
+@pytest.mark.asyncio
+async def test_control_rejects_malformed_persisted_metadata() -> None:
+    await init_test_database()
+    await store_message(
+        NewMessage(
+            id="malformed-command",
+            chat_jid="slack:C123",
+            sender="alice",
+            sender_name="Alice",
+            content="pause",
+            timestamp="2026-07-14T10:01:00+00:00",
+            metadata={"deferred_host_control": True},
+        )
+    )
+
+    with (
+        patch("pynchy.state.in_flight_controls.json.loads", return_value=[]),
+        pytest.raises(TypeError, match="invalid persisted shape"),
+    ):
+        await consume_in_flight_control_message(
+            "malformed-command",
+            "slack:C123",
+            "2026-07-14T10:01:00+00:00",
+            {},
+            CheckpointControlState.PAUSE_REQUESTED,
+        )
+
+
+@pytest.mark.asyncio
+async def test_control_fails_when_message_update_loses_its_row() -> None:
+    database = _Database(
+        _Cursor(row={"metadata": '{"deferred_host_control": true}'}),
+        _Cursor(rowcount=0),
+    )
+
+    with (
+        patch("pynchy.state.in_flight_controls.atomic_write", return_value=_AtomicWrite(database)),
+        pytest.raises(ValueError, match="disappeared"),
+    ):
+        await consume_in_flight_control_message(
+            "command",
+            "slack:C123",
+            "2026-07-14T10:01:00+00:00",
+            {},
+            CheckpointControlState.PAUSE_REQUESTED,
+        )
+
+
+@pytest.mark.asyncio
+async def test_resume_returns_none_when_its_update_loses_its_row() -> None:
+    paused = replace(_turn(), control_state=CheckpointControlState.PAUSED, claimed_at=None)
+    database = _Database(_Cursor(rowcount=0))
+
+    with (
+        patch("pynchy.state.in_flight_controls.atomic_write", return_value=_AtomicWrite(database)),
+        patch(
+            "pynchy.state.in_flight_controls._get_in_flight_turn_in_transaction",
+            new=AsyncMock(return_value=paused),
+        ),
+    ):
+        assert await resume_paused_in_flight_turn("turn-1", [], "cursor", claim=False) is None
 
 
 @pytest.mark.asyncio

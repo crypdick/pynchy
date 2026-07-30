@@ -10,6 +10,8 @@ from pynchy.plugins.integrations.linear_client import (
     LinearClient,
     LinearError,
     LinearSelfEchoRecorder,
+    normalize_comment_create_response,
+    normalize_issue_state_update_response,
 )
 from pynchy.plugins.integrations.linear_plans import update_issue_plan
 from pynchy.plugins.integrations.linear_work_item_provider import update_issue_state
@@ -163,6 +165,29 @@ async def test_query_only_client_rejects_incomplete_issue_update_responses(
         await update_issue_state(client, _ISSUE_ID, _STATE_ID)
 
 
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        ({"issueUpdate": {"success": False}}, "did not persist"),
+        ({"issueUpdate": {"success": True}}, "plan response did not include"),
+    ],
+)
+async def test_query_only_client_rejects_incomplete_plan_update_responses(
+    response: dict[str, object],
+    message: str,
+) -> None:
+    client = _ConstructorlessLinearClient()
+    client.query = AsyncMock(return_value=response)
+
+    with pytest.raises(LinearError, match=message):
+        await update_issue_plan(
+            client,
+            issue_id=_ISSUE_ID,
+            state_id=_STATE_ID,
+            description="A plan.",
+        )
+
+
 async def test_provider_declared_state_failure_releases_effect_instead_of_quarantining() -> None:
     recorder = LinearSelfEchoRecorder(
         account_name="linear-project",
@@ -184,3 +209,50 @@ async def test_provider_declared_state_failure_releases_effect_instead_of_quaran
 
     recorder.fail.assert_awaited_once_with(WebhookEffectId("effect-1"))
     recorder.mark_outcome_unknown.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("comment", "message"),
+    [
+        ({"id": "comment", "issueId": _ISSUE_ID, "createdAt": _REVISION}, "lacks"),
+        (
+            {
+                "id": "comment",
+                "issueId": "other-issue",
+                "createdAt": _REVISION,
+                "updatedAt": _REVISION,
+            },
+            "another issue",
+        ),
+    ],
+)
+def test_comment_response_requires_matching_write_evidence(
+    comment: dict[str, object], message: str
+) -> None:
+    with pytest.raises(LinearError, match=message):
+        normalize_comment_create_response(comment, _ISSUE_ID)
+
+
+@pytest.mark.parametrize(
+    ("issue", "message"),
+    [
+        ({}, "lacks"),
+        (
+            {"id": "other-issue", "updatedAt": _REVISION, "state": {"id": _STATE_ID}},
+            "another issue",
+        ),
+        (
+            {"id": _ISSUE_ID, "updatedAt": _REVISION, "state": {"id": "other-state"}},
+            "another state",
+        ),
+    ],
+)
+def test_issue_state_response_requires_matching_write_evidence(
+    issue: dict[str, object], message: str
+) -> None:
+    with pytest.raises(LinearError, match=message):
+        normalize_issue_state_update_response(
+            issue,
+            issue_id=_ISSUE_ID,
+            state_id=_STATE_ID,
+        )

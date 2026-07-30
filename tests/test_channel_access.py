@@ -93,6 +93,9 @@ class TestResolveAllowedUsers:
         )
         assert result is None
 
+    def test_nested_wildcard_group_stops_resolution(self):
+        assert resolve_allowed_users(["team"], {"team": ["*"]}, OwnerConfig()) == set()
+
     def test_literal_user_ids(self):
         result = resolve_allowed_users(
             ["slack:U04ABC", "whatsapp:1234@s.whatsapp.net"],
@@ -269,6 +272,16 @@ class TestIsUserAllowed:
 
 
 class TestFilterAllowedMessages:
+    def test_no_channel_plugin_leaves_messages_unchanged(self):
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+        )
+
+        assert filter_allowed_messages([], group, None) == []
+
     def test_rejects_a_non_string_channel_plugin_name(self):
         with (
             pytest.warns(UserWarning, match="violates type hint"),

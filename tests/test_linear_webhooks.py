@@ -37,6 +37,7 @@ from pynchy.identifiers import (
 from pynchy.plugins.api import (
     WebhookConversation,
     WebhookEvent,
+    WebhookProcessingError,
 )
 from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
@@ -363,6 +364,83 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     assert prepared.conversation is not None
     assert prepared.conversation.workspace == "project"
     workspace_issue.assert_awaited_once()
+
+
+async def test_preparation_ignores_an_untyped_current_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Untyped current state",
+                "state": {"id": "state-done", "name": "Done", "type": "completed"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {"id": "issue-1", "state": {"id": "", "type": "started"}},
+                _workspace_board(),
+            )
+        ),
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.conversation is not None
+    assert prepared.lifecycle is not None
+
+
+async def test_preparation_rejects_typed_current_state_without_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Missing revision",
+                "state": {"id": "state-done", "name": "Done", "type": "completed"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {
+                    "id": "issue-1",
+                    "state": {"id": "state-started", "type": "started"},
+                },
+                _workspace_board(),
+            )
+        ),
+    )
+
+    with pytest.raises(WebhookProcessingError, match="lacks updatedAt"):
+        await prepare_linear_webhook_event(event, config=_config())
 
 
 async def test_preparation_uses_current_terminal_state_over_stale_nonterminal_callback(
