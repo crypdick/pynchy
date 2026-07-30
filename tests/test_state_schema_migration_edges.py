@@ -174,3 +174,23 @@ async def test_channel_cursor_seed_handles_invalid_then_valid_timestamp_maps() -
             ("slack", "slack:C123", "inbound", "2026-07-29T00:00:00Z")
         ]
         await create_schema(database)
+
+
+@pytest.mark.asyncio
+async def test_schema_rejects_existing_foreign_key_violations() -> None:
+    async with aiosqlite.connect(":memory:") as database:
+        await create_schema(database)
+        await database.execute("PRAGMA foreign_keys = OFF")
+        await database.execute(
+            "INSERT INTO outbound_ledger "
+            "(chat_jid, content, timestamp, source) VALUES (?, ?, ?, ?)",
+            ("missing-chat", "content", "now", "test"),
+        )
+        await database.execute(
+            "INSERT INTO outbound_deliveries (ledger_id, channel_name, operation) VALUES (?, ?, ?)",
+            (999, "slack", "post"),
+        )
+        await database.commit()
+
+        with pytest.raises(RuntimeError, match="foreign-key violation remains"):
+            await create_schema(database)
