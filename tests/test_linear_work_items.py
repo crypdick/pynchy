@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -640,6 +640,13 @@ async def test_done_webhook_completes_execution_still_in_progress(
 
 async def test_done_webhook_without_execution_is_ignored(lifecycle: Lifecycle) -> None:
     assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
+
+
+async def test_done_webhook_requires_configured_completion_runtime() -> None:
+    with patch("pynchy.plugins.integrations.linear_work_item_completion._runtime") as runtime:
+        runtime.runtime = None
+        with pytest.raises(RuntimeError, match="runtime has not been configured"):
+            await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
 
 
 async def test_done_webhook_ignores_unknown_execution_without_done_transition(
