@@ -92,7 +92,10 @@ class TestJobReconcile:
         assert task.config_job_is_deterministic is False
         assert task.config_job_command is None
 
-    async def test_deterministic_job_persists_its_execution_values(self, db, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("cwd", [None, "runtime"])
+    async def test_deterministic_job_persists_its_execution_values(
+        self, db, monkeypatch, tmp_path, cwd
+    ):
         settings = self._patch_settings(
             monkeypatch,
             tmp_path,
@@ -102,6 +105,7 @@ class TestJobReconcile:
                     workspace="admin",
                     agent=False,
                     command="scripts/watchdog.py",
+                    cwd=cwd,
                     timeout_seconds=42,
                     display_name="Watchdog",
                 )
@@ -124,7 +128,10 @@ class TestJobReconcile:
         assert task.schedule_value == "900000"
         assert task.config_job_is_deterministic is True
         assert task.config_job_command == "scripts/watchdog.py"
-        assert task.config_job_cwd == str(settings.project_root)
+        expected_cwd = (
+            settings.project_root if cwd is None else (settings.project_root / cwd).resolve()
+        )
+        assert task.config_job_cwd == str(expected_cwd)
         assert task.config_job_timeout_seconds == 42
         assert task.config_job_display_name == "Watchdog"
 
@@ -315,7 +322,7 @@ class TestJobReconcile:
                 group_folder="admin",
                 chat_jid="slack:COLD",
                 prompt="Run the daily triage memo.",
-                schedule_type="cron",
+                schedule_type="interval",
                 schedule_value="0 7 * * *",
                 session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=datetime(2026, 7, 8, 8, 0, tzinfo=UTC).isoformat(),
