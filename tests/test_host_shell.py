@@ -7,6 +7,7 @@ import os
 import shlex
 import sys
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -120,6 +121,41 @@ class TestRunShellCommand:
         result = await run_shell_command("echo ignored", cwd=str(tmp_path))
 
         assert result.start_error == "shell unavailable"
+
+    @pytest.mark.asyncio
+    async def test_timeout_falls_back_to_direct_kill_when_group_signal_is_denied(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        process = MagicMock()
+        process.pid = 123
+        process.returncode = None
+        process.communicate = AsyncMock(return_value=(b"", b""))
+
+        def always_timeout(awaitable: object, timeout: float) -> object:
+            del timeout
+            close = getattr(awaitable, "close", None)
+            if callable(close):
+                close()
+            raise TimeoutError
+
+        monkeypatch.setattr(
+            host_shell.asyncio,
+            "create_subprocess_shell",
+            AsyncMock(return_value=process),
+        )
+        monkeypatch.setattr(host_shell.asyncio, "wait_for", always_timeout)
+        killpg = MagicMock(side_effect=PermissionError)
+        monkeypatch.setattr(host_shell.os, "killpg", killpg)
+
+        result = await run_shell_command("sleep 1", cwd=str(tmp_path), timeout_seconds=1)
+
+        assert result.timed_out
+        process.terminate.assert_called_once()
+        process.kill.assert_called_once()
+        assert [call.args[1] for call in killpg.call_args_list] == [
+            host_shell.signal.SIGTERM,
+            host_shell.signal.SIGKILL,
+        ]
 
 
 @pytest.mark.parametrize(
