@@ -43,6 +43,7 @@ from pynchy.state import (
 )
 from tests.webhook_lifecycle_support import (
     _admit,
+    _conversation,
     _delivery_identity,
     _lifecycle_event,
     _message_event,
@@ -80,6 +81,55 @@ async def test_routed_admission_requires_a_live_dispatcher() -> None:
                 task=None,
                 defer_process_event=False,
             ),
+        )
+
+
+async def test_project_open_control_requires_a_workspace_owner() -> None:
+    route = replace(_route(), workspace=None, candidate_workspaces=("project",))
+    event = replace(
+        _message_event("missing-workspace"),
+        conversation=replace(_conversation(closed=False), workspace=None),
+    )
+    dispatcher = WebhookConversationDispatcher(deps=MagicMock(), routes=(route,))
+
+    with pytest.raises(RuntimeError, match="has no workspace owner"):
+        await dispatcher.project_open_control(route, event)
+
+
+async def test_project_open_control_ignores_an_unchanged_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = LinearWebhookHarness()
+    await harness.persist_parent()
+    route = _route()
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.apply_conversation_control_state",
+        AsyncMock(return_value=False),
+    )
+
+    assert await dispatcher.project_open_control(route, _message_event("unchanged")) is None
+
+
+async def test_admission_fails_when_parsed_route_target_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = LinearWebhookHarness()
+    route = _route()
+    event = _message_event("missing-target")
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.conversation_admission_request",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="lost its parsed route target"):
+        await dispatcher.admit_webhook(
+            route,
+            event,
+            "Routed webhook prompt",
+            _receipt(route, event),
+            defer_process_event=False,
         )
 
 
