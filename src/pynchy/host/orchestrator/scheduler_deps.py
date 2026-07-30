@@ -96,6 +96,17 @@ class SchedulerRuntimeConfig:
     config_host_cron_jobs: dict[str, ConfigHostCronJob]
 
 
+@dataclass
+class HostSyncState:
+    """Mutable host-repository baseline shared with the Git adapter."""
+
+    last_origin_sha: str | None
+    deployed_sha: str
+    config_hash: str
+    local_head: str | None = None
+    offered_sha: str = ""
+
+
 @runtime_checkable
 class ScheduledCompletionDeps(Protocol):
     """Read the lifecycle fact needed by scheduled completion policy."""
