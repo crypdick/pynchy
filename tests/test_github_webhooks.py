@@ -353,7 +353,9 @@ async def test_missing_fallback_message_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     malformed = replace(event, external_context={})
     monkeypatch.setattr(
@@ -365,11 +367,32 @@ async def test_missing_fallback_message_is_rejected(
         await prepare_github_webhook_event(malformed, config=_config())
 
 
+async def test_unconfigured_linear_account_falls_back_to_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: None,
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.host_message is not None
+
+
 async def test_missing_pull_request_url_falls_back_to_notification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     malformed = replace(
         event,
@@ -390,7 +413,9 @@ async def test_malformed_linked_issue_falls_back_to_notification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.return_value = [{"issue": {}}]
@@ -413,7 +438,9 @@ async def test_linked_issue_lookup_failure_falls_back_to_notification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.side_effect = LinearWorkspaceIssueError("bad issue")
@@ -438,7 +465,9 @@ async def test_linked_issue_provider_failures_are_reported(
     provider_error: Exception,
 ) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(), "pull_request_review")
+    payload = _payload()
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.side_effect = provider_error
