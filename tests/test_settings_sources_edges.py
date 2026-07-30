@@ -16,3 +16,4 @@ def test_personalization_source_returns_field_value_contract() -> None:
     assert value is None
     assert field_name == "server"
     assert is_complex is False
+    assert source() is source()
