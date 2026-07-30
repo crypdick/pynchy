@@ -54,3 +54,35 @@ def test_placement_returns_none_when_owner_profile_cannot_be_resolved() -> None:
         ),
     ):
         assert resolve_workspace_placement([_workspace("root")], "owner") is None
+
+
+def test_placement_uses_resolved_owner_profile_when_missing() -> None:
+    owner = _workspace("owner")
+    with (
+        patch(
+            "pynchy.host.orchestrator.workspace_placement._workspace_parent",
+            side_effect=lambda _folder: "root",
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_placement._missing_workspace_profile",
+            side_effect=lambda _folder, _parent: owner,
+        ),
+    ):
+        placement = resolve_workspace_placement([_workspace("root")], "owner")
+
+    assert placement is not None
+    assert placement.owner is owner
+    assert placement.control_parent.folder == "root"
+
+
+def test_placement_uses_existing_owner_profile() -> None:
+    owner = _workspace("owner")
+    with patch(
+        "pynchy.host.orchestrator.workspace_placement._workspace_parent",
+        side_effect=lambda _folder: "root",
+    ):
+        placement = resolve_workspace_placement([_workspace("root"), owner], "owner")
+
+    assert placement is not None
+    assert placement.owner is owner
+    assert placement.control_parent.folder == "root"
