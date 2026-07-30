@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_work_item_completion import (
     complete_reviewed_work_item,
 )
@@ -20,7 +23,9 @@ from pynchy.state import (
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     mark_work_item_delivery_delivered_for_turn,
+    resolve_work_item_transition,
 )
+from pynchy.work_items.api import WorkItemExecutionStatus, WorkItemTransitionStatus
 from tests.linear_work_items_support import (
     Lifecycle,
     _begin_turn,
@@ -635,3 +640,72 @@ async def test_done_webhook_completes_execution_still_in_progress(
 
     assert completed is not None
     assert completed.status.value == "completed"
+
+
+async def test_done_webhook_without_execution_is_ignored(lifecycle: Lifecycle) -> None:
+    assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
+
+
+async def test_done_webhook_requires_configured_completion_runtime() -> None:
+    with patch("pynchy.plugins.integrations.linear_work_item_completion._runtime") as runtime:
+        runtime.runtime = None
+        with pytest.raises(RuntimeError, match="runtime has not been configured"):
+            await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
+
+
+async def test_done_webhook_ignores_unknown_execution_without_done_transition(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    claim = await get_work_item_transition_by_request("lease-1")
+    assert claim is not None
+    await resolve_work_item_transition(
+        transition=claim,
+        execution_status=WorkItemExecutionStatus.UNKNOWN,
+        transition_status=WorkItemTransitionStatus.UNKNOWN,
+    )
+
+    assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
+
+
+async def test_done_webhook_ignores_terminal_execution(lifecycle: Lifecycle) -> None:
+    await _lease(lifecycle)
+    await _begin_turn()
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-1",
+        issue_id="issue-1",
+        status="done",
+        outcome={"summary": "The requested work is complete."},
+    )
+
+    assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
+
+
+async def test_done_webhook_returns_none_when_provider_reconciliation_is_lost(
+    lifecycle: Lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = await _lease(lifecycle)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_completion.reconcile_work_item",
+        AsyncMock(return_value=None),
+    )
+
+    assert await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1") is None
+    assert execution.status is WorkItemExecutionStatus.IN_PROGRESS
+
+
+async def test_done_webhook_rejects_noncompleted_provider_reconciliation(
+    lifecycle: Lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = await _lease(lifecycle)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_completion.reconcile_work_item",
+        AsyncMock(return_value=execution),
+    )
+
+    with pytest.raises(LinearError, match="could not be reconciled"):
+        await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")

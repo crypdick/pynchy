@@ -98,6 +98,38 @@ def test_should_review_skips_short_casual_turn_without_learning_signal() -> None
     assert should_review(packet) is False
 
 
+def test_should_review_skips_empty_packet_text() -> None:
+    assert (
+        should_review(_packet(messages=[{"role": "user", "content": ""}], final_answer=None))
+        is False
+    )
+
+
+def test_should_review_skips_short_low_signal_turn_without_a_final_answer() -> None:
+    packet = _packet(messages=[{"role": "user", "content": "thanks"}], final_answer=None)
+
+    assert should_review(packet) is False
+
+
+def test_should_review_accepts_tool_usage_without_an_error() -> None:
+    packet = _packet(
+        messages=[{"role": "user", "content": "check this"}],
+        final_answer=None,
+        tool_counts={"shell": 1},
+    )
+
+    assert should_review(packet) is True
+
+
+def test_should_review_does_not_treat_long_casual_text_as_low_signal() -> None:
+    packet = _packet(
+        messages=[{"role": "user", "content": "thanks " * 25}],
+        final_answer=None,
+    )
+
+    assert should_review(packet) is False
+
+
 @pytest.mark.parametrize(
     "content",
     [

@@ -74,6 +74,19 @@ def test_workspace_chat_requires_a_live_matching_connection(
         )
 
 
+def test_non_discord_workspace_chat_uses_its_connection_type() -> None:
+    settings = validate_settings_mapping(
+        {
+            "connections": {"primary": _slack_connection(chats={"alerts": {}})},
+            "workspaces": {
+                "team": {"chat": "connection.slack.primary.chat.alerts"},
+            },
+        }
+    )
+
+    assert settings.workspaces["team"].chat == "connection.slack.primary.chat.alerts"
+
+
 @pytest.mark.parametrize(
     ("connections", "routes", "error_type", "message"),
     [

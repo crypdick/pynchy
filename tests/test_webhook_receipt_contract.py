@@ -45,3 +45,8 @@ def test_lifecycle_receipt_cannot_carry_ignore_reason() -> None:
 def test_notified_receipt_cannot_carry_ignore_reason() -> None:
     with pytest.raises(ValueError, match="cannot create tasks or carry ignore reasons"):
         replace(_ignored_receipt(), disposition="notified")
+
+
+def test_ignored_receipt_requires_a_reason() -> None:
+    with pytest.raises(ValueError, match="Ignored webhook receipts require a reason"):
+        replace(_ignored_receipt(), ignored_reason=None)

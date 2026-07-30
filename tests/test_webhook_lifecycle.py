@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from linear_webhook_test_support import LinearWebhookHarness
@@ -43,6 +43,7 @@ from pynchy.state import (
 )
 from tests.webhook_lifecycle_support import (
     _admit,
+    _conversation,
     _delivery_identity,
     _lifecycle_event,
     _message_event,
@@ -64,6 +65,72 @@ _SUBJECT = ConversationSubject(
     namespace=ConversationSubjectNamespace("test-provider:tenant:issue"),
     key=ConversationSubjectKey("issue-1"),
 )
+
+
+async def test_routed_admission_requires_a_live_dispatcher() -> None:
+    route = _route()
+    event = _message_event("missing-dispatcher")
+
+    with pytest.raises(RuntimeError, match="dispatcher disappeared"):
+        await admit_prepared_event(
+            None,
+            route,
+            event,
+            WebhookDeliveryAdmissionRequest(
+                receipt=_receipt(route, event),
+                task=None,
+                defer_process_event=False,
+            ),
+        )
+
+
+async def test_project_open_control_requires_a_workspace_owner() -> None:
+    route = replace(_route(), workspace=None, candidate_workspaces=("project",))
+    event = replace(
+        _message_event("missing-workspace"),
+        conversation=replace(_conversation(closed=False), workspace=None),
+    )
+    dispatcher = WebhookConversationDispatcher(deps=MagicMock(), routes=(route,))
+
+    with pytest.raises(RuntimeError, match="has no workspace owner"):
+        await dispatcher.project_open_control(route, event)
+
+
+async def test_project_open_control_ignores_an_unchanged_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = LinearWebhookHarness()
+    await harness.persist_parent()
+    route = _route()
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.apply_conversation_control_state",
+        AsyncMock(return_value=False),
+    )
+
+    assert await dispatcher.project_open_control(route, _message_event("unchanged")) is None
+
+
+async def test_admission_fails_when_parsed_route_target_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = LinearWebhookHarness()
+    route = _route()
+    event = _message_event("missing-target")
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.conversation_admission_request",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="lost its parsed route target"):
+        await dispatcher.admit_webhook(
+            route,
+            event,
+            "Routed webhook prompt",
+            _receipt(route, event),
+            defer_process_event=False,
+        )
 
 
 async def test_dispatcher_preparation_defers_pending_delivery_domain_work() -> None:
@@ -181,6 +248,35 @@ async def test_ignored_open_reopen_restores_existing_thread_runtime() -> None:
         assert harness.channel.closed[binding.thread_jid] is False
     finally:
         dispatcher.close()
+
+
+async def test_ignored_open_without_reopened_conversation_skips_runtime_restore() -> None:
+    route = _route()
+    event = _message_event("ignored-open-no-reopen")
+    receipt = replace(
+        _receipt(route, event),
+        disposition="ignored",
+        ignored_reason="duplicate_delivery",
+    )
+    dispatcher = MagicMock()
+    dispatcher.project_open_control = AsyncMock(return_value=None)
+    dispatcher.deps.channels.return_value = []
+    dispatcher.restore_existing_open_control_runtime = AsyncMock()
+
+    admission, conversation_id = await admit_prepared_event(
+        dispatcher,
+        route,
+        event,
+        WebhookDeliveryAdmissionRequest(
+            receipt=receipt,
+            task=None,
+            defer_process_event=False,
+        ),
+    )
+
+    assert admission.created is True
+    assert conversation_id is None
+    dispatcher.restore_existing_open_control_runtime.assert_not_awaited()
 
 
 async def test_deferred_controller_event_reopens_control_without_agent_turn() -> None:

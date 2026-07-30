@@ -170,6 +170,99 @@ def test_ask_user_interaction_ignores_non_submit_actions() -> None:
     ch.slack_app.client.chat_update.assert_not_awaited()
 
 
+def test_interactions_ignore_disallowed_channels() -> None:
+    ask_callback = MagicMock()
+    approval_callback = MagicMock()
+    stop_callback = MagicMock()
+    ch = _make_channel(
+        on_ask_user_answer=ask_callback,
+        on_approval_decision=approval_callback,
+        on_agent_stop=stop_callback,
+    )
+    body = {
+        "channel": {"id": "C-other"},
+        "message": {"ts": "123.456", "blocks": []},
+        "user": {"id": "U999"},
+    }
+
+    async def scenario() -> None:
+        await ch.interactions.on_ask_user_interaction(body, {"action_id": "ask_user_submit_req-1"})
+        await ch.interactions.on_approval_interaction(body, {"action_id": "cop_approve_a1"})
+        await ch.interactions.on_agent_stop_interaction(body, {"action_id": "agent_stop_ops"})
+
+    asyncio.run(scenario())
+
+    ask_callback.assert_not_called()
+    approval_callback.assert_not_called()
+    stop_callback.assert_not_called()
+    ch.slack_app.client.chat_update.assert_not_awaited()
+
+
+def test_ask_user_update_failure_does_not_hide_answer() -> None:
+    callback = MagicMock()
+    ch = _make_channel(on_ask_user_answer=callback)
+    ch.slack_app.client.chat_update.side_effect = RuntimeError("Slack unavailable")
+    body = {
+        "channel": {"id": "C12345"},
+        "message": {"ts": "123.456"},
+        "user": {"id": "U999"},
+        "state": {"values": {}},
+    }
+
+    asyncio.run(
+        ch.interactions.on_ask_user_interaction(body, {"action_id": "ask_user_submit_req-1"})
+    )
+
+    callback.assert_called_once_with(
+        "req-1",
+        {
+            "answer": "",
+            "answered_by": "U999",
+            "channel_id": "C12345",
+            "message_ts": "123.456",
+        },
+    )
+    ch.slack_app.client.chat_update.assert_awaited_once()
+
+
+def test_approval_interaction_ignores_malformed_action_id() -> None:
+    callback = MagicMock()
+    ch = _make_channel(on_approval_decision=callback)
+    body = {"channel": {"id": "C12345"}, "message": {"ts": "123.456"}}
+
+    asyncio.run(ch.interactions.on_approval_interaction(body, {"action_id": "cop_approve"}))
+
+    callback.assert_not_called()
+    ch.slack_app.client.chat_update.assert_not_awaited()
+
+
+def test_decision_update_failure_does_not_hide_approval() -> None:
+    callback = MagicMock()
+    ch = _make_channel(on_approval_decision=callback)
+    ch.slack_app.client.chat_update.side_effect = RuntimeError("Slack unavailable")
+    body = {
+        "channel": {"id": "C12345"},
+        "message": {"ts": "123.456", "blocks": []},
+        "user": {"id": "U999"},
+    }
+
+    asyncio.run(ch.interactions.on_approval_interaction(body, {"action_id": "cop_deny_a1"}))
+
+    callback.assert_called_once_with("slack:C12345", "deny", "a1", "U999")
+    ch.slack_app.client.chat_update.assert_awaited_once()
+
+
+def test_agent_stop_interaction_ignores_blank_group_name() -> None:
+    callback = MagicMock()
+    ch = _make_channel(on_agent_stop=callback)
+    body = {"channel": {"id": "C12345"}, "message": {"ts": "123.456"}}
+
+    asyncio.run(ch.interactions.on_agent_stop_interaction(body, {"action_id": "agent_stop_"}))
+
+    callback.assert_not_called()
+    ch.slack_app.client.chat_update.assert_not_awaited()
+
+
 def test_inbound_message_normalizes_mentions_and_deduplicates() -> None:
     on_message = MagicMock()
     on_chat_metadata = MagicMock()
@@ -326,7 +419,14 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
 ) -> None:
     on_message = MagicMock()
     on_reaction = MagicMock()
-    ch = _make_channel(on_message=on_message, on_reaction=on_reaction)
+    on_ask_user_answer = MagicMock()
+    on_agent_stop = MagicMock()
+    ch = _make_channel(
+        on_message=on_message,
+        on_reaction=on_reaction,
+        on_ask_user_answer=on_ask_user_answer,
+        on_agent_stop=on_agent_stop,
+    )
     ch.resolve_user_name = AsyncMock(return_value="Ada")
     ch.resolve_channel_name = AsyncMock(return_value="general")
     app = _RegisteringSlackApp()
@@ -342,6 +442,10 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
             {"channel": "C12345", "user": "U999", "text": "hello", "ts": "123.456"},
             object(),
         )
+        await app.events["app_mention"](
+            {"channel": "C12345", "user": "U999", "text": "hello", "ts": "123.456"},
+            object(),
+        )
         reaction_handler = app.events["reaction_added"]
         await reaction_handler(
             {
@@ -350,18 +454,43 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
                 "item": {"channel": "C12345", "ts": "123.456"},
             }
         )
+        await reaction_handler({"reaction": "eyes"})
+        await reaction_handler(
+            {
+                "user": "U999",
+                "reaction": "eyes",
+                "item": {"channel": "C-other", "ts": "123.456"},
+            }
+        )
+        ask_user_handler = app.actions[0][1]
+        await ask_user_handler(
+            ack,
+            {
+                "channel": {"id": "C12345"},
+                "message": {"ts": "123.456"},
+                "user": {"id": "U999"},
+            },
+            {"action_id": "ask_user_submit_a1"},
+        )
         approval_handler = app.actions[1][1]
         await approval_handler(
             ack,
             {"channel": {"id": "C12345"}, "user": {"id": "U999"}},
             {"action_id": "cop_approve_a1"},
         )
+        stop_handler = app.actions[2][1]
+        await stop_handler(
+            ack,
+            {"channel": {"id": "C12345"}, "user": {"id": "U999"}},
+            {"action_id": "agent_stop_a1"},
+        )
 
     asyncio.run(scenario())
 
-    ack.assert_awaited_once()
+    assert ack.await_count == 3
     on_message.assert_called_once()
     on_reaction.assert_called_once_with("slack:C12345", "123.456", "U999", "eyes")
+    on_agent_stop.assert_called_once()
 
 
 def test_registered_slack_assistant_callbacks_route_sidebar_messages(monkeypatch) -> None:
@@ -420,12 +549,27 @@ def test_registered_slack_assistant_callbacks_route_sidebar_messages(monkeypatch
             AssistantContext(),
             status,
         )
+        await panel.user_message_handler(
+            {"text": "missing user", "ts": "123.457"},
+            AssistantContext(),
+            status,
+        )
+
+        class DisallowedContext:
+            channel_id = "C-other"
+
+        await panel.user_message_handler(
+            {"user": "U999", "text": "not allowed", "ts": "123.458"},
+            DisallowedContext(),
+            status,
+        )
 
     asyncio.run(scenario())
 
     say.assert_awaited_once_with("How can I help?")
     prompts.assert_awaited_once()
-    status.assert_awaited_once_with("thinking...")
+    assert status.await_count == 3
+    assert all(call.args == ("thinking...",) for call in status.await_args_list)
     on_chat_metadata.assert_called_once()
     on_message.assert_called_once()
     assert on_message.call_args.args[1].metadata["slack_channel_type"] == "assistant"

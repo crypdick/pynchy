@@ -102,3 +102,34 @@ async def test_wait_cancels_stalled_operation_on_inactivity_timeout() -> None:
 
     assert exc_info.value.reason == "inactivity"
     assert cancelled.is_set()
+
+
+async def test_progress_signal_wins_wait_timeout_race(monkeypatch) -> None:
+    progress = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def operation() -> str:
+        await release.wait()
+        return "done"
+
+    async def fake_wait(tasks, **_kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        if calls == 1:
+            progress.set()
+            return set(), set()
+        release.set()
+        return {tasks[0]}, set()
+
+    monkeypatch.setattr("pynchy.progress_wait.asyncio.wait", fake_wait)
+
+    assert (
+        await wait_for_progress(
+            operation(),
+            progress_event=progress,
+            inactivity_timeout_seconds=1,
+        )
+        == "done"
+    )

@@ -14,6 +14,7 @@ from pynchy.plugins.integrations.linear_boot import (
     configured_linear_workspace_names,
     create_linear_workspace_todo,
     reconcile_linear_workspace_boards,
+    workspace_for_linear_project,
 )
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -64,6 +65,8 @@ async def test_reconcile_linear_workspace_boards_uses_env_defaults(monkeypatch):
         result = await reconcile_linear_workspace_boards([_workspace("alpha", "Alpha")])
 
     assert result == {"alpha": reconcile.return_value["alpha"]}
+    assert workspace_for_linear_project("project-1") == "alpha"
+    assert workspace_for_linear_project("missing-project") is None
     reconcile.assert_awaited_once()
     _, args, kwargs = reconcile.mock_calls[0]
     assert args[0] is fake_client
@@ -131,6 +134,22 @@ async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypa
     assert reconcile_boards.await_count == 2
 
 
+async def test_reconcile_ignores_one_account_failure(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+
+    with patch(
+        "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+        new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+    ):
+        assert await reconcile_linear_workspace_boards([_workspace("alpha", "Alpha")]) == {}
+
+
 async def test_project_routes_only_admit_discord_thread_parents(monkeypatch):
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
     settings = make_settings(
@@ -154,9 +173,34 @@ async def test_project_routes_only_admit_discord_thread_parents(monkeypatch):
 
 
 async def test_create_linear_workspace_todo_skips_when_api_key_missing(monkeypatch):
-    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    configure_linear_accounts_for(settings)
+    monkeypatch.delenv("LINEAR_API_KEY")
 
     result = await create_linear_workspace_todo(_workspace("alpha", "Alpha"), "Review docs")
+
+    assert result is None
+
+
+async def test_create_linear_workspace_todo_ignores_provider_failure(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+
+    with patch(
+        "pynchy.plugins.integrations.linear_boot.create_workspace_todo",
+        new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+    ):
+        result = await create_linear_workspace_todo(_workspace("alpha", "Alpha"), "Review docs")
 
     assert result is None
 

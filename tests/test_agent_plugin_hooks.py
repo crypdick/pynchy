@@ -84,3 +84,14 @@ def test_missing_and_duplicate_agent_hook_specs_are_ignored(tmp_path: Path) -> N
     )
 
     assert specs == (AgentHookSpec(name="audit", module_path=first_module.resolve()),)
+
+
+def test_malformed_agent_hook_contributions_are_ignored(tmp_path: Path) -> None:
+    manager = _plugin_manager()
+    manager.hook.pynchy_agent_hook_specs = lambda: [
+        "not-a-tuple",
+        (object(),),
+        (AgentHookSpec(name="  ", module_path=tmp_path / "blank.py"),),
+    ]
+
+    assert collect_agent_hook_specs(manager) == ()

@@ -6,6 +6,7 @@ import importlib
 import inspect
 import sys
 import types
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -91,8 +92,11 @@ def notebook_server(monkeypatch: pytest.MonkeyPatch, tmp_path) -> dict[str, Any]
     fastmcp.FastMCP = _FakeMcp
     jupyter_client = types.ModuleType("jupyter_client")
     jupyter_client.KernelManager = _FakeKernelManager
+    ubuntu_namer = types.ModuleType("ubuntu_namer")
+    ubuntu_namer.generate_name = lambda **_kwargs: "calm-capybara"
     monkeypatch.setitem(sys.modules, "fastmcp", fastmcp)
     monkeypatch.setitem(sys.modules, "jupyter_client", jupyter_client)
+    monkeypatch.setitem(sys.modules, "ubuntu_namer", ubuntu_namer)
     monkeypatch.setattr(sys, "argv", ["notebook-server", "--workspace-dir", str(tmp_path)])
     monkeypatch.delitem(
         sys.modules,
@@ -117,6 +121,25 @@ async def test_start_kernel_creates_a_persisted_kernel_session(
     assert started["status"] == "started"
     assert started["notebook"] == "coverage.qmd"
     assert _FakeKernelManager.instances[0].started_in == str(notebook_server["WORKSPACE_DIR"])
+
+
+@pytest.mark.asyncio
+async def test_start_kernel_generates_a_date_prefixed_notebook_name(
+    monkeypatch: pytest.MonkeyPatch,
+    notebook_server: dict[str, Any],
+) -> None:
+    monkeypatch.setattr(
+        "ubuntu_namer.generate_name",
+        lambda **_kwargs: "calm-capybara",
+        raising=False,
+    )
+    notebook_server["execute_code"] = AsyncMock(return_value=[])
+
+    started = await notebook_server["start_kernel"]()
+
+    assert started["status"] == "started"
+    assert started["notebook"].startswith(f"{datetime.now(UTC).date().isoformat()}-")
+    assert started["notebook"].endswith(".qmd")
 
 
 @pytest.mark.action("notebook.file.save")

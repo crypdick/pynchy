@@ -20,7 +20,7 @@ from pynchy.agent_protocol.api import (
 from pynchy.config.api import (
     ContainerConfig,
 )
-from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.container_manager.credentials import build_agent_env_vars, has_api_credentials
 from pynchy.host.container_manager.mounts import (
     build_container_args,
 )
@@ -75,6 +75,54 @@ _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=Non
 
 
 class TestContainerArgs:
+    def test_agent_environment_ignores_git_config_start_errors(self, tmp_path: Path):
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}.subprocess.run", side_effect=OSError("git unavailable")),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert "GIT_AUTHOR_NAME" not in environment
+        assert "GIT_AUTHOR_EMAIL" not in environment
+
+    def test_agent_environment_ignores_failed_git_config(self, tmp_path: Path):
+        failed = MagicMock(returncode=1, stdout="", stderr="not configured")
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}.subprocess.run", return_value=failed),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert "GIT_AUTHOR_NAME" not in environment
+        assert "GIT_AUTHOR_EMAIL" not in environment
+
+    def test_agent_environment_includes_anthropic_gateway_and_extra_values(
+        self,
+        tmp_path: Path,
+    ):
+        gateway = _MockGateway(providers={"anthropic", "openai"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gateway),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            environment = build_agent_env_vars(
+                is_admin=False,
+                group_folder="dev",
+                extra_env_vars={"EXTRA": "selected"},
+            )
+
+        assert environment["ANTHROPIC_BASE_URL"] == gateway.base_url
+        assert environment["ANTHROPIC_AUTH_TOKEN"] == gateway.key
+        assert environment["EXTRA"] == "selected"
+
+    def test_has_api_credentials_reflects_gateway_provider(self):
+        gateway = _MockGateway(providers={"anthropic"})
+        with patch(f"{_GATEWAY}.get_gateway", return_value=gateway):
+            assert has_api_credentials() is True
+
     def test_agent_environment_keeps_gateway_but_never_discovers_github(
         self,
         tmp_path: Path,

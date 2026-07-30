@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,6 +23,7 @@ from pynchy.config.api import (
     dynamic_thread_folder,
 )
 from pynchy.host.container_manager import session as session_mod
+from pynchy.host.container_manager.api import McpStartupFailure
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerResult,
     run_agent,
@@ -432,8 +434,17 @@ class TestContainerInputAgentCoreConfig:
             patch.object(
                 deps.container_agent_operations,
                 "ensure_workspace_mcp",
-                new=AsyncMock(return_value=()),
+                new=AsyncMock(
+                    return_value=(
+                        McpStartupFailure(
+                            instance_id="calendar",
+                            server_name="calendar",
+                            reason="start timed out",
+                        ),
+                    )
+                ),
             ),
+            patch.object(deps, "broadcast_host_message", new=AsyncMock()) as broadcast,
             patch.object(deps, "refresh_personalized_agent_skills") as refresh_skills,
             patch.object(
                 session,
@@ -446,10 +457,61 @@ class TestContainerInputAgentCoreConfig:
                 return_value="success",
             ),
         ):
-            result = await run_agent(deps, TEST_GROUP, "chat", [{"content": "follow up"}])
+            result = await run_agent(
+                deps,
+                TEST_GROUP,
+                "chat",
+                [{"content": "follow up"}],
+                resume_session_id="resume-session",
+            )
 
         assert result == "success"
         refresh_skills.assert_called_once_with(TEST_GROUP.folder)
+        broadcast.assert_awaited_once()
         session.send_ipc_message.assert_awaited_once()
         sent_query_id = session.send_ipc_message.await_args.kwargs["query_id"]
         assert set_output_handler.call_args.kwargs["query_id"] == sent_query_id
+
+    @pytest.mark.asyncio
+    async def test_cold_start_notifies_mcp_failures_before_query(self):
+        deps = _AgentRunnerDeps()
+        ctx = self._ctx()
+        session = MagicMock()
+        operations = replace(
+            deps.container_agent_operations,
+            fresh_container_name=AsyncMock(return_value="pynchy-test-group"),
+            spawn=AsyncMock(
+                return_value=(
+                    MagicMock(),
+                    "pynchy-test-group",
+                    [],
+                    (
+                        McpStartupFailure(
+                            instance_id="calendar",
+                            server_name="calendar",
+                            reason="start timed out",
+                        ),
+                    ),
+                )
+            ),
+            create_session=AsyncMock(return_value=session),
+        )
+        deps.container_agent_operations = operations
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._await_query",
+                new_callable=AsyncMock,
+                return_value="success",
+            ),
+            patch.object(deps, "broadcast_host_message", new=AsyncMock()) as broadcast,
+        ):
+            result = await run_agent(deps, TEST_GROUP, "chat", [{"content": "start"}])
+
+        assert result == "success"
+        broadcast.assert_awaited_once()

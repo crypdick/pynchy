@@ -356,6 +356,20 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == "completed"
 
     @pytest.mark.asyncio
+    async def test_run_learning_review_activity_records_and_reraises_failure(self, learning_packet):
+        deps = NullSchedulerDeps()
+        deps.run_learning_review = AsyncMock(side_effect=RuntimeError("review failed"))
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        with pytest.raises(RuntimeError, match="review failed"):
+            await temporal_scheduler.run_learning_review(packet_to_payload(learning_packet))
+
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_task_id"] == learning_packet.job_id
+        assert status["last_result"] == "error"
+
+    @pytest.mark.asyncio
     async def test_run_interactive_message_activity_uses_bound_deps(self, monkeypatch):
 
         deps = NullSchedulerDeps()
@@ -505,6 +519,18 @@ class TestTemporalSchedulerRuntime:
         target = run_turn.await_args.args[0]
         assert target.folder == "admin"
         assert target.chat_jid == current.jid
+
+    @pytest.mark.asyncio
+    async def test_runtime_continuation_records_missing_workspace_failure(self):
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        with pytest.raises(RuntimeError, match="Interactive runtime no longer exists"):
+            await temporal_scheduler.run_interactive_runtime_turn("retired")
+
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_task_id"] == "retired"
+        assert status["last_result"] == "error"
 
     @pytest.mark.asyncio
     async def test_run_interactive_message_activity_returns_terminal_pause(self, monkeypatch):

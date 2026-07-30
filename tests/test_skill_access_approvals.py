@@ -61,3 +61,60 @@ async def test_persistent_skill_action_requires_an_ask_user_callback(tmp_path) -
             "message": "Persistent skill decisions must be completed by an ask_user response.",
         }
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "action", "expected"),
+    [
+        ("unknown", "status", {"status": "unknown", "skill_name": "missing"}),
+        ("granted", "status", {"status": "granted", "skill_name": "known"}),
+        (
+            "granted",
+            "revoke",
+            {"status": "error", "message": "Unknown skill access action: revoke"},
+        ),
+    ],
+)
+async def test_skill_access_policy_reports_status_and_action_errors(
+    tmp_path, status: str, action: str, expected: dict[str, str]
+) -> None:
+    class Deps(NullIpcDeps):
+        def skill_access_status(self, _group_folder: str, _skill_name: str) -> str:
+            return status
+
+    with patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", tmp_path / "ipc"):
+        await registry.dispatch(
+            {
+                "type": "skill_access:policy",
+                "request_id": "request-1",
+                "action": action,
+                "skill_name": "missing" if status == "unknown" else "known",
+            },
+            "pynchy-dev",
+            False,
+            Deps(),
+        )
+
+    response = json.loads(
+        (tmp_path / "ipc/pynchy-dev/responses/request-1.json").read_text(encoding="utf-8")
+    )
+    assert response == {"result": expected}
+
+
+@pytest.mark.asyncio
+async def test_skill_access_policy_ignores_malformed_requests(tmp_path) -> None:
+    with patch("pynchy.host.container_manager.ipc.write._ipc_base_dir", tmp_path / "ipc"):
+        await registry.dispatch(
+            {
+                "type": "skill_access:policy",
+                "request_id": 1,
+                "action": "status",
+                "skill_name": "known",
+            },
+            "pynchy-dev",
+            False,
+            NullIpcDeps(),
+        )
+
+    assert not (tmp_path / "ipc/pynchy-dev/responses/1.json").exists()

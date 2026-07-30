@@ -17,6 +17,7 @@ from conftest import NullChannel, NullIpcDeps, init_test_database, make_settings
 from pynchy.config.api import CommandCenterConfig
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.scheduling.api import SessionPolicy
@@ -138,6 +139,61 @@ class TestCreatePeriodicAgent:
         assert request is not None
         assert request.profile == "pynchy-worker"
         assert request.memory_enabled is True
+
+    @pytest.mark.asyncio
+    async def test_invalid_cron_is_rejected_before_agent_creation(self, deps, tmp_path):
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "invalid-schedule",
+                "profile": "pynchy-worker",
+                "schedule": "not a cron",
+                "prompt": "Test",
+            },
+        )
+
+        assert not (tmp_path / "invalid-schedule").exists()
+
+    @pytest.mark.asyncio
+    async def test_invalid_approval_receipts_block_group_operations(
+        self,
+        deps,
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+            AsyncMock(return_value=ReceiptVerification.INVALID),
+        )
+
+        await dispatch(
+            {
+                "type": "register_group",
+                "jid": "blocked@g.us",
+                "name": "Blocked",
+                "folder": "blocked",
+                "trigger": "@bot",
+            },
+            "admin-1",
+            True,
+            deps,
+        )
+        await self._dispatch_create_periodic_agent(
+            deps,
+            tmp_path,
+            {
+                "type": "create_periodic_agent",
+                "name": "blocked-agent",
+                "profile": "pynchy-worker",
+                "schedule": "0 9 * * *",
+                "prompt": "Test",
+            },
+        )
+
+        assert "blocked@g.us" not in deps.workspaces()
+        assert not (tmp_path / "blocked-agent").exists()
 
     @staticmethod
     def _settings(tmp_path):

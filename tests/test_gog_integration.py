@@ -239,6 +239,34 @@ def test_gog_client_builds_reviewed_read_and_draft_commands(tmp_path: Path) -> N
     assert all("--readonly" in command for command in readonly_commands)
 
 
+def test_gog_client_builds_send_draft_command(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    completed = subprocess.CompletedProcess([], 0, "{}", "")
+
+    with patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=completed):
+        assert client.gmail_send_draft(draft_id="draft-1") == "{}"
+
+
+def test_gog_client_omits_optional_docs_tab(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    completed = subprocess.CompletedProcess([], 0, "{}", "")
+
+    with patch(
+        "pynchy.plugins.integrations.gog._client.subprocess.run", return_value=completed
+    ) as run:
+        assert client.docs_read(document_id="doc-1", tab=None) == "{}"
+
+    assert "--tab" not in run.call_args.args[0]
+
+
 @pytest.mark.parametrize(
     ("outcome", "message"),
     [
@@ -294,6 +322,21 @@ def test_gog_client_rejects_invalid_provider_json(
         client.gmail_search(query="Ada", limit=1)
 
 
+def test_gog_client_rejects_oversized_provider_output(tmp_path: Path) -> None:
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+    result = subprocess.CompletedProcess([], 0, "x" * 2_000_001, "")
+
+    with (
+        patch("pynchy.plugins.integrations.gog._client.subprocess.run", return_value=result),
+        pytest.raises(gog.GogError, match="safe output limit"),
+    ):
+        client.gmail_search(query="Ada", limit=1)
+
+
 def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: Path) -> None:
     unconfigured = gog.GogClient(
         config=gog.GogConfig(),
@@ -308,8 +351,33 @@ def test_gog_client_requires_account_and_available_oauth_credentials(tmp_path: P
 
     with pytest.raises(gog.GogError, match="account"):
         unconfigured.gmail_search(query="Ada", limit=1)
+    with pytest.raises(gog.GogError, match="oauth_client_path"):
+        unconfigured.setup_start()
     with pytest.raises(gog.GogError, match="credentials"):
         missing_credentials.setup_start()
+
+
+@pytest.mark.asyncio
+async def test_gog_executable_probe_checks_explicit_paths(tmp_path: Path) -> None:
+    executable = tmp_path / "gog"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+
+    gog.configure_gog_runtime(
+        gog.GogRuntime(
+            config=gog.GogConfig(command=str(executable), account="you@example.com"),
+            home=tmp_path,
+            oauth_client_path=None,
+            workspace_enables_gog=lambda _workspace: True,
+        )
+    )
+    action = gog.GOG_HOST_ACTIONS.action_for("gog_gmail_search")
+    assert action is not None
+    assert action.capability.probe is not None
+
+    result = await action.capability.probe(CapabilityProbeContext("workspace"))
+
+    assert result.status is ProbeStatus.READY
 
 
 @pytest.mark.asyncio
@@ -421,6 +489,48 @@ async def test_write_actions_use_reviewed_host_operation_and_action_intent(
     assert client.calls[0][0] == called_method
     assert draft.summary
     assert receipt.provider_request_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "message"),
+    [
+        (
+            "gog_gmail_send",
+            {"to": ["friend@example.com"], "subject": "Hello", "body": " "},
+            "body must not be empty",
+        ),
+        (
+            "gog_sheets_update",
+            {"spreadsheet_id": "sheet-1", "range": "Sheet1!A1", "values": [[]]},
+            "values must not contain empty rows",
+        ),
+        (
+            "gog_setup_complete",
+            {"redirect_url": "ftp://localhost/callback"},
+            "HTTP(S) URL",
+        ),
+        (
+            "gog_gmail_send",
+            {"to": ["friend@example.com,other@example.com"], "subject": "Hello", "body": "Body"},
+            "one email address",
+        ),
+        (
+            "gog_gmail_search",
+            {"query": "A\nda", "limit": 1},
+            "single non-empty line",
+        ),
+    ],
+)
+async def test_gog_handlers_reject_invalid_public_payloads(
+    tool_name: str,
+    arguments: dict[str, object],
+    message: str,
+) -> None:
+    result = await _handler(tool_name)({"source_group": "workspace", **arguments})
+
+    assert "error" in result
+    assert message in str(result["error"])
 
 
 @pytest.mark.asyncio
@@ -541,3 +651,39 @@ def test_oauth_commands_have_fixed_services_and_read_only_drive_scope(tmp_path: 
     for command in auth_commands:
         assert command[command.index("--services") + 1] == "gmail,contacts,docs,sheets,drive"
         assert command[command.index("--drive-scope") + 1] == "readonly"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "gog_gmail_search",
+        "gog_gmail_get",
+        "gog_gmail_create_draft",
+        "gog_gmail_send_draft",
+        "gog_gmail_send",
+        "gog_contacts_search",
+        "gog_docs_read",
+        "gog_docs_export",
+        "gog_sheets_get",
+        "gog_sheets_update",
+        "gog_setup_complete",
+    ],
+)
+async def test_gog_handlers_return_validation_errors_for_incomplete_arguments(
+    tool_name: str,
+) -> None:
+    result = await _handler(tool_name)({"source_group": "workspace"})
+
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_gog_setup_start_returns_a_safe_client_error() -> None:
+    with patch(
+        "pynchy.plugins.integrations.gog._handlers.create_gog_client",
+        side_effect=gog.GogError("credentials unavailable"),
+    ):
+        result = await _handler("gog_setup_start")({"source_group": "workspace"})
+
+    assert result == {"error": "Gog setup could not start: credentials unavailable"}

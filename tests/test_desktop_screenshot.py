@@ -275,3 +275,153 @@ async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Pat
             "model": "gpt-5.5",
         }
     }
+
+
+@pytest.mark.asyncio
+async def test_screenshot_actions_validate_platform_runtime_and_request(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    plugin = DesktopScreenshotPlugin()
+    action = plugin.pynchy_service_handler().action_for("take_screenshot")
+    assert action is not None
+    handler = action.handler
+
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+    ):
+        assert await handler({"source_group": "admin"}) == {
+            "error": "Desktop screenshots require lifecycle configuration."
+        }
+
+    handler = _handler(settings)
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+    ):
+        assert await handler({}) == {
+            "error": "Missing or invalid source group for screenshot request."
+        }
+        assert await handler({"source_group": "../admin"}) == {
+            "error": "Missing or invalid source group for screenshot request."
+        }
+        assert await handler({"source_group": "admin", "mode": "bogus"}) == {
+            "error": 'mode must be one of "full", "selection", or "window".'
+        }
+        assert await handler({"source_group": "admin", "display_id": True}) == {
+            "error": "display_id must be a positive integer"
+        }
+
+
+@pytest.mark.asyncio
+async def test_take_screenshot_reports_missing_output_and_empty_stderr(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
+    with (
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+        ),
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=_FakeProcess(returncode=1)),
+        ),
+    ):
+        result = await handler({"source_group": "admin"})
+    assert result == {"error": "screencapture failed: exit code 1"}
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+        ),
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=_FakeProcess()),
+        ),
+    ):
+        result = await handler({"source_group": "admin"})
+    assert result == {"error": "screencapture succeeded but did not create an output file."}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        ({}, "Missing or invalid source group for screenshot analysis request."),
+        (
+            {"source_group": "admin", "max_output_tokens": 0},
+            "max_output_tokens must be a positive integer",
+        ),
+        (
+            {"source_group": "admin", "image_path": "latest.jpg"},
+            "Only PNG screenshots can be analyzed.",
+        ),
+    ],
+)
+async def test_analyze_screenshot_rejects_invalid_requests(
+    tmp_path: Path, data: dict[str, object], message: str
+) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings, "analyze_screenshot")
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "latest.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    result = await handler(data)
+    assert result == {"error": message}
+
+    plugin = DesktopScreenshotPlugin()
+    no_runtime_action = plugin.pynchy_service_handler().action_for("analyze_screenshot")
+    assert no_runtime_action is not None
+    no_runtime = no_runtime_action.handler
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+    ):
+        assert await no_runtime({"source_group": "admin"}) == {
+            "error": "Desktop screenshots require lifecycle configuration."
+        }
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_reports_missing_file_and_vision_failures(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings, "analyze_screenshot")
+
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(side_effect=RuntimeError("gateway unavailable")),
+    ):
+        result = await handler({"source_group": "admin", "image_path": "missing.png"})
+    assert result == {"error": "Screenshot not found: missing.png"}
+
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(side_effect=RuntimeError("gateway unavailable")),
+    ):
+        result = await handler({"source_group": "admin", "image_path": "screen.png"})
+    assert result == {"error": "Vision analysis failed: gateway unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_handles_gateway_absence_and_read_errors(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    runtime = DesktopScreenshotRuntime(
+        data_dir=tmp_path,
+        default_model="gpt-test",
+        vision_gateway=lambda: None,
+    )
+    action = (
+        DesktopScreenshotPlugin(runtime).pynchy_service_handler().action_for("analyze_screenshot")
+    )
+    assert action is not None
+    handler = action.handler
+    assert await handler({"source_group": "admin", "image_path": "screen.png"}) == {
+        "error": "Vision analysis failed: LLM gateway is not running."
+    }
+
+    with patch.object(Path, "read_bytes", side_effect=OSError("read failed")):
+        result = await _handler(settings, "analyze_screenshot")(
+            {"source_group": "admin", "image_path": "screen.png"}
+        )
+    assert result == {"error": "Failed to read screenshot: read failed"}

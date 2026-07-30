@@ -100,3 +100,58 @@ async def test_rejects_unauthorized_unknown_and_unconfigured_requests(unused_tcp
             response.close()
     finally:
         await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_rejects_invalid_body_and_reports_upstream_transport_failure(
+    monkeypatch: pytest.MonkeyPatch, unused_tcp_port: int
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.gateway_builtin._ANTHROPIC_BASE",
+        "http://127.0.0.1:1",
+    )
+    gateway = BuiltinGateway(
+        port=unused_tcp_port,
+        host="127.0.0.1",
+        container_host="gateway.test",
+        credentials=BuiltinGatewayCredentials(
+            anthropic_api_key="anthropic-secret"  # pragma: allowlist secret
+        ),
+    )
+
+    try:
+        await gateway.start()
+        async with ClientSession() as client:
+            headers = {"X-Api-Key": gateway.key}
+            response = await client.post(
+                f"http://127.0.0.1:{unused_tcp_port}/v1/messages",
+                headers=headers,
+                data=b"not-json",
+            )
+            assert response.status == 400
+            response.close()
+            response = await client.post(
+                f"http://127.0.0.1:{unused_tcp_port}/v1/messages",
+                headers=headers,
+                data=b'{"messages": []}',
+            )
+            assert response.status == 502
+            response.close()
+    finally:
+        await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_starts_without_credentials_and_reports_no_providers(unused_tcp_port: int) -> None:
+    gateway = BuiltinGateway(
+        port=unused_tcp_port,
+        host="127.0.0.1",
+        container_host="gateway.test",
+    )
+
+    await gateway.start()
+    try:
+        assert gateway.has_provider("anthropic") is False
+        assert gateway.has_provider("openai") is False
+    finally:
+        await gateway.stop()

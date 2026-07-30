@@ -14,6 +14,7 @@ Key coverage gaps addressed:
 from __future__ import annotations
 
 import json
+import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -21,6 +22,7 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -126,6 +128,170 @@ async def deps():
 @pytest.mark.action("lifecycle.worktree.sync")
 class TestSyncWorktreeToMain:
     """Tests for the sync_worktree_to_main IPC command handler."""
+
+    @pytest.mark.parametrize(
+        ("diff_result", "expected_reason"),
+        [
+            (
+                subprocess.CompletedProcess(
+                    args=[], returncode=1, stdout="", stderr="fatal: repository unavailable"
+                ),
+                "Committed patch unavailable for owner/pynchy: fatal: repository unavailable",
+            ),
+            (
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="GIT binary patch\nliteral 8\n", stderr=""
+                ),
+                "Committed patch for owner/pynchy contains binary content",
+            ),
+            (
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="x" * 70_000, stderr=""),
+                "Committed patch exceeds the Cop inspection context limit",
+            ),
+        ],
+        ids=["git-failure", "binary-patch", "oversized-patch"],
+    )
+    async def test_unsafe_committed_patch_requires_human_approval(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+        diff_result: subprocess.CompletedProcess[str],
+        expected_reason: str,
+    ) -> None:
+        """Patch inspection failures never reach PR publication."""
+        repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path / "repo", worktrees_dir=tmp_path / "worktrees"
+        )
+        (repo_ctx.worktrees_dir / "other-group").mkdir(parents=True)
+        result_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.detect_main_branch",
+                return_value="main",
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.run_git",
+                return_value=diff_result,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as cop,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-unsafe-patch",
+                    "publication": "pull-request",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        assert cop.await_args.kwargs["required_human_reason"] == expected_reason
+        create_pr.assert_not_called()
+
+    async def test_invalid_approval_receipt_is_rejected_before_repository_resolution(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        """A replayed or malformed receipt cannot trigger repository work."""
+        result_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.INVALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos"
+            ) as resolve_repos,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-invalid-receipt",
+                    "publication": "pull-request",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        resolve_repos.assert_not_called()
+        create_pr.assert_not_called()
+        result = json.loads((result_dir / "req-invalid-receipt.json").read_text())
+        assert result == {
+            "success": False,
+            "message": "Publication blocked: invalid or replayed approval receipt.",
+        }
+
+    async def test_empty_repository_selection_returns_without_cop_or_publication(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        """A group with no configured repository gets a deterministic response."""
+        result_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=_test_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+                return_value=[],
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+            ) as cop,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
+            ) as create_pr,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-no-repo",
+                    "publication": "pull-request",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        cop.assert_not_awaited()
+        create_pr.assert_not_called()
+        result = json.loads((result_dir / "req-no-repo.json").read_text())
+        assert result == {"success": False, "message": "No repo configured for this group."}
 
     async def test_writes_result_file_on_success(self, deps: MockDeps, tmp_path: Path):
         """PR publication writes a result JSON for the blocking MCP tool."""

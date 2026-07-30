@@ -13,10 +13,12 @@ from pynchy.canaries.api import (
     CanaryRunContext,
     registered_canary_scenarios,
 )
+from pynchy.canary_contracts import CanaryExercise
 from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
 from pynchy.host.container_manager.mcp.google_canaries import (
     GoogleCalendarRoundTripCanary,
     GoogleDriveRoundTripCanary,
+    GoogleMcpCanaryError,
 )
 from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
 from pynchy.plugins.integrations.linear import WorkspaceContext
@@ -24,6 +26,7 @@ from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
+    linear_client_context,
     proton_client_factory,
 )
 from pynchy.plugins.integrations.proton_bridge import (
@@ -73,6 +76,29 @@ async def test_calendar_canary_uses_configured_calendar_and_removes_event(monkey
     assert verified[0].startswith("calendar:verified:")
     assert cleaned[0].startswith("calendar:deleted:")
     delete_event.assert_awaited_once_with({"calendar": "canary", "event_id": "event-1"})
+
+
+@pytest.mark.asyncio
+async def test_calendar_canary_fails_when_service_returns_an_error():
+    scenario = CalendarRoundTripCanary(
+        "canary",
+        list_calendars=AsyncMock(return_value={"error": "unavailable"}),
+    )
+
+    with pytest.raises(operational_canaries.CanaryServiceError, match="rejected"):
+        await scenario.exercise(_context("calendar.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_linear_canary_requires_a_configured_account():
+    with pytest.raises(operational_canaries.CanaryServiceError, match="does not select"):
+        async with linear_client_context(None)():
+            pass
+
+
+def test_proton_canary_requires_mcp_tool_configuration():
+    with pytest.raises(operational_canaries.CanaryServiceError, match="requires an MCP"):
+        proton_client_factory(None)()
 
 
 class _FakeLinearClient:
@@ -256,6 +282,79 @@ async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monke
     ]
     assert verified[0].startswith("google-drive:file:verified:")
     assert cleaned == ()
+
+
+@pytest.mark.asyncio
+async def test_google_canary_requires_the_managed_mcp_manager(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: None,
+    )
+    scenario = GoogleCalendarRoundTripCanary("gcal.canary", "pynchy-canary")
+
+    with pytest.raises(GoogleMcpCanaryError, match="manager is not available"):
+        await scenario.exercise(_context("calendar.google.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_google_canary_reports_an_unavailable_managed_mcp_server(monkeypatch) -> None:
+    manager = AsyncMock()
+    manager.get_canary_server_endpoint.side_effect = TimeoutError("startup timed out")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: manager,
+    )
+    scenario = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id"
+    )
+
+    with pytest.raises(GoogleMcpCanaryError, match="server is not available"):
+        await scenario.exercise(_context("drive.google.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_google_canary_uses_the_managed_mcp_client_context(monkeypatch) -> None:
+    manager = AsyncMock()
+    manager.get_canary_server_endpoint.return_value = "http://127.0.0.1:8474/mcp"
+    client = _FakeGoogleMcpClient({"gdrive_search", "gdrive_read_file"})
+
+    @asynccontextmanager
+    async def managed_client(endpoint: str):
+        assert endpoint == "http://127.0.0.1:8474/mcp"
+        yield client
+
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: manager,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.McpCanaryClient",
+        managed_client,
+    )
+    scenario = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id"
+    )
+
+    exercise = await scenario.exercise(_context("drive.google.round.trip"))
+
+    assert exercise.evidence_refs[0] == "google-drive:search:completed"
+    assert exercise.evidence_refs[1].startswith("google-drive:file:read:")
+
+
+@pytest.mark.asyncio
+async def test_google_canaries_reject_wrong_exercise_artifact_types() -> None:
+    exercise = CanaryExercise(artifact=object())
+    calendar = GoogleCalendarRoundTripCanary(
+        "gcal.canary", "pynchy-canary", client_context=AsyncMock()
+    )
+    drive = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id", client_context=AsyncMock()
+    )
+
+    with pytest.raises(GoogleMcpCanaryError, match="Calendar canary artifact"):
+        await calendar.verify(_context("calendar.google.round.trip"), exercise)
+    with pytest.raises(GoogleMcpCanaryError, match="Drive canary artifact"):
+        await drive.verify(_context("drive.google.round.trip"), exercise)
 
 
 class _FakeProtonClient:

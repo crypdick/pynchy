@@ -357,6 +357,15 @@ class TestSlackInboundBoundary:
 
         on_message.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_ingest_inbound_event_ignores_events_without_channel_or_user(self) -> None:
+        on_message = MagicMock()
+        ch = _make_channel(on_message=on_message)
+
+        await ch.ingest_inbound_event({"channel": "C12345", "user": ""})
+
+        on_message.assert_not_called()
+
 
 # ------------------------------------------------------------------
 # SlackChannelPlugin hook
@@ -371,6 +380,52 @@ class TestSlackChannelPlugin:
         result = plugin.pynchy_create_channel(context=context)
 
         assert result is None
+
+    def test_skips_connection_with_empty_token_environment_names(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env="",
+                    app_token_env="",
+                    chat_names=("general",),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+    def test_skips_connection_without_configured_chats(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    chat_names=(),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+    def test_skips_connection_with_missing_token_values(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    chat_names=("general",),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        with patch.dict(os.environ, {SLACK_BOT_ENV: "", SLACK_APP_ENV: ""}):
+            assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
 
     def test_returns_channel_when_tokens_present(self) -> None:
         plugin = SlackChannelPlugin()
@@ -542,6 +597,15 @@ class TestFetchInboundSince:
         ch.slack_app = None
 
         result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
+
+        assert result.messages == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_channel_outside_allowlist(self) -> None:
+        ch = _make_channel()
+        _attach_slack_app(ch)
+
+        result = await ch.fetch_inbound_since("slack:C999", _HISTORY_SINCE)
 
         assert result.messages == []
 

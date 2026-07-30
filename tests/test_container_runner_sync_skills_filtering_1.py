@@ -481,6 +481,21 @@ class TestContainerSessionSignalQueryDone:
 
         await asyncio.wait_for(expired.wait(), timeout=0.2)
 
+    async def test_idle_callback_failure_still_destroys_session(self):
+        """A best-effort idle reaction must not prevent session destruction."""
+        session = session_mod.ContainerSession("test-group", "pynchy-test-group")
+        on_idle = AsyncMock(side_effect=RuntimeError("reaction failed"))
+        destroy = AsyncMock()
+
+        session.set_idle_timeout(0.01)
+        session.set_idle_callback(on_idle)
+        with patch("pynchy.host.container_manager.session.destroy_session", destroy):
+            session.signal_query_done()
+            await asyncio.sleep(0.05)
+
+        on_idle.assert_awaited_once()
+        destroy.assert_awaited_once_with("test-group")
+
     async def test_signal_query_done_after_set_output_handler(self):
         """A completion pulse must detach the callback before the next turn."""
         session = session_mod.ContainerSession("test-group", "pynchy-test-group")

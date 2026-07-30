@@ -276,3 +276,9 @@ def test_optional_environment_does_not_control_availability() -> None:
 
     assert "linear" in access.tools
     assert "LINEAR_SYNAPSE_TEAM_KEY" not in access.workspace_env
+    assert tool_process_environment(
+        settings.tools["linear"],
+        environ={
+            "LINEAR_SYNAPSE_API_KEY": _LINEAR_SECRET,
+        },
+    ) == {"LINEAR_API_KEY": _LINEAR_SECRET}

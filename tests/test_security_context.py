@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 
@@ -201,3 +203,59 @@ async def test_frozen_or_unleased_work_has_no_durable_execution_authority(
     context = await state.load_recent_security_context("discord:thread:syn-88")
 
     assert context.execution_authority is None
+
+
+@pytest.mark.asyncio
+async def test_malformed_agent_update_payload_is_ignored() -> None:
+    chat_jid = "security-context-malformed-update"
+    await state.store_event(
+        "agent_trace",
+        chat_jid,
+        {"trace_type": "text", "content": "update"},
+    )
+
+    with patch(
+        "pynchy.state.security_context.json.loads",
+        side_effect=json.JSONDecodeError("bad payload", "", 0),
+    ):
+        context = await state.load_recent_security_context(chat_jid)
+
+    assert context.recent_agent_updates == ()
+
+    with patch(
+        "pynchy.state.security_context.json.loads",
+        return_value={"trace_type": "text", "content": ""},
+    ):
+        empty = await state.load_recent_security_context(chat_jid)
+    assert empty.recent_agent_updates == ()
+
+
+@pytest.mark.asyncio
+async def test_malformed_tool_payload_and_trace_type_drift_are_ignored() -> None:
+    chat_jid = "security-context-malformed-tool"
+    await state.store_event(
+        "agent_trace",
+        chat_jid,
+        {"trace_type": "tool_use", "tool_name": "Tool"},
+    )
+
+    with patch(
+        "pynchy.state.security_context.json.loads",
+        side_effect=TypeError("bad payload"),
+    ):
+        malformed = await state.load_recent_security_context(chat_jid)
+    assert malformed.completed_tool_actions == ()
+
+    with patch(
+        "pynchy.state.security_context.json.loads",
+        return_value={"trace_type": "text", "content": "not a tool"},
+    ):
+        drifted = await state.load_recent_security_context(chat_jid)
+    assert drifted.completed_tool_actions == ()
+
+    with patch(
+        "pynchy.state.security_context.json.loads",
+        return_value={"trace_type": "tool_use", "tool_name": ""},
+    ):
+        unnamed = await state.load_recent_security_context(chat_jid)
+    assert unnamed.completed_tool_actions == ()

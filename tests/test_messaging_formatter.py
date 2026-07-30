@@ -96,6 +96,24 @@ class TestFormatToolPreview:
         assert "+     return 1" in result
         assert "```" in result
 
+    def test_edit_shows_only_removed_lines(self):
+        result = format_tool_preview(
+            "Edit",
+            {"file_path": "/src/config.py", "old_string": "return None"},
+        )
+
+        assert "- return None" in result
+        assert "```" in result
+
+    def test_edit_shows_only_added_lines(self):
+        result = format_tool_preview(
+            "Edit",
+            {"file_path": "/src/config.py", "new_string": "return 42"},
+        )
+
+        assert "+ return 42" in result
+        assert "```" in result
+
     def test_edit_shows_all_diff_lines(self):
         old = "\n".join(f"old_line_{i}" for i in range(10))
         new = "\n".join(f"new_line_{i}" for i in range(10))
@@ -279,6 +297,19 @@ class TestFormatToolPreview:
 
     def test_ask_user_question_empty_questions(self):
         result = format_tool_preview("AskUserQuestion", {"questions": []})
+        assert result == "AskUserQuestion"
+
+    def test_ask_user_question_skips_blank_and_non_mapping_entries(self):
+        result = format_tool_preview(
+            "AskUserQuestion",
+            {"questions": [{}, "not-a-question", {"question": "Second question?"}]},
+        )
+
+        assert result == "Asking: Second question?"
+
+    def test_ask_user_question_with_no_text_uses_placeholder(self):
+        result = format_tool_preview("AskUserQuestion", {"questions": [{}, "not-a-question"]})
+
         assert result == "AskUserQuestion"
 
     def test_ask_user_question_no_questions_key(self):

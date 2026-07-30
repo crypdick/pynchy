@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -70,6 +70,16 @@ class TestMcpHandlers:
         result = await self._handler("save_memory")({"source_group": "g"})
         assert "error" in result
 
+    async def test_save_rejects_invalid_category_and_metadata(self):
+        category = await self._handler("save_memory")(
+            {"source_group": "g", "key": "k", "content": "c", "category": 1}
+        )
+        metadata = await self._handler("save_memory")(
+            {"source_group": "g", "key": "k", "content": "c", "metadata": []}
+        )
+        assert category["error"] == "category must be a string"
+        assert metadata["error"] == "metadata must be an object"
+
     async def test_save_delegates_to_backend(self):
         self.mock_backend.save.return_value = {"key": "k", "status": "created"}
         result = await self._handler("save_memory")(
@@ -97,6 +107,16 @@ class TestMcpHandlers:
         result = await self._handler("recall_memories")({"source_group": "g"})
         assert "error" in result
 
+    async def test_recall_rejects_invalid_category_and_limit(self):
+        category = await self._handler("recall_memories")(
+            {"source_group": "g", "query": "test", "category": 1}
+        )
+        limit = await self._handler("recall_memories")(
+            {"source_group": "g", "query": "test", "limit": "5"}
+        )
+        assert category["error"] == "category must be a string"
+        assert limit["error"] == "limit must be an integer"
+
     async def test_recall_delegates_to_backend(self):
         self.mock_backend.recall.return_value = [{"key": "k", "content": "c"}]
         result = await self._handler("recall_memories")(
@@ -123,6 +143,10 @@ class TestMcpHandlers:
         result = await self._handler("forget_memory")({"source_group": "g", "key": "k"})
         assert result == {"result": {"removed": True}}
 
+    async def test_forget_requires_key(self):
+        result = await self._handler("forget_memory")({"source_group": "g", "key": ""})
+        assert result["error"] == "Missing required field: key"
+
     async def test_list_requires_source_group(self):
         result = await self._handler("list_memories")({})
         assert "error" in result
@@ -136,8 +160,35 @@ class TestMcpHandlers:
             category="core",
         )
 
+    async def test_list_rejects_invalid_category(self):
+        result = await self._handler("list_memories")({"source_group": "g", "category": 1})
+        assert result["error"] == "category must be a string"
+
+
+@pytest.mark.asyncio
+async def test_memory_handler_requires_a_backend_before_initialization():
+    action = SqliteMemoryPlugin().pynchy_service_handler().action_for("save_memory")
+    assert action is not None
+
+    with pytest.raises(RuntimeError, match="backend is unavailable"):
+        await action.handler({"source_group": "g", "key": "k", "content": "c"})
+
 
 class TestDiscovery:
+    def test_get_memory_provider_returns_none_without_valid_plugins(self, tmp_path):
+        plugin_manager = get_plugin_manager()
+        with patch.object(plugin_manager.hook, "pynchy_memory", return_value=[]):
+            assert get_memory_provider(plugin_manager, tmp_path / "memories.db") is None
+
+    def test_get_memory_provider_ignores_plugin_failure(self, tmp_path):
+        plugin_manager = get_plugin_manager()
+        with patch.object(
+            plugin_manager.hook,
+            "pynchy_memory",
+            side_effect=RuntimeError("plugin unavailable"),
+        ):
+            assert get_memory_provider(plugin_manager, tmp_path / "memories.db") is None
+
     def test_get_memory_provider_returns_backend(self, tmp_path):
         """get_memory_provider finds the sqlite-memory plugin."""
         provider = get_memory_provider(get_plugin_manager(), tmp_path / "memories.db")

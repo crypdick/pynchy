@@ -310,6 +310,61 @@ async def test_cop_handles_markdown_fenced_json():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response_text",
+    [
+        '{"reason": "safe"}',
+        '{"decision": "approve"}',
+        '{"decision": "approve", "reason": "   "}',
+    ],
+)
+async def test_bash_malformed_verdict_escalates(response_text: str) -> None:
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()),
+        _mock_aiohttp_session(response_text),
+    ):
+        verdict = await inspect_bash("cat /workspace/README.md")
+
+    assert verdict.decision is CopCommandDecision.ESCALATE
+    assert verdict.degraded is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response_text",
+    [
+        '{"reason": "safe"}',
+        '{"decision": "confirm"}',
+        '{"decision": "confirm", "reason": "   "}',
+    ],
+)
+async def test_taint_malformed_verdict_confirms(response_text: str) -> None:
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()),
+        _mock_aiohttp_session(response_text),
+    ):
+        verdict = await inspect_secret_taint(
+            "Read",
+            (CopTaintCandidate("CRED001", "path_read", ".env"),),
+        )
+
+    assert verdict.decision is CopTaintDecision.CONFIRM
+    assert verdict.degraded is True
+
+
+@pytest.mark.asyncio
+async def test_outbound_verdict_without_flagged_decision_degrades() -> None:
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()),
+        _mock_aiohttp_session('{"reason": "unclear"}'),
+    ):
+        verdict = await inspect_outbound("deploy", "rebuild")
+
+    assert verdict.flagged is False
+    assert verdict.degraded is True
+
+
+@pytest.mark.asyncio
 async def test_bash_benign_command():
     """The Cop approves an obviously safe Bash command."""
     gw_patch = patch(

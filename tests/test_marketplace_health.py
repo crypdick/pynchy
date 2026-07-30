@@ -125,6 +125,7 @@ def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path, monkeypa
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
+        ("Configure the Proton Bridge reader first", "reader_not_configured"),
         ("Could not retrieve the Proton Bridge app password", "reader_credentials_unavailable"),
         ("Proton Bridge IMAP request failed", "reader_connection_unavailable"),
         ("unexpected reader error", "reader_unavailable"),
@@ -162,6 +163,58 @@ def test_snapshot_rejects_invalid_state_without_echoing_content(tmp_path: Path) 
         build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=state_file))
 
     assert "private body" not in str(exc_info.value)
+
+
+def test_snapshot_rejects_invalid_state_entries(tmp_path: Path) -> None:
+    state_file = tmp_path / "pending_actions.json"
+    state_file.write_text(json.dumps({"pending": {"buyer": "not an entry"}}), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="invalid entry"):
+        build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=state_file))
+
+
+def test_snapshot_rejects_invalid_state_status(tmp_path: Path) -> None:
+    state_file = tmp_path / "pending_actions.json"
+    state_file.write_text(json.dumps({"pending": {"buyer": {"status": 1}}}), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="invalid status"):
+        build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=state_file))
+
+
+def test_snapshot_rejects_missing_or_oversized_state_files(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.json"
+    with pytest.raises(ValueError, match="state is unavailable"):
+        build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=missing))
+
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b"x" * 1_000_001)
+    with pytest.raises(ValueError, match="exceeds the safe read limit"):
+        build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=oversized))
+
+
+def test_snapshot_reports_unconfigured_reader(tmp_path: Path) -> None:
+    state_file = tmp_path / "pending_actions.json"
+    _write_state(state_file)
+    configure_marketplace_health_runtime(
+        MarketplaceHealthRuntime(
+            options=MarketplaceHealthOptions(pending_actions_file=state_file),
+            reader_environment=lambda _tool: None,
+        )
+    )
+
+    snapshot = build_marketplace_health_snapshot(
+        MarketplaceHealthOptions(pending_actions_file=state_file)
+    )
+
+    assert snapshot.reader_health.model_dump() == {
+        "status": "unavailable",
+        "reason": "reader_not_configured",
+    }
+
+
+def test_marketplace_state_file_must_be_absolute(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must be absolute"):
+        MarketplaceHealthOptions(pending_actions_file="relative.json")
 
 
 def test_host_action_is_a_read_only_validated_action() -> None:

@@ -18,6 +18,8 @@ from pynchy.host.orchestrator.api import resolve_agent_core
 from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.plugins.api import AgentCoreSpec
 from pynchy.workspace.api import (
+    AdditionalMount,
+    ContainerConfig,
     WorkspaceProfile,
 )
 from tests.container_runner_support import (
@@ -70,6 +72,37 @@ _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=Non
 
 
 class TestMountBuilding:
+    def test_additional_mounts_are_appended_after_validation(self, tmp_path: Path):
+        group = WorkspaceProfile(
+            jid="mounts@g.us",
+            name="Mounts",
+            folder="mounts",
+            trigger="@pynchy",
+            added_at="2024-01-01",
+            container_config=ContainerConfig(
+                additional_mounts=[AdditionalMount(host_path="/host/data")]
+            ),
+        )
+        with (
+            _patch_settings(tmp_path),
+            patch(
+                "pynchy.host.container_manager.mounts.validate_additional_mounts",
+                return_value=[
+                    {
+                        "hostPath": "/host/data",
+                        "containerPath": "/workspace/extra/data",
+                        "readonly": True,
+                    }
+                ],
+            ) as validate,
+        ):
+            mounts = build_volume_mounts(group, is_admin=False)
+
+        validate.assert_called_once()
+        assert mounts[-1].host_path == "/host/data"
+        assert mounts[-1].container_path == "/workspace/extra/data"
+        assert mounts[-1].readonly is True
+
     def test_repo_mounts_support_multiple_repos(self, tmp_path: Path):
         repo_a = RepoContext(
             slug="owner/pynchy", root=tmp_path / "repo-a", worktrees_dir=tmp_path / "wt-a"

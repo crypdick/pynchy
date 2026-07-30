@@ -15,6 +15,9 @@ from pynchy.plugins.integrations.linear_boards import (
     list_workspace_todos,
     move_workspace_todo,
     provision_workspace_board,
+    reconcile_workspace_boards,
+    require_todo_states,
+    require_workspace_project,
     select_team,
 )
 
@@ -176,8 +179,101 @@ class TestSelectTeam:
         with pytest.raises(LinearBoardError, match="missing string id"):
             await select_team(client, team_key=None)
 
+    async def test_rejects_non_object_team_payloads_at_the_boundary(self):
+        client = FakeLinearClient()
+        client.teams = [None]
+
+        with pytest.raises(LinearBoardError, match="not an object"):
+            await select_team(client, team_key=None)
+
+    async def test_rejects_an_unknown_team_key(self):
+        with pytest.raises(LinearBoardError, match="did not match"):
+            await select_team(FakeLinearClient(), team_key="MISSING")
+
+    async def test_rejects_when_no_teams_are_visible(self):
+        client = FakeLinearClient()
+        client.teams = []
+
+        with pytest.raises(LinearBoardError, match="cannot see any teams"):
+            await select_team(client, team_key=None)
+
+
+def test_read_only_board_resolution_rejects_missing_workflow_state() -> None:
+    with pytest.raises(LinearBoardError, match="missing workflow states"):
+        require_todo_states(
+            [{"name": spec.name} for spec in LINEAR_TODO_STATUSES.values()][:-1],
+            "code-improver",
+        )
+
+
+def test_read_only_board_resolution_rejects_missing_project() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+    with pytest.raises(LinearBoardError, match="has not been provisioned"):
+        require_workspace_project([], workspace)
+
+
+def test_read_only_board_resolution_rejects_duplicate_projects() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+    description = f"pynchy.workspace={workspace.folder}"
+
+    with pytest.raises(LinearBoardError, match="Duplicate Linear projects"):
+        require_workspace_project(
+            [
+                {"id": "project-one", "description": description},
+                {"id": "project-two", "description": description},
+            ],
+            workspace,
+        )
+
+
+def test_read_only_board_resolution_requires_duplicate_project_ids() -> None:
+    workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+    description = f"pynchy.workspace={workspace.folder}"
+
+    with pytest.raises(LinearBoardError, match="did not include an ID"):
+        require_workspace_project(
+            [{"description": description}, {"id": "project-two", "description": description}],
+            workspace,
+        )
+
 
 class TestEnsureWorkspaceBoard:
+    async def test_reconcile_empty_workspace_set_is_a_noop(self):
+        assert await reconcile_workspace_boards(FakeLinearClient(), [], team_key=None) == {}
+
+    async def test_reconcile_creates_boards_for_each_workspace(self):
+        client = FakeLinearClient()
+        boards = await reconcile_workspace_boards(
+            client,
+            [
+                WorkspaceStub(folder="first", name="First"),
+                WorkspaceStub(folder="second", name="Second"),
+            ],
+            team_key=None,
+        )
+
+        assert set(boards) == {"first", "second"}
+
+    async def test_reconcile_does_not_duplicate_an_existing_project(self):
+        client = FakeLinearClient()
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Code Improver",
+                "url": "https://linear.app/acme/project/existing",
+            }
+        )
+
+        boards = await reconcile_workspace_boards(
+            client,
+            [WorkspaceStub(folder="code-improver", name="Code Improver")],
+            team_key=None,
+        )
+
+        assert boards["code-improver"].project["id"] == "project-existing"
+        assert [project["id"] for project in client.projects] == ["project-existing"]
+
     async def test_creates_missing_project_and_workflow_states(self):
         client = FakeLinearClient()
         workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
@@ -377,6 +473,32 @@ class TestEnsureWorkspaceBoard:
 
         assert client.updated_projects == []
 
+    async def test_rejects_duplicate_unmanaged_projects_by_name(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {"id": "project-one", "name": "Code Improver"},
+                {"id": "project-two", "name": "Code Improver"},
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        with pytest.raises(LinearBoardError, match="Duplicate Linear projects"):
+            await provision_workspace_board(client, workspace, team_key=None)
+
+    async def test_duplicate_unmanaged_projects_require_ids(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {"name": "Code Improver"},
+                {"id": "project-two", "name": "Code Improver"},
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        with pytest.raises(LinearBoardError, match="did not include an ID"):
+            await provision_workspace_board(client, workspace, team_key=None)
+
     async def test_workspace_marker_does_not_match_a_longer_workspace_name(self):
         client = FakeLinearClient()
         client.projects.extend(
@@ -488,6 +610,31 @@ class TestWorkspaceTodos:
 
         assert [issue["id"] for issue in issues] == ["open"]
         assert "title description url" in client.queries[-1]
+
+    async def test_listing_can_include_terminal_todos(self):
+        client = FakeLinearClient()
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+        board = await provision_workspace_board(client, workspace, team_key=None)
+        client.issues = [{"id": "done", "state": board.states["done"]}]
+
+        assert (
+            await list_workspace_todos(client, workspace, team_key=None, include_done=True)
+            == client.issues
+        )
+
+    async def test_listing_rejects_a_missing_project_payload(self):
+        class MissingProjectClient(FakeLinearClient):
+            async def query(self, query: str, **variables: Any) -> dict[str, Any]:
+                if "ListWorkspaceTodos" in query:
+                    return {"project": None}
+                return await super().query(query, **variables)
+
+        client = MissingProjectClient()
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+        await provision_workspace_board(client, workspace, team_key=None)
+
+        with pytest.raises(LinearBoardError, match="did not include project"):
+            await list_workspace_todos(client, workspace, team_key=None)
 
     async def test_move_workspace_todo_maps_status_to_linear_state(self):
         client = FakeLinearClient()

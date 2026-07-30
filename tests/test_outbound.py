@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import init_test_database
@@ -18,6 +18,23 @@ from pynchy.state import (
     store_chat_metadata,
 )
 from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
+
+
+class _MissingLedgerIdCursor:
+    lastrowid = None
+
+
+class _MissingLedgerIdDatabase:
+    async def execute(self, *_args: object) -> _MissingLedgerIdCursor:
+        return _MissingLedgerIdCursor()
+
+
+class _AtomicWrite:
+    async def __aenter__(self) -> _MissingLedgerIdDatabase:
+        return _MissingLedgerIdDatabase()
+
+    async def __aexit__(self, *_args: object) -> bool:
+        return False
 
 
 @pytest.fixture
@@ -158,3 +175,13 @@ class TestGcDelivered:
             mock_dt.now.return_value = datetime(2030, 1, 1, tzinfo=UTC)
             deleted = await gc_delivered(max_age_hours=1)
         assert deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_record_outbound_fails_when_insert_returns_no_ledger_id() -> None:
+    with (
+        patch("pynchy.state.outbound.atomic_write", return_value=_AtomicWrite()),
+        patch("pynchy.state.outbound.ensure_chat_parent", new=AsyncMock()),
+        pytest.raises(RuntimeError, match="did not return a row id"),
+    ):
+        await record_outbound_deliveries("group@g.us", "hello", "test", [])

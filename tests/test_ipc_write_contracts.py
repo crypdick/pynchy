@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from pynchy.host.container_manager.ipc.write import (
     configure_ipc_base_dir,
     ipc_response_path,
@@ -33,6 +35,13 @@ def test_message_delivery_writes_complete_envelope(tmp_path) -> None:
         "query_id": "query-1",
         "metadata": {"source": "host"},
     }
+
+
+def test_message_delivery_requires_ipc_root(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("pynchy.host.container_manager.ipc.write._ipc_base_dir", None)
+
+    with pytest.raises(RuntimeError, match="IPC base directory has not been configured"):
+        write_ipc_message("project", "Ship it.")
 
 
 def test_message_delivery_omits_absent_optional_fields(tmp_path) -> None:

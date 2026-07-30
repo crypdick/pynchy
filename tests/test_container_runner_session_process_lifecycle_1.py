@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -75,6 +76,54 @@ class TestSessionProcessLifecycle:
         ):
             self.container_record_cleanup = cleanup
             yield cleanup
+
+    async def test_start_rejects_a_process_without_stderr_pipe(self):
+        session = session_mod.ContainerSession(
+            "missing-stderr-test",
+            "pynchy-missing-stderr-test",
+            runtime_probe=AsyncMock(return_value=False),
+        )
+        proc = FakeProcess()
+        proc.stderr = None
+
+        with pytest.raises(RuntimeError, match="stderr pipe"):
+            session.start(proc)  # type: ignore[arg-type]
+
+    async def test_get_session_removes_a_dead_registered_session(self):
+        proc = FakeProcess()
+        session = await session_mod.create_session(
+            "dead-registered-test",
+            "pynchy-dead-registered-test",
+            proc,
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
+        )
+        proc.close(code=1)
+        with pytest.raises(SessionDiedError):
+            await session.wait_for_query_done(query_timeout_seconds=0.2)
+
+        assert session_mod.get_session("dead-registered-test") is None
+
+    async def test_send_ipc_message_forwards_optional_routing_metadata(self):
+        session = session_mod.ContainerSession(
+            "ipc-message-test",
+            "pynchy-ipc-message-test",
+        )
+        with patch("pynchy.host.container_manager.session.write_ipc_message") as write_message:
+            await session.send_ipc_message(
+                "follow-up",
+                turn_id="turn-1",
+                query_id="query-1",
+                metadata={"source": "test"},
+            )
+
+        write_message.assert_called_once_with(
+            "ipc-message-test",
+            "follow-up",
+            turn_id="turn-1",
+            query_id="query-1",
+            metadata={"source": "test"},
+        )
 
     async def test_proc_monitor_detects_death_during_query(self):
         """A crash before a completion pulse should fail the active query."""

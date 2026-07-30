@@ -468,6 +468,13 @@ def _valid_packet_payload() -> dict[str, object]:
 
 
 class TestPacketCodecTypeChecks:
+    def test_empty_job_id_is_rejected(self):
+        payload = _valid_packet_payload()
+        payload["job_id"] = ""
+
+        with pytest.raises(ValueError, match="safe filename component"):
+            packet_from_payload(payload)
+
     @pytest.mark.parametrize(
         ("field", "value", "match"),
         [
@@ -477,6 +484,10 @@ class TestPacketCodecTypeChecks:
             ("messages", "nope", "must be a list"),
             ("provenance", "nope", "must be an object"),
             ("tool_counts", "nope", "must be an object"),
+            ("error_snippets", [1], "items must be strings"),
+            ("messages", [1], "items must be objects"),
+            ("tool_counts", {1: 1}, "keys must be strings"),
+            ("provenance", {"source": 1}, "values must be strings"),
         ],
     )
     def test_top_level_type_checks_raise_typeerror(self, field, value, match):

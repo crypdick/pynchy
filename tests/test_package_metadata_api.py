@@ -166,9 +166,20 @@ async def test_package_metadata_api_reads_each_authoritative_registry(
         (200, b"[]"),
         (200, json.dumps({"urls": []}).encode()),
         (200, json.dumps({"urls": [{"upload_time_iso_8601": "2026-01-01"}]}).encode()),
+        (200, json.dumps({"time": {}}).encode()),
+        (200, json.dumps({"version": {}}).encode()),
         (200, b"x" * (256 * 1024 + 1)),
     ],
-    ids=("status", "not-json", "array", "missing-artifacts", "naive-time", "oversized"),
+    ids=(
+        "status",
+        "not-json",
+        "array",
+        "missing-artifacts",
+        "naive-time",
+        "missing-npm-time",
+        "missing-cargo-time",
+        "oversized",
+    ),
 )
 async def test_package_metadata_api_degrades_for_invalid_registry_responses(
     status: int,
@@ -185,6 +196,27 @@ async def test_package_metadata_api_degrades_for_invalid_registry_responses(
 
     assert result.state is PackageMetadataState.DEGRADED
     assert result.reason == "Authoritative package metadata is unavailable"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ecosystem",
+    [PackageEcosystem.NPM, PackageEcosystem.CARGO],
+)
+async def test_package_metadata_api_degrades_when_release_timestamp_is_missing(
+    ecosystem: PackageEcosystem,
+) -> None:
+    payload = {"time": {}} if ecosystem is PackageEcosystem.NPM else {"version": {}}
+    session = _Session(_Response(200, json.dumps(payload).encode()))
+    clear_package_metadata_cache()
+
+    with patch(
+        "pynchy.host.container_manager.security.package_metadata.aiohttp.ClientSession",
+        return_value=session,
+    ):
+        result = await assess_package_metadata(_coordinate(ecosystem=ecosystem))
+
+    assert result.state is PackageMetadataState.DEGRADED
 
 
 @pytest.mark.asyncio

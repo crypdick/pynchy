@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc.deps import AskUserDeps
+from pynchy.host.container_manager.ipc.deps import AskUserDeps, IpcDeps
 from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS, dispatch
 from pynchy.plugins.api import Channel
 from pynchy.workspace.api import WorkspaceProfile
@@ -65,6 +65,16 @@ def _make_channel(
 
 
 class TestHandleAskUserRequest:
+    @pytest.mark.asyncio
+    async def test_requires_pending_question_dependencies(self):
+        with pytest.raises(TypeError, match="pending-question persistence"):
+            await dispatch(
+                {"type": "ask_user:ask", "request_id": "req123hex"},
+                "my-group",
+                False,
+                MagicMock(spec=IpcDeps),
+            )
+
     @pytest.mark.asyncio
     async def test_stores_pending_question_with_correct_fields(self):
         """Handler should call create_pending_question with the right arguments."""

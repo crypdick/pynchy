@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +13,10 @@ from conftest import NullIpcDeps, init_test_database
 
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.orchestrator.host_shell import ShellResult
-from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
+from pynchy.host.orchestrator.temporal.host_jobs import (
+    run_config_host_cron_job,
+    run_database_host_job,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import (
     TemporalActivityInfo,
     bind_scheduler_deps,
@@ -31,6 +34,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class _SchedulerRuntime:
     project_root: Path
+    config_host_cron_jobs: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -182,6 +186,12 @@ class TestHostJobScheduling:
         assert completed_job.last_run is not None
         assert completed_job.next_run is None
 
+    async def test_temporal_database_host_job_skips_missing_row(self):
+        assert await run_database_host_job("missing-job") == "skipped"
+
+    async def test_temporal_config_host_job_skips_missing_definition(self):
+        assert await run_config_host_cron_job("missing-job") == "skipped"
+
     @patch.object(_SchedulerDeps, "sync_automation_memory")
     @patch.object(_SchedulerDeps, "automation_memory_dir")
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
@@ -241,6 +251,43 @@ class TestHostJobScheduling:
         assert job is not None
         assert job.last_run is None
         assert job.next_run is None
+
+    @pytest.mark.parametrize(
+        ("shell_result", "message"),
+        [
+            (
+                ShellResult(returncode=None, stdout="", stderr="", start_error="spawn failed"),
+                "failed to start: spawn failed",
+            ),
+            (
+                ShellResult(returncode=None, stdout="", stderr="", timed_out=True),
+                "timed out",
+            ),
+        ],
+    )
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
+    async def test_temporal_database_host_job_surfaces_start_and_timeout_failures(
+        self, mock_shell, shell_result, message, tmp_path
+    ):
+        mock_shell.return_value = shell_result
+        await create_host_job(
+            {
+                "id": "job-shell-failure",
+                "name": "shell-failure-job",
+                "command": "echo test",
+                "schedule_type": "cron",
+                "schedule_value": "0 2 * * *",
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+                "created_by": "admin-1",
+                "cwd": str(tmp_path),
+                "timeout_seconds": 60,
+                "enabled": True,
+            }
+        )
+
+        with pytest.raises(RuntimeError, match=message):
+            await run_database_host_job("job-shell-failure")
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_skips_a_stale_once_workflow(

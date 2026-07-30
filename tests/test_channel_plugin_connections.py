@@ -25,6 +25,7 @@ from pynchy.plugins.speech.pocket_tts import PocketTtsProvider
 SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
 DISCORD_BOT_ENV = "DISCORD"
+DISCORD_MISSING_ENV = "MISSING_DISCORD"
 
 
 def _install_module(name: str, *, package: bool = False) -> ModuleType:
@@ -129,6 +130,41 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
     assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
+def test_slack_plugin_returns_none_without_context() -> None:
+    assert SlackChannelPlugin().pynchy_create_channel(context=None) is None
+
+
+def test_slack_plugin_skips_connections_without_required_configuration() -> None:
+    context = _context(
+        slack_connections={
+            "empty-env": SlackConnectionSettings(
+                bot_token_env="",
+                app_token_env=SLACK_APP_ENV,
+                chat_names=("general",),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+            "empty-chats": SlackConnectionSettings(
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
+                chat_names=(),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+            "missing-tokens": SlackConnectionSettings(
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
+                chat_names=("general",),
+                assistant_name="pynchy",
+                allow_create=False,
+            ),
+        }
+    )
+
+    with patch.dict("os.environ", {}, clear=True):
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+
 def test_discord_plugin_uses_flat_connection_name_and_type(tmp_path: Path) -> None:
     config = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
     audio_cache_dir = tmp_path / "discord"
@@ -169,6 +205,41 @@ def test_discord_plugin_uses_flat_connection_name_and_type(tmp_path: Path) -> No
         audio_cache_dir=audio_cache_dir,
     )
     assert channel_class.call_args.kwargs["bot_token"] == discord_token
+
+
+def test_discord_plugin_skips_empty_or_missing_bot_tokens(tmp_path: Path) -> None:
+    empty = _context(
+        discord_connections={
+            "empty": DiscordConnectionConfig(bot_token_env="").to_runtime_settings()
+        },
+        discord_audio_cache_dir=tmp_path,
+    )
+    missing = _context(
+        discord_connections={
+            "missing": DiscordConnectionConfig(
+                bot_token_env=DISCORD_MISSING_ENV
+            ).to_runtime_settings()
+        },
+        discord_audio_cache_dir=tmp_path,
+    )
+
+    with patch.dict("os.environ", {}, clear=True):
+        assert DiscordChannelPlugin().pynchy_create_channel(context=empty) is None
+        assert DiscordChannelPlugin().pynchy_create_channel(context=missing) is None
+
+
+def test_discord_plugin_requires_an_audio_cache_directory() -> None:
+    context = _context(
+        discord_connections={
+            "synapse": DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings()
+        },
+    )
+
+    with (
+        patch.dict("os.environ", {DISCORD_BOT_ENV: "token"}, clear=False),
+        pytest.raises(RuntimeError, match="audio cache directory"),
+    ):
+        DiscordChannelPlugin().pynchy_create_channel(context=context)
 
 
 def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:

@@ -28,11 +28,11 @@ _write_notebook = cast("Callable[..., None]", nbformat.write)
 def generate_name() -> str:
     """Generate a notebook name: YYYY-MM-DD-adjective-animal."""
     from ubuntu_namer import (  # noqa: PLC0415 - optional plugin dependency.
-        generate,
+        generate_name,
     )
 
     today = datetime.datetime.now(datetime.UTC).date().isoformat()
-    slug = generate()  # e.g. "ailing-amoeba"
+    slug = generate_name(style="kebab")
     return f"{today}-{slug}"
 
 

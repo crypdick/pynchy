@@ -17,6 +17,7 @@ from pynchy.host.container_manager.ipc.protocol import (
     IPC_SCHEMA_VERSION,
     SIGNAL_TYPES,
     TIER2_TYPES,
+    InboundChatMessage,
     IpcRequestEnvelope,
     make_ipc_request,
     make_signal,
@@ -159,6 +160,67 @@ class TestParseIpcFile:
 class TestRequestEnvelope:
     """Tests for the canonical file-IPC request envelope."""
 
+    def test_make_ipc_request_defaults_created_at(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-now",
+            source_group="admin-1",
+        )
+
+        assert request["created_at"]
+
+    def test_envelope_rejects_unsupported_schema_version(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-version",
+            source_group="admin-1",
+        )
+        request["schema_version"] = IPC_SCHEMA_VERSION + 1
+
+        with pytest.raises(ValueError, match="Unsupported IPC request"):
+            IpcRequestEnvelope.from_dict(request)
+
+    def test_envelope_rejects_unknown_request_kind(self):
+        with pytest.raises(ValueError, match="Unknown IPC request kind"):
+            make_ipc_request(
+                kind="unknown-request",
+                request_id="req-kind",
+                source_group="admin-1",
+            )
+
+    def test_envelope_rejects_empty_required_string(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-required",
+            source_group="admin-1",
+        )
+        request["request_id"] = ""
+
+        with pytest.raises(ValueError, match="request_id must be a non-empty string"):
+            IpcRequestEnvelope.from_dict(request)
+
+    def test_envelope_rejects_non_string_optional_field(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-optional",
+            source_group="admin-1",
+        )
+        request["reply_to"] = 42
+
+        with pytest.raises(ValueError, match="reply_to must be a string or null"):
+            IpcRequestEnvelope.from_dict(request)
+
+    def test_envelope_rejects_non_object_payload(self):
+        request = make_ipc_request(
+            kind="refresh_groups",
+            request_id="req-payload",
+            source_group="admin-1",
+        )
+        request["payload"] = []
+
+        with pytest.raises(ValueError, match="payload must be an object"):
+            IpcRequestEnvelope.from_dict(request)
+
     def test_make_ipc_request_writes_required_envelope_fields(self):
         """Every request file should carry the versioned transport envelope."""
         payload = {"jid": "new@g.us", "name": "New", "folder": "new", "trigger": "@pynchy"}
@@ -282,3 +344,6 @@ class TestProtocolInvariants:
     def test_tier2_types_is_frozen(self):
         """TIER2_TYPES should be immutable."""
         assert isinstance(TIER2_TYPES, frozenset)
+
+    def test_inbound_message_requires_chat_and_text(self):
+        assert InboundChatMessage.from_dict({"type": "message", "chatJid": "chat"}) is None

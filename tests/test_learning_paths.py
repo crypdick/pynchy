@@ -57,6 +57,33 @@ def test_resolver_returns_none_when_learning_is_disabled(tmp_path):
         assert resolve_learning_paths("shopping") is None
 
 
+def test_automation_memory_returns_none_when_learning_is_disabled(tmp_path):
+    settings = _settings(tmp_path=tmp_path, learning=LearningConfig(enabled=False))
+
+    with _configured_learning_paths(settings):
+        assert resolve_automation_memory_paths("job-weekly-security") is None
+
+
+def test_automation_memory_requires_a_task_id(tmp_path):
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(tmp_path / "vault"))
+
+    with (
+        _configured_learning_paths(settings),
+        pytest.raises(LearningConfigError, match="task id"),
+    ):
+        resolve_automation_memory_paths("")
+
+
+def test_automation_memory_requires_a_vault_root(tmp_path):
+    settings = _settings(tmp_path=tmp_path, learning=LearningConfig(enabled=True))
+
+    with (
+        _configured_learning_paths(settings),
+        pytest.raises(LearningConfigError, match=r"obsidian\.vault_root"),
+    ):
+        resolve_automation_memory_paths("job-weekly-security")
+
+
 def test_automation_memory_is_task_owned_under_the_private_wiki_subtree(tmp_path):
     vault = tmp_path / "vault"
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
@@ -112,6 +139,35 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
     assert paths.memory_root == paths.profile_root / "memory"
     assert paths.mounted_profile_root == "/workspace/vault/systems/pynchy/profiles/shopping"
     assert paths.mounted_memory_root == "/workspace/vault/systems/pynchy/profiles/shopping/memory"
+
+
+def test_profile_root_template_errors_are_reported_as_learning_config_errors(tmp_path):
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(tmp_path / "vault", default_profile_root="{unknown}"),
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
+    )
+
+    with (
+        _configured_learning_paths(settings),
+        pytest.raises(LearningConfigError, match="valid template"),
+    ):
+        resolve_learning_paths("shopping-group")
+
+
+def test_root_profile_mount_uses_the_mount_path_directly(tmp_path):
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(tmp_path / "vault", default_profile_root="."),
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
+    )
+
+    with _configured_learning_paths(settings):
+        paths = resolve_learning_paths("shopping-group")
+
+    assert paths is not None
+    assert paths.mounted_profile_root == "/workspace/vault"
+    assert paths.mounted_memory_root == "/workspace/vault/memory"
 
 
 def test_vault_root_expands_home_directory(tmp_path, monkeypatch):

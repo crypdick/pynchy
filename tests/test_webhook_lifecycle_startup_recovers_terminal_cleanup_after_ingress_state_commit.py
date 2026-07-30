@@ -93,6 +93,7 @@ async def test_startup_recovers_terminal_cleanup_after_ingress_state_commit(
     recovered = WebhookConversationDispatcher(deps=harness, routes=(route,))
     await recovered.start()
     try:
+        await recovered.recover_pending()
         assert runtime_jid not in harness.workspace_map
         assert set(harness.retired_folders) == {
             routed_conversation_folder("project", conversation_id),

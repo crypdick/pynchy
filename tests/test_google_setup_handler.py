@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import sys
 import threading
 import types
@@ -83,6 +84,7 @@ async def test_interactive_setup_error_returns_novnc_url(
 ) -> None:
     context = _FakeContext()
     stop_procs = Mock()
+    monkeypatch.setenv("DISPLAY", ":42")
     keys_file = tmp_path / "gcp-oauth.keys.json"
     credentials_file = tmp_path / "credentials.json"
 
@@ -141,6 +143,7 @@ async def test_interactive_setup_error_returns_novnc_url(
         "error": "login failed",
         "novnc_url": "http://novnc.local/google",
     }
+    assert os.environ["DISPLAY"] == ":42"
     assert context.closed is False
     stop_procs.assert_called_once_with([])
 
@@ -212,6 +215,36 @@ async def test_oauth_callback_server_binds_to_localhost(
 
     assert calls == [("localhost", 8085)]
     assert tokens == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_without_code_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeServer(HTTPServer):
+        def __init__(self, server_address, handler) -> None:
+            self._handler = handler
+
+        def serve_forever(self) -> None:
+            request_handler = object.__new__(self._handler)
+            request_handler.path = "/"
+            request_handler.wfile = io.BytesIO()
+            request_handler.send_response = lambda _code: None
+            request_handler.send_header = lambda _name, _value: None
+            request_handler.end_headers = lambda: None
+            self._handler.do_GET(request_handler)
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._oauth.HTTPServer",
+        FakeServer,
+    )
+
+    with pytest.raises(RuntimeError, match="OAuth callback not received"):
+        await run_oauth_flow(_FakePage(), _keys_file(tmp_path), "scope-a")
 
 
 @pytest.mark.asyncio

@@ -161,6 +161,17 @@ async def test_bot_author_denied_even_when_dm_open():
     assert await _is_delivered(_dm(is_bot=True), dm_policy="open") is False
 
 
+async def test_registered_workspace_still_denies_bot_messages():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1", is_bot=True),
+            group_policy="allowlist",
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
+    )
+
+
 # --- DM policy ---------------------------------------------------------------
 
 
@@ -212,6 +223,29 @@ async def test_group_allowlist_allows_registered_workspace_channel():
         _guild(channel_id="c1", mentions_bot=False),
         group_policy="allowlist",
         workspaces={"discord:channel:c1": object()},
+    )
+
+
+async def test_registered_workspace_still_respects_disabled_group_policy():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1"),
+            group_policy="disabled",
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
+    )
+
+
+async def test_registered_workspace_still_respects_disabled_channel():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1"),
+            group_policy="allowlist",
+            chat={"g1": {"channels": {"c1": {"enabled": False}}}},
+            workspaces={"discord:channel:c1": object()},
+        )
+        is False
     )
 
 

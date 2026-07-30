@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import FrozenInstanceError, replace
+from unittest.mock import Mock
 
 import pluggy
 import pytest
@@ -14,6 +15,7 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.plugins.api import (
+    ActionIntentContract,
     ApprovalContract,
     ApprovalTrigger,
     AuditContract,
@@ -28,7 +30,9 @@ from pynchy.plugins.api import (
     IdempotencyContract,
     IdempotencyMode,
     PynchySpec,
+    clear_host_action_catalog_cache,
     get_host_action_catalog,
+    initialize_host_action_catalog,
     validate_host_action_descriptors,
 )
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
@@ -111,6 +115,35 @@ def test_validation_rejects_unknown_or_mismatched_action_specs():
         "chat.matrix.route.read: ActionSpec chat.matrix.route.send does not expose tool "
         "matrix_route_read"
     ) in errors
+
+
+def test_validation_rejects_malformed_capability_and_action_intent_metadata():
+    invalid_id = _descriptor(capability_id="not")
+    blank_tool = _descriptor(
+        capability_id="chat.matrix.route.blank",
+        tool_name=" ",
+    )
+    intent = ActionIntentContract("matrix", Mock(), Mock())
+    read_with_intent = replace(_descriptor(), action_intent=intent)
+    write_with_blank_provider = replace(
+        _descriptor(
+            capability_id="chat.matrix.route.send",
+            tool_name="matrix_route_send",
+            action_id="chat.matrix.route.send",
+            access=HostActionAccess.WRITE,
+        ),
+        action_intent=replace(intent, provider=" "),
+    )
+
+    errors = validate_host_action_descriptors(
+        (invalid_id, blank_tool, read_with_intent, write_with_blank_provider),
+        ACTION_SPECS,
+    )
+
+    assert "invalid capability id: 'not'" in errors
+    assert "chat.matrix.route.blank: tool name is required" in errors
+    assert "chat.matrix.route.read: action intent requires write access" in errors
+    assert "chat.matrix.route.send: action intent provider is required" in errors
 
 
 def test_write_actions_require_idempotency_and_terminal_audit():
@@ -281,3 +314,42 @@ def test_plugin_action_spec_cannot_redefine_builtin_action_id():
         match=r"duplicate action id: chat\.matrix\.route\.read",
     ):
         get_host_action_catalog(_plugin_manager(DuplicatePlugin()))
+
+
+def test_host_action_catalog_initializer_installs_a_reusable_cache():
+    clear_host_action_catalog_cache()
+    try:
+        catalog = initialize_host_action_catalog(_plugin_manager(CalDAVMcpServerPlugin()))
+
+        assert get_host_action_catalog() is catalog
+    finally:
+        clear_host_action_catalog_cache()
+
+
+def test_catalog_rejects_invalid_action_descriptors_from_a_plugin():
+    invalid = _descriptor(capability_id="not")
+
+    class InvalidPlugin:
+        @hookimpl
+        def pynchy_service_handler(self) -> HostActionRegistration:
+            return HostActionRegistration(actions=(invalid,))
+
+    with pytest.raises(CapabilityCatalogError, match="invalid capability id"):
+        get_host_action_catalog(_plugin_manager(InvalidPlugin()))
+
+
+@pytest.mark.parametrize(
+    ("contribution", "message"),
+    [
+        ("not-a-list", "pynchy_action_specs must return a list or tuple"),
+        ((object(),), "pynchy_action_specs entries must be ActionSpec instances"),
+    ],
+)
+def test_catalog_rejects_malformed_action_spec_contributions(contribution, message):
+    class MalformedPlugin:
+        @hookimpl
+        def pynchy_action_specs(self):
+            return contribution
+
+    with pytest.raises(CapabilityCatalogError, match=message):
+        get_host_action_catalog(_plugin_manager(MalformedPlugin()))

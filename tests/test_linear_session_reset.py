@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_session_reset import (
     LinearSessionResetState,
@@ -66,7 +68,10 @@ def _execution() -> WorkItemExecution:
     )
 
 
-async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_path) -> None:
+@pytest.mark.parametrize("cancel_workflow_result", [True, False])
+async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(
+    tmp_path, cancel_workflow_result: bool
+) -> None:
     execution = _execution()
     worktree_file = tmp_path / "unfinished-change.txt"
     worktree_file.write_text("preserve me")
@@ -78,7 +83,7 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
         assert workspace == execution.workspace
         yield client
 
-    cancel_workflow = AsyncMock(return_value=True)
+    cancel_workflow = AsyncMock(return_value=cancel_workflow_result)
     get_control = AsyncMock(return_value=_Binding(conversation_id="conversation-1"))
     get_conversation = AsyncMock(
         return_value=_Conversation(
@@ -141,3 +146,83 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(tmp_pat
         blocker=request.blocker,
     )
     assert worktree_file.read_text() == "preserve me"
+
+
+@pytest.mark.parametrize(
+    ("binding", "conversation", "execution"),
+    [
+        (None, None, None),
+        (
+            _Binding(conversation_id="conversation-1"),
+            _Conversation(_Subject("discord", "issue-1")),
+            None,
+        ),
+        (
+            _Binding(conversation_id="conversation-1"),
+            _Conversation(_Subject("linear:tenant:issue", "issue-1")),
+            None,
+        ),
+    ],
+)
+async def test_reset_returns_false_when_no_linear_execution_is_owned(
+    binding: _Binding | None,
+    conversation: _Conversation | None,
+    execution: WorkItemExecution | None,
+) -> None:
+    state = LinearSessionResetState(
+        get_control_by_thread=AsyncMock(return_value=binding),
+        get_conversation=AsyncMock(return_value=conversation),
+        get_active_execution=AsyncMock(return_value=execution),
+        cancel_task=AsyncMock(),
+        cancel_execution=AsyncMock(),
+        transition_request=WorkItemTransitionRequest,
+    )
+
+    assert (
+        await cancel_linear_execution_for_reset(
+            WorkspaceProfile(
+                jid="discord:channel:issue-thread",
+                name="SYN-89",
+                folder="linear-thread",
+                trigger="@Pynchy",
+            ),
+            cancel_scheduled_workflow=AsyncMock(return_value=True),
+            state=state,
+        )
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_reset_cancels_locally_when_linear_transition_fails() -> None:
+    execution = _execution()
+    cancel_task = AsyncMock()
+    cancel_execution = AsyncMock()
+    state = LinearSessionResetState(
+        get_control_by_thread=AsyncMock(return_value=_Binding(conversation_id="conversation-1")),
+        get_conversation=AsyncMock(
+            return_value=_Conversation(_Subject("linear:tenant:issue", execution.linear_issue_id))
+        ),
+        get_active_execution=AsyncMock(return_value=execution),
+        cancel_task=cancel_task,
+        cancel_execution=cancel_execution,
+        transition_request=WorkItemTransitionRequest,
+    )
+
+    with patch(
+        "pynchy.plugins.integrations.linear_session_reset.linear_client",
+        side_effect=ValueError("provider unavailable"),
+    ):
+        result = await cancel_linear_execution_for_reset(
+            WorkspaceProfile(
+                jid="discord:channel:issue-thread",
+                name="SYN-89",
+                folder="linear-thread",
+                trigger="@Pynchy",
+            ),
+            cancel_scheduled_workflow=AsyncMock(return_value=True),
+            state=state,
+        )
+
+    assert result is True
+    cancel_task.assert_awaited_once_with(execution.task_id)
+    cancel_execution.assert_awaited_once()

@@ -72,6 +72,31 @@ async def test_store_and_load_legacy_projection_pointer() -> None:
     assert rows[0]["metadata"] == {"source": "test"}
 
 
+async def test_store_projection_pointer_defaults_missing_metadata_to_empty_object() -> None:
+    await init_test_database()
+    event = ConversationEvent(
+        event_id="evt_empty_metadata",
+        turn_id="turn_1",
+        chat_jid="slack:C123",
+        timestamp="2026-07-10T00:00:00+00:00",
+        kind=ConversationEventKind.USER_MESSAGE,
+        sender="alice",
+        sender_name="Alice",
+        content="body",
+        message_type="user",
+        metadata={},
+    )
+
+    await store_conversation_event_pointer(
+        event,
+        ConversationEventRef("evt_empty_metadata", "legacy:event:evt_empty_metadata"),
+    )
+
+    rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert rows[0]["metadata"] == {}
+
+
 async def test_since_filter_is_exclusive() -> None:
     await init_test_database()
     await store_conversation_event_pointer(
@@ -309,6 +334,18 @@ async def test_reader_returns_empty_metadata_for_malformed_persisted_json() -> N
     """A corrupt historical row is safely represented through the public reader."""
     cursor = MagicMock()
     cursor.fetchall = AsyncMock(return_value=[{"metadata": "{not valid json"}])
+    database = MagicMock()
+    database.execute = AsyncMock(return_value=cursor)
+
+    with patch("pynchy.state.conversation_events._get_db", return_value=database):
+        rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert rows == [{"metadata": {}}]
+
+
+async def test_reader_returns_empty_metadata_for_missing_persisted_json() -> None:
+    cursor = MagicMock()
+    cursor.fetchall = AsyncMock(return_value=[{"metadata": None}])
     database = MagicMock()
     database.execute = AsyncMock(return_value=cursor)
 
