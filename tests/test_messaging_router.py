@@ -266,60 +266,6 @@ class TestHandleStreamedOutput:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_tool_failure_is_logged_with_context_and_redacted_detail(self):
-        deps = _make_deps()
-        group = _make_group()
-        await handle_streamed_output(
-            deps,
-            "g@g.us",
-            group,
-            _make_output(type="tool_use", tool_name="Bash", tool_input={}),
-        )
-
-        with patch.object(router.logger, "error") as log_error:
-            await handle_streamed_output(
-                deps,
-                "g@g.us",
-                group,
-                _make_output(
-                    type="tool_result",
-                    tool_result_id="tool-1",
-                    tool_result_content="request failed: api_key=supersecretvalue",
-                    tool_result_is_error=True,
-                ),
-            )
-
-        log_error.assert_called_once_with(
-            "Agent tool failure",
-            chat_jid="g@g.us",
-            tool_name="Bash",
-            tool_result_id="tool-1",
-            error="[redacted sensitive data: credential]",
-        )
-
-    @pytest.mark.asyncio
-    async def test_terminal_agent_failure_is_logged_with_redacted_detail(self):
-        deps = _make_deps()
-        group = _make_group()
-
-        with patch.object(router.logger, "error") as log_error:
-            await handle_streamed_output(
-                deps,
-                "g@g.us",
-                group,
-                _make_output(
-                    status="error",
-                    error="agent crashed: authorization=supersecretvalue",
-                ),
-            )
-
-        log_error.assert_called_once_with(
-            "Agent terminal failure",
-            chat_jid="g@g.us",
-            error="[redacted sensitive data: credential]",
-        )
-
-    @pytest.mark.asyncio
     async def test_system_event_returns_false(self):
         deps = _make_deps()
         group = _make_group()

@@ -23,6 +23,7 @@ from pynchy.identifiers import (
     SessionId,
 )
 from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
+from pynchy.logger import logger
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
@@ -316,6 +317,18 @@ def session_tracking_output_handler(
     """Track provider sessions in the durable runtime owned by this thread."""
 
     async def wrapped_on_output(output: ContainerOutput) -> None:
+        if output.status == "error" or (
+            output.type == "tool_result" and output.tool_result_is_error is True
+        ):
+            # Tool output may contain secrets, so log correlation metadata only.
+            logger.error(
+                "Agent output failed",
+                group=group_folder,
+                chat_jid=chat_jid,
+                query_id=output.query_id,
+                output_type=output.type,
+                tool_result_id=output.tool_result_id,
+            )
         if (
             session_id := session_id_from_output(output)
         ) and group_folder not in deps.session_cleared:
