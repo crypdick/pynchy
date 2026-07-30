@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
-from pynchy.plugins.integrations.linear_decision_inbox import (
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
     LinearDecisionInboxRuntime,
     configure_linear_decision_inbox_runtime,
     reconcile_provider_work_item_state,
@@ -81,8 +81,8 @@ class _Client:
 
 
 @pytest.mark.asyncio
-async def test_done_state_completes_and_retires_exact_runtime(monkeypatch) -> None:
-    execution = _execution()
+async def test_done_state_completes_retired_workspace_execution(monkeypatch) -> None:
+    execution = replace(_execution(), workspace="retired-pynchy")
     completed = replace(execution, status=WorkItemExecutionStatus.COMPLETED)
     retire = AsyncMock()
     cancel = AsyncMock()
@@ -96,13 +96,14 @@ async def test_done_state_completes_and_retires_exact_runtime(monkeypatch) -> No
     )
     complete = AsyncMock(return_value=completed)
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_decision_inbox.complete_reviewed_work_item",
+        "pynchy.plugins.integrations.linear_provider_reconciliation.complete_reviewed_work_item",
         complete,
     )
     issue = {
         "id": "issue-1",
         "updatedAt": "2026-07-29T01:00:00Z",
         "state": _state("Done"),
+        "project": {"id": "project-1"},
     }
 
     retired = await reconcile_provider_work_item_state(
@@ -112,9 +113,10 @@ async def test_done_state_completes_and_retires_exact_runtime(monkeypatch) -> No
 
     assert retired == 1
     complete.assert_awaited_once_with(
-        "pynchy",
+        "retired-pynchy",
         "issue-1",
         "reconcile:execution-1:2026-07-29T01:00:00Z",
+        controller_workspace="pynchy",
     )
     retire.assert_awaited_once_with(completed)
     cancel.assert_not_awaited()
@@ -144,7 +146,7 @@ async def test_superseded_execution_is_not_reconciled(monkeypatch) -> None:
     )
     complete = AsyncMock()
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_decision_inbox.complete_reviewed_work_item",
+        "pynchy.plugins.integrations.linear_provider_reconciliation.complete_reviewed_work_item",
         complete,
     )
 
@@ -247,7 +249,7 @@ async def test_uncertain_execution_reconciles_before_provider_drift(
         return_value=replace(execution, status=WorkItemExecutionStatus.IN_PROGRESS)
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_work_item",
+        "pynchy.plugins.integrations.linear_provider_reconciliation.reconcile_work_item",
         reconcile,
     )
     client = _Client(
@@ -265,6 +267,41 @@ async def test_uncertain_execution_reconciles_before_provider_drift(
     reconcile.assert_awaited_once_with(client, "pynchy", "issue-1", transition)
     cancel.assert_not_awaited()
     retire.assert_not_awaited()
+
+
+async def test_retired_workspace_execution_reconciles_against_current_project() -> None:
+    execution = replace(_execution(), workspace="retired-pynchy")
+    cancelled = replace(execution, status=WorkItemExecutionStatus.CANCELLED)
+    list_executions = AsyncMock(return_value=[execution])
+    cancel = AsyncMock(return_value=cancelled)
+    retire = AsyncMock()
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=list_executions,
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
+            cancel_execution=cancel,
+            retire_execution=retire,
+        )
+    )
+    issue = {
+        "id": "issue-1",
+        "updatedAt": "2026-07-29T01:00:00Z",
+        "state": _state("Rejected"),
+        "project": {"id": "project-1"},
+    }
+
+    retired = await reconcile_provider_work_item_state(
+        _Client(issue),
+        {"pynchy": _board()},
+    )
+
+    assert retired == 1
+    list_executions.assert_awaited_once_with(limit=None)
+    cancel.assert_awaited_once_with(
+        execution.id,
+        blocker="Linear state no longer authorizes this execution: Rejected",
+    )
+    retire.assert_awaited_once_with(cancelled)
 
 
 async def test_provider_transition_in_flight_preserves_active_runtime() -> None:
