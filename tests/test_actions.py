@@ -97,3 +97,18 @@ def test_hermetic_coverage_reports_missing_and_unknown_actions():
     assert report.describe() == (
         "actions without hermetic tests: task.cancel; tests mark unknown actions: task.unknown"
     )
+
+
+def test_hermetic_coverage_describes_missing_actions_without_unknown_actions():
+    report = assess_hermetic_coverage(
+        (ActionSpec(ActionId("task.create"), "tasks", "Create a task."),),
+        [],
+    )
+
+    assert report.describe() == "actions without hermetic tests: task.create"
+
+
+def test_hermetic_coverage_describes_unknown_actions_without_missing_actions():
+    report = assess_hermetic_coverage((), ["task.unknown"])
+
+    assert report.describe() == "tests mark unknown actions: task.unknown"
