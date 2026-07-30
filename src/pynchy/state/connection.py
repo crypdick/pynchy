@@ -55,9 +55,10 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
     """Context manager for multi-statement DB writes.
 
     Acquires the write lock, yields the connection, and commits on
-    success or rolls back on failure.  Every write path that spans
-    multiple DML statements (first execute → commit) MUST use this
-    so no concurrent coroutine can interleave.
+    success or rolls back on failure. Every runtime write path, including
+    a single DML statement, MUST use this lock: all coroutines share one
+    connection, so an interleaved commit or rollback would settle every
+    pending write on that connection.
     """
     if _state.write_lock is None:
         _state.write_lock = asyncio.Lock()
@@ -123,13 +124,12 @@ async def _update_by_id(
         return
 
     values.append(row_id)
-    db = _get_db()
-    # S608 audit: table and field names are allowlisted and identifier-validated above.
-    await db.execute(
-        f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608
-        values,
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        # S608 audit: table and field names are allowlisted and identifier-validated above.
+        await db.execute(
+            f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608
+            values,
+        )
 
 
 async def _enable_foreign_keys(db: aiosqlite.Connection) -> None:

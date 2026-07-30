@@ -262,20 +262,19 @@ async def _persist_work_item_claim(
 
 async def mark_work_item_delivery_delivered_for_turn(turn_id: str) -> None:
     """Mark the linked requester delivery separately after a visible final result."""
-    db = _get_db()
     now = _timestamp()
-    await db.execute(
-        """
-        UPDATE work_item_executions
-        SET requester_delivery_status = 'delivered',
-            requester_delivery_error = NULL,
-            requester_delivered_at = ?,
-            updated_at = ?
-        WHERE requester_delivery_turn_id = ? AND requester_delivery_status = 'pending'
-        """,
-        (now, now, turn_id),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            UPDATE work_item_executions
+            SET requester_delivery_status = 'delivered',
+                requester_delivery_error = NULL,
+                requester_delivered_at = ?,
+                updated_at = ?
+            WHERE requester_delivery_turn_id = ? AND requester_delivery_status = 'pending'
+            """,
+            (now, now, turn_id),
+        )
 
 
 def _issue_str(payload: dict[str, Any], key: str) -> str:

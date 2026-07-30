@@ -24,12 +24,11 @@ async def get_router_state(key: str) -> str | None:
 
 async def set_router_state(key: str, value: str) -> None:
     """Set a router state value."""
-    db = _get_db()
-    await db.execute(
-        "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
-        (key, value),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+            (key, value),
+        )
 
 
 async def save_router_state_batch(pairs: dict[str, str]) -> None:
@@ -68,12 +67,11 @@ async def get_session(group_folder: GroupFolder) -> SessionId | None:
 
 async def set_session(group_folder: GroupFolder, session_id: SessionId) -> None:
     """Set the session ID for a group."""
-    db = _get_db()
-    await db.execute(
-        "INSERT OR REPLACE INTO sessions (group_folder, session_id) VALUES (?, ?)",
-        (group_folder, session_id),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO sessions (group_folder, session_id) VALUES (?, ?)",
+            (group_folder, session_id),
+        )
 
 
 async def clear_session(group_folder: GroupFolder) -> None:
@@ -114,31 +112,30 @@ async def mark_session_security_taint(
 ) -> SessionSecurityTaint:
     """Atomically add sticky taint without allowing a continuation to clear it."""
     now = datetime.now(UTC).isoformat()
-    db = _get_db()
-    await db.execute(
-        """
-        INSERT INTO session_security_taint (
-            group_folder, corruption_tainted, secret_tainted, updated_at
-        ) VALUES (?, ?, ?, ?)
-        ON CONFLICT(group_folder) DO UPDATE SET
-            corruption_tainted = MAX(
-                session_security_taint.corruption_tainted,
-                excluded.corruption_tainted
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            INSERT INTO session_security_taint (
+                group_folder, corruption_tainted, secret_tainted, updated_at
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(group_folder) DO UPDATE SET
+                corruption_tainted = MAX(
+                    session_security_taint.corruption_tainted,
+                    excluded.corruption_tainted
+                ),
+                secret_tainted = MAX(
+                    session_security_taint.secret_tainted,
+                    excluded.secret_tainted
+                ),
+                updated_at = excluded.updated_at
+            """,
+            (
+                group_folder,
+                int(corruption_tainted),
+                int(secret_tainted),
+                now,
             ),
-            secret_tainted = MAX(
-                session_security_taint.secret_tainted,
-                excluded.secret_tainted
-            ),
-            updated_at = excluded.updated_at
-        """,
-        (
-            group_folder,
-            int(corruption_tainted),
-            int(secret_tainted),
-            now,
-        ),
-    )
-    await db.commit()
+        )
     return await get_session_security_taint(group_folder)
 
 

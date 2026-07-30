@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.state.connection import _get_db
+from pynchy.state.connection import atomic_write
 
 
 async def store_event(
@@ -19,9 +19,8 @@ async def store_event(
     Best-effort storage for EventBus observers. Callers should catch
     exceptions if they don't want a storage failure to propagate.
     """
-    db = _get_db()
-    await db.execute(
-        "INSERT INTO events (event_type, chat_jid, timestamp, payload) VALUES (?, ?, ?, ?)",
-        (event_type, chat_jid, datetime.now(UTC).isoformat(), json.dumps(payload)),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "INSERT INTO events (event_type, chat_jid, timestamp, payload) VALUES (?, ?, ?, ?)",
+            (event_type, chat_jid, datetime.now(UTC).isoformat(), json.dumps(payload)),
+        )

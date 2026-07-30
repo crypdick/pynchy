@@ -79,9 +79,9 @@ def _row_to_task_run_log(row: Row) -> TaskRunLog:
 
 async def create_task(task: ScheduledTask) -> None:
     """Create a scheduled task."""
-    db = _get_db()
-    await db.execute(
-        """
+    async with atomic_write() as db:
+        await db.execute(
+            """
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
@@ -96,48 +96,47 @@ async def create_task(task: ScheduledTask) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?)
         """,
-        (
-            task.id,
-            task.group_folder,
-            task.chat_jid,
-            task.prompt,
-            task.schedule_type,
-            task.schedule_value,
-            task.session_policy,
-            None,
-            task.status,
-            task.created_at,
-            task.memory_enabled,
-            task.repo_access or None,
-            task.input_source,
-            task.config_job_name,
-            task.config_job_is_deterministic,
-            task.config_job_command,
-            task.config_job_cwd,
-            task.config_job_timeout_seconds,
-            task.config_job_display_name,
-            task.config_job_pre_run_command,
-            task.config_job_pre_run_cwd,
-            task.config_job_pre_run_timeout_seconds,
-            task.derived_thread_name,
-            task.bound_chat_jid,
-            task.bound_group_folder,
-            task.conversation_id,
-            task.last_reset_occurrence,
-            task.occurrence_generation,
-            task.occurrence_due_at,
-            task.superseded_occurrence_generation,
-            task.superseded_occurrence_due_at,
-        ),
-    )
-    await db.commit()
+            (
+                task.id,
+                task.group_folder,
+                task.chat_jid,
+                task.prompt,
+                task.schedule_type,
+                task.schedule_value,
+                task.session_policy,
+                None,
+                task.status,
+                task.created_at,
+                task.memory_enabled,
+                task.repo_access or None,
+                task.input_source,
+                task.config_job_name,
+                task.config_job_is_deterministic,
+                task.config_job_command,
+                task.config_job_cwd,
+                task.config_job_timeout_seconds,
+                task.config_job_display_name,
+                task.config_job_pre_run_command,
+                task.config_job_pre_run_cwd,
+                task.config_job_pre_run_timeout_seconds,
+                task.derived_thread_name,
+                task.bound_chat_jid,
+                task.bound_group_folder,
+                task.conversation_id,
+                task.last_reset_occurrence,
+                task.occurrence_generation,
+                task.occurrence_due_at,
+                task.superseded_occurrence_generation,
+                task.superseded_occurrence_due_at,
+            ),
+        )
 
 
 async def create_task_if_absent(task: ScheduledTask) -> bool:
     """Atomically create an externally discovered task once by stable ID."""
-    db = _get_db()
-    cursor = await db.execute(
-        """
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
         INSERT OR IGNORE INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
@@ -152,41 +151,40 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?)
         """,
-        (
-            task.id,
-            task.group_folder,
-            task.chat_jid,
-            task.prompt,
-            task.schedule_type,
-            task.schedule_value,
-            task.session_policy,
-            task.next_run,
-            task.status,
-            task.created_at,
-            task.memory_enabled,
-            task.repo_access,
-            task.input_source,
-            task.config_job_name,
-            task.config_job_is_deterministic,
-            task.config_job_command,
-            task.config_job_cwd,
-            task.config_job_timeout_seconds,
-            task.config_job_display_name,
-            task.config_job_pre_run_command,
-            task.config_job_pre_run_cwd,
-            task.config_job_pre_run_timeout_seconds,
-            task.derived_thread_name,
-            task.bound_chat_jid,
-            task.bound_group_folder,
-            task.conversation_id,
-            task.last_reset_occurrence,
-            task.occurrence_generation,
-            task.occurrence_due_at,
-            task.superseded_occurrence_generation,
-            task.superseded_occurrence_due_at,
-        ),
-    )
-    await db.commit()
+            (
+                task.id,
+                task.group_folder,
+                task.chat_jid,
+                task.prompt,
+                task.schedule_type,
+                task.schedule_value,
+                task.session_policy,
+                task.next_run,
+                task.status,
+                task.created_at,
+                task.memory_enabled,
+                task.repo_access,
+                task.input_source,
+                task.config_job_name,
+                task.config_job_is_deterministic,
+                task.config_job_command,
+                task.config_job_cwd,
+                task.config_job_timeout_seconds,
+                task.config_job_display_name,
+                task.config_job_pre_run_command,
+                task.config_job_pre_run_cwd,
+                task.config_job_pre_run_timeout_seconds,
+                task.derived_thread_name,
+                task.bound_chat_jid,
+                task.bound_group_folder,
+                task.conversation_id,
+                task.last_reset_occurrence,
+                task.occurrence_generation,
+                task.occurrence_due_at,
+                task.superseded_occurrence_generation,
+                task.superseded_occurrence_due_at,
+            ),
+        )
     return cursor.rowcount == 1
 
 
@@ -385,16 +383,15 @@ async def _resume_paused_task(
 
 async def rebind_task_root(task_id: str, *, group_folder: str, chat_jid: str) -> None:
     """Move a config task to a replacement root workspace."""
-    db = _get_db()
-    await db.execute(
-        """
-        UPDATE scheduled_tasks
-        SET group_folder = ?, chat_jid = ?
-        WHERE id = ?
-        """,
-        (group_folder, chat_jid, task_id),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            UPDATE scheduled_tasks
+            SET group_folder = ?, chat_jid = ?
+            WHERE id = ?
+            """,
+            (group_folder, chat_jid, task_id),
+        )
 
 
 async def delete_task(task_id: str) -> None:
@@ -420,48 +417,46 @@ async def get_active_task_for_group(group_folder: str) -> ScheduledTask | None:
 
 async def record_task_completion(task_id: str, *, last_result: str, completed: bool) -> None:
     """Record task execution evidence without maintaining Temporal-owned timing."""
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute(
-        """
-        UPDATE scheduled_tasks
-        SET last_run = ?, last_result = ?,
-            status = CASE WHEN ? THEN 'completed' ELSE status END
-        WHERE id = ?
-        """,
-        (now, last_result, completed, task_id),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            UPDATE scheduled_tasks
+            SET last_run = ?, last_result = ?,
+                status = CASE WHEN ? THEN 'completed' ELSE status END
+            WHERE id = ?
+            """,
+            (now, last_result, completed, task_id),
+        )
 
 
 async def log_task_run(log: TaskRunLog) -> None:
     """Log a task run."""
-    db = _get_db()
-    await db.execute(
-        """
-        INSERT INTO task_run_logs (
-            task_id, run_at, duration_ms, status, result, error,
-            temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
-            turn_id, error_signature, escalation_reason
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            INSERT INTO task_run_logs (
+                task_id, run_at, duration_ms, status, result, error,
+                temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
+                turn_id, error_signature, escalation_reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                log.task_id,
+                log.run_at,
+                log.duration_ms,
+                log.status,
+                log.result,
+                log.error,
+                log.temporal_workflow_id,
+                log.temporal_workflow_run_id,
+                log.temporal_attempt,
+                log.turn_id,
+                log.error_signature,
+                log.escalation_reason,
+            ),
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            log.task_id,
-            log.run_at,
-            log.duration_ms,
-            log.status,
-            log.result,
-            log.error,
-            log.temporal_workflow_id,
-            log.temporal_workflow_run_id,
-            log.temporal_attempt,
-            log.turn_id,
-            log.error_signature,
-            log.escalation_reason,
-        ),
-    )
-    await db.commit()
 
 
 async def get_task_run_logs(task_id: str, *, limit: int = 20) -> list[TaskRunLog]:
