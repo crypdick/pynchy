@@ -34,7 +34,6 @@ def test_default_cli_validates_personalization_before_running_the_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = make_settings()
-    mapping = {"validated": True}
     app_run = Mock()
 
     async def run_app() -> None:
@@ -48,24 +47,15 @@ def test_default_cli_validates_personalization_before_running_the_app(
     with (
         patch("dotenv.load_dotenv") as load_dotenv,
         patch(
-            "pynchy.config.api.validate_personalization_tree", return_value=mapping
-        ) as validate_tree,
-        patch(
-            "pynchy.config.api.validate_settings_mapping", return_value=settings
-        ) as validate_settings,
-        patch("pynchy.config.api.validate_litellm_model_names") as validate_models,
+            "pynchy.config.api.validate_personalization_configuration", return_value=settings
+        ) as validate_configuration,
         patch("pynchy.logger.configure_error_log") as configure_log,
         patch("pynchy.host.orchestrator.app.PynchyApp", return_value=_App()),
     ):
         cli.main()
 
     load_dotenv.assert_called_once_with()
-    validate_tree.assert_called_once_with(Path.cwd(), Path("data/personalization"))
-    validate_settings.assert_called_once_with(mapping)
-    validate_models.assert_called_once_with(
-        Path("data/personalization") / "litellm.yaml",
-        settings.configured_agent_models(),
-    )
+    validate_configuration.assert_called_once_with(Path.cwd(), Path("data/personalization"))
     configure_log.assert_called_once_with(Path("logs/pynchy.error.log"))
     app_run.assert_called_once_with()
 
@@ -76,7 +66,7 @@ def test_default_cli_reports_personalization_failure(
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["pynchy"])
     monkeypatch.setattr(
-        "pynchy.config.api.validate_personalization_tree",
+        "pynchy.config.api.validate_personalization_configuration",
         Mock(side_effect=ValueError("bad mapping")),
     )
 
@@ -140,9 +130,9 @@ def test_validate_personalization_cli_prints_the_validated_summary(
     mapping = {"validated": True}
     path = tmp_path / "personalization"
     monkeypatch.setattr(sys, "argv", ["pynchy", "validate-personalization", str(path)])
-    monkeypatch.setattr("pynchy.config.api.validate_personalization_tree", lambda *_: mapping)
-    monkeypatch.setattr("pynchy.config.api.validate_settings_mapping", lambda _: settings)
-    monkeypatch.setattr("pynchy.config.api.validate_litellm_model_names", lambda *_: None)
+    monkeypatch.setattr(
+        "pynchy.config.api.validate_personalization_configuration", lambda *_: settings
+    )
 
     with pytest.raises(SystemExit) as exited:
         cli.main()
@@ -161,7 +151,7 @@ def test_validate_personalization_cli_reports_invalid_input(
     path = tmp_path / "personalization"
     monkeypatch.setattr(sys, "argv", ["pynchy", "validate-personalization", str(path)])
     monkeypatch.setattr(
-        "pynchy.config.api.validate_personalization_tree",
+        "pynchy.config.api.validate_personalization_configuration",
         Mock(side_effect=ValueError("invalid personalization")),
     )
 

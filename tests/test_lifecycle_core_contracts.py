@@ -187,14 +187,16 @@ async def test_shutdown_continues_when_admin_notification_fails(monkeypatch):
         lambda: MagicMock(notifications=MagicMock(admin_workspace="admin")),
     )
     monkeypatch.setattr(lifecycle, "_start_shutdown_watchdog", lambda: watchdog)
-    monkeypatch.setattr(lifecycle, "_stop_subsystem_tasks", AsyncMock())
-    monkeypatch.setattr(lifecycle, "_prepare_channels_for_shutdown", MagicMock())
+    subsystem_stop = AsyncMock()
+    monkeypatch.setattr(app.subsystem_tasks, "stop", subsystem_stop)
     monkeypatch.setattr(lifecycle, "_cleanup_http_runner", AsyncMock())
     monkeypatch.setattr(lifecycle, "_close_runtime_resources", AsyncMock())
+    monkeypatch.setattr(lifecycle.gateway_manager, "stop_gateway", AsyncMock())
 
     await lifecycle.shutdown_app(app, "SIGTERM")
 
     watchdog.cancel.assert_called_once_with()
+    subsystem_stop.assert_awaited_once_with()
 
 
 async def test_run_app_publishes_scheduler_and_ipc_after_runtime_gates(

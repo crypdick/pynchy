@@ -137,12 +137,12 @@ class TestHostSyncWorktree:
             return success
 
         with (
-            patch("pynchy.host.git_ops.sync.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.worktree_sync.detect_main_branch", return_value="main"),
             patch(
-                "pynchy.host.git_ops.sync.count_commits",
+                "pynchy.host.git_ops.worktree_sync.count_commits",
                 return_value=None if failure == "count" else 1,
             ),
-            patch("pynchy.host.git_ops.sync.run_git", side_effect=run_git) as git,
+            patch("pynchy.host.git_ops.worktree_sync.run_git", side_effect=run_git) as git,
         ):
             result = host_sync_worktree("agent-1", repo_ctx)
 
