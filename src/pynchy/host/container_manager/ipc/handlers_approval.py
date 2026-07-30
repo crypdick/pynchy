@@ -164,8 +164,8 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         return
 
     try:
-        raw_pending = await asyncio.to_thread(_read_json_file, pending_file)
-    except (json.JSONDecodeError, OSError) as exc:
+        raw_pending = await asyncio.to_thread(security_approval.read_pending_approval, pending_file)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         logger.error("Failed to read pending file", path=str(pending_file), err=str(exc))
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
@@ -173,7 +173,7 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         logger.error("Rejected invalid pending approval", path=str(pending_file))
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
-    pending = cast("dict[str, Any]", raw_pending)
+    pending = raw_pending
     if (
         pending.get("request_id") != decision.request_id
         or pending.get("source_group") != source_group
