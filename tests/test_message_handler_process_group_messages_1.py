@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pynchy.agent_protocol.api import (
+    CheckpointControlState,
     ContainerOutput,
 )
 from pynchy.conversation.models import (
@@ -36,6 +37,9 @@ from pynchy.host.orchestrator.messaging.cursor import (
 )
 from pynchy.host.orchestrator.messaging.pipeline import (
     process_group_messages,
+)
+from pynchy.host.orchestrator.messaging.turn_recovery import (
+    resume_interrupted_message_if_present,
 )
 from pynchy.identifiers import (
     GroupFolder,
@@ -97,6 +101,7 @@ class TestProcessGroupMessages:
         """reset_prompt.json consumed → agent invoked."""
         group = _make_group()
         deps = _make_deps(groups={"g@g.us": group})
+        deps.handle_streamed_output.return_value = True
 
         ipc_dir = tmp_path / "ipc" / "test-group"
         ipc_dir.mkdir(parents=True)
@@ -112,6 +117,38 @@ class TestProcessGroupMessages:
         assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
         assert not reset_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_reset_handoff_propagates_cancellation(self, tmp_path):
+        group = _make_group()
+        deps = _make_deps(groups={"g@g.us": group})
+        deps.run_agent.side_effect = asyncio.CancelledError()
+        reset_file = tmp_path / "ipc" / "test-group" / "reset_prompt.json"
+        reset_file.parent.mkdir(parents=True)
+        reset_file.write_text(json.dumps({"message": "Hello"}))
+
+        with (
+            patch.object(deps, "message_data_dir", tmp_path),
+            _patch_msgs_since([]),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await process_group_messages(deps, "g@g.us")
+
+    @pytest.mark.asyncio
+    async def test_reset_handoff_releases_claim_when_agent_fails(self, tmp_path):
+        group = _make_group()
+        deps = _make_deps(groups={"g@g.us": group})
+        deps.run_agent.side_effect = RuntimeError("agent failed")
+        reset_file = tmp_path / "ipc" / "test-group" / "reset_prompt.json"
+        reset_file.parent.mkdir(parents=True)
+        reset_file.write_text(json.dumps({"message": "Hello"}))
+
+        with (
+            patch.object(deps, "message_data_dir", tmp_path),
+            _patch_msgs_since([]),
+            pytest.raises(RuntimeError, match="agent failed"),
+        ):
+            await process_group_messages(deps, "g@g.us")
 
     @pytest.mark.asyncio
     async def test_reset_handoff_with_dirty_repo_check(self, tmp_path):
@@ -139,6 +176,35 @@ class TestProcessGroupMessages:
 
         assert result is TurnOutcome.COMPLETED
         assert (ipc_dir / "needs_dirty_check.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_interrupted_turn_already_claimed_is_complete(self):
+        deps = _make_deps()
+        turn = MagicMock(
+            control_state=CheckpointControlState.ACTIVE,
+            turn_id="turn-already-claimed",
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.turn_recovery.get_oldest_resumable_turn_for_group",
+                new_callable=AsyncMock,
+                return_value=turn,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.turn_recovery.claim_in_flight_turn",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await resume_interrupted_message_if_present(
+                deps,
+                "g@g.us",
+                _make_group(),
+                AsyncMock(),
+            )
+
+        assert result is TurnOutcome.COMPLETED
 
     @pytest.mark.asyncio
     async def test_reset_handoff_malformed_json_falls_through(self, tmp_path):
