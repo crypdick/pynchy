@@ -125,6 +125,11 @@ async def test_channel_cursor_seed_handles_invalid_then_valid_timestamp_maps() -
             "(jid, name, folder, trigger_pattern, added_at) VALUES (?, ?, ?, ?, ?)",
             ("slack:C123", "Project", "project", "@Pynchy", "now"),
         )
+        await database.execute(
+            "INSERT INTO registered_groups "
+            "(jid, name, folder, trigger_pattern, added_at) VALUES (?, ?, ?, ?, ?)",
+            ("slack:C456", "Other", "other", "@Pynchy", "now"),
+        )
         await create_schema(database)
 
         cursor = await database.execute(

@@ -133,6 +133,13 @@ def test_admin_clean_room_fails_closed_when_resolution_disappears() -> None:
     assert settings.workspace_config("admin") is not None
 
 
+def test_admin_clean_room_skips_a_missing_workspace_policy() -> None:
+    with patch.object(Settings, "workspace_config", return_value=None):
+        settings = _settings()
+
+    assert settings.workspace_names() == ("admin",)
+
+
 def test_timezone_uses_configured_value() -> None:
     assert _settings(scheduler=SchedulerConfig(timezone="UTC")).timezone == "UTC"
 
