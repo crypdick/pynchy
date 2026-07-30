@@ -313,6 +313,35 @@ async def test_google_canary_reports_an_unavailable_managed_mcp_server(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_google_canary_uses_the_managed_mcp_client_context(monkeypatch) -> None:
+    manager = AsyncMock()
+    manager.get_canary_server_endpoint.return_value = "http://127.0.0.1:8474/mcp"
+    client = _FakeGoogleMcpClient({"gdrive_search", "gdrive_read_file"})
+
+    @asynccontextmanager
+    async def managed_client(endpoint: str):
+        assert endpoint == "http://127.0.0.1:8474/mcp"
+        yield client
+
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: manager,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.McpCanaryClient",
+        managed_client,
+    )
+    scenario = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id"
+    )
+
+    exercise = await scenario.exercise(_context("drive.google.round.trip"))
+
+    assert exercise.evidence_refs[0] == "google-drive:search:completed"
+    assert exercise.evidence_refs[1].startswith("google-drive:file:read:")
+
+
+@pytest.mark.asyncio
 async def test_google_canaries_reject_wrong_exercise_artifact_types() -> None:
     exercise = CanaryExercise(artifact=object())
     calendar = GoogleCalendarRoundTripCanary(
