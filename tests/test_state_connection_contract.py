@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 @pytest.mark.asyncio
 async def test_state_database_access_requires_initialization() -> None:
     close_test_database()
+    close_test_database()
 
     with pytest.raises(RuntimeError, match="Database not initialized"):
         await get_all_chats()
