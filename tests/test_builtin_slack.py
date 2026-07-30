@@ -372,6 +372,52 @@ class TestSlackChannelPlugin:
 
         assert result is None
 
+    def test_skips_connection_with_empty_token_environment_names(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env="",
+                    app_token_env="",
+                    chat_names=("general",),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+    def test_skips_connection_without_configured_chats(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    chat_names=(),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
+    def test_skips_connection_with_missing_token_values(self) -> None:
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    chat_names=("general",),
+                    assistant_name="pynchy",
+                    allow_create=False,
+                )
+            }
+        )
+
+        with patch.dict(os.environ, {SLACK_BOT_ENV: "", SLACK_APP_ENV: ""}):
+            assert SlackChannelPlugin().pynchy_create_channel(context=context) is None
+
     def test_returns_channel_when_tokens_present(self) -> None:
         plugin = SlackChannelPlugin()
         context = _plugin_context()
