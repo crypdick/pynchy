@@ -13,6 +13,8 @@ def agent_core_config(
     model: str | None,
     model_reasoning_effort: str | None,
     group_folder: str | None = None,
+    *,
+    model_reasoning_effort_override: str | None = None,
 ) -> dict[str, Any] | None:
     """Return the configured model and reasoning effort for an agent invocation."""
     resolved_model = model
@@ -24,6 +26,8 @@ def agent_core_config(
                 resolved_model = resolved.model
             if resolved.model_reasoning_effort:
                 resolved_reasoning_effort = resolved.model_reasoning_effort
+    if model_reasoning_effort_override is not None:
+        resolved_reasoning_effort = model_reasoning_effort_override
 
     result: dict[str, Any] = {}
     if resolved_model:
