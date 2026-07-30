@@ -34,6 +34,32 @@ async def test_renamed_admin_values_are_copied_before_legacy_column_is_dropped()
 
 
 @pytest.mark.asyncio
+async def test_is_god_drop_failure_is_logged_and_preserves_legacy_column() -> None:
+    async with aiosqlite.connect(":memory:") as database:
+        await database.execute(
+            "CREATE TABLE registered_groups ("
+            "jid TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL UNIQUE, "
+            "trigger_pattern TEXT NOT NULL, added_at TEXT NOT NULL, "
+            "is_god INTEGER, is_admin INTEGER"
+            ")"
+        )
+        await database.executescript(
+            """
+            CREATE TRIGGER keep_is_god
+            AFTER UPDATE OF is_god ON registered_groups
+            BEGIN
+                SELECT NEW.is_god;
+            END;
+            """
+        )
+
+        await create_schema(database)
+
+        cursor = await database.execute("PRAGMA table_info(registered_groups)")
+        assert "is_god" in {row[1] for row in await cursor.fetchall()}
+
+
+@pytest.mark.asyncio
 async def test_repo_access_migration_copies_truthy_rows_and_drops_old_columns() -> None:
     async with aiosqlite.connect(":memory:") as database:
         await database.execute(
