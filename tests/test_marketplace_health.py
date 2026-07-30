@@ -125,6 +125,7 @@ def test_snapshot_returns_only_counts_and_reader_health(tmp_path: Path, monkeypa
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
+        ("Configure the Proton Bridge reader first", "reader_not_configured"),
         ("Could not retrieve the Proton Bridge app password", "reader_credentials_unavailable"),
         ("Proton Bridge IMAP request failed", "reader_connection_unavailable"),
         ("unexpected reader error", "reader_unavailable"),
