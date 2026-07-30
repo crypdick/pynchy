@@ -11,6 +11,7 @@ import pytest
 
 from pynchy.plugins.api import WebhookAuthenticationError, WebhookPayloadError
 from pynchy.plugins.integrations.github_webhooks import (
+    GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubWebhookRouteConfig,
     parse_github_webhook,
 )
@@ -48,6 +49,24 @@ def _config() -> GitHubWebhookRouteConfig:
 def _parse(payload: dict[str, object], event_type: str):
     raw_body, headers = _request(payload, event_type)
     return parse_github_webhook(raw_body, headers, _SECRET, _NOW, config=_config())
+
+
+@pytest.mark.parametrize(
+    ("updates", "message"),
+    [
+        ({"name": "   "}, "text fields cannot be empty"),
+        ({"repository": "example"}, "owner/repository form"),
+        ({"rate_limit_requests": 0}, "limits must be positive"),
+        ({"max_body_bytes": GITHUB_MAX_WEBHOOK_BODY_BYTES + 1}, "cannot exceed"),
+    ],
+)
+def test_route_configuration_rejects_invalid_limits_and_identifiers(
+    updates: dict[str, object], message: str
+) -> None:
+    values = {"name": "project", "workspace": "project", "repository": _REPOSITORY}
+
+    with pytest.raises(ValueError, match=message):
+        GitHubWebhookRouteConfig(**(values | updates))
 
 
 def test_authentication_requires_all_provider_headers() -> None:
