@@ -146,6 +146,46 @@ def test_route_rejects_a_workspace_bound_to_another_linear_account() -> None:
     assert "linear_synapse" in error
 
 
+def test_route_rejects_a_workspace_without_linear_selection() -> None:
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={"webhook_routes": [{"name": "project", "workspace": "project"}]}
+            )
+        },
+        profiles={"plain": ProfileConfig(tools=[])},
+        workspaces={"project": WorkspaceConfig(profiles=["plain"])},
+        tools={"linear": LinearTool(type="linear", public_source=True)},
+    )
+    configure_linear_accounts_for(settings)
+
+    route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+    validate = route.validate_workspace
+    assert validate is not None
+    assert validate(_WebhookDeps().workspace) == "requires its workspace to select a Linear tool"
+
+
+def test_route_rejects_a_forbidden_linear_source() -> None:
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={"webhook_routes": [{"name": "project", "workspace": "project"}]}
+            )
+        },
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"project": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear", public_source="forbidden")},
+    )
+    configure_linear_accounts_for(settings)
+
+    route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+    validate = route.validate_workspace
+    assert validate is not None
+    assert validate(_WebhookDeps().workspace) == (
+        "requires its Linear account tool to permit source content"
+    )
+
+
 def test_non_issue_or_comment_delivery_remains_durably_ignorable() -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(
@@ -368,6 +408,34 @@ async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() 
     assert prepared.conversation is not None
     assert prepared.conversation.workspace == "fam"
     assert prepared.conversation.public_source is False
+
+
+async def test_project_route_ignores_an_issue_without_a_managed_board() -> None:
+    now = datetime.now(UTC)
+    config = LinearWebhookRouteConfig(name="all-boards")
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=config)
+    client = AsyncMock()
+    client.get_issue.return_value = {"id": "issue-1", "project": {"id": "unmanaged"}}
+
+    @asynccontextmanager
+    async def client_context() -> AsyncIterator[object]:
+        yield client
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.linear_client",
+            return_value=client_context(),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.workspace_for_linear_project",
+            return_value=None,
+        ),
+    ):
+        prepared = await prepare_linear_webhook_event(event, config=config)
+
+    assert prepared.conversation is None
+    assert prepared.ignored_reason == "issue_is_not_on_workspace_board"
 
 
 @pytest.mark.parametrize(
