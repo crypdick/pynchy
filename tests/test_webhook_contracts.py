@@ -101,6 +101,13 @@ def test_collect_routes_ignores_plugins_without_routes() -> None:
     assert collect_webhook_routes(_plugin_manager(None)) == ()
 
 
+def test_collect_routes_skips_a_null_hook_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = _plugin_manager()
+    monkeypatch.setattr(manager.hook, "pynchy_webhook_routes", lambda: [None])
+
+    assert collect_webhook_routes(manager) == ()
+
+
 def test_webhook_event_and_lifecycle_reject_ambiguous_untrusted_payloads() -> None:
     with pytest.raises(ValueError, match="require instructions and context"):
         WebhookEvent(
