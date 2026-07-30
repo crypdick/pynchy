@@ -89,6 +89,7 @@ async def test_done_state_completes_and_retires_exact_runtime(monkeypatch) -> No
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
         )
@@ -136,6 +137,7 @@ async def test_superseded_execution_is_not_reconciled(monkeypatch) -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[old_execution, current_execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
         )
@@ -172,6 +174,7 @@ async def test_deauthorized_state_cancels_without_changing_provider() -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
         )
@@ -203,6 +206,7 @@ async def test_matching_provider_state_preserves_active_runtime() -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
         )
@@ -223,6 +227,46 @@ async def test_matching_provider_state_preserves_active_runtime() -> None:
     retire.assert_not_awaited()
 
 
+async def test_uncertain_execution_reconciles_before_provider_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = replace(_execution(), status=WorkItemExecutionStatus.UNKNOWN)
+    transition = object()
+    latest = AsyncMock(return_value=transition)
+    cancel = AsyncMock()
+    retire = AsyncMock()
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=latest,
+            cancel_execution=cancel,
+            retire_execution=retire,
+        )
+    )
+    reconcile = AsyncMock(
+        return_value=replace(execution, status=WorkItemExecutionStatus.IN_PROGRESS)
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_work_item",
+        reconcile,
+    )
+    client = _Client(
+        {
+            "id": "issue-1",
+            "updatedAt": "2026-07-29T01:00:00Z",
+            "state": _state("In Progress"),
+        }
+    )
+
+    retired = await reconcile_provider_work_item_state(client, {"pynchy": _board()})
+
+    assert retired == 0
+    latest.assert_awaited_once_with(execution.id)
+    reconcile.assert_awaited_once_with(client, "pynchy", "issue-1", transition)
+    cancel.assert_not_awaited()
+    retire.assert_not_awaited()
+
+
 async def test_provider_transition_in_flight_preserves_active_runtime() -> None:
     execution = _execution()
     cancel = AsyncMock()
@@ -230,6 +274,7 @@ async def test_provider_transition_in_flight_preserves_active_runtime() -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
         )

@@ -422,6 +422,7 @@ def configure_linear_plugin(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=list_work_item_executions,
+            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_work_item_execution,
         )

@@ -10,7 +10,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this annotation at runtime.
     LinearPlanReviewAdmission,
@@ -36,6 +36,7 @@ from pynchy.plugins.integrations.linear_work_item_completion import (
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
+    reconcile_work_item,
     state_id,
     workspace_issue,
 )
@@ -54,6 +55,9 @@ from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
 )
+
+if TYPE_CHECKING:
+    from pynchy.plugins.integrations.linear_client import LinearClient
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.
 _PAGE_SIZE = 50
@@ -89,6 +93,7 @@ class LinearDecisionInboxRuntime:
     """Durable cleanup operations used by provider-state reconciliation."""
 
     list_executions: Callable[..., Awaitable[list[WorkItemExecution]]]
+    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
     cancel_execution: Callable[..., Awaitable[WorkItemExecution]]
     retire_execution: Callable[[WorkItemExecution], Awaitable[None]]
 
@@ -299,6 +304,51 @@ async def _reconcile_provider_execution(
         )
         await runtime.retire_execution(cancelled)
         return True
+    if execution.status is WorkItemExecutionStatus.UNKNOWN:
+        return await _reconcile_uncertain_execution(client, workspace, execution)
+    return await _reconcile_known_execution(workspace, board, execution, issue)
+
+
+async def _reconcile_uncertain_execution(
+    client: LinearDecisionClient,
+    workspace: str,
+    execution: WorkItemExecution,
+) -> bool:
+    """Resolve the exact uncertain provider write before generic drift handling."""
+    runtime = _configured_runtime()
+    transition = await runtime.get_latest_unresolved_transition(execution.id)
+    if transition is None:
+        logger.warning(
+            "Uncertain Linear execution lacks a transition to reconcile",
+            issue=execution.linear_issue_identifier,
+            execution_id=execution.id,
+        )
+        return False
+    resolved = await reconcile_work_item(
+        cast("LinearClient", client),
+        workspace,
+        execution.linear_issue_id,
+        transition,
+    )
+    should_retire = resolved is not None and resolved.status in {
+        WorkItemExecutionStatus.COMPLETED,
+        WorkItemExecutionStatus.CANCELLED,
+        WorkItemExecutionStatus.HANDED_OFF,
+        WorkItemExecutionStatus.FAILED,
+    }
+    if should_retire and resolved is not None:
+        await runtime.retire_execution(resolved)
+    return should_retire
+
+
+async def _reconcile_known_execution(
+    workspace: str,
+    board: LinearWorkspaceBoard,
+    execution: WorkItemExecution,
+    issue: dict[str, Any],
+) -> bool:
+    """Reconcile one execution whose local provider transition is settled."""
+    runtime = _configured_runtime()
     current_state = state_id(issue)
     expected_status = _EXECUTION_PROVIDER_STATUS[execution.status]
     if current_state == decision_state_id(board, expected_status):

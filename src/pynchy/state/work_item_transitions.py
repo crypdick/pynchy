@@ -208,6 +208,8 @@ async def _resolve_work_item_transition(
     async with atomic_write() as db:
         if lifecycle_fence is not None and not await lifecycle_fence_matches(db, lifecycle_fence):
             return None
+        # Provider receipts may arrive out of order. Keep their evidence, but
+        # never let an older intent overwrite a newer or terminal execution.
         await db.execute(
             """
             UPDATE work_item_transitions
@@ -224,7 +226,14 @@ async def _resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ? AND status != ?
+                WHERE id = ?
+                  AND status NOT IN (?, ?, ?, ?)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM work_item_transitions AS newer
+                      WHERE newer.execution_id = work_item_executions.id
+                        AND newer.id > ?
+                  )
                 """,
                 (
                     execution_status.value,
@@ -233,7 +242,11 @@ async def _resolve_work_item_transition(
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.COMPLETED.value,
                     WorkItemExecutionStatus.CANCELLED.value,
+                    WorkItemExecutionStatus.HANDED_OFF.value,
+                    WorkItemExecutionStatus.FAILED.value,
+                    transition.id,
                 ),
             )
         else:
@@ -247,7 +260,14 @@ async def _resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ? AND status != ?
+                WHERE id = ?
+                  AND status NOT IN (?, ?, ?, ?)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM work_item_transitions AS newer
+                      WHERE newer.execution_id = work_item_executions.id
+                        AND newer.id > ?
+                  )
                 """,
                 (
                     _issue_str(issue, "identifier"),
@@ -261,7 +281,11 @@ async def _resolve_work_item_transition(
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.COMPLETED.value,
                     WorkItemExecutionStatus.CANCELLED.value,
+                    WorkItemExecutionStatus.HANDED_OFF.value,
+                    WorkItemExecutionStatus.FAILED.value,
+                    transition.id,
                 ),
             )
     execution = await get_work_item_execution(transition.execution_id)

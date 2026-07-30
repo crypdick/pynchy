@@ -304,9 +304,7 @@ async def _resume_work_item_lease(
             transition_status=WorkItemTransitionStatus.SUCCEEDED,
             issue=issue,
         )
-    if transition.status is WorkItemTransitionStatus.UNKNOWN or current_state_id != state_id(
-        board.states[HUMAN_APPROVED_STATUS]
-    ):
+    if current_state_id != state_id(board.states[HUMAN_APPROVED_STATUS]):
         return await _configured_runtime().resolve_transition(
             transition=transition,
             execution_status=WorkItemExecutionStatus.FAILED,
@@ -382,6 +380,25 @@ async def reconcile_work_item(
     issue, board = await workspace_issue(client, workspace, issue_id)
     matches_target = state_id(issue) == state_id(board.states[transition.target_status])
     runtime = _configured_runtime()
+    if (
+        not matches_target
+        and transition.operation == "claim"
+        and state_id(issue) == state_id(board.states[HUMAN_APPROVED_STATUS])
+    ):
+        # Human Approved proves an uncertain claim write did not land.
+        execution = await runtime.get_execution(transition.execution_id)
+        if execution is None:
+            raise RuntimeError("work item transition lost its execution")
+        return await transition_issue(
+            client,
+            _TransitionAttempt(
+                board=board,
+                execution=execution,
+                transition=transition,
+                expected_statuses={HUMAN_APPROVED_STATUS},
+                target_status="in_progress",
+            ),
+        )
     resolution = runtime.transition_resolution(
         transition=transition,
         execution_status=(
