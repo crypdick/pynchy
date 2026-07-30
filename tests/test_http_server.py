@@ -464,6 +464,101 @@ async def test_runtime_harness_ingress_calls_real_ingestion_dependency(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/work-items?limit=0",
+        "/actions?limit=201",
+        "/webhook-effects?limit=not-a-number",
+        "/canaries/report?limit=0",
+        "/canaries/runs?limit=201",
+    ],
+)
+async def test_diagnostic_endpoints_reject_invalid_limits(path: str) -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.get(path)
+        assert response.status == 400
+        assert await response.json() == {"error": "limit must be an integer from 1 to 200"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_webhook_effects_accept_all_status_filter() -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.list_webhook_effects",
+            new=AsyncMock(return_value=[]),
+        ) as list_effects:
+            response = await client.get("/webhook-effects?status=all")
+        assert response.status == 200
+        assert await response.json() == {"status": "all", "effects": []}
+        list_effects.assert_awaited_once_with(status=None, limit=100)
+
+        response = await client.get("/webhook-effects?status=unknown")
+        assert response.status == 400
+        assert await response.json() == {"error": "unknown webhook effect status"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_webhook_effect_absence_validates_json_and_conflicts() -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/webhook-effects/effect-1/reconcile-absent",
+            data=b"not-json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "verified_absent must be exactly true"}
+
+        with patch(
+            "pynchy.host.orchestrator.http_server.reconcile_webhook_effect_absent",
+            new=AsyncMock(side_effect=ValueError("effect already resolved")),
+        ):
+            response = await client.post(
+                "/webhook-effects/effect-1/reconcile-absent",
+                json={"verified_absent": True},
+            )
+        assert response.status == 409
+        assert await response.json() == {"error": "effect already resolved"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_harness_ingress_rejects_invalid_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json=["not", "an", "object"],
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "request body must be an object"}
+
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json={"jid": "runtime:pynchy"},
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "jid and content are required strings"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_deploy_continues_when_pre_deploy_push_fails() -> None:
     deps = MockHttpDeps()
     deps.deploy_operations.push_local_commits.return_value = False
