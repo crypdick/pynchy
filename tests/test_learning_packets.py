@@ -468,6 +468,13 @@ def _valid_packet_payload() -> dict[str, object]:
 
 
 class TestPacketCodecTypeChecks:
+    def test_empty_job_id_is_rejected(self):
+        payload = _valid_packet_payload()
+        payload["job_id"] = ""
+
+        with pytest.raises(ValueError, match="safe filename component"):
+            packet_from_payload(payload)
+
     @pytest.mark.parametrize(
         ("field", "value", "match"),
         [
