@@ -124,7 +124,7 @@ pythonpath = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
-addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0 --failed-first"
+addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0"
 timeout = 30
 markers = [
     "action(*ids): semantic action IDs covered by this behavioral test",
