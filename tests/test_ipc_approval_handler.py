@@ -20,12 +20,12 @@ from pynchy.host.container_manager.ipc.approval_replay import (
 )
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.api import ApprovalMode
 from pynchy.workspace.api import (
     CapabilityRule,
     WorkspaceSecurity,
 )
+from tests.approval_support import write_encrypted_pending_approval
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,32 +57,22 @@ def _write_pending(
     handler_type: str = "service",
 ) -> Path:
     """Helper to write a pending approval file."""
-    pending_dir = ipc_dir.parent / "approvals" / group / "pending_approvals"
-    pending_dir.mkdir(parents=True, exist_ok=True)
     executable_request = {
         "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
         "request_id": request_id,
         **request_data,
     }
-    data = {
-        "request_id": request_id,
-        "guarded_action_id": request_id,
-        "request_payload_hash": str(request_payload_hash(executable_request)),
-        "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
-        "tool_name": tool_name,
-        "source_group": group,
-        "approval_chat_jid": "j@g.us",
-        "handler_type": handler_type,
-        "request_data": executable_request,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "expires_after_seconds": 3600,
-        "approval_scope": "exact_request",
-        "corruption_tainted": False,
-        "secret_tainted": False,
-    }
-    filepath = pending_dir / f"{request_id}.json"
-    filepath.write_text(json.dumps(data))
-    return filepath
+    path, _pending = write_encrypted_pending_approval(
+        ipc_dir.parent / "approvals",
+        request_id=request_id,
+        tool_name=tool_name,
+        source_group=group,
+        approval_chat_jid="j@g.us",
+        request_data=executable_request,
+        handler_type=handler_type,
+        expires_after_seconds=3600,
+    )
+    return path
 
 
 def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: bool) -> Path:
@@ -523,9 +513,17 @@ class TestProcessApprovalDecision:
         """The approved payload cannot be changed while awaiting replay."""
         pending_file = _write_pending(ipc_dir, "grp", "changed", "my_tool", {"arg": "safe"})
         decision_file = _write_decision(ipc_dir, "grp", "changed", approved=True)
-        pending = json.loads(pending_file.read_text(encoding="utf-8"))
-        pending["request_data"]["arg"] = "changed-after-review"
-        pending_file.write_text(json.dumps(pending), encoding="utf-8")
+        reviewed_hash = json.loads(pending_file.read_text(encoding="utf-8"))["request_payload_hash"]
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "changed",
+            "my_tool",
+            {"arg": "changed-after-review"},
+        )
+        changed = json.loads(pending_file.read_text(encoding="utf-8"))
+        changed["request_payload_hash"] = reviewed_hash
+        pending_file.write_text(json.dumps(changed), encoding="utf-8")
         handler = AsyncMock()
 
         with (

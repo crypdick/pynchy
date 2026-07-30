@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -13,7 +12,6 @@ from conftest import NullIpcDeps, init_test_database, make_host_action_catalog, 
 from pynchy.host.container_manager.ipc.approval_decision_context import ApprovalDecisionContext
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.api import HostActionCatalog
 from pynchy.workspace.api import CapabilityRule, WorkspaceSecurity
 from tests.action_intents_support import (
@@ -22,6 +20,7 @@ from tests.action_intents_support import (
     _resolved_matrix_workspace,
     _write_matrix_approval,
 )
+from tests.approval_support import write_encrypted_pending_approval
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -52,31 +51,21 @@ def _write_pending(
     request_data: dict,
     handler_type: str = "service",
 ) -> Path:
-    pending_dir = ipc_dir.parent / "approvals" / group / "pending_approvals"
-    pending_dir.mkdir(parents=True, exist_ok=True)
     executable_request = {
         "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
         "request_id": request_id,
         **request_data,
     }
-    pending = {
-        "request_id": request_id,
-        "guarded_action_id": request_id,
-        "request_payload_hash": str(request_payload_hash(executable_request)),
-        "short_id": "ab",
-        "tool_name": tool_name,
-        "source_group": group,
-        "approval_chat_jid": "j@g.us",
-        "handler_type": handler_type,
-        "request_data": executable_request,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "expires_after_seconds": 3600,
-        "approval_scope": "exact_request",
-        "corruption_tainted": False,
-        "secret_tainted": False,
-    }
-    path = pending_dir / f"{request_id}.json"
-    path.write_text(json.dumps(pending), encoding="utf-8")
+    path, _pending = write_encrypted_pending_approval(
+        ipc_dir.parent / "approvals",
+        request_id=request_id,
+        tool_name=tool_name,
+        source_group=group,
+        approval_chat_jid="j@g.us",
+        request_data=executable_request,
+        handler_type=handler_type,
+        expires_after_seconds=3600,
+    )
     return path
 
 
