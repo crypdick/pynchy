@@ -157,6 +157,75 @@ class TestRunShellCommand:
             host_shell.signal.SIGKILL,
         ]
 
+    @pytest.mark.asyncio
+    async def test_timeout_tolerates_a_process_group_that_already_disappeared(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        process = MagicMock()
+        process.pid = 123
+        process.communicate = AsyncMock(return_value=(b"", b""))
+
+        def always_timeout(awaitable: object, timeout: float) -> object:
+            del timeout
+            close = getattr(awaitable, "close", None)
+            if callable(close):
+                close()
+            raise TimeoutError
+
+        monkeypatch.setattr(
+            host_shell.asyncio,
+            "create_subprocess_shell",
+            AsyncMock(return_value=process),
+        )
+        monkeypatch.setattr(host_shell.asyncio, "wait_for", always_timeout)
+        killpg = MagicMock(side_effect=ProcessLookupError)
+        monkeypatch.setattr(host_shell.os, "killpg", killpg)
+
+        result = await run_shell_command("sleep 1", cwd=str(tmp_path), timeout_seconds=1)
+
+        assert result.timed_out is True
+        assert [call.args[1] for call in killpg.call_args_list] == [
+            host_shell.signal.SIGTERM,
+            host_shell.signal.SIGKILL,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_communication_failure_is_returned_after_cleanup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        process = MagicMock()
+        process.pid = 123
+        process.communicate = AsyncMock(return_value=(b"", b""))
+        wait_calls = 0
+
+        async def fail_then_cleanup(awaitable: object, **kwargs: object) -> object:
+            nonlocal wait_calls
+            del kwargs
+            wait_calls += 1
+            if wait_calls == 1:
+                close = getattr(awaitable, "close", None)
+                if callable(close):
+                    close()
+                raise RuntimeError("read failed")
+            return await awaitable
+
+        monkeypatch.setattr(
+            host_shell.asyncio,
+            "create_subprocess_shell",
+            AsyncMock(return_value=process),
+        )
+        monkeypatch.setattr(host_shell.asyncio, "wait_for", fail_then_cleanup)
+        monkeypatch.setattr(host_shell.os, "killpg", MagicMock())
+
+        result = await run_shell_command("printf ignored", cwd=str(tmp_path))
+
+        assert result == ShellResult(
+            returncode=None,
+            stdout="",
+            stderr="",
+            start_error="read failed",
+        )
+
 
 @pytest.mark.parametrize(
     ("result", "message"),

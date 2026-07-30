@@ -47,6 +47,16 @@ class _InteractiveChannel(NullChannel):
         return jid == self._jid
 
 
+class _TextOnlyMatchingChannel(NullChannel):
+    supports_direct_ask_user_callbacks = False
+
+    def __init__(self, jid: str) -> None:
+        self._jid = jid
+
+    def owns_jid(self, jid: str) -> bool:
+        return jid == self._jid
+
+
 @dataclass
 class _UpdateDeps:
     workspaces: dict[str, WorkspaceProfile]
@@ -136,6 +146,20 @@ async def test_send_update_offer_falls_back_to_manual_deploy_without_direct_call
         f"Pynchy update {_NEW_SHA[:8]} is available. "
         "Use the local control-plane `POST /deploy` endpoint to fetch and upgrade it.",
     )
+
+
+async def test_send_update_offer_uses_text_for_a_matching_channel_without_callbacks() -> None:
+    workspace = _admin_workspace()
+    host_message = AsyncMock()
+
+    await update_offer.send_update_offer(
+        channels=[_TextOnlyMatchingChannel(workspace.jid)],
+        broadcast_host_message=host_message,
+        chat_jid=workspace.jid,
+        commit_sha=_NEW_SHA,
+    )
+
+    host_message.assert_awaited_once()
 
 
 async def test_send_update_offer_falls_back_when_widget_returns_no_message() -> None:

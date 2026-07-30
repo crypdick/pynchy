@@ -176,6 +176,30 @@ async def test_script_start_fails_when_process_supervision_shell_is_missing(monk
         await ensure_script_running(_script_instance())
 
 
+async def test_script_start_terminates_process_when_record_persistence_fails(tmp_path: Path):
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.pid = 1234
+    instance = _script_instance()
+    instance.process_record_path = tmp_path / "process.json"
+    terminate = MagicMock()
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle._start_script_process",
+            return_value=process,
+        ),
+        patch(
+            "pynchy.host.container_manager.mcp.lifecycle.write_json_atomic",
+            side_effect=OSError("disk full"),
+        ),
+        patch("pynchy.host.container_manager.mcp.lifecycle.terminate_process", terminate),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        await ensure_script_running(instance)
+
+    terminate.assert_called_once_with(instance)
+
+
 async def test_warm_image_cache_deduplicates_images_and_continues_after_failure():
     first = _instance(server_name="first")
     duplicate = _instance(server_name="duplicate")

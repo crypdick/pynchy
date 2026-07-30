@@ -441,6 +441,64 @@ class TestPushLocalCommits:
 
         assert mock.call_count == 4
 
+    def test_expected_head_change_before_publication_returns_false(self):
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("different-head\n"),  # validated HEAD changed
+            ]
+
+            assert push_local_commits(expected_head="validated-head") is False
+
+        assert mock.call_count == 3
+
+    def test_expected_head_change_before_rebase_returns_false(self):
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("validated-head\n"),  # pre-publication validation
+                _ok("1\n"),  # rev-list: one commit ahead
+                _ok("different-head\n"),  # validated HEAD changed
+            ]
+
+            assert push_local_commits(expected_head="validated-head") is False
+
+        assert mock.call_count == 5
+
+    def test_post_rebase_check_exception_returns_false(self):
+        def stale_check() -> bool:
+            raise ValueError("stale")
+
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("1\n"),  # rev-list: one commit ahead
+                _ok(),  # rebase succeeds
+            ]
+
+            assert push_local_commits(post_rebase_check=stale_check) is False
+
+        assert mock.call_count == 4
+
+    def test_validated_source_exception_returns_false(self):
+        def stale_source() -> str | None:
+            raise OSError("stale")
+
+        with patch("pynchy.host.git_ops.utils.run_git") as mock:
+            mock.side_effect = [
+                _ok("refs/remotes/origin/main\n"),  # detect_main_branch
+                _ok(),  # fetch
+                _ok("1\n"),  # rev-list: one commit ahead
+                _ok(),  # rebase succeeds
+            ]
+
+            assert push_local_commits(validated_source=stale_source) is False
+
+        assert mock.call_count == 4
+
     def test_pre_push_check_prevents_push_after_source_validation(self):
         callbacks: list[str] = []
         with patch("pynchy.host.git_ops.utils.run_git") as mock:
