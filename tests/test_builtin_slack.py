@@ -592,6 +592,15 @@ class TestFetchInboundSince:
         assert result.messages == []
 
     @pytest.mark.asyncio
+    async def test_returns_empty_for_channel_outside_allowlist(self) -> None:
+        ch = _make_channel()
+        _attach_slack_app(ch)
+
+        result = await ch.fetch_inbound_since("slack:C999", _HISTORY_SINCE)
+
+        assert result.messages == []
+
+    @pytest.mark.asyncio
     async def test_uses_actual_message_timestamp(self) -> None:
         """Timestamp should be derived from Slack ts, not current time."""
         ch = _make_channel()
