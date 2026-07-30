@@ -97,6 +97,10 @@ def test_collect_routes_ignores_non_route_plugin_contributions(
     assert routes == (route,)
 
 
+def test_collect_routes_ignores_plugins_without_routes() -> None:
+    assert collect_webhook_routes(_plugin_manager(None)) == ()
+
+
 def test_webhook_event_and_lifecycle_reject_ambiguous_untrusted_payloads() -> None:
     with pytest.raises(ValueError, match="require instructions and context"):
         WebhookEvent(
