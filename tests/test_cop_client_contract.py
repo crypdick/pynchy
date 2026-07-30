@@ -134,6 +134,35 @@ async def test_request_inspection_rejects_responses_without_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_request_inspection_reads_responses_top_level_text() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text='{"output_text":"{\\"flagged\\":true}"}'),
+        ),
+    ):
+        result = await request_inspection(system_prompt="Inspect", user_content="content")
+
+    assert result == {"flagged": True}
+
+
+@pytest.mark.asyncio
+async def test_request_inspection_rejects_non_object_responses_json() -> None:
+    configure_cop_gateway(model="cop-test", wire_api="responses")
+    with (
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=_Gateway()),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+            _session_context(text="[]"),
+        ),
+        pytest.raises(TypeError, match="result must be an object"),
+    ):
+        await request_inspection(system_prompt="Inspect", user_content="content")
+
+
+@pytest.mark.asyncio
 async def test_request_inspection_rejects_malformed_responses_json_shapes() -> None:
     configure_cop_gateway(model="cop-test", wire_api="responses")
     payload = '{"output": [1, {"content": "wrong"}, {"content": [1, {"type": "other"}]}]}'
