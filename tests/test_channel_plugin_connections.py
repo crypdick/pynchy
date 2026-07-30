@@ -130,6 +130,10 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
     assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
+def test_slack_plugin_returns_none_without_context() -> None:
+    assert SlackChannelPlugin().pynchy_create_channel(context=None) is None
+
+
 def test_slack_plugin_skips_connections_without_required_configuration() -> None:
     context = _context(
         slack_connections={
