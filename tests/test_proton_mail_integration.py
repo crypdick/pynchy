@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from unittest.mock import patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -250,6 +251,11 @@ class TestProtonMailMcpServer:
         ("name", "arguments"),
         [
             ("proton_read_mail", {"uid": "34"}),
+            ("proton_list_mail", {"mailbox": "Archive\nArchive"}),
+            (
+                "proton_read_mail",
+                {"message_id": "<event@example.com>", "mailbox": "Archive\nArchive"},
+            ),
             (
                 "proton_send_mail",
                 {
@@ -258,6 +264,31 @@ class TestProtonMailMcpServer:
                     "body": "Safe test body",
                 },
             ),
+            (
+                "proton_send_mail",
+                {
+                    "to": ["recipient@example.com"],
+                    "subject": "Canary\nInjected",
+                    "body": "Safe test body",
+                },
+            ),
+            (
+                "proton_send_mail",
+                {
+                    "to": ["Display Name <recipient@example.com>"],
+                    "subject": "Canary",
+                    "body": "Safe test body",
+                },
+            ),
+            (
+                "proton_send_mail",
+                {
+                    "to": ["recipient@exa\u00a0mple.com"],
+                    "subject": "Canary",
+                    "body": "Safe test body",
+                },
+            ),
+            ("proton_delete_mail", {"message_id": "<sent@example.com>", "mailbox": "\n"}),
         ],
     )
     async def test_mcp_rejects_invalid_tool_arguments(
@@ -282,6 +313,43 @@ class TestProtonMailMcpServer:
 
         assert payload["result"]["isError"] is True
         assert "Invalid Proton Mail tool arguments" in payload["result"]["content"][0]["text"]
+
+    async def test_mcp_serves_protocol_control_requests_and_rejects_invalid_json_rpc(self):
+        client = await _start_mcp_client(StubProtonMailClient())
+        try:
+            initialize = await client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+            )
+            notifications = await client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+            )
+            unknown = await client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": "unknown", "method": "tools/unknown"},
+            )
+            invalid = await client.post(
+                "/mcp",
+                json={"jsonrpc": "1.0", "id": 2, "method": "initialize"},
+            )
+            initialize_payload = await initialize.json()
+            unknown_payload = await unknown.json()
+            invalid_payload = await invalid.json()
+        finally:
+            await client.close()
+
+        assert initialize_payload["result"]["serverInfo"]["name"] == "pynchy-proton-mail"
+        assert notifications.status == 202
+        assert unknown_payload["error"]["code"] == -32601
+        assert invalid_payload["error"]["code"] == -32600
+
+    def test_main_passes_cli_port_to_aiohttp(self):
+        with patch("pynchy.plugins.integrations.proton_mail.web.run_app") as run_app:
+            proton_mail.main(["--port", "9999"])
+
+        assert run_app.call_args.kwargs["host"] == proton_mail.LOCAL_MCP_BIND_HOST
+        assert run_app.call_args.kwargs["port"] == 9999
 
     @pytest.mark.action("mail.proton.message.send")
     async def test_mcp_sends_mail_through_the_injected_bridge_client(self):
