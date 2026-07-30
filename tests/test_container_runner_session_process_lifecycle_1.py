@@ -104,6 +104,27 @@ class TestSessionProcessLifecycle:
 
         assert session_mod.get_session("dead-registered-test") is None
 
+    async def test_send_ipc_message_forwards_optional_routing_metadata(self):
+        session = session_mod.ContainerSession(
+            "ipc-message-test",
+            "pynchy-ipc-message-test",
+        )
+        with patch("pynchy.host.container_manager.session.write_ipc_message") as write_message:
+            await session.send_ipc_message(
+                "follow-up",
+                turn_id="turn-1",
+                query_id="query-1",
+                metadata={"source": "test"},
+            )
+
+        write_message.assert_called_once_with(
+            "ipc-message-test",
+            "follow-up",
+            turn_id="turn-1",
+            query_id="query-1",
+            metadata={"source": "test"},
+        )
+
     async def test_proc_monitor_detects_death_during_query(self):
         """A crash before a completion pulse should fail the active query."""
         session = session_mod.ContainerSession(
