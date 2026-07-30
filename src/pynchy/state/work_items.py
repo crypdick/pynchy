@@ -113,19 +113,33 @@ async def get_work_item_execution_for_task(task_id: str) -> WorkItemExecution | 
 async def list_work_item_executions(
     *,
     workspace: str | None = None,
-    limit: int = 100,
+    limit: int | None = 100,
 ) -> list[WorkItemExecution]:
-    """Return bounded operator projections, newest execution first."""
+    """Return operator projections, newest execution first."""
     db = _get_db()
     if workspace:
+        if limit is None:
+            cursor = await db.execute(
+                """
+                SELECT * FROM work_item_executions
+                WHERE workspace = ?
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (workspace,),
+            )
+        else:
+            cursor = await db.execute(
+                """
+                SELECT * FROM work_item_executions
+                WHERE workspace = ?
+                ORDER BY updated_at DESC, id DESC
+                LIMIT ?
+                """,
+                (workspace, limit),
+            )
+    elif limit is None:
         cursor = await db.execute(
-            """
-            SELECT * FROM work_item_executions
-            WHERE workspace = ?
-            ORDER BY updated_at DESC, id DESC
-            LIMIT ?
-            """,
-            (workspace, limit),
+            "SELECT * FROM work_item_executions ORDER BY updated_at DESC, id DESC"
         )
     else:
         cursor = await db.execute(

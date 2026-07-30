@@ -101,10 +101,6 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
     LinearConversationRuntime,
     configure_linear_conversation_runtime,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import (
-    LinearDecisionInboxRuntime,
-    configure_linear_decision_inbox_runtime,
-)
 from pynchy.plugins.integrations.linear_legacy_work_items import (
     LinearLegacyWorkItemRuntime,
     configure_linear_legacy_work_item_runtime,
@@ -112,6 +108,10 @@ from pynchy.plugins.integrations.linear_legacy_work_items import (
 from pynchy.plugins.integrations.linear_planning_tasks import (
     LinearPlanningTaskRuntime,
     configure_linear_planning_task_runtime,
+)
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    LinearDecisionInboxRuntime,
+    configure_linear_decision_inbox_runtime,
 )
 from pynchy.plugins.integrations.linear_self_echoes import (
     LinearSelfEchoRuntime,
