@@ -102,7 +102,6 @@ class TestJobReconcile:
                     workspace="admin",
                     agent=False,
                     command="scripts/watchdog.py",
-                    cwd="runtime",
                     timeout_seconds=42,
                     display_name="Watchdog",
                 )
@@ -125,7 +124,7 @@ class TestJobReconcile:
         assert task.schedule_value == "900000"
         assert task.config_job_is_deterministic is True
         assert task.config_job_command == "scripts/watchdog.py"
-        assert task.config_job_cwd == str((settings.project_root / "runtime").resolve())
+        assert task.config_job_cwd == str(settings.project_root)
         assert task.config_job_timeout_seconds == 42
         assert task.config_job_display_name == "Watchdog"
 
