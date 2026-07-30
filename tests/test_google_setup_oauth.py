@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import urllib.request
 from typing import TYPE_CHECKING
 
 import pytest
@@ -71,7 +72,8 @@ async def test_public_oauth_flow_exchanges_tokens_and_adds_expiry(
         lambda: (callback_received, ["authorization-code"], _CallbackServer()),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.google_setup._oauth.urlopen_https_request",
+        urllib.request,
+        "urlopen",
         lambda _request: _Response(
             (
                 f'{{"access_token": "{response_value}", "refresh_token": "refresh", '
@@ -85,6 +87,27 @@ async def test_public_oauth_flow_exchanges_tokens_and_adds_expiry(
     assert tokens["access_token"] == response_value
     assert "refresh_token" in tokens
     assert isinstance(tokens["expiry_date"], int)
+
+
+@pytest.mark.asyncio
+async def test_public_oauth_flow_handles_tokens_without_expiry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    callback_received = threading.Event()
+    callback_received.set()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._oauth.start_callback_server",
+        lambda: (callback_received, ["authorization-code"], _CallbackServer()),
+    )
+    monkeypatch.setattr(
+        urllib.request,
+        "urlopen",
+        lambda _request: _Response(b'{"access_token": "access"}'),
+    )
+
+    tokens = await run_oauth_flow(_OAuthPage(), _keys_file(tmp_path), "scope-a")
+
+    assert tokens == {"access_token": "access"}
 
 
 @pytest.mark.asyncio

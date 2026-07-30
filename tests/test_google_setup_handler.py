@@ -215,6 +215,36 @@ async def test_oauth_callback_server_binds_to_localhost(
 
 
 @pytest.mark.asyncio
+async def test_oauth_callback_without_code_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FakeServer(HTTPServer):
+        def __init__(self, server_address, handler) -> None:
+            self._handler = handler
+
+        def serve_forever(self) -> None:
+            request_handler = object.__new__(self._handler)
+            request_handler.path = "/"
+            request_handler.wfile = io.BytesIO()
+            request_handler.send_response = lambda _code: None
+            request_handler.send_header = lambda _name, _value: None
+            request_handler.end_headers = lambda: None
+            self._handler.do_GET(request_handler)
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._oauth.HTTPServer",
+        FakeServer,
+    )
+
+    with pytest.raises(RuntimeError, match="OAuth callback not received"):
+        await run_oauth_flow(_FakePage(), _keys_file(tmp_path), "scope-a")
+
+
+@pytest.mark.asyncio
 async def test_oauth_flow_waits_for_callback_thread_event_without_async_sleep(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
