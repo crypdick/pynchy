@@ -162,7 +162,7 @@ def _payload_cipher(root: Path) -> Fernet:
 def _decrypt_pending_payload(data: dict[str, Any], *, root: Path) -> dict[str, Any]:
     encrypted_payload = data.pop(_ENCRYPTED_PAYLOAD_FIELD, None)
     if encrypted_payload is None:
-        return data
+        raise ValueError("Pending approval encrypted payload is missing")
     if not isinstance(encrypted_payload, str):
         raise TypeError("Pending approval encrypted payload is invalid")
     try:

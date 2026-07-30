@@ -46,13 +46,14 @@ class TestEncryptedPendingApproval:
         assert await future is True
         assert approval.resolve_mcp_proxy_approval("proxy-request", approved=False) is False
 
-    def test_legacy_plaintext_payload_remains_readable(self, tmp_path: Path):
+    def test_plaintext_legacy_payload_is_rejected(self, tmp_path: Path):
         path = _pending_file(_approval_root(tmp_path), "group", "legacy")
         path.parent.mkdir(parents=True)
         payload = {"request_id": "legacy", "request_data": {"body": "old"}}
         path.write_text(json.dumps(payload), encoding="utf-8")
 
-        assert approval.read_pending_approval(path) == payload
+        with pytest.raises(ValueError, match="encrypted payload is missing"):
+            approval.read_pending_approval(path)
 
     @pytest.mark.parametrize(
         ("encrypted_payload", "expected_error"),
