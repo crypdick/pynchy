@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -87,6 +88,21 @@ class TestSessionProcessLifecycle:
 
         with pytest.raises(RuntimeError, match="stderr pipe"):
             session.start(proc)  # type: ignore[arg-type]
+
+    async def test_get_session_removes_a_dead_registered_session(self):
+        proc = FakeProcess()
+        session = await session_mod.create_session(
+            "dead-registered-test",
+            "pynchy-dead-registered-test",
+            proc,
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
+        )
+        proc.close(code=1)
+        with pytest.raises(SessionDiedError):
+            await session.wait_for_query_done(query_timeout_seconds=0.2)
+
+        assert session_mod.get_session("dead-registered-test") is None
 
     async def test_proc_monitor_detects_death_during_query(self):
         """A crash before a completion pulse should fail the active query."""
