@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from linear_webhook_test_support import LinearWebhookHarness
@@ -198,6 +198,35 @@ async def test_ignored_open_reopen_restores_existing_thread_runtime() -> None:
         assert harness.channel.closed[binding.thread_jid] is False
     finally:
         dispatcher.close()
+
+
+async def test_ignored_open_without_reopened_conversation_skips_runtime_restore() -> None:
+    route = _route()
+    event = _message_event("ignored-open-no-reopen")
+    receipt = replace(
+        _receipt(route, event),
+        disposition="ignored",
+        ignored_reason="duplicate_delivery",
+    )
+    dispatcher = MagicMock()
+    dispatcher.project_open_control = AsyncMock(return_value=None)
+    dispatcher.deps.channels.return_value = []
+    dispatcher.restore_existing_open_control_runtime = AsyncMock()
+
+    admission, conversation_id = await admit_prepared_event(
+        dispatcher,
+        route,
+        event,
+        WebhookDeliveryAdmissionRequest(
+            receipt=receipt,
+            task=None,
+            defer_process_event=False,
+        ),
+    )
+
+    assert admission.created is True
+    assert conversation_id is None
+    dispatcher.restore_existing_open_control_runtime.assert_not_awaited()
 
 
 async def test_deferred_controller_event_reopens_control_without_agent_turn() -> None:
