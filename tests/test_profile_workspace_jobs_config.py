@@ -11,10 +11,13 @@ from pynchy.config.api import (
     CanaryConfig,
     JobConfig,
     ProfileConfig,
+    RepoConfig,
+    ReposConfig,
     SchedulerConfig,
     WorkspaceConfig,
     validate_settings_mapping,
 )
+from pynchy.config.models import CapabilityTomlConfig
 
 if TYPE_CHECKING:
     from pynchy.config.api import Settings
@@ -53,6 +56,27 @@ def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
     profile = ProfileConfig(repo=None)
 
     assert profile.repo == []
+
+
+def test_capability_toml_config_lazy_export_remains_available() -> None:
+    assert CapabilityTomlConfig.__name__ == "CapabilityTomlConfig"
+
+
+def test_repo_config_resolves_relative_paths_and_accepts_default_path() -> None:
+    assert RepoConfig().path is None
+    assert RepoConfig(path="relative/repo").path.endswith("/relative/repo")
+
+
+def test_workspace_pipeline_rejects_blank_text() -> None:
+    with pytest.raises(ValidationError, match="workspace pipeline cannot be empty"):
+        WorkspaceConfig(pipeline="  ")
+
+
+def test_repos_config_rejects_inline_overrides_and_non_mapping_input() -> None:
+    with pytest.raises(ValidationError, match=r"nested under repos\.overrides"):
+        ReposConfig.model_validate({"legacy": {}})
+    with pytest.raises(ValidationError):
+        ReposConfig.model_validate([])
 
 
 @pytest.mark.parametrize(
