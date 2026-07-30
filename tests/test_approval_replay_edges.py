@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from conftest import NullIpcDeps
 
+from pynchy.conversation.api import ConversationId
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
     ApprovalReplayPolicy,
@@ -67,6 +68,24 @@ async def test_replay_rejects_invalid_approval_timestamps(
     )
 
     assert error == expected
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_removed_tool_from_routed_workspace() -> None:
+    error = await approval_replay_validation_error(
+        _context(
+            handler_type="service",
+            gate=SecurityGate(WorkspaceSecurity()),
+            origin_conversation_id=ConversationId("conversation"),
+        ),
+        NullIpcDeps(),
+        ApprovalReplayPolicy(
+            configured_security=lambda _group: WorkspaceSecurity(),
+            workspace_tools=lambda _group: None,
+        ),
+    )
+
+    assert error == "host tool is no longer enabled for this routed workspace"
 
 
 @pytest.mark.asyncio
