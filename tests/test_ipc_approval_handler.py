@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from approval_support import write_pending_approval
 from conftest import NullIpcDeps, init_test_database, make_host_action_catalog, make_settings
 
 from pynchy.host.container_manager.ipc.approval_decision_context import (
@@ -19,8 +20,8 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_gate,
 )
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+from pynchy.host.container_manager.security.approval import create_pending_approval
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.api import ApprovalMode
 from pynchy.workspace.api import (
     CapabilityRule,
@@ -46,43 +47,6 @@ def ipc_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def settings(tmp_path: Path):
     return make_settings(data_dir=tmp_path)
-
-
-def _write_pending(
-    ipc_dir: Path,
-    group: str,
-    request_id: str,
-    tool_name: str,
-    request_data: dict,
-    handler_type: str = "service",
-) -> Path:
-    """Helper to write a pending approval file."""
-    pending_dir = ipc_dir.parent / "approvals" / group / "pending_approvals"
-    pending_dir.mkdir(parents=True, exist_ok=True)
-    executable_request = {
-        "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
-        "request_id": request_id,
-        **request_data,
-    }
-    data = {
-        "request_id": request_id,
-        "guarded_action_id": request_id,
-        "request_payload_hash": str(request_payload_hash(executable_request)),
-        "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
-        "tool_name": tool_name,
-        "source_group": group,
-        "approval_chat_jid": "j@g.us",
-        "handler_type": handler_type,
-        "request_data": executable_request,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "expires_after_seconds": 3600,
-        "approval_scope": "exact_request",
-        "corruption_tainted": False,
-        "secret_tainted": False,
-    }
-    filepath = pending_dir / f"{request_id}.json"
-    filepath.write_text(json.dumps(data))
-    return filepath
 
 
 def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: bool) -> Path:
@@ -117,7 +81,7 @@ class TestProcessApprovalDecision:
 
     @pytest.mark.asyncio
     async def test_approved_executes_and_writes_response(self, ipc_dir: Path, settings):
-        _write_pending(ipc_dir, "grp", "req123", "my_tool", {"arg": "val"})
+        write_pending_approval(ipc_dir, "grp", "req123", "my_tool", {"arg": "val"})
         decision_file = _write_decision(ipc_dir, "grp", "req123", approved=True)
 
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
@@ -167,7 +131,7 @@ class TestProcessApprovalDecision:
 
     @pytest.mark.asyncio
     async def test_denied_writes_error_response(self, ipc_dir: Path, settings):
-        _write_pending(ipc_dir, "grp", "req456", "my_tool", {})
+        write_pending_approval(ipc_dir, "grp", "req456", "my_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req456", approved=False)
 
         with (
@@ -210,7 +174,7 @@ class TestProcessApprovalDecision:
         self, ipc_dir: Path, settings
     ):
         """A forged decision in the writable IPC mount is never authoritative."""
-        pending_file = _write_pending(ipc_dir, "grp", "forged", "my_tool", {})
+        pending_file = write_pending_approval(ipc_dir, "grp", "forged", "my_tool", {})
         forged_dir = ipc_dir / "grp" / "approval_decisions"
         forged_dir.mkdir(parents=True)
         forged_decision = forged_dir / "forged.json"
@@ -258,7 +222,7 @@ class TestProcessApprovalDecision:
         settings,
         invalid_field: dict[str, object],
     ):
-        pending_file = _write_pending(ipc_dir, "grp", "invalid", "my_tool", {})
+        pending_file = write_pending_approval(ipc_dir, "grp", "invalid", "my_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "invalid", approved=True)
         decision = json.loads(decision_file.read_text())
         decision.update(invalid_field)
@@ -284,10 +248,10 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_request_time_taint_survives_gate_loss(self, ipc_dir: Path, settings):
         """Durable taint is reapplied even when the original in-memory gate is gone."""
-        pending_file = _write_pending(ipc_dir, "grp", "tainted", "my_tool", {})
+        pending_file = write_pending_approval(ipc_dir, "grp", "tainted", "my_tool", {})
         pending = json.loads(pending_file.read_text())
         pending["corruption_tainted"] = True
-        pending["secret_tainted"] = True
+        pending["redaction_required"] = "required"
         pending_file.write_text(json.dumps(pending))
         decision_file = _write_decision(ipc_dir, "grp", "tainted", approved=True)
         replay_gate = MagicMock(return_value=SecurityGate(WorkspaceSecurity()))
@@ -410,7 +374,7 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_unknown_tool_writes_error(self, ipc_dir: Path, settings):
         """Approved request for unknown tool should write error response."""
-        _write_pending(ipc_dir, "grp", "req789", "nonexistent_tool", {})
+        write_pending_approval(ipc_dir, "grp", "req789", "nonexistent_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req789", approved=True)
         record_event = AsyncMock()
 
@@ -449,7 +413,7 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_handler_exception_writes_error(self, ipc_dir: Path, settings):
         """If the handler raises, write an error response instead of crashing."""
-        _write_pending(ipc_dir, "grp", "reqfail", "bad_tool", {})
+        write_pending_approval(ipc_dir, "grp", "reqfail", "bad_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "reqfail", approved=True)
 
         mock_handler = AsyncMock(side_effect=RuntimeError("boom"))
@@ -478,7 +442,7 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_approved_replay_rechecks_current_policy(self, ipc_dir: Path, settings):
         """Human approval cannot override a policy denial added while waiting."""
-        _write_pending(ipc_dir, "grp", "policy-changed", "my_tool", {})
+        write_pending_approval(ipc_dir, "grp", "policy-changed", "my_tool", {})
         decision_file = _write_decision(
             ipc_dir,
             "grp",
@@ -521,10 +485,27 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_changed_payload_is_rejected_before_dispatch(self, ipc_dir: Path, settings):
         """The approved payload cannot be changed while awaiting replay."""
-        pending_file = _write_pending(ipc_dir, "grp", "changed", "my_tool", {"arg": "safe"})
+        pending_file = write_pending_approval(ipc_dir, "grp", "changed", "my_tool", {"arg": "safe"})
         decision_file = _write_decision(ipc_dir, "grp", "changed", approved=True)
         pending = json.loads(pending_file.read_text(encoding="utf-8"))
-        pending["request_data"]["arg"] = "changed-after-review"
+        original_hash = pending["request_payload_hash"]
+        with patch(
+            "pynchy.host.container_manager.security.approval._approval_root",
+            ipc_dir.parent / "approvals",
+        ):
+            create_pending_approval(
+                request_id="changed",
+                tool_name="my_tool",
+                source_group="grp",
+                approval_chat_jid="j@g.us",
+                request_data={
+                    "type": "service:my_tool",
+                    "request_id": "changed",
+                    "arg": "changed-after-review",
+                },
+            )
+        pending = json.loads(pending_file.read_text(encoding="utf-8"))
+        pending["request_payload_hash"] = original_hash
         pending_file.write_text(json.dumps(pending), encoding="utf-8")
         handler = AsyncMock()
 
@@ -550,7 +531,7 @@ class TestProcessApprovalDecision:
     @pytest.mark.asyncio
     async def test_cross_workspace_decision_is_rejected(self, ipc_dir: Path, settings):
         """A copied approval decision cannot authorize another workspace."""
-        _write_pending(ipc_dir, "grp", "cross-workspace", "my_tool", {})
+        write_pending_approval(ipc_dir, "grp", "cross-workspace", "my_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "cross-workspace", approved=True)
         decision = json.loads(decision_file.read_text(encoding="utf-8"))
         decision["source_group"] = "another-workspace"
@@ -585,7 +566,7 @@ class TestIpcApprovalDispatch:
     @pytest.mark.asyncio
     async def test_ipc_approved_dispatches_through_registry(self, ipc_dir: Path, settings):
         """Approved IPC request dispatches through ipc._registry.dispatch()."""
-        _write_pending(
+        write_pending_approval(
             ipc_dir,
             "grp",
             "ipc-req1",
@@ -628,7 +609,7 @@ class TestIpcApprovalDispatch:
     @pytest.mark.asyncio
     async def test_ipc_approved_without_deps_writes_error(self, ipc_dir: Path, settings):
         """IPC approval without deps writes an error response."""
-        _write_pending(
+        write_pending_approval(
             ipc_dir,
             "grp",
             "ipc-req2",
@@ -657,7 +638,7 @@ class TestIpcApprovalDispatch:
     @pytest.mark.asyncio
     async def test_ipc_dispatch_failure_writes_error(self, ipc_dir: Path, settings):
         """If IPC dispatch raises, write an error response."""
-        _write_pending(
+        write_pending_approval(
             ipc_dir,
             "grp",
             "ipc-req3",

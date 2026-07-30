@@ -83,11 +83,12 @@ class TestCreatePendingApproval:
         assert "encrypted_payload" in data
         decrypted = read_pending_approval(files[0])
         assert decrypted["request_data"]["text"] == "hello"
+        assert decrypted["secret_tainted"] is False
         key_path = ipc_dir.parent / "approvals" / "approval-payload.key"
         assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
         assert "timestamp" in data
         assert data["corruption_tainted"] is False
-        assert data["secret_tainted"] is False
+        assert data["redaction_required"] == "not_required"
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
         with patch(
