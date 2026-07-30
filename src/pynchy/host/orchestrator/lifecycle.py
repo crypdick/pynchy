@@ -446,6 +446,7 @@ async def _activate_runtime_owners(
 ) -> None:
     """Restore durable routes and start critical pollers behind their gates."""
     await _start_temporal_scheduler(app)
+    await app.start_linear_work_item_reconciliation()
     await http_server.recover_http_routes(prepared_http)
     await start_connection_runtimes(app)
 

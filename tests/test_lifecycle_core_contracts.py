@@ -236,6 +236,12 @@ async def test_run_app_publishes_scheduler_and_ipc_after_runtime_gates(
     monkeypatch.setattr(
         lifecycle.dep_factory, "make_scheduler_deps", MagicMock(return_value=MagicMock())
     )
+    terminal_reconciliation = AsyncMock()
+    monkeypatch.setattr(
+        app,
+        "start_linear_work_item_reconciliation",
+        terminal_reconciliation,
+    )
     monkeypatch.setattr(lifecycle.http_server, "recover_http_routes", AsyncMock())
     monkeypatch.setattr(
         lifecycle.startup_handler,
@@ -262,6 +268,7 @@ async def test_run_app_publishes_scheduler_and_ipc_after_runtime_gates(
     await lifecycle.run_app(app)
 
     assert scheduler_started
+    terminal_reconciliation.assert_awaited_once_with()
     lifecycle.register_builtin_handlers.assert_called_once_with()
     lifecycle.start_ipc_watcher.assert_called_once()
     await app.startup_readiness.wait()

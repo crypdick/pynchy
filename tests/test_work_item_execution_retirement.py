@@ -124,7 +124,7 @@ async def test_retirement_cancels_only_the_execution_runtime() -> None:
     clear_turn.assert_awaited_once_with("turn-1")
 
 
-async def test_stale_provider_terminal_snapshot_does_not_fall_back_to_task_cleanup() -> None:
+async def test_stale_provider_terminal_snapshot_retires_only_exact_execution() -> None:
     execution = WorkItemExecution(
         id="execution-1",
         workspace="project",
@@ -167,11 +167,13 @@ async def test_stale_provider_terminal_snapshot_does_not_fall_back_to_task_clean
             AsyncMock(return_value=_Conversation(ConversationId("conversation-1"))),
         ),
         patch(
-            "pynchy.host.orchestrator.terminal_task_retirement.retire_conversation_for_terminal",
+            "pynchy.host.orchestrator.terminal_task_retirement."
+            "retire_latest_terminal_work_item_conversation",
             AsyncMock(return_value=retirement),
         ),
         patch(
-            "pynchy.host.orchestrator.terminal_task_retirement.retire_work_item_execution",
+            "pynchy.host.orchestrator.terminal_task_retirement."
+            "retire_terminal_work_item_execution_if_unowned",
             exact_retirement,
         ),
     ):
@@ -181,4 +183,4 @@ async def test_stale_provider_terminal_snapshot_does_not_fall_back_to_task_clean
             "2026-07-29T00:00:00+00:00",
         )
 
-    exact_retirement.assert_not_awaited()
+    exact_retirement.assert_awaited_once_with(execution)

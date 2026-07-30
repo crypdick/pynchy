@@ -54,6 +54,14 @@ _RECONCILABLE_EXECUTION_STATUSES = frozenset(
         WorkItemExecutionStatus.UNKNOWN,
     }
 )
+_HARD_TERMINAL_EXECUTION_STATUSES = frozenset(
+    {
+        WorkItemExecutionStatus.COMPLETED,
+        WorkItemExecutionStatus.CANCELLED,
+        WorkItemExecutionStatus.HANDED_OFF,
+        WorkItemExecutionStatus.FAILED,
+    }
+)
 _EXECUTION_PROVIDER_STATUS = {
     WorkItemExecutionStatus.CLAIMING: "in_progress",
     WorkItemExecutionStatus.IN_PROGRESS: "in_progress",
@@ -70,9 +78,11 @@ class LinearDecisionInboxRuntime:
     """Durable cleanup operations used by provider-state reconciliation."""
 
     list_executions: Callable[..., Awaitable[list[WorkItemExecution]]]
+    list_terminal_repair_candidates: Callable[[], Awaitable[list[WorkItemExecution]]]
     get_latest_unresolved_transition: Callable[[str], Awaitable[WorkItemTransition | None]]
     cancel_execution: Callable[..., Awaitable[WorkItemExecution]]
     retire_execution: Callable[[WorkItemExecution], Awaitable[None]]
+    retire_terminal_execution_if_unowned: Callable[[WorkItemExecution], Awaitable[bool]]
     retire_terminal_execution: Callable[[WorkItemExecution, str | None], Awaitable[None]]
 
 
@@ -138,10 +148,29 @@ async def reconcile_provider_work_item_state(
         current = latest_by_issue.get(execution.linear_issue_id)
         if current is None or execution.attempt > current.attempt:
             latest_by_issue[execution.linear_issue_id] = execution
-
+    terminal_repair_ids: set[str] = set()
     retired = 0
+    for execution in await runtime.list_terminal_repair_candidates():
+        latest = latest_by_issue.get(execution.linear_issue_id)
+        if latest is None:
+            continue
+        if latest.id == execution.id:
+            terminal_repair_ids.add(execution.id)
+            continue
+        try:
+            retired += await runtime.retire_terminal_execution_if_unowned(execution)
+        except Exception:  # noqa: BLE001 - one stale runtime must not strand the account.
+            logger.exception(
+                "Superseded Linear execution retirement failed",
+                issue=execution.linear_issue_identifier,
+                workspace=execution.workspace,
+            )
+
     for execution in latest_by_issue.values():
-        if execution.status not in _RECONCILABLE_EXECUTION_STATUSES:
+        if (
+            execution.status not in _RECONCILABLE_EXECUTION_STATUSES
+            and execution.id not in terminal_repair_ids
+        ):
             continue
         account = linear_account_for_workspace(execution.workspace)
         if account_name is not None and account is not None and account.name != account_name:
@@ -171,6 +200,9 @@ async def reconcile_provider_work_item_state(
 
 async def retire_globally_unavailable_work_item(execution: WorkItemExecution) -> bool:
     """Fail closed after every configured account proves an issue unavailable."""
+    if execution.status in _HARD_TERMINAL_EXECUTION_STATUSES:
+        await _configured_runtime().retire_terminal_execution_if_unowned(execution)
+        return True
     return await _cancel_deauthorized_execution(
         execution,
         None,
@@ -195,6 +227,9 @@ async def _reconcile_execution_for_account(
         return False
     controller = _controller_for_issue(issue, project_boards)
     if controller is None:
+        if execution.status in _HARD_TERMINAL_EXECUTION_STATUSES:
+            await _configured_runtime().retire_terminal_execution_if_unowned(execution)
+            return False
         return await _cancel_deauthorized_execution(
             execution,
             issue,
@@ -218,6 +253,8 @@ async def _reconcile_provider_execution(
     execution: WorkItemExecution,
     controller: _ExecutionController,
 ) -> bool:
+    if execution.status in _HARD_TERMINAL_EXECUTION_STATUSES:
+        return await _reconcile_terminal_candidate(execution, controller)
     runtime = _configured_runtime()
     transition = await runtime.get_latest_unresolved_transition(execution.id)
     if transition is not None:
@@ -243,6 +280,30 @@ async def _reconcile_provider_execution(
         )
         return False
     return await _reconcile_known_execution(execution, controller)
+
+
+async def _reconcile_terminal_candidate(
+    execution: WorkItemExecution,
+    controller: _ExecutionController,
+) -> bool:
+    """Repair stale projections only when current provider state closes the route."""
+    issue = controller.issue
+    if issue is None:
+        raise AssertionError("Known Linear execution lost its provider issue")
+    current_state = state_id(issue)
+    if current_state == decision_state_id(controller.board, "done") or _provider_issue_is_terminal(
+        issue
+    ):
+        await _configured_runtime().retire_terminal_execution(
+            execution,
+            _provider_revision(issue),
+        )
+        return True
+    # The local execution is terminal, so its exact task and turn are stale.
+    # Provider nonterminal state still owns the conversation and session: inbox
+    # admission may create a newer execution for that reopened issue.
+    await _configured_runtime().retire_terminal_execution_if_unowned(execution)
+    return False
 
 
 def _pending_transition_is_fresh(transition: WorkItemTransition) -> bool:
@@ -309,6 +370,7 @@ async def _reconcile_known_execution(
         execution,
         issue,
         reason=str(state_name),
+        terminal_authority=_provider_issue_is_terminal(issue),
     )
 
 
@@ -317,6 +379,7 @@ async def _cancel_deauthorized_execution(
     issue: dict[str, Any] | None,
     *,
     reason: str,
+    terminal_authority: bool = False,
 ) -> bool:
     runtime = _configured_runtime()
     cancelled = await runtime.cancel_execution(
@@ -325,7 +388,10 @@ async def _cancel_deauthorized_execution(
     )
     if cancelled.status is not WorkItemExecutionStatus.CANCELLED:
         return False
-    await _retire_execution(cancelled, issue)
+    await _retire_execution(
+        cancelled,
+        issue if terminal_authority else None,
+    )
     return True
 
 

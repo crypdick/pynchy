@@ -149,6 +149,119 @@ async def list_work_item_executions(
     return [row_to_execution(row) for row in await cursor.fetchall()]
 
 
+async def list_terminal_work_item_executions_needing_repair() -> list[WorkItemExecution]:
+    """Return hard-terminal executions that still own safe-to-retire lifecycle state."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        WITH ranked AS (
+            SELECT id, linear_issue_id, status,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY linear_issue_id
+                       ORDER BY attempt DESC, created_at DESC, id DESC
+                   ) AS execution_rank
+            FROM work_item_executions
+        )
+        SELECT execution.*
+        FROM work_item_executions AS execution
+        JOIN ranked ON ranked.id = execution.id
+        WHERE ranked.status IN ('completed', 'cancelled', 'handed_off', 'failed')
+          AND (
+              (
+                  (
+                      EXISTS (
+                          SELECT 1 FROM scheduled_tasks AS exact_task
+                          WHERE exact_task.id = execution.task_id
+                            AND exact_task.status IN ('active', 'paused')
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM in_flight_turns AS exact_turn
+                          WHERE exact_turn.turn_id = execution.turn_id
+                             OR exact_turn.task_id = execution.task_id
+                      )
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM work_item_executions AS other
+                      WHERE other.id != execution.id
+                        AND (
+                            (execution.task_id IS NOT NULL
+                             AND other.task_id = execution.task_id)
+                            OR (execution.turn_id IS NOT NULL
+                                AND other.turn_id = execution.turn_id)
+                        )
+                  )
+              )
+              OR (
+                ranked.execution_rank = 1
+                AND EXISTS (
+                  SELECT 1
+                  FROM routed_conversations AS conversation
+                  WHERE conversation.workspace = execution.workspace
+                    AND conversation.subject_key = execution.linear_issue_id
+                    AND conversation.subject_namespace LIKE 'linear:%:issue'
+                    AND (
+                        conversation.control_closed = 0
+                        OR conversation.session_id IS NOT NULL
+                        OR EXISTS (
+                            SELECT 1 FROM conversation_control_bindings AS binding
+                            WHERE binding.conversation_id = conversation.id
+                              AND binding.closed = 0
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM conversation_deliveries AS delivery
+                            WHERE delivery.conversation_id = conversation.id
+                              AND delivery.status != 'completed'
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM scheduled_tasks AS task
+                            WHERE task.conversation_id = conversation.id
+                              AND task.status IN ('active', 'paused')
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM in_flight_turns AS turn
+                            WHERE instr(
+                                turn.group_folder,
+                                '__thread_conversation-' || conversation.id
+                            ) > 0
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM sessions AS session
+                            WHERE instr(
+                                session.group_folder,
+                                '__thread_conversation-' || conversation.id
+                            ) > 0
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM session_security_taint AS taint
+                            WHERE instr(
+                                taint.group_folder,
+                                '__thread_conversation-' || conversation.id
+                            ) > 0
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM registered_groups AS registered
+                            WHERE instr(
+                                registered.folder,
+                                '__thread_conversation-' || conversation.id
+                            ) > 0
+                               OR registered.jid IN (
+                                   SELECT binding.thread_jid
+                                   FROM conversation_control_bindings AS binding
+                                   WHERE binding.conversation_id = conversation.id
+                               )
+                        )
+                    )
+                )
+              )
+          )
+        ORDER BY execution.updated_at, execution.id
+        """
+    )
+    return [row_to_execution(row) for row in await cursor.fetchall()]
+
+
 async def create_work_item_claim(request: WorkItemClaimRequest) -> WorkItemExecution:
     """Persist a local claim and its intended In Progress transition atomically."""
     execution_id = uuid.uuid4().hex

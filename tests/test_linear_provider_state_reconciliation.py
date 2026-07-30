@@ -132,9 +132,11 @@ def _configure_runtime(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=AsyncMock(return_value=transition),
             cancel_execution=cancel or AsyncMock(),
             retire_execution=retire or AsyncMock(),
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal or AsyncMock(),
         )
     )
@@ -200,9 +202,11 @@ async def test_superseded_execution_is_not_reconciled(monkeypatch) -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[old_execution, current_execution]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal,
         )
     )
@@ -304,9 +308,11 @@ async def test_uncertain_execution_reconciles_before_provider_drift(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=latest,
             cancel_execution=cancel,
             retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal,
         )
     )
@@ -456,9 +462,11 @@ async def test_retired_workspace_execution_reconciles_against_current_project() 
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=list_executions,
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal,
         )
     )
@@ -527,9 +535,11 @@ async def test_deleted_managed_issue_retires_only_the_execution_runtime() -> Non
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal,
         )
     )
@@ -638,9 +648,11 @@ async def test_provider_transition_in_flight_preserves_active_runtime() -> None:
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=AsyncMock(return_value=[execution]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[]),
             get_latest_unresolved_transition=AsyncMock(return_value=None),
             cancel_execution=cancel,
             retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(return_value=False),
             retire_terminal_execution=retire_terminal,
         )
     )
