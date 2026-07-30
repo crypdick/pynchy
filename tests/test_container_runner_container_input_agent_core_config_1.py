@@ -139,6 +139,20 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config is not None
         assert "model" not in result.agent_core_config
 
+    def test_missing_workspace_config_keeps_global_model(self):
+        settings = make_settings(agent=AgentConfig(model="chatgpt/gpt-5.3-codex"))
+
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+            return_value=None,
+        ):
+            result = build_container_input(
+                [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+            )
+
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
+
     def test_turn_id_flows_to_container_input_and_core_metadata(self):
         settings = make_settings()
 
