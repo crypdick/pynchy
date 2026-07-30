@@ -174,6 +174,20 @@ async def test_context_reset_rejects_a_hook_result_count_mismatch() -> None:
         )
 
 
+async def test_context_reset_ignores_non_coroutine_in_count_mismatch() -> None:
+    hook = MagicMock()
+    hook.get_hookimpls.return_value = [object(), object()]
+    hook.return_value = [object()]
+    manager = MagicMock()
+    manager.hook.pynchy_before_context_reset = hook
+
+    with pytest.raises(TypeError, match="must return an awaitable"):
+        await prepare_context_reset(
+            manager,
+            WorkspaceProfile(jid="slack:C123", name="Test", folder="test", trigger="@pynchy"),
+        )
+
+
 async def test_context_reset_closes_pending_hooks_after_a_non_awaitable() -> None:
     hook = MagicMock()
     hook.get_hookimpls.return_value = [object(), object()]
