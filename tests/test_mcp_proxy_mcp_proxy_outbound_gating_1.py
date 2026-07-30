@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from pynchy.host.container_manager.mcp.proxy import (
@@ -130,8 +131,11 @@ class TestMcpProxyOutboundGating:
         finally:
             await client.close()
 
-    async def test_capability_wildcard_needs_human_can_be_approved(self, mock_backend):
-        """A wildcard MCP capability can require human approval."""
+    @pytest.mark.parametrize(("approved", "expected_status"), [(True, 200), (False, 403)])
+    async def test_capability_wildcard_needs_human_can_be_decided(
+        self, mock_backend, approved, expected_status
+    ):
+        """A wildcard MCP capability can require and enforce human approval."""
         security = WorkspaceSecurity(
             services={"email": _SAFE_TRUST},
             capabilities={"mcp.email.*": CapabilityRule(decision="needs_human")},
@@ -142,7 +146,7 @@ class TestMcpProxyOutboundGating:
 
         def mock_approval_fn(group, tool_name, data, request_id):
             approval_calls.append((group, tool_name, request_id))
-            resolve_mcp_proxy_approval(request_id, approved=True)
+            resolve_mcp_proxy_approval(request_id, approved=approved)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -161,7 +165,7 @@ class TestMcpProxyOutboundGating:
                 },
             )
 
-            assert resp.status == 200
+            assert resp.status == expected_status
             assert approval_calls == [("test-ws", "send", approval_calls[0][2])]
         finally:
             await client.close()
