@@ -9,7 +9,10 @@ from pydantic import ValidationError
 
 from pynchy.config.api import (
     CanaryConfig,
+    ChannelOverrideConfig,
+    DiscordConnectionConfig,
     JobConfig,
+    MatrixConnectionConfig,
     ProfileConfig,
     RepoConfig,
     ReposConfig,
@@ -18,6 +21,8 @@ from pynchy.config.api import (
     validate_settings_mapping,
 )
 from pynchy.config.models import CapabilityTomlConfig
+
+DISCORD_BOT_ENV = "X"
 
 if TYPE_CHECKING:
     from pynchy.config.api import Settings
@@ -64,7 +69,18 @@ def test_capability_toml_config_lazy_export_remains_available() -> None:
 
 def test_repo_config_resolves_relative_paths_and_accepts_default_path() -> None:
     assert RepoConfig().path is None
+    assert RepoConfig.model_validate({"path": None}).path is None
     assert RepoConfig(path="relative/repo").path.endswith("/relative/repo")
+
+
+def test_discord_runtime_settings_preserve_security_allowlist() -> None:
+    runtime = DiscordConnectionConfig(
+        bot_token_env=DISCORD_BOT_ENV,
+        security=ChannelOverrideConfig(allowed_users=["user"]),
+    ).to_runtime_settings()
+
+    assert runtime.security is not None
+    assert runtime.security.allowed_users == ["user"]
 
 
 def test_workspace_pipeline_rejects_blank_text() -> None:
@@ -108,6 +124,24 @@ def test_canary_rejects_an_invalid_schedule() -> None:
 def test_workspace_soul_ids_must_be_scoped_safe_identifiers(name: str) -> None:
     with pytest.raises(ValidationError, match="prompt IDs"):
         WorkspaceConfig(soul=name)
+
+
+def test_workspace_soul_must_use_the_souls_scope() -> None:
+    with pytest.raises(ValidationError, match="workspace soul must use the souls/ scope"):
+        WorkspaceConfig(soul="executors/default")
+
+
+def test_matrix_gateway_environment_name_must_be_valid() -> None:
+    config = MatrixConnectionConfig(
+        expected_user_id="@owner:example.test",
+        gateway_command_env="MATRIX_GATEWAY",
+    )
+    assert config.gateway_command_env == "MATRIX_GATEWAY"
+    with pytest.raises(ValidationError, match="gateway_command_env"):
+        MatrixConnectionConfig(
+            expected_user_id="@owner:example.test",
+            gateway_command_env="not-an-environment-name",
+        )
 
 
 def test_legacy_sandbox_sections_are_rejected() -> None:
