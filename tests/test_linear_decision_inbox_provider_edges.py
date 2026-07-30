@@ -13,6 +13,7 @@ from pynchy.plugins.integrations.linear_decision_inbox import (
     reconcile_all_linear_work_items,
     reconcile_linear_decision_inbox,
 )
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from tests.linear_decision_inbox_support import (
     _board,
     _DecisionClient,
@@ -166,7 +167,16 @@ async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monke
     account = _Account("primary", _AccountConfig(public_source=False))
     client = object()
     provider_recovery = AsyncMock(return_value=2)
-    inbox = AsyncMock(return_value=[])
+    admitted_task = ScheduledTask(
+        id="task-1",
+        group_folder="beta",
+        chat_jid="linear:beta",
+        prompt="prompt",
+        schedule_type="once",
+        schedule_value="2026-07-19T08:00:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+    )
+    inbox = AsyncMock(return_value=[admitted_task])
     client_context = _ClientContext(client)
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
@@ -193,7 +203,41 @@ async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monke
         defer_plan_review=AsyncMock(),
     )
 
-    assert admitted == []
+    assert admitted == [admitted_task]
     provider_recovery.assert_awaited_once_with(client, {"beta": _board("project-beta")})
     inbox.assert_awaited_once()
     assert inbox.await_args.kwargs["public_source"] is False
+
+
+async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
+    account = _Account("primary", _AccountConfig(public_source=True))
+
+    class FailingClientContext:
+        async def __aenter__(self) -> object:
+            raise RuntimeError("provider unavailable")
+
+        async def __aexit__(self, *_exc_info: object) -> None:
+            return None
+
+    def failing_client(*, workspace: object) -> FailingClientContext:
+        del workspace
+        return FailingClientContext()
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
+        lambda _workspace: account,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
+        failing_client,
+    )
+
+    admitted = await reconcile_all_linear_work_items(
+        {"beta": _Workspace("beta", "Beta", "linear:beta")},
+        {"beta": _board("project-beta")},
+        review_plan=AsyncMock(),
+        broadcast_host_message=AsyncMock(),
+        defer_plan_review=AsyncMock(),
+    )
+
+    assert admitted == []
