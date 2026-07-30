@@ -13,10 +13,12 @@ from pynchy.canaries.api import (
     CanaryRunContext,
     registered_canary_scenarios,
 )
+from pynchy.canary_contracts import CanaryExercise
 from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
 from pynchy.host.container_manager.mcp.google_canaries import (
     GoogleCalendarRoundTripCanary,
     GoogleDriveRoundTripCanary,
+    GoogleMcpCanaryError,
 )
 from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
 from pynchy.plugins.integrations.linear import WorkspaceContext
@@ -280,6 +282,50 @@ async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monke
     ]
     assert verified[0].startswith("google-drive:file:verified:")
     assert cleaned == ()
+
+
+@pytest.mark.asyncio
+async def test_google_canary_requires_the_managed_mcp_manager(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: None,
+    )
+    scenario = GoogleCalendarRoundTripCanary("gcal.canary", "pynchy-canary")
+
+    with pytest.raises(GoogleMcpCanaryError, match="manager is not available"):
+        await scenario.exercise(_context("calendar.google.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_google_canary_reports_an_unavailable_managed_mcp_server(monkeypatch) -> None:
+    manager = AsyncMock()
+    manager.get_canary_server_endpoint.side_effect = TimeoutError("startup timed out")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.google_canaries.get_mcp_manager",
+        lambda: manager,
+    )
+    scenario = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id"
+    )
+
+    with pytest.raises(GoogleMcpCanaryError, match="server is not available"):
+        await scenario.exercise(_context("drive.google.round.trip"))
+
+
+@pytest.mark.asyncio
+async def test_google_canaries_reject_wrong_exercise_artifact_types() -> None:
+    exercise = CanaryExercise(artifact=object())
+    calendar = GoogleCalendarRoundTripCanary(
+        "gcal.canary", "pynchy-canary", client_context=AsyncMock()
+    )
+    drive = GoogleDriveRoundTripCanary(
+        "gdrive.canary", "pynchy-canary-fixture", "fixture-file-id", client_context=AsyncMock()
+    )
+
+    with pytest.raises(GoogleMcpCanaryError, match="Calendar canary artifact"):
+        await calendar.verify(_context("calendar.google.round.trip"), exercise)
+    with pytest.raises(GoogleMcpCanaryError, match="Drive canary artifact"):
+        await drive.verify(_context("drive.google.round.trip"), exercise)
 
 
 class _FakeProtonClient:
