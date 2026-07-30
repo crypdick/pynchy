@@ -97,6 +97,25 @@ async def test_nonnumeric_discord_target_without_client_is_unresolved():
     assert await channel.resolve_chat_jid("guild.channels.not-an-id") is None
 
 
+async def test_nonnumeric_discord_target_stays_unresolved_after_client_lookup():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionSettings(
+            bot_token_env="",
+            chat={"guild": DiscordGuildSettings(channels={"not-an-id": DiscordChannelSettings()})},
+        ),
+        "token",
+        lambda *_args: None,
+        lambda *_args: None,
+        audio_cache_dir=Path("audio"),
+    )
+    channel.client = object()
+    channel.find_configured_channel = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    assert await channel.resolve_chat_jid("guild.channels.not-an-id") is None
+    channel.find_configured_channel.assert_awaited_once()
+
+
 def test_non_mutating_ipc_request_does_not_create_a_ledger_entry(tmp_path: Path):
     request = make_ipc_request(
         kind="task_status",
