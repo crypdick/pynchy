@@ -16,6 +16,13 @@ from pynchy.config.api import (
     WorkspaceThreadConfig,
     dynamic_thread_folder,
 )
+from pynchy.host.orchestrator.threads import (
+    create_thread,
+    ensure_thread,
+    find_thread,
+    set_thread_closed,
+    supports_thread_creation,
+)
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
 from pynchy.host.orchestrator.workspace_threads import (
     WorkspaceThreadAction,
@@ -83,6 +90,14 @@ class _FailingLookupChannel(_ThreadChannel):
         raise RuntimeError("Discord unavailable")
 
 
+class _EmptyThreadChannel(_ThreadChannel):
+    async def create_thread(
+        self, parent_jid: str, name: str, *, participant_ids: tuple[str, ...] = ()
+    ) -> str:
+        del parent_jid, name, participant_ids
+        return ""
+
+
 def _parent() -> WorkspaceProfile:
     return WorkspaceProfile(
         jid="discord:channel:relationships",
@@ -91,6 +106,26 @@ def _parent() -> WorkspaceProfile:
         trigger="@Pynchy",
         added_at=datetime.now(UTC).isoformat(),
     )
+
+
+@pytest.mark.asyncio
+async def test_thread_capabilities_fail_closed_without_provider_support() -> None:
+    parent_jid = "discord:channel:relationships"
+
+    assert await supports_thread_creation([], parent_jid) is False
+    assert await find_thread([], parent_jid, "family") is None
+    with pytest.raises(RuntimeError, match="thread creation"):
+        await create_thread([], parent_jid, "family")
+    with pytest.raises(RuntimeError, match="thread lifecycle"):
+        await set_thread_closed([], "discord:channel:family", closed=True)
+    with pytest.raises(RuntimeError, match="thread lookup"):
+        await ensure_thread([], parent_jid, "family")
+
+
+@pytest.mark.asyncio
+async def test_thread_creation_rejects_provider_without_a_child_jid() -> None:
+    with pytest.raises(RuntimeError, match="no JID"):
+        await create_thread([_EmptyThreadChannel()], "discord:channel:relationships", "family")
 
 
 @pytest.mark.asyncio
