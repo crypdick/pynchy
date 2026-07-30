@@ -163,8 +163,8 @@ def extract_tool_call(item: object) -> tuple[str, ToolPayload]:
     return tool_name or "unknown_tool", tool_input
 
 
-def extract_tool_result(item: object) -> tuple[str, str]:
-    """Extract (tool_result_id, output) from an OpenAI SDK tool_call_output_item."""
+def extract_tool_result(item: object) -> tuple[str, str, bool]:
+    """Extract (tool_result_id, output, is_error) from an SDK tool output item."""
     output = getattr(item, "output", "")
     raw = getattr(item, "raw_item", item)
     raw_map = _as_mapping(raw) or {}
@@ -175,7 +175,34 @@ def extract_tool_result(item: object) -> tuple[str, str]:
         or raw_map.get("id")
         or ""
     )
-    return str(tool_result_id) if tool_result_id else "", str(output) if output else ""
+    return (
+        str(tool_result_id) if tool_result_id else "",
+        str(output) if output else "",
+        _tool_result_is_error(raw_map),
+    )
+
+
+def _tool_result_is_error(raw_item: SdkMapping) -> bool:
+    # Use only structured states; tool text can contain credentials or other secrets.
+    if raw_item.get("status") in {"failed", "incomplete"}:
+        return True
+    if raw_item.get("type") != "shell_call_output":
+        return False
+    outputs = raw_item.get("output")
+    return isinstance(outputs, list) and any(_shell_output_is_error(output) for output in outputs)
+
+
+def _shell_output_is_error(output: object) -> bool:
+    output_map = _as_mapping(output)
+    if output_map is None:
+        return False
+    outcome = _as_mapping(output_map.get("outcome"))
+    if outcome is None:
+        return False
+    if outcome.get("type") == "timeout":
+        return True
+    exit_code = outcome.get("exit_code")
+    return isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0
 
 
 # ---------------------------------------------------------------------------
