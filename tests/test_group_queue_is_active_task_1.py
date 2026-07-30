@@ -82,6 +82,7 @@ class TestIsActiveTask:
         await asyncio.sleep(0.1)
 
         assert queue.is_active_task(_runtime("test-group")) is False
+        await queue.stop_active_process(_runtime("test-group"))
 
 
 class TestTaskExceptionHandling:
@@ -135,6 +136,7 @@ class TestStopActiveProcess:
     async def test_noop_when_not_active(self, queue: GroupQueue):
         """stop_active_process does nothing when group is not active."""
         await queue.stop_active_process(_runtime("group1@g.us"))
+        await queue.stop_active_process_for_control(_runtime("group1@g.us"))
 
     async def test_calls_graceful_stop_on_active_process(
         self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
