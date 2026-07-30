@@ -364,14 +364,8 @@ async def _dispatch_approved_request(
             context.tool_name,
             deps,
         )
-    elif deps is None:
-        await asyncio.to_thread(
-            write_ipc_response,
-            ipc_response_path(context.source_group, context.request_id),
-            {"error": "Approval replay dependencies are unavailable."},
-        )
-        return
     else:
+        deps = cast("IpcDeps", deps)
         if context.gate is None:
             raise RuntimeError("Approval replay policy disappeared after validation")
         if context.action is not None and context.action.action_intent is not None:
