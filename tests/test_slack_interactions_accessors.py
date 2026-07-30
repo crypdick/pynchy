@@ -419,10 +419,12 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
 ) -> None:
     on_message = MagicMock()
     on_reaction = MagicMock()
+    on_ask_user_answer = MagicMock()
     on_agent_stop = MagicMock()
     ch = _make_channel(
         on_message=on_message,
         on_reaction=on_reaction,
+        on_ask_user_answer=on_ask_user_answer,
         on_agent_stop=on_agent_stop,
     )
     ch.resolve_user_name = AsyncMock(return_value="Ada")
@@ -460,6 +462,16 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
                 "item": {"channel": "C-other", "ts": "123.456"},
             }
         )
+        ask_user_handler = app.actions[0][1]
+        await ask_user_handler(
+            ack,
+            {
+                "channel": {"id": "C12345"},
+                "message": {"ts": "123.456"},
+                "user": {"id": "U999"},
+            },
+            {"action_id": "ask_user_submit_a1"},
+        )
         approval_handler = app.actions[1][1]
         await approval_handler(
             ack,
@@ -475,7 +487,7 @@ def test_registered_slack_callbacks_ack_and_route_inbound_events(
 
     asyncio.run(scenario())
 
-    assert ack.await_count == 2
+    assert ack.await_count == 3
     on_message.assert_called_once()
     on_reaction.assert_called_once_with("slack:C12345", "123.456", "U999", "eyes")
     on_agent_stop.assert_called_once()

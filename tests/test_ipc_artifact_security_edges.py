@@ -120,10 +120,11 @@ async def test_cop_disabled_confirms_credential_taint_without_inspection(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_artifact_check_denies_malformed_package_payload(tmp_path) -> None:
+@pytest.mark.parametrize("packages", ["not-a-list", [{}]])
+async def test_artifact_check_denies_malformed_package_payload(tmp_path, packages: object) -> None:
     response = await _run_artifact_check(
         tmp_path,
-        {"request_id": "malformed-packages", "packages": "not-a-list"},
+        {"request_id": "malformed-packages", "packages": packages},
         SecurityGate(WorkspaceSecurity()),
     )
 
