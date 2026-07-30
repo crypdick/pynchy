@@ -10,7 +10,10 @@ from pynchy.agent_protocol.api import ContainerOutput, InFlightWorkKind
 from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
 )
-from pynchy.host.orchestrator.messaging.pipeline import process_group_messages
+from pynchy.host.orchestrator.messaging.pipeline import (
+    process_group_messages,
+    run_queued_message_turn,
+)
 from pynchy.state import get_in_flight_turn_for_chat, init_test_database
 from pynchy.turn_outcomes import TurnOutcome
 from tests.message_handler_support import (
@@ -151,3 +154,11 @@ async def test_advances_cursor_for_message_dispatched_during_finalization(tmp_pa
         assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
     assert deps.last_agent_timestamp[jid] == "z-latest-ts"
+
+
+@pytest.mark.asyncio
+async def test_queued_turn_without_workspace_completes_without_queueing() -> None:
+    deps = _make_deps(groups={})
+
+    assert await run_queued_message_turn(deps, "unknown@g.us") is TurnOutcome.COMPLETED
+    deps.queue.run_message_turn.assert_not_called()
