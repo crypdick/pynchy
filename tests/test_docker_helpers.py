@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import web
@@ -41,6 +41,22 @@ async def test_docker_image_and_network_are_created_only_when_missing(
     assert run_docker.await_args_list[1].kwargs["command_timeout_seconds"] == 300
     assert run_docker.await_args_list[2].args == ("network", "inspect", "pynchy-test")
     assert run_docker.await_args_list[3].args == ("network", "create", "pynchy-test")
+
+
+@pytest.mark.asyncio
+async def test_docker_image_and_network_noop_when_already_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_docker = AsyncMock(return_value=_result())
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    await docker.ensure_image("example/image:latest")
+    await docker.ensure_network("pynchy-test")
+
+    assert [call.args for call in run_docker.await_args_list] == [
+        ("image", "inspect", "example/image:latest"),
+        ("network", "inspect", "pynchy-test"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -135,5 +151,38 @@ async def test_docker_wait_healthy_reports_an_exited_container(
                 container_name="stopped-container",
                 url="http://127.0.0.1:9/health",
                 health_timeout_seconds=1.0,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_reports_a_process_exit() -> None:
+    process = MagicMock()
+    process.poll.return_value = 1
+
+    with pytest.raises(RuntimeError, match="Script script exited unexpectedly"):
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="script",
+                url="http://127.0.0.1:9/health",
+                health_timeout_seconds=1.0,
+                process=process,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_docker_wait_healthy_times_out_after_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker, "is_container_running", AsyncMock(return_value=True))
+
+    with pytest.raises(TimeoutError, match="did not become healthy"):
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="slow-container",
+                url="http://127.0.0.1:9/health",
+                health_timeout_seconds=0.01,
+                poll_interval=0.001,
             )
         )
