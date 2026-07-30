@@ -63,6 +63,14 @@ class TestSlackConfiguredChats:
         assert result.messages == []
 
     @pytest.mark.asyncio
+    async def test_fetch_inbound_since_skips_when_slack_is_disconnected(self) -> None:
+        channel = make_slack_channel()
+
+        result = await channel.fetch_inbound_since("slack:C12345", "1970-01-01T00:00:00+00:00")
+
+        assert result.messages == []
+
+    @pytest.mark.asyncio
     async def test_sync_allowed_channels_revokes_access_when_config_has_no_chats(self) -> None:
         channel = SlackChannel(
             connection_name="connection.slack.main",
