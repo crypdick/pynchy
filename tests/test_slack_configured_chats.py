@@ -17,6 +17,52 @@ from tests.slack_test_support import (
 
 class TestSlackConfiguredChats:
     @pytest.mark.asyncio
+    async def test_fetch_inbound_since_advances_past_bot_pages_and_preserves_newest_watermark(
+        self,
+    ) -> None:
+        channel = make_slack_channel()
+        app = attach_slack_app(channel)
+        app.client.conversations_history.side_effect = [
+            {"messages": [{"ts": "100", "bot_id": "B"}], "has_more": True},
+            {"messages": [{"ts": "90", "user": "U1", "text": "hello"}], "has_more": False},
+        ]
+
+        result = await channel.fetch_inbound_since("slack:C12345", "1970-01-01T00:00:00+00:00")
+
+        assert [message.content for message in result.messages] == ["hello"]
+        assert result.high_water_mark == "1970-01-01T00:01:40+00:00"
+
+    @pytest.mark.asyncio
+    async def test_fetch_inbound_since_ignores_empty_and_malformed_pages(self) -> None:
+        channel = make_slack_channel()
+        app = attach_slack_app(channel)
+        app.client.conversations_history.return_value = {
+            "messages": [
+                {"user": "U1", "text": "missing timestamp"},
+                {"ts": "101", "text": "missing user"},
+            ],
+            "has_more": False,
+        }
+
+        result = await channel.fetch_inbound_since("slack:C12345", "1970-01-01T00:00:00+00:00")
+
+        assert result.messages == []
+
+        app.client.conversations_history.return_value = {"messages": [], "has_more": False}
+        assert (
+            await channel.fetch_inbound_since("slack:C12345", "1970-01-01T00:00:00+00:00")
+        ).messages == []
+
+    @pytest.mark.asyncio
+    async def test_fetch_inbound_since_skips_unallowed_channel(self) -> None:
+        channel = make_slack_channel()
+        attach_slack_app(channel)
+
+        result = await channel.fetch_inbound_since("slack:C99999", "1970-01-01T00:00:00+00:00")
+
+        assert result.messages == []
+
+    @pytest.mark.asyncio
     async def test_sync_allowed_channels_revokes_access_when_config_has_no_chats(self) -> None:
         channel = SlackChannel(
             connection_name="connection.slack.main",
