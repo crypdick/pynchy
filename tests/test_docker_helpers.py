@@ -85,6 +85,16 @@ async def test_docker_container_helpers_report_status_and_clean_up(
 
 
 @pytest.mark.asyncio
+async def test_docker_inspect_logs_when_slow(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = MagicMock()
+    clock.side_effect = lambda: 0.0 if clock.call_count == 1 else 1.0
+    monkeypatch.setattr(docker.time, "monotonic", clock)
+    monkeypatch.setattr(docker, "run_docker", AsyncMock(return_value=_result(stdout="true")))
+
+    assert await docker.is_container_running("slow") is True
+
+
+@pytest.mark.asyncio
 async def test_docker_wait_healthy_accepts_an_http_endpoint() -> None:
     async def healthy(_request: web.Request) -> web.Response:
         await asyncio.sleep(0)
