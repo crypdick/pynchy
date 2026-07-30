@@ -9,7 +9,8 @@ import pluggy
 import pytest
 
 from pynchy.host.orchestrator import session_handler
-from pynchy.plugins.api import PynchySpec, prepare_context_reset
+from pynchy.identifiers import RuntimeId
+from pynchy.plugins.api import NewMessage, PynchySpec, prepare_context_reset
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -278,3 +279,68 @@ async def test_manual_reset_stops_worker_before_plugin_settlement() -> None:
         )
 
     assert events == ["stopped", "settled", "destroyed"]
+
+
+async def test_end_session_stops_runtime_and_reacts_on_owned_channel() -> None:
+    group = WorkspaceProfile(
+        jid="slack:C123",
+        name="Test",
+        folder="test",
+        trigger="@pynchy",
+    )
+    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps.queue.destroy_runtime_session = AsyncMock()
+    deps.queue.stop_active_process = AsyncMock()
+    deps.queue.clear_pending_tasks = MagicMock()
+
+    class _OwnedChannel:
+        def owns_jid(self, jid: str) -> bool:
+            return jid == group.jid
+
+    deps.channels = [_OwnedChannel()]
+    source_message = NewMessage(
+        id="message-1",
+        chat_jid=group.jid,
+        sender="sender-1",
+        sender_name="Sender",
+        content="end session",
+        timestamp="2026-07-29T00:00:00Z",
+    )
+    background_names: list[str | None] = []
+
+    def discard_background(coro, *, name=None):
+        coro.close()
+        background_names.append(name)
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.session_handler.create_background_task",
+            side_effect=discard_background,
+        ),
+        patch(
+            "pynchy.host.orchestrator.session_handler.advance_cursor",
+            new_callable=AsyncMock,
+        ) as advance,
+        patch(
+            "pynchy.host.orchestrator.session_handler.send_reaction_to_channels",
+            new_callable=AsyncMock,
+        ) as react,
+    ):
+        await session_handler.handle_end_session(
+            deps,
+            group.jid,
+            group,
+            source_message.timestamp,
+            source_message=source_message,
+        )
+
+    assert background_names == ["destroy-session-test", "stop-container-slack:C123"]
+    deps.queue.clear_pending_tasks.assert_called_once_with(RuntimeId(group.folder))
+    advance.assert_awaited_once_with(deps, group.jid, source_message.timestamp)
+    react.assert_awaited_once_with(
+        deps,
+        group.jid,
+        source_message.id,
+        source_message.sender,
+        "👋",
+    )

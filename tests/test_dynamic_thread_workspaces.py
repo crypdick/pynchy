@@ -98,6 +98,50 @@ async def test_unknown_discord_thread_registers_inherited_workspace(db, monkeypa
     assert child.is_admin is True
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"discord_parent_chat_jid": None},
+        {"discord_parent_chat_jid": "discord:channel:missing"},
+    ],
+)
+async def test_unknown_thread_without_known_parent_is_not_registered(db, metadata):
+    deps = _Deps()
+    msg = NewMessage(
+        id="discord-msg-unregistered",
+        chat_jid="discord:channel:thread",
+        sender="42",
+        sender_name="Alice",
+        content="start",
+        timestamp=datetime.now(UTC).isoformat(),
+        metadata=metadata,
+    )
+
+    await session_handler.on_inbound(deps, msg.chat_jid, msg)
+
+    assert deps.registered == []
+
+
+async def test_unknown_thread_with_blank_name_uses_jid(db):
+    deps = _Deps()
+    msg = NewMessage(
+        id="discord-msg-blank-name",
+        chat_jid="discord:channel:thread",
+        sender="42",
+        sender_name="Alice",
+        content="start",
+        timestamp=datetime.now(UTC).isoformat(),
+        metadata={
+            "discord_parent_chat_jid": "discord:channel:parent",
+            "discord_channel_name": "  ",
+        },
+    )
+
+    await session_handler.on_inbound(deps, msg.chat_jid, msg)
+
+    assert deps.registered[0].name == "Admin/discord:channel:thread"
+
+
 def test_dynamic_thread_folder_resolves_parent_workspace_config(monkeypatch):
     settings = make_settings(
         profiles={"admin": ProfileConfig(repo="crypdick/pynchy")},
