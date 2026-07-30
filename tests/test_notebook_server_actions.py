@@ -92,8 +92,11 @@ def notebook_server(monkeypatch: pytest.MonkeyPatch, tmp_path) -> dict[str, Any]
     fastmcp.FastMCP = _FakeMcp
     jupyter_client = types.ModuleType("jupyter_client")
     jupyter_client.KernelManager = _FakeKernelManager
+    ubuntu_namer = types.ModuleType("ubuntu_namer")
+    ubuntu_namer.generate_name = lambda **_kwargs: "calm-capybara"
     monkeypatch.setitem(sys.modules, "fastmcp", fastmcp)
     monkeypatch.setitem(sys.modules, "jupyter_client", jupyter_client)
+    monkeypatch.setitem(sys.modules, "ubuntu_namer", ubuntu_namer)
     monkeypatch.setattr(sys, "argv", ["notebook-server", "--workspace-dir", str(tmp_path)])
     monkeypatch.delitem(
         sys.modules,
