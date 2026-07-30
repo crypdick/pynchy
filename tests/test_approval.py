@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from pynchy.host.container_manager.security.approval import (
     format_approval_notification,
     generate_short_id,
     list_pending_approvals,
+    read_pending_approval,
     sweep_expired_approvals,
 )
 from pynchy.state import expire_action_intent
@@ -76,7 +78,13 @@ class TestCreatePendingApproval:
         # short_id is a random 2-char [a-z0-9] string, no longer request_id[:8]
         assert len(data["short_id"]) == 2
         assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in data["short_id"])
-        assert data["request_data"]["text"] == "hello"
+        assert "request_data" not in data
+        assert "hello" not in files[0].read_text()
+        assert "encrypted_payload" in data
+        decrypted = read_pending_approval(files[0])
+        assert decrypted["request_data"]["text"] == "hello"
+        key_path = ipc_dir.parent / "approvals" / "approval-payload.key"
+        assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
         assert "timestamp" in data
         assert data["corruption_tainted"] is False
         assert data["secret_tainted"] is False
