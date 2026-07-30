@@ -112,11 +112,16 @@ async def _noop_execution_retirement(_execution) -> None:
     pass
 
 
+async def _noop_terminal_execution_retirement(_execution, _revision) -> None:
+    pass
+
+
 def configure_linear_accounts_for(
     settings: Settings,
     *,
     start_work_item_reconciliation=_noop_linear_reconciliation,
     retire_execution=_noop_execution_retirement,
+    retire_terminal_execution=_noop_terminal_execution_retirement,
 ) -> None:
     """Wire Linear account lookups to one test's resolved settings."""
 
@@ -199,6 +204,7 @@ def configure_linear_accounts_for(
             get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_execution,
+            retire_terminal_execution=retire_terminal_execution,
         )
     )
     configure_linear_work_items_runtime(

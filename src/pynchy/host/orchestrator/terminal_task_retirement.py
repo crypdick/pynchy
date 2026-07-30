@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves adapter annotations at runtime.
+from pynchy.conversation.api import (
     Conversation,
     ConversationId,
+    ConversationSubjectKey,
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
+from pynchy.host.orchestrator.webhook_terminal_retirement import (
+    TerminalConversationRetirementDeps,
+    retire_terminal_runtime,
+)
+from pynchy.identifiers import GroupFolder
 from pynchy.scheduling.api import (
     ScheduledTask,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
 )
@@ -15,10 +21,12 @@ from pynchy.state.api import (
     cancel_task_and_checkpoint,
     clear_in_flight_turn,
     get_conversation,
+    get_conversation_for_subject_key,
     get_task_by_id,
     get_tasks_for_conversation,
     get_unfinished_work_item_execution,
     get_work_item_execution_for_task,
+    retire_conversation_for_terminal,
 )
 from pynchy.work_items.api import (
     WorkItemExecution,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
@@ -67,6 +75,28 @@ async def retire_work_item_execution(execution: WorkItemExecution) -> None:
         await cancel_task_and_checkpoint(execution.task_id)
     if execution.turn_id is not None:
         await clear_in_flight_turn(execution.turn_id)
+
+
+async def retire_provider_work_item_execution(
+    deps: TerminalConversationRetirementDeps,
+    execution: WorkItemExecution,
+    control_state_revision: str | None,
+) -> None:
+    """Apply a provider terminal snapshot through the shared conversation lifecycle."""
+    conversation = await get_conversation_for_subject_key(
+        ConversationSubjectKey(execution.linear_issue_id),
+        workspace=GroupFolder(execution.workspace),
+        namespace_suffix=":issue",
+    )
+    if conversation is None:
+        await retire_work_item_execution(execution)
+        return
+    retirement = await retire_conversation_for_terminal(
+        conversation.id,
+        preserve_delivery=None,
+        control_state_revision=control_state_revision,
+    )
+    await retire_terminal_runtime(deps, conversation.id, retirement, set())
 
 
 async def _unfinished_linear_execution_for_conversation(

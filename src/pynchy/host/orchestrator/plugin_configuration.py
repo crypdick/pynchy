@@ -237,6 +237,8 @@ from pynchy.workspace.api import (
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.work_items.api import WorkItemExecution
+
 
 def configure_computer_use_plugins(
     plugin_manager: pluggy.PluginManager,
@@ -349,9 +351,21 @@ def configure_linear_plugin(
     plugin_manager: pluggy.PluginManager,
     settings: Settings,
     start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: (
+        Callable[[WorkItemExecution, str | None], Awaitable[None]] | None
+    ) = None,
 ) -> None:
     """Inject the named Linear accounts resolved at application composition."""
     plugin = settings.plugins.get("linear")
+
+    async def retire_terminal_execution(
+        execution: WorkItemExecution,
+        control_state_revision: str | None,
+    ) -> None:
+        if retire_provider_execution is None:
+            await retire_work_item_execution(execution)
+            return
+        await retire_provider_execution(execution, control_state_revision)
 
     def workspace_tools(workspace: str) -> tuple[str, ...] | None:
         resolved = settings.resolved_workspace_config(workspace)
@@ -425,6 +439,7 @@ def configure_linear_plugin(
             get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_work_item_execution,
+            retire_terminal_execution=retire_terminal_execution,
         )
     )
     configure_linear_work_items_runtime(
@@ -772,3 +787,27 @@ def configure_builtin_canaries(settings: Settings) -> None:
         ),
     )
     register_security_canary_scenarios(register_security)
+
+
+def configure_startup_plugins(
+    plugin_manager: pluggy.PluginManager,
+    settings: Settings,
+    start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: Callable[[WorkItemExecution, str | None], Awaitable[None]],
+) -> None:
+    """Configure every plugin runtime owned by core startup."""
+    configure_computer_use_plugins(plugin_manager, settings)
+    configure_caldav_plugin(settings)
+    configure_gog_plugin(settings)
+    configure_desktop_screenshot_plugin(plugin_manager, settings)
+    configure_linear_plugin(
+        plugin_manager,
+        settings,
+        start_work_item_reconciliation,
+        retire_provider_execution,
+    )
+    configure_observer_plugins(plugin_manager)
+    configure_marketplace_health_plugin(plugin_manager, settings)
+    configure_matrix_gateway_plugin(settings)
+    configure_google_setup_plugin(plugin_manager, settings)
+    configure_builtin_canaries(settings)

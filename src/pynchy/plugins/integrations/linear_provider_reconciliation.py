@@ -8,15 +8,18 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
     Mapping,
 )
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves controller annotations.
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_statuses import (
     AWAITING_REVIEW_STATUS,
     FOLLOW_UPS_STATUS,
+    TERMINAL_STATE_TYPES,
 )
 from pynchy.plugins.integrations.linear_work_item_completion import (
     complete_reviewed_work_item,
@@ -29,11 +32,18 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     LinearDecisionClient,
     decision_state_id,
 )
-from pynchy.work_items.api import WorkItemExecution, WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+    WorkItemTransition,
+    WorkItemTransitionStatus,
+)
 
 if TYPE_CHECKING:
     from pynchy.plugins.integrations.linear_client import LinearClient
 
+# A transition can spend one 30-second client timeout reading and another writing.
+_PENDING_TRANSITION_GRACE = timedelta(minutes=2)
 _RECONCILABLE_EXECUTION_STATUSES = frozenset(
     {
         WorkItemExecutionStatus.CLAIMING,
@@ -60,9 +70,10 @@ class LinearDecisionInboxRuntime:
     """Durable cleanup operations used by provider-state reconciliation."""
 
     list_executions: Callable[..., Awaitable[list[WorkItemExecution]]]
-    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
+    get_latest_unresolved_transition: Callable[[str], Awaitable[WorkItemTransition | None]]
     cancel_execution: Callable[..., Awaitable[WorkItemExecution]]
     retire_execution: Callable[[WorkItemExecution], Awaitable[None]]
+    retire_terminal_execution: Callable[[WorkItemExecution, str | None], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -70,6 +81,23 @@ class _ExecutionController:
     workspace: str
     board: LinearWorkspaceBoard
     issue: dict[str, Any] | None
+
+
+@dataclass
+class UnavailableExecutionProbe:
+    """Configured accounts that independently could not load one historical issue."""
+
+    execution: WorkItemExecution
+    account_names: set[str]
+
+
+@dataclass(frozen=True)
+class _AccountScope:
+    """Ownership evidence accumulated during one configured account pass."""
+
+    name: str | None
+    owns_execution: bool
+    unavailable_probes: dict[str, UnavailableExecutionProbe] | None
 
 
 @dataclass
@@ -94,6 +122,9 @@ def _configured_runtime() -> LinearDecisionInboxRuntime:
 async def reconcile_provider_work_item_state(
     client: LinearDecisionClient,
     boards: Mapping[str, LinearWorkspaceBoard],
+    *,
+    account_name: str | None = None,
+    unavailable_probes: dict[str, UnavailableExecutionProbe] | None = None,
 ) -> int:
     """Retire local work whose provider state changed while callbacks were offline."""
     runtime = _configured_runtime()
@@ -112,12 +143,22 @@ async def reconcile_provider_work_item_state(
     for execution in latest_by_issue.values():
         if execution.status not in _RECONCILABLE_EXECUTION_STATUSES:
             continue
+        account = linear_account_for_workspace(execution.workspace)
+        if account_name is not None and account is not None and account.name != account_name:
+            continue
+        account_owns_execution = account_name is None or (
+            account is not None and account.name == account_name
+        )
         try:
             retired += await _reconcile_execution_for_account(
                 client,
                 execution,
-                boards,
                 project_boards,
+                _AccountScope(
+                    name=account_name,
+                    owns_execution=account_owns_execution,
+                    unavailable_probes=unavailable_probes,
+                ),
             )
         except Exception:  # noqa: BLE001 - one provider item must not strand the account.
             logger.exception(
@@ -128,19 +169,37 @@ async def reconcile_provider_work_item_state(
     return retired
 
 
+async def retire_globally_unavailable_work_item(execution: WorkItemExecution) -> bool:
+    """Fail closed after every configured account proves an issue unavailable."""
+    return await _cancel_deauthorized_execution(
+        execution,
+        None,
+        reason="issue is unavailable",
+    )
+
+
 async def _reconcile_execution_for_account(
     client: LinearDecisionClient,
     execution: WorkItemExecution,
-    boards: Mapping[str, LinearWorkspaceBoard],
     project_boards: Mapping[str, tuple[str, LinearWorkspaceBoard]],
+    account_scope: _AccountScope,
 ) -> bool:
     issue = await client.get_issue(execution.linear_issue_id)
+    if issue is None and not account_scope.owns_execution:
+        if account_scope.name is not None and account_scope.unavailable_probes is not None:
+            probe = account_scope.unavailable_probes.setdefault(
+                execution.id,
+                UnavailableExecutionProbe(execution, set()),
+            )
+            probe.account_names.add(account_scope.name)
+        return False
     controller = _controller_for_issue(issue, project_boards)
     if controller is None:
-        board = boards.get(execution.workspace)
-        if board is None:
-            return False
-        controller = _ExecutionController(execution.workspace, board, issue)
+        return await _cancel_deauthorized_execution(
+            execution,
+            issue,
+            reason="issue is unavailable" if issue is None else "issue left managed projects",
+        )
     return await _reconcile_provider_execution(client, execution, controller)
 
 
@@ -160,52 +219,48 @@ async def _reconcile_provider_execution(
     controller: _ExecutionController,
 ) -> bool:
     runtime = _configured_runtime()
-    if controller.issue is None:
-        cancelled = await runtime.cancel_execution(
-            execution.id,
-            blocker=f"{_PROVIDER_DRIFT_BLOCKER}: issue is unavailable",
-        )
-        await runtime.retire_execution(cancelled)
-        return True
-    if execution.status is WorkItemExecutionStatus.UNKNOWN:
-        return await _reconcile_uncertain_execution(
-            client,
-            controller.workspace,
-            execution,
-        )
-    return await _reconcile_known_execution(execution, controller)
-
-
-async def _reconcile_uncertain_execution(
-    client: LinearDecisionClient,
-    controller_workspace: str,
-    execution: WorkItemExecution,
-) -> bool:
-    """Resolve the exact uncertain provider write before generic drift handling."""
-    runtime = _configured_runtime()
     transition = await runtime.get_latest_unresolved_transition(execution.id)
-    if transition is None:
+    if transition is not None:
+        if _pending_transition_is_fresh(transition):
+            return False
+        resolved = await reconcile_work_item(
+            cast("LinearClient", client),
+            controller.workspace,
+            execution.linear_issue_id,
+            transition,
+        )
+        if resolved is None:
+            return False
+        if resolved.status not in _RECONCILABLE_EXECUTION_STATUSES:
+            await _retire_execution(resolved, controller.issue)
+            return True
+        execution = resolved
+    elif execution.status is WorkItemExecutionStatus.UNKNOWN:
         logger.warning(
             "Uncertain Linear execution lacks a transition to reconcile",
             issue=execution.linear_issue_identifier,
             execution_id=execution.id,
         )
         return False
-    resolved = await reconcile_work_item(
-        cast("LinearClient", client),
-        controller_workspace,
-        execution.linear_issue_id,
-        transition,
-    )
-    should_retire = resolved is not None and resolved.status in {
-        WorkItemExecutionStatus.COMPLETED,
-        WorkItemExecutionStatus.CANCELLED,
-        WorkItemExecutionStatus.HANDED_OFF,
-        WorkItemExecutionStatus.FAILED,
-    }
-    if should_retire and resolved is not None:
-        await runtime.retire_execution(resolved)
-    return should_retire
+    return await _reconcile_known_execution(execution, controller)
+
+
+def _pending_transition_is_fresh(transition: WorkItemTransition) -> bool:
+    """Keep the poller behind the provider call that owns a pending intent."""
+    if transition.status is not WorkItemTransitionStatus.PENDING:
+        return False
+    try:
+        created_at = datetime.fromisoformat(transition.created_at)
+    except ValueError:
+        logger.warning(
+            "Pending Linear transition has an invalid timestamp",
+            transition_id=transition.id,
+            created_at=transition.created_at,
+        )
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return datetime.now(UTC) - created_at.astimezone(UTC) < _PENDING_TRANSITION_GRACE
 
 
 async def _reconcile_known_execution(
@@ -240,7 +295,7 @@ async def _reconcile_known_execution(
                 execution_id=execution.id,
             )
             return False
-        await runtime.retire_execution(completed)
+        await runtime.retire_terminal_execution(completed, _provider_revision(issue))
         return True
     authorized_states = {
         decision_state_id(controller.board, status)
@@ -250,9 +305,47 @@ async def _reconcile_known_execution(
         return False
     state = issue.get("state")
     state_name = state.get("name") if isinstance(state, dict) else current_state
+    return await _cancel_deauthorized_execution(
+        execution,
+        issue,
+        reason=str(state_name),
+    )
+
+
+async def _cancel_deauthorized_execution(
+    execution: WorkItemExecution,
+    issue: dict[str, Any] | None,
+    *,
+    reason: str,
+) -> bool:
+    runtime = _configured_runtime()
     cancelled = await runtime.cancel_execution(
         execution.id,
-        blocker=f"{_PROVIDER_DRIFT_BLOCKER}: {state_name}",
+        blocker=f"{_PROVIDER_DRIFT_BLOCKER}: {reason}",
     )
-    await runtime.retire_execution(cancelled)
+    if cancelled.status is not WorkItemExecutionStatus.CANCELLED:
+        return False
+    await _retire_execution(cancelled, issue)
     return True
+
+
+async def _retire_execution(
+    execution: WorkItemExecution,
+    issue: dict[str, Any] | None,
+) -> None:
+    runtime = _configured_runtime()
+    if issue is not None and _provider_issue_is_terminal(issue):
+        await runtime.retire_terminal_execution(execution, _provider_revision(issue))
+        return
+    await runtime.retire_execution(execution)
+
+
+def _provider_issue_is_terminal(issue: dict[str, Any]) -> bool:
+    state = issue.get("state")
+    state_type = state.get("type") if isinstance(state, dict) else None
+    return state_type in TERMINAL_STATE_TYPES
+
+
+def _provider_revision(issue: dict[str, Any] | None) -> str | None:
+    revision = issue.get("updatedAt") if issue is not None else None
+    return revision if isinstance(revision, str) and revision else None
