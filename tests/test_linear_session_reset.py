@@ -189,5 +189,40 @@ async def test_reset_returns_false_when_no_linear_execution_is_owned(
             cancel_scheduled_workflow=AsyncMock(return_value=True),
             state=state,
         )
-        is False
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_reset_cancels_locally_when_linear_transition_fails() -> None:
+    execution = _execution()
+    cancel_task = AsyncMock()
+    cancel_execution = AsyncMock()
+    state = LinearSessionResetState(
+        get_control_by_thread=AsyncMock(return_value=_Binding(conversation_id="conversation-1")),
+        get_conversation=AsyncMock(
+            return_value=_Conversation(_Subject("linear:tenant:issue", execution.linear_issue_id))
+        ),
+        get_active_execution=AsyncMock(return_value=execution),
+        cancel_task=cancel_task,
+        cancel_execution=cancel_execution,
+        transition_request=WorkItemTransitionRequest,
     )
+
+    with patch(
+        "pynchy.plugins.integrations.linear_session_reset.linear_client",
+        side_effect=ValueError("provider unavailable"),
+    ):
+        result = await cancel_linear_execution_for_reset(
+            WorkspaceProfile(
+                jid="discord:channel:issue-thread",
+                name="SYN-89",
+                folder="linear-thread",
+                trigger="@Pynchy",
+            ),
+            cancel_scheduled_workflow=AsyncMock(return_value=True),
+            state=state,
+        )
+
+    assert result is True
+    cancel_task.assert_awaited_once_with(execution.task_id)
+    cancel_execution.assert_awaited_once()
