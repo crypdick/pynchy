@@ -16,6 +16,7 @@ from pynchy.canaries.api import (
 )
 from pynchy.canary_contracts import CanaryOutcome
 from pynchy.config.api import CanaryConfig, validate_settings_mapping
+from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 from pynchy.state import (
     get_recent_canary_runs,
     get_unresolved_canary_regressions,
@@ -344,6 +345,29 @@ def test_canary_registration_rejects_a_scenario_without_action_coverage():
         register_canary_scenario("mail.send.self", PassingScenario())
 
 
+def test_canary_registration_rejects_duplicate_scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "pynchy.canaries._runner._SCENARIO_EXECUTORS",
+        {_SCENARIO_ID: PassingScenario()},
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_canary_scenario(_SCENARIO_ID, PassingScenario())
+
+
 def test_security_canary_registration_rejects_an_undeclared_scenario():
     with pytest.raises(ValueError, match="not declared"):
         register_security_canary_scenario("mail.send.self", PassingScenario())
+
+
+def test_security_canary_registration_rejects_duplicate_scenarios(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario_id = SECURITY_CANARY_IDS[0]
+    monkeypatch.setattr(
+        "pynchy.canaries._runner._SCENARIO_EXECUTORS",
+        {scenario_id: PassingScenario()},
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_security_canary_scenario(scenario_id, PassingScenario())
