@@ -233,6 +233,9 @@ from pynchy.state.api import (
     store_event,
     update_task,
 )
+from pynchy.work_items.api import (
+    WorkItemExecution,  # noqa: TC001 - beartype resolves composition callback annotations.
+)
 from pynchy.workspace.api import (
     CapabilityRule,
     WorkspaceProfile,  # beartype resolves composition callback annotations at runtime.
@@ -240,8 +243,6 @@ from pynchy.workspace.api import (
 
 if TYPE_CHECKING:
     import pluggy
-
-    from pynchy.work_items.api import WorkItemExecution
 
 
 def configure_computer_use_plugins(
