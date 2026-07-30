@@ -53,6 +53,10 @@ def test_wake_gate_rejects_a_non_json_final_line() -> None:
     assert parse_wake_agent_gate('{"wakeAgent": true}\nnot-json') is None
 
 
+def test_wake_gate_returns_none_for_empty_output() -> None:
+    assert parse_wake_agent_gate("\n  \n") is None
+
+
 def test_plugin_namespace_rejects_unknown_attributes() -> None:
     with pytest.raises(AttributeError, match="no attribute"):
         _ = pynchy.plugins.not_a_plugin
