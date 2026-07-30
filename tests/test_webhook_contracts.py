@@ -98,6 +98,16 @@ def test_collect_routes_ignores_non_route_plugin_contributions(
 
 
 def test_webhook_event_and_lifecycle_reject_ambiguous_untrusted_payloads() -> None:
+    with pytest.raises(ValueError, match="require instructions and context"):
+        WebhookEvent(
+            delivery_id="delivery-1",
+            event_type="issue",
+            action="updated",
+            subject_id="issue-1",
+            occurred_at="2026-07-29T00:00:00+00:00",
+            instructions="review",
+            external_context=None,
+        )
     with pytest.raises(ValueError, match="isolated, routed, lifecycle-only"):
         WebhookEvent(
             delivery_id="delivery-1",
