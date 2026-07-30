@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -211,6 +212,26 @@ class TestDockerRuntime:
             mock_run.return_value.stdout = ""
             result = rt.list_running_containers("pynchy-")
         assert result == []
+
+    def test_list_containers_skips_blank_records_and_parses_timestamp_fallback(self):
+        rt = DockerContainerRuntime()
+        ndjson = (
+            "\n"
+            + json.dumps(
+                {
+                    "Names": "pynchy-group",
+                    "State": "running",
+                    "CreatedAt": "2026-01-01 12:00:00 +0000",
+                }
+            )
+            + "\n\n"
+        )
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = ndjson
+
+            result = rt.list_containers("pynchy-")
+
+        assert result[0].created_at == datetime(2026, 1, 1, 12, tzinfo=UTC)
 
     def test_list_containers_marks_agent_by_label_or_legacy_image(self):
         rt = DockerContainerRuntime()
