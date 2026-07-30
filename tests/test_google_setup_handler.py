@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import sys
 import threading
 import types
@@ -83,6 +84,7 @@ async def test_interactive_setup_error_returns_novnc_url(
 ) -> None:
     context = _FakeContext()
     stop_procs = Mock()
+    monkeypatch.setenv("DISPLAY", ":42")
     keys_file = tmp_path / "gcp-oauth.keys.json"
     credentials_file = tmp_path / "credentials.json"
 
@@ -141,6 +143,7 @@ async def test_interactive_setup_error_returns_novnc_url(
         "error": "login failed",
         "novnc_url": "http://novnc.local/google",
     }
+    assert os.environ["DISPLAY"] == ":42"
     assert context.closed is False
     stop_procs.assert_called_once_with([])
 
