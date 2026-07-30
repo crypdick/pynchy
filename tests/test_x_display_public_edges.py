@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess  # noqa: S404 - tests construct timeout fixtures only.
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -60,13 +61,13 @@ async def test_setup_session_reports_missing_vnc_dependencies(
     )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.x_integration._display.shutil.which",
-        lambda name: "/usr/bin/Xvfb" if name == "Xvfb" else None,
+        lambda name: "/usr/bin/Xvfb" if name in {"Xvfb", "x11vnc"} else None,
     )
 
     result = await _handler()({})
 
     assert result == {
-        "error": "VNC layer requires: x11vnc, websockify. Install with: apt install x11vnc novnc"
+        "error": "VNC layer requires: websockify. Install with: apt install x11vnc novnc"
     }
 
 
@@ -146,6 +147,93 @@ async def test_setup_session_starts_xvfb_when_no_native_display_exists(
 
     assert result == {"result": {"status": "ok"}}
     assert os.environ["DISPLAY"] == ":99"
+
+
+@pytest.mark.asyncio
+async def test_setup_session_skips_xvfb_when_native_display_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action_globals = _action_globals(monkeypatch)
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.has_display",
+        lambda: True,
+    )
+    monkeypatch.setitem(
+        action_globals,
+        "_run_x_session_setup",
+        AsyncMock(return_value={"result": {"status": "ok"}}),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.subprocess.Popen",
+        lambda *_args, **_kwargs: pytest.fail("native display must not start Xvfb"),
+    )
+
+    assert await _handler()({}) == {"result": {"status": "ok"}}
+
+
+@pytest.mark.asyncio
+async def test_setup_session_reports_xvfb_exiting_immediately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ExitedProcess:
+        returncode = 7
+
+        def poll(self) -> int:
+            return self.returncode
+
+    action_globals = _action_globals(monkeypatch)
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.shutil.which",
+        lambda name: "/usr/bin/Xvfb" if name == "Xvfb" else None,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.subprocess.Popen",
+        lambda *_args, **_kwargs: ExitedProcess(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.time.sleep",
+        lambda _seconds: None,
+    )
+
+    assert await _handler()({}) == {"error": "Xvfb exited immediately (code 7)"}
+
+
+def test_cleanup_xvfb_kills_a_process_that_ignores_termination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SlowProcess:
+        def __init__(self) -> None:
+            self.terminated = False
+            self.killed = False
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def wait(self, *, timeout: int) -> None:
+            raise subprocess.TimeoutExpired("Xvfb", timeout)
+
+        def kill(self) -> None:
+            self.killed = True
+
+    process = SlowProcess()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display._state",
+        type("DisplayState", (), {"xvfb_proc": process})(),
+    )
+
+    ensure_xvfb = _action_globals(monkeypatch)["ensure_xvfb"]
+    cleanup = ensure_xvfb.__wrapped__.__globals__["cleanup_xvfb"]
+    cleanup()
+
+    assert process.terminated is True
+    assert process.killed is True
+    cleanup()
 
 
 @pytest.mark.asyncio
