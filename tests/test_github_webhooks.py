@@ -357,7 +357,7 @@ async def test_missing_fallback_message_is_rejected(
     payload["review"] = {"state": "commented"}
     raw_body, headers = _signed_request(payload, "pull_request_review")
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
-    malformed = replace(event, external_context={})
+    malformed = replace(event, external_context="unexpected context")
     monkeypatch.setattr(
         "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
         lambda _workspace: _LinearAccount(name="linear"),
