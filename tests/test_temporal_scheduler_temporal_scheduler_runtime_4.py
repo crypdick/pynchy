@@ -482,6 +482,66 @@ class TestTemporalSchedulerRuntime:
         )
 
     @pytest.mark.asyncio
+    async def test_run_linear_work_item_reconciliation_reports_disabled(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.reconcile_linear_work_items = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            temporal_linear_work_items.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="linear-work-items-disabled"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        assert await temporal_linear_work_items.run_linear_work_item_reconciliation() == "disabled"
+
+    @pytest.mark.asyncio
+    async def test_run_linear_work_item_reconciliation_surfaces_failure(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.reconcile_linear_work_items = AsyncMock(side_effect=RuntimeError("reconcile failed"))
+        monkeypatch.setattr(
+            temporal_linear_work_items.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="linear-work-items-failed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        with pytest.raises(RuntimeError, match="reconcile failed"):
+            await temporal_linear_work_items.run_linear_work_item_reconciliation()
+
+    @pytest.mark.asyncio
+    async def test_run_linear_plan_review_admission_surfaces_failure(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.process_linear_plan_review_admission = AsyncMock(
+            side_effect=RuntimeError("review failed")
+        )
+
+        @asynccontextmanager
+        async def no_heartbeats(_activity_id):
+            yield
+
+        monkeypatch.setattr(
+            temporal_linear_work_items.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="linear-plan-review-failed"),
+        )
+        monkeypatch.setattr(temporal_linear_work_items, "activity_heartbeats", no_heartbeats)
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        with pytest.raises(RuntimeError, match="review failed"):
+            await temporal_linear_work_items.run_linear_plan_review_admission(
+                {
+                    "workspace": "project",
+                    "issue_id": "issue-1",
+                    "identifier": "SYN-1",
+                    "updated_at": "2026-07-28T12:00:00Z",
+                    "public_source": True,
+                }
+            )
+
+    @pytest.mark.asyncio
     async def test_run_linear_plan_review_admission_isolated_by_issue(self, monkeypatch):
         deps = NullSchedulerDeps()
         deps.process_linear_plan_review_admission = AsyncMock(return_value=True)
