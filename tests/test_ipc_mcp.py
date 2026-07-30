@@ -150,7 +150,7 @@ class TestListTasks:
     """Test list_tasks tool behavior."""
 
     @pytest.mark.asyncio
-    async def test_host_error_returns_bounded_error_without_snapshot(self, monkeypatch):
+    async def test_host_error_returns_compact_error_without_snapshot(self, monkeypatch):
         request = AsyncMock(
             return_value=[
                 TextContent(type="text", text="Error: host status unavailable " + ("x" * 10_000))
@@ -166,7 +166,7 @@ class TestListTasks:
         assert result.isError is True
         assert isinstance(result.content[0], TextContent)
         assert "host status unavailable" in result.content[0].text
-        assert "No complete bounded scheduled-work inventory is available" in result.content[0].text
+        assert "No complete scheduled-work inventory is available" in result.content[0].text
         assert len(result.content[0].text) < 320
         request.assert_awaited_once()
 
@@ -246,9 +246,7 @@ class TestListTasks:
         )
 
     @pytest.mark.asyncio
-    async def test_r4_live_status_is_parseable_and_bounded_without_dropping_tasks(
-        self, monkeypatch
-    ):
+    async def test_live_status_is_parseable_and_preserves_tasks(self, monkeypatch):
         tasks = [
             {
                 "id": f"task-{index}",
@@ -280,10 +278,9 @@ class TestListTasks:
         assert payload == result.structuredContent
         assert payload["counts"] == {"tasks": 47, "host_jobs": 0}
         assert [task["id"] for task in payload["tasks"]] == [f"task-{index}" for index in range(47)]
-        assert len(text) < 16_000
 
     @pytest.mark.asyncio
-    async def test_live_status_rejects_rows_beyond_declared_global_bound(self, monkeypatch):
+    async def test_live_status_returns_all_rows_beyond_former_global_bounds(self, monkeypatch):
         tasks = [
             {
                 "id": f"task-{index}",
@@ -298,6 +295,19 @@ class TestListTasks:
             }
             for index in range(65)
         ]
+        host_jobs = [
+            {
+                "id": f"host-{index}",
+                "name": f"Host job {index}",
+                "schedule_type": "cron",
+                "schedule_value": "0 1 * * *",
+                "status": "active",
+                "enabled": True,
+                "next_run": "2026-07-23T08:00:00+00:00",
+                "orchestration": {"state": "scheduled", "error": None},
+            }
+            for index in range(33)
+        ]
         monkeypatch.setattr(
             "agent_runner.agent_tools._tools_tasks.ipc_service_request",
             AsyncMock(
@@ -307,7 +317,7 @@ class TestListTasks:
                         text=json.dumps(
                             {
                                 "tasks": tasks,
-                                "host_jobs": [],
+                                "host_jobs": host_jobs,
                             }
                         ),
                     )
@@ -317,10 +327,17 @@ class TestListTasks:
 
         result = await _call_tool_over_mcp("list_tasks", {})
 
-        assert result.isError is True
-        assert result.structuredContent is None
+        assert result.isError is False
         assert isinstance(result.content[0], TextContent)
-        assert "task count exceeds the 64-row contract" in result.content[0].text
+        payload = json.loads(result.content[0].text)
+        assert payload == result.structuredContent
+        assert payload["counts"] == {"tasks": 65, "host_jobs": 33}
+        assert [task["id"] for task in payload["tasks"]] == [f"task-{index}" for index in range(65)]
+        assert [job["id"] for job in payload["host_jobs"]] == [
+            f"host-{index}" for index in range(33)
+        ]
+        assert "max_task_rows" not in payload["coverage"]
+        assert "max_host_job_rows" not in payload["coverage"]
 
     @pytest.mark.asyncio
     async def test_failure_attention_handles_negation_and_operational_phrases(self, monkeypatch):
@@ -392,6 +409,12 @@ class TestListTasks:
             "host_jobs",
             "coverage",
         ]
+        properties = list_tasks.outputSchema["properties"]
+        count_properties = properties["counts"]["properties"]
+        assert "maximum" not in count_properties["tasks"]
+        assert "maximum" not in count_properties["host_jobs"]
+        assert "maxItems" not in properties["tasks"]
+        assert "maxItems" not in properties["host_jobs"]
 
     @pytest.mark.asyncio
     async def test_host_error_never_emits_legacy_snapshot_content(self, monkeypatch, tmp_path):
