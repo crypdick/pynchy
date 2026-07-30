@@ -307,3 +307,51 @@ async def test_missing_temporal_workflow_is_not_scheduled(monkeypatch):
     assert state["state"] == "not_scheduled"
     assert state["workflow_id"]
     assert state["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_active_once_task_and_recurring_job_use_their_temporal_ids(monkeypatch):
+    task = replace(_recurring_task(), id="once-task", schedule_type="once")
+    job = HostJob(
+        id="recurring-job",
+        name="recurring",
+        command="echo recurring",
+        schedule_type="cron",
+        schedule_value="0 9 * * *",
+        created_by="admin",
+    )
+    client = _TemporalClient(
+        workflow_description=_WorkflowDescription(
+            execution_time=None,
+            status=WorkflowExecutionStatus.COMPLETED,
+        ),
+        schedule_description=_ScheduleDescription(
+            info=_ScheduleInfo(next_action_times=[]),
+            schedule=_Schedule(state=_ScheduleState()),
+        ),
+    )
+    monkeypatch.setattr(temporal_status.Client, "connect", AsyncMock(return_value=client))
+
+    states = await temporal_status.get_temporal_orchestration_states(
+        [task], [job], "unused", "unused"
+    )
+
+    assert states["task", task.id]["workflow_id"]
+    assert states["host_job", job.id]["schedule_id"]
+
+
+@pytest.mark.asyncio
+async def test_temporal_item_error_is_reported_as_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        temporal_status.Client,
+        "connect",
+        AsyncMock(return_value=_ErrorClient(RuntimeError("describe failed"))),
+    )
+
+    states = await temporal_status.get_temporal_orchestration_states(
+        [_recurring_task()], [], "unused", "unused"
+    )
+
+    state = states["task", "task-1"]
+    assert state["state"] == "unavailable"
+    assert state["error"] == "describe failed"

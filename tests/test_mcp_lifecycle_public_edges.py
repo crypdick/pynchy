@@ -12,6 +12,7 @@ import pytest
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
     build_stdio_env,
+    ensure_script_running,
     ensure_stdio_running,
     expand_arg_placeholders,
     kwargs_to_args,
@@ -40,6 +41,19 @@ def _instance(
         port=9000,
         process=process,
         process_record_path=process_record_path,
+    )
+
+
+def _script_instance(*, process: subprocess.Popen[bytes] | None = None) -> McpInstance:
+    return McpInstance(
+        server_name="script",
+        server_config=McpServerConfig(type="script", command="backend", port=8000),
+        kwargs={},
+        instance_id="script",
+        container_name="unused",
+        project_root=Path("/project"),
+        port=9000,
+        process=process,
     )
 
 
@@ -75,6 +89,27 @@ async def test_stdio_health_failure_terminates_the_owned_process():
         await ensure_stdio_running(instance)
 
     terminate.assert_called_once_with(instance)
+
+
+async def test_stdio_start_preserves_a_live_process():
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.poll = MagicMock(return_value=None)
+    instance = _script_instance(process=process)
+    instance.server_config = McpServerConfig(
+        type="stdio", command="backend", port=8000, transport="streamable_http"
+    )
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle._start_owned_process") as start:
+        await ensure_stdio_running(instance)
+
+    start.assert_not_called()
+
+
+async def test_script_start_fails_when_process_supervision_shell_is_missing(monkeypatch):
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="requires sh"):
+        await ensure_script_running(_script_instance())
 
 
 async def test_warm_image_cache_deduplicates_images_and_continues_after_failure():
@@ -122,6 +157,21 @@ def test_terminate_process_signals_a_live_process_group():
     assert instance.process is None
 
 
+def test_terminate_process_escalates_when_group_ignores_sigterm():
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.pid = 1234
+    process.poll = MagicMock(return_value=None)
+    process.wait = MagicMock(side_effect=[subprocess.TimeoutExpired("backend", 5), None])
+    instance = _instance(process=process)
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.os.killpg") as killpg:
+        terminate_process(instance)
+
+    assert killpg.call_args_list[0].args == (1234, 15)
+    assert killpg.call_args_list[1].args == (1234, 9)
+    assert process.wait.call_count == 2
+
+
 def test_reap_stale_processes_removes_invalid_records(tmp_path: Path):
     record_dir = tmp_path / "records"
     record_dir.mkdir()
@@ -133,6 +183,27 @@ def test_reap_stale_processes_removes_invalid_records(tmp_path: Path):
 
     assert reap_stale_processes(record_dir) == 0
     assert list(record_dir.iterdir()) == []
+
+
+def test_reap_stale_processes_reaps_a_verified_owned_group(monkeypatch, tmp_path: Path):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "owned.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess([], 0, marker + " -- backend", "")),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle._process_group_exists", lambda _: False
+    )
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.os.killpg") as killpg:
+        assert reap_stale_processes(record_dir) == 1
+
+    killpg.assert_called_once_with(1234, 15)
+    assert not list(record_dir.iterdir())
 
 
 def test_reap_stale_processes_ignores_a_missing_record_directory(tmp_path: Path):
