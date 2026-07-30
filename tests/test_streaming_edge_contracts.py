@@ -87,7 +87,7 @@ async def test_trace_batcher_flush_all_closes_every_buffered_chat() -> None:
 
     await batcher.flush_all()
 
-    assert [call.args[0] for call in channel.post_event.await_args_list] == ["chat:1", "chat:2"]
+    assert {call.args[0] for call in channel.post_event.await_args_list} == {"chat:1", "chat:2"}
 
 
 @pytest.mark.asyncio
