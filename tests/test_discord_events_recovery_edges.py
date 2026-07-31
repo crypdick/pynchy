@@ -8,7 +8,7 @@ from typing import Any
 
 from pynchy.config.api import DiscordConnectionConfig
 from pynchy.plugins.api import AudioMetadataPatch, InboundAudioProcessingResult
-from pynchy.plugins.channels.discord import DiscordAttachment, DiscordChannel
+from pynchy.plugins.channels.discord import DiscordAttachment, DiscordChannel, DiscordReply
 from tests.test_discord_events import (
     BOT_ID,
     DISCORD_BOT_ENV,
@@ -144,3 +144,20 @@ async def test_empty_discord_message_has_empty_content_without_fallbacks():
     )
 
     assert not msg.content
+
+
+async def test_unresolved_reply_does_not_add_empty_reply_metadata():
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            content="follow-up",
+            reference=DiscordReply(message_id=None, sender_name=None, content=""),
+            mentions=(BOT_ID,),
+        ),
+        group_policy="open",
+    )
+
+    assert msg.metadata is not None
+    assert not any(key.startswith("reply_to_") for key in msg.metadata)
