@@ -241,6 +241,67 @@ def test_uncommitted_changes_reject_missing_commit_head(tmp_path: Path):
         assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
 
 
+def test_uncommitted_changes_reject_wrong_branch_during_commit(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+    (repo / "pynchy.toml").write_text("# local repair\n")
+
+    def git_result(
+        command: str,
+        *args: str,
+        personalization_root: Path,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if command == "branch" and args == ("--show-current",):
+            return _result(stdout="repair\n")
+        return _delegate_git(
+            *((command, *args)), personalization_root=personalization_root, env=env
+        )
+
+    with (
+        _github_origin(repo, remote),
+        patch(
+            "pynchy.host.git_ops.personalization._personalization_git",
+            side_effect=git_result,
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
+def test_clean_local_commit_rejects_status_failure_during_head_check(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+    (repo / "pynchy.toml").write_text("# local repair\n")
+    _git(repo, "add", "pynchy.toml")
+    _git(repo, "commit", "-m", "Local repair")
+    status_calls = 0
+
+    def git_result(
+        command: str,
+        *args: str,
+        personalization_root: Path,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal status_calls
+        if command == "status":
+            status_calls += 1
+            if status_calls == 2:
+                return _result(1)
+        return _delegate_git(
+            *((command, *args)), personalization_root=personalization_root, env=env
+        )
+
+    with (
+        _github_origin(repo, remote),
+        patch("pynchy.host.git_ops.personalization.count_commits", return_value=1),
+        patch(
+            "pynchy.host.git_ops.personalization._personalization_git",
+            side_effect=git_result,
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
 def test_clean_local_commit_detects_head_change_during_validation(tmp_path: Path):
     project, remote = _personalization_repo(tmp_path)
     repo = project / "data/personalization"
@@ -347,6 +408,71 @@ def test_idle_checkout_rejects_divergence_from_origin(tmp_path: Path):
         ),
     ):
         assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
+def test_idle_checkout_rejects_a_changed_remote_default_branch(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+
+    with (
+        _github_origin(repo, remote),
+        patch("pynchy.host.git_ops.personalization.count_commits", return_value=0),
+        patch(
+            "pynchy.host.git_ops.personalization._publication_target_is_current",
+            return_value=False,
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
+def test_idle_checkout_reports_divergence_check_failure(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+
+    def git_result(
+        command: str,
+        *args: str,
+        personalization_root: Path,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if command == "rev-list":
+            return _result(1)
+        return _delegate_git(
+            *((command, *args)), personalization_root=personalization_root, env=env
+        )
+
+    with (
+        _github_origin(repo, remote),
+        patch("pynchy.host.git_ops.personalization.count_commits", return_value=0),
+        patch(
+            "pynchy.host.git_ops.personalization._personalization_git",
+            side_effect=git_result,
+        ),
+        patch(
+            "pynchy.host.git_ops.personalization._publication_target_is_current",
+            return_value=True,
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
+def test_successful_push_without_rebase_rechecks_idle_checkout(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+    (repo / "pynchy.toml").write_text("# local repair\n")
+    _git(repo, "add", "pynchy.toml")
+    _git(repo, "commit", "-m", "Local repair")
+
+    with (
+        _github_origin(repo, remote),
+        patch("pynchy.host.git_ops.personalization.count_commits", return_value=1),
+        patch("pynchy.host.git_ops.personalization.push_local_commits", return_value=True),
+        patch(
+            "pynchy.host.git_ops.personalization._idle_personalization_checkout",
+            return_value="idle",
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "idle"
 
 
 def test_staging_failure_is_reported_without_publishing(tmp_path: Path):
