@@ -1,6 +1,8 @@
 # Groups
 
-Groups are isolated contexts — each one has its own memory, filesystem, and container sandbox.
+Groups are isolated runtime contexts — each one has its own provider session,
+filesystem, and container sandbox. Profiles may also grant access to shared
+Obsidian memory.
 
 ## Group Management
 

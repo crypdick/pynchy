@@ -7,8 +7,7 @@ and the claude-cli core wires it as a ``PreCompact`` command hook that runs
 logic here is the single source of truth so the two cores can't drift.
 
 Given a session's JSONL transcript path, this parses the user/assistant turns,
-writes a markdown copy to ``/workspace/group/conversations``, and (best-effort)
-saves a snippet to structured memory over file IPC.
+writes a markdown copy to ``/workspace/group/conversations``.
 """
 
 from __future__ import annotations
@@ -192,7 +191,7 @@ async def _build_archive_payload(
 
 
 async def archive_transcript(transcript_path: str, session_id: str) -> Path | None:
-    """Archive a session transcript to markdown and structured memory.
+    """Archive a session transcript to Markdown.
 
     Returns the written file path, or ``None`` if there was nothing to archive.
     Never raises: archival is best-effort and must not disrupt compaction.
@@ -213,23 +212,6 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
         return None
     else:
         _log(f"Archived conversation to {file_path}")
-
-        # Best-effort: also save to structured memory for search
-        try:
-            from .agent_tools import (  # noqa: PLC0415 - only needed for best-effort memory archival.
-                request_host_service,
-            )
-
-            await request_host_service(
-                "save_memory",
-                {
-                    "key": f"conversation-{file_path.stem}",
-                    "content": markdown[:2000],
-                    "category": "conversation",
-                },
-            )
-        except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001
-            _log(f"save_memory IPC failed (non-fatal): {exc}")
         return file_path
 
 

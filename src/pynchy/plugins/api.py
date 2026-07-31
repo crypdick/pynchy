@@ -86,7 +86,6 @@ from pynchy.plugins.host_actions import (
     initialize_host_action_catalog,
 )
 from pynchy.plugins.mcp_server import McpServerConfig
-from pynchy.plugins.memory import MemoryProvider, get_memory_provider
 from pynchy.plugins.observers import ObserverProvider, attach_observers
 from pynchy.plugins.registry import collect_hook_results, get_plugin_manager
 from pynchy.plugins.session_lifecycle import prepare_context_reset
@@ -152,7 +151,6 @@ __all__ = [
     "JobSpec",
     "McpServerConfig",
     "McpServerSpec",
-    "MemoryProvider",
     "NewMessage",
     "ObserverProvider",
     "OutboundEvent",
@@ -183,7 +181,6 @@ __all__ = [
     "collect_webhook_routes",
     "container_agent_hook_configs",
     "get_host_action_catalog",
-    "get_memory_provider",
     "get_plugin_manager",
     "host_agent_hook_configs",
     "initialize_host_action_catalog",

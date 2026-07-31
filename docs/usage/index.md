@@ -8,7 +8,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, and talkin
 - **[Workspaces](workspaces.md)** — Bind a chat to reusable profiles for prompts, tools, skills, repositories, and security policy
 - **[Tool access and secrets](tool-access.md)** — Grant provider access through tools and limit credentials to the process that needs them
 - **Admin channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
-- **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
+- **[Persistent memory](memory.md)** — Agents search and update the mounted Obsidian vault across sessions and workspaces
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run the selected agent core and can message you back
 - **[Personalization repository](personalization.md)** — Keep settings, LiteLLM routes, skills, and automations in an independent private repository
 - **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
@@ -89,7 +89,7 @@ For example, you can ask Pynchy to help you:
 | [Groups](groups.md) | Group management, admin channel privileges |
 | [Workspace configuration](workspaces.md) | Compose profiles and bind workspaces to configured chats |
 | [Tool access and secrets](tool-access.md) | Tool-owned credentials, companion skills, process exposure, and missing access |
-| [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
+| [Memory](memory.md) | Obsidian recall, automatic learning, automation memory, and conversation archives |
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
 | [Personalization repository](personalization.md) | Layered settings, file-backed automations, custom skills, and CI validation |
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |

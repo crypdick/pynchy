@@ -1,31 +1,21 @@
 # Memory and Sessions — Architecture
 
-Internal design of the memory subsystem and session management. For user-facing memory docs (tools, categories, file-based memory), see [Usage — Memory](../usage/memory.md).
+Pynchy uses an Obsidian vault for durable knowledge and provider sessions for
+short-term conversation context. For user-facing guidance, see
+[Usage — Memory](../usage/memory.md).
 
-## Memory Plugin Architecture
+## Obsidian Memory
 
-Memory is pluggable via the `pynchy_memory` hookspec. Any plugin implementing this hook can provide an alternative memory backend.
+Pynchy mounts the configured Obsidian vault root directly into agent
+containers. The existing container-runtime mount mechanism provides the
+read-write mount at `/workspace/vault`; Pynchy doesn't copy or synchronize a
+second vault tree.
 
-**Hookspec contract:**
+Agents recall knowledge explicitly with the selected Obsidian skill. Pynchy
+doesn't prefetch search results or inject them into turns. The skill decides
+when and how to search, then reads the relevant canonical notes.
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `save` | `(group_folder, key, content, category, metadata) → dict` | Store a memory |
-| `recall` | `(group_folder, query, category, limit) → list[dict]` | Search memories |
-| `forget` | `(group_folder, key) → dict` | Remove a memory |
-| `list_keys` | `(group_folder, category) → list[dict]` | List memory keys |
-| `init` | `() → coroutine` | Async setup (create tables, connections) |
-| `close` | `() → coroutine` | Async teardown |
-
-### Built-in: sqlite-memory
-
-The default backend uses SQLite FTS5 for full-text search with BM25 ranking, falling back to LIKE substring matching when FTS returns no results.
-
-**Storage:** Dedicated `data/memories.db` database (separate from `messages.db`). Uses WAL mode and mmap tuning for concurrent access.
-
-**Search pipeline:** Query → FTS5 tokenization → BM25 ranking → results. If empty → LIKE fallback → results.
-
-## Obsidian Learning
+## Automatic Learning
 
 Automatic learning can mount an Obsidian vault root into agent containers and
 run a hidden reviewer after successful turns. The configured vault root mounts
@@ -69,9 +59,8 @@ doesn't delete previously written memory.
 
 Container executions mount only that task directory at
 `/workspace/automation-memory`. Direct-host and shell executions receive the
-resolved absolute path. Apple-runtime executions use a task-specific mirror;
-the dirty marker survives an interrupted run, and synchronization back to the
-vault occurs before scheduler completion is persisted.
+resolved absolute path. Both paths refer directly to the canonical Obsidian
+directory; there is no mirror or synchronization step.
 
 ## Session Management
 
@@ -89,13 +78,9 @@ vault occurs before scheduler completion is persisted.
 - Public-source and secret-source security taint is sticky for the lifetime of
   the durable session. Continuation can't clear it; the unified context reset
   clears both the provider session and its persisted taint.
-- The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives))
+- The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives)).
 
 A persisted session means Pynchy can rehydrate that conversation; it does not mean an agent
 currently runs. The [interrupted turn recovery](message-routing.md#interrupted-turn-recovery)
 ledger tracks running work separately so restarts resume unfinished turns without waking idle
 conversations.
-
----
-
-**Want to customize this?** Write your own memory backend plugin — see the [Plugin Authoring Guide](../plugins/index.md). Have an idea but don't want to build it? [Open a feature request](https://github.com/crypdick/pynchy/issues).

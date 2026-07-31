@@ -1,14 +1,9 @@
 """Curated host learning capabilities."""
 
 from pynchy.host.learning import capture
-from pynchy.host.learning.mirror import (
-    automation_memory_dir,
-    prepare_full_vault_host_root,
-    prepare_vault_mount_root,
-    sync_automation_memory,
-)
 from pynchy.host.learning.paths import (
     LearningPathsRuntime,
+    automation_memory_dir,
     configure_learning_paths_runtime,
     profile_name_for_group,
     resolve_learning_paths,
@@ -27,11 +22,8 @@ __all__ = [
     "configure_learning_paths_runtime",
     "find_personalized_skill_dir",
     "prepare_agent_homes",
-    "prepare_full_vault_host_root",
-    "prepare_vault_mount_root",
     "profile_name_for_group",
     "refresh_personalized_agent_skills",
     "resolve_learning_paths",
     "run_learning_review",
-    "sync_automation_memory",
 ]

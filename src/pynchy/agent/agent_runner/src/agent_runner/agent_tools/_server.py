@@ -27,7 +27,6 @@ _TOOL_MODULES = (
     "_tools_linear",
     "_tools_matrix",
     "_tools_marketplace_health",
-    "_tools_memory",
     "_tools_messaging",
     "_tools_slack_tokens",
     "_tools_skills",

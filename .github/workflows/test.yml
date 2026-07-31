@@ -70,6 +70,5 @@ jobs:
           path: |
             logs/pynchy-runtime/
             data/messages.db
-            data/memories.db
             data/temporal.db
           if-no-files-found: ignore

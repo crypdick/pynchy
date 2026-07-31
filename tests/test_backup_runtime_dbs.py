@@ -8,7 +8,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "backup_runtime_dbs.sh"
 BASH = Path("/bin/bash")
-DATABASES = ("messages.db", "memories.db", "neonize.db", "temporal.db")
+DATABASES = ("messages.db", "neonize.db", "temporal.db")
 
 
 def _create_database(path: Path, value: str) -> None:

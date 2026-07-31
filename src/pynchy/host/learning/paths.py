@@ -6,7 +6,9 @@ import posixpath
 import re
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves learning runtime annotations at runtime.
+    Iterator,  # noqa: TC003 - beartype resolves learning runtime annotations at runtime.
 )
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -28,19 +30,15 @@ class LearningPaths:
     vault_mount_path: str
     profile_root: Path
     memory_root: Path
-    vault_mirror_root: Path
-    host_vault_mirror_root: Path
     mounted_profile_root: str
     mounted_memory_root: str
 
 
 @dataclass(frozen=True)
 class AutomationMemoryPaths:
-    """Canonical vault storage plus the Apple-runtime working mirror."""
+    """Canonical vault storage for one automation."""
 
     canonical: Path
-    mirror: Path
-    dirty_marker: Path
 
 
 @dataclass(frozen=True)
@@ -52,7 +50,6 @@ class LearningPathsRuntime:
     vault_mount_path: str
     default_profile_root: str
     memory_dir_name: str
-    data_dir: Path
     profile_for_workspace: Callable[[str], str | None]
 
 
@@ -66,7 +63,6 @@ _runtime = LearningPathsRuntime(
     vault_mount_path="/workspace/vault",
     default_profile_root="systems/pynchy/profiles/{profile}",
     memory_dir_name="memory",
-    data_dir=Path.cwd(),
     profile_for_workspace=lambda _folder: None,
 )
 
@@ -108,8 +104,6 @@ def resolve_learning_paths(
 
     profile_vault_rel = profile_root.relative_to(vault_root)
     memory_vault_rel = memory_root.relative_to(vault_root)
-    learning_data_root = runtime.data_dir / "learning"
-
     mount_path = runtime.vault_mount_path
     return LearningPaths(
         profile=profile,
@@ -118,8 +112,6 @@ def resolve_learning_paths(
         vault_mount_path=mount_path,
         profile_root=profile_root,
         memory_root=memory_root,
-        vault_mirror_root=learning_data_root / "vault-mirrors" / profile_slug,
-        host_vault_mirror_root=learning_data_root / "host-vault-mirrors" / profile_slug,
         mounted_profile_root=_mounted_path(mount_path, profile_vault_rel),
         mounted_memory_root=_mounted_path(mount_path, memory_vault_rel),
     )
@@ -138,12 +130,18 @@ def resolve_automation_memory_paths(task_id: str) -> AutomationMemoryPaths | Non
     vault_root = Path(runtime.vault_root).expanduser().resolve()
     path_id = quote(task_id, safe="._-")
     canonical = _resolve_under_vault(vault_root, _AUTOMATION_MEMORY_ROOT / path_id)
-    mirror = runtime.data_dir / "learning" / "automation-memory-mirrors" / path_id
-    return AutomationMemoryPaths(
-        canonical=canonical,
-        mirror=mirror,
-        dirty_marker=mirror.parent / f"{path_id}.dirty",
-    )
+    return AutomationMemoryPaths(canonical=canonical)
+
+
+@contextmanager
+def automation_memory_dir(task_id: str) -> Iterator[Path | None]:
+    """Yield the canonical task-owned automation-memory directory."""
+    paths = resolve_automation_memory_paths(task_id)
+    if paths is None:
+        yield None
+        return
+    paths.canonical.mkdir(parents=True, exist_ok=True)
+    yield paths.canonical
 
 
 def _profile_slug(profile: str) -> str:

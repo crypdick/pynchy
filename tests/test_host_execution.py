@@ -10,7 +10,6 @@ import pytest
 from beartype import beartype
 from conftest import make_settings
 
-from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.orchestrator import codex_rollouts, host_execution
 from pynchy.host.orchestrator.host_execution import (
     HostExecutionCwd,
@@ -231,24 +230,12 @@ def test_host_codex_thread_inspection_error_is_not_treated_as_missing(
         )
 
 
-def test_admin_host_execution_uses_full_learning_vault_mirror(
+def test_admin_host_execution_uses_canonical_learning_vault(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def build_agent_environment(**_kwargs: object) -> dict[str, str]:
         return {"OPENAI_BASE_URL": "http://gateway:4000"}
 
-    learning_paths = LearningPaths(
-        profile="default",
-        profile_slug="default",
-        vault_root=tmp_path,
-        vault_mount_path="/workspace/vault",
-        profile_root=tmp_path / "profiles" / "default",
-        memory_root=tmp_path / "profiles" / "default" / "memory",
-        vault_mirror_root=tmp_path / "data" / "learning" / "vault-mirrors" / "default",
-        host_vault_mirror_root=tmp_path / "data" / "learning" / "host-vault-mirrors" / "default",
-        mounted_profile_root="/workspace/vault/profiles/default",
-        mounted_memory_root="/workspace/vault/profiles/default/memory",
-    )
     settings = make_settings(data_dir=tmp_path / "data")
     env = host_execution.host_agent_env_vars(
         is_admin=True,
@@ -274,7 +261,7 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
     assert "PYNCHY_PROFILE_SKILLS_ROOT" not in env
 
 
-def test_admin_host_execution_skips_missing_full_learning_vault_mirror(
+def test_admin_host_execution_skips_missing_learning_vault(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

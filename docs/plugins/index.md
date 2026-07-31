@@ -20,7 +20,6 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | **Container Runtime** | `pynchy_container_runtime()` | Container runtime implementation (Docker, Apple Container) | Host |
 | **Tunnel** | `pynchy_tunnel()` | Remote connectivity detection (Tailscale, Cloudflare, etc.) | Host |
 | **Observer** | `pynchy_observer()` | Event persistence and processing (SQLite, OpenTelemetry) | Host |
-| **Memory Backend** | `pynchy_memory()` | Persistent memory storage (save, recall, forget, search) | Host |
 | **MCP Server** | `pynchy_mcp_server_spec()` | On-demand tool servers (Docker or script) | Host + Container |
 | **Workspace** | `pynchy_workspace_spec()` | Managed workspace/task definitions (e.g. periodic agents) | Host |
 
@@ -55,7 +54,6 @@ All plugin Python code runs on the **host** during discovery. See [Security Mode
 | **Tunnel** | None — host-side network detection | High |
 | **Service Handler** | None — host-side handlers with policy enforcement | High |
 | **Observer** | Host-side event subscriber, writes to DB or external services | High |
-| **Memory Backend** | Host-side storage with per-group isolation | High |
 | **MCP Server** | Docker-isolated or host-side script; LiteLLM proxied | Medium |
 | **Workspace** | Host-side config only — agent runs in container | Medium |
 | **Skill** | Partial — `skill_paths()` on host, content in container | Medium |

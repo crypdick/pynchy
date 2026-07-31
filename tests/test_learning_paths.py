@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from pynchy.config.api import LearningConfig, ObsidianLearningConfig, Settings, WorkspaceConfig
 from pynchy.host.learning.paths import (
     LearningConfigError,
+    automation_memory_dir,
     profile_name_for_group,
     resolve_automation_memory_paths,
     resolve_learning_paths,
@@ -95,9 +96,15 @@ def test_automation_memory_is_task_owned_under_the_private_wiki_subtree(tmp_path
     assert paths.canonical == (
         vault.resolve() / "wiki/systems/pynchy/automation-memory/job-weekly-security"
     )
-    assert paths.mirror == (
-        tmp_path / "data/learning/automation-memory-mirrors/job-weekly-security"
-    )
+
+
+def test_automation_memory_uses_canonical_storage_directly(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
+
+    with _configured_learning_paths(settings), automation_memory_dir("job-security") as working:
+        assert working == vault.resolve() / "wiki/systems/pynchy/automation-memory/job-security"
+        assert working.is_dir()
 
 
 def test_automation_memory_encodes_unsafe_task_id_characters(tmp_path):

@@ -143,7 +143,7 @@ ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy status"
 
 ## Runtime DB Backups
 
-macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
+macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
 
 Live service:
 
@@ -273,7 +273,6 @@ All databases live in `data/`:
 |------|---------|
 | `data/messages.db` | Main DB — messages, groups, sessions, tasks, events, outbound ledger |
 | `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
-| `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
 
 Quick inspection (run on the live host or prefix with `ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && ..."`):
 

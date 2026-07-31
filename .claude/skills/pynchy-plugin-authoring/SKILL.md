@@ -61,7 +61,6 @@ Plugin Authoring Checklist
 - `pynchy_tunnel`: Host tunnel provider
 - `pynchy_connection_runtime`: Long-lived authenticated connection runtime
 - `pynchy_observer`: Host event observer
-- `pynchy_memory`: Memory backend
 - `pynchy_webhook_routes`: Authenticated webhook routes
 - `pynchy_mcp_server_spec`: MCP server template
 - `pynchy_workspace_spec`: Managed workspace definitions

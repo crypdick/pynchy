@@ -48,8 +48,6 @@ def _paths(tmp_path: Path) -> LearningPaths:
         vault_mount_path="/workspace/vault",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
-        vault_mirror_root=tmp_path / "data" / "learning" / "vault-mirrors" / "deep-work",
-        host_vault_mirror_root=tmp_path / "data" / "learning" / "host-vault-mirrors" / "deep-work",
         mounted_profile_root="/workspace/vault/systems/pynchy/profiles/deep-work",
         mounted_memory_root="/workspace/vault/systems/pynchy/profiles/deep-work/memory",
     )

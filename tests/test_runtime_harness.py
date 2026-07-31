@@ -140,7 +140,7 @@ def test_fresh_setup_removes_only_runtime_database_state(
     root = _runtime_root(tmp_path)
     data_dir = root / "data"
     data_dir.mkdir()
-    for name in ("messages.db", "memories.db", "temporal.db"):
+    for name in ("messages.db", "temporal.db"):
         for suffix in ("", "-shm", "-wal"):
             data_dir.joinpath(f"{name}{suffix}").write_text("stale")
     data_dir.joinpath("keep.txt").write_text("unrelated")
@@ -150,7 +150,7 @@ def test_fresh_setup_removes_only_runtime_database_state(
 
     assert not any(
         data_dir.joinpath(f"{name}{suffix}").exists()
-        for name in ("messages.db", "memories.db", "temporal.db")
+        for name in ("messages.db", "temporal.db")
         for suffix in ("", "-shm", "-wal")
     )
     assert data_dir.joinpath("keep.txt").read_text() == "unrelated"
