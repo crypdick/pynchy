@@ -200,6 +200,17 @@ async def test_stop_all_cancels_background_tasks_and_stops_processes(tmp_path, m
 
 
 @pytest.mark.asyncio
+async def test_stop_all_is_idempotent_before_sync(tmp_path, monkeypatch):
+    manager = _manager(tmp_path)
+    stop_proxy = AsyncMock()
+    monkeypatch.setattr(McpProxy, "stop", stop_proxy)
+
+    await manager.stop_all()
+
+    stop_proxy.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_get_direct_server_configs_omits_routes_before_proxy_starts(tmp_path, monkeypatch):
     manager = await _synced_manager(
         tmp_path,
