@@ -68,6 +68,9 @@ _mcp_proxy_futures: dict[str, asyncio.Future[bool]] = {}
 _approval_root: Path | None = None
 _PAYLOAD_KEY_FILE = "approval-payload.key"
 _ENCRYPTED_PAYLOAD_FIELD = "encrypted_payload"
+_REDACTION_REQUIRED_FIELD = "redaction_required"
+_REDACTION_REQUIRED = "required"
+_REDACTION_NOT_REQUIRED = "not_required"
 
 
 def configure_approval_state_root(path: Path) -> None:
@@ -175,12 +178,29 @@ def _decrypt_pending_payload(data: dict[str, Any], *, root: Path) -> dict[str, A
     return data
 
 
+def _redaction_marker(*, secret_tainted: bool) -> str:
+    """Encode security policy state without persisting a secret value."""
+    if secret_tainted:
+        return _REDACTION_REQUIRED
+    return _REDACTION_NOT_REQUIRED
+
+
+def _restore_secret_taint(data: dict[str, Any]) -> dict[str, Any]:
+    """Populate replay-facing secret taint from durable redaction state."""
+    marker = data.get(_REDACTION_REQUIRED_FIELD)
+    if marker == _REDACTION_REQUIRED:
+        data["secret_tainted"] = True
+    elif marker == _REDACTION_NOT_REQUIRED:
+        data["secret_tainted"] = False
+    return data
+
+
 def read_pending_approval(path: Path) -> dict[str, Any]:
     """Read a pending approval, decrypting its replay payload when present."""
     data = _read_json_file(path)
     if not isinstance(data, dict):
         raise TypeError("Pending approval is not an object")
-    return _decrypt_pending_payload(data, root=path.parent.parent.parent)
+    return _restore_secret_taint(_decrypt_pending_payload(data, root=path.parent.parent.parent))
 
 
 def _pending_approval_files(pending_dir: Path) -> list[Path]:
@@ -285,7 +305,7 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
         # Persist request-time taint because the in-memory SecurityGate can be
         # gone when a host-owned approval decision is replayed after restart.
         "corruption_tainted": corruption_tainted,
-        "secret_tainted": secret_tainted,
+        _REDACTION_REQUIRED_FIELD: _redaction_marker(secret_tainted=secret_tainted),
     }
 
     write_json_atomic(pending_dir / f"{request_id}.json", data, indent=2)

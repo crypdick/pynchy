@@ -133,7 +133,7 @@ def build_approval_decision_context(
     gate = replay_gate(
         require_resolved=origin_conversation_id is not None,
         request_corruption_tainted=_persisted_taint(pending, "corruption_tainted"),
-        request_secret_tainted=_persisted_taint(pending, "secret_tainted"),
+        request_secret_tainted=_persisted_secret_taint(pending),
     )
     action_payload = pending.get("action_payload")
     if action_payload is not None and not isinstance(action_payload, dict):
@@ -180,3 +180,11 @@ def _persisted_taint(pending: dict[str, Any], field: str) -> bool:
     """Fail closed when durable request-time taint evidence is missing or malformed."""
     value = pending.get(field)
     return value if type(value) is bool else True
+
+
+def _persisted_secret_taint(pending: dict[str, Any]) -> bool:
+    """Read durable redaction state and reject invalid values."""
+    marker = pending.get("redaction_required")
+    if marker is None:
+        return _persisted_taint(pending, "secret_tainted")
+    return not isinstance(marker, str) or marker != "not_required"
