@@ -206,6 +206,95 @@ async def test_linear_resource_loading_rejects_incomplete_pagination(
 
 
 @pytest.mark.asyncio
+async def test_linear_resource_loading_returns_projects_and_states_without_next_page() -> None:
+    client = MagicMock()
+    client.query = AsyncMock(
+        return_value={
+            "team": {
+                "projects": {
+                    "nodes": [{"id": "project-1", "name": "Project 1"}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                },
+                "states": {"nodes": [{"id": "state-1", "name": "Todo"}]},
+            }
+        }
+    )
+
+    result = await load_team_resources(client, "team-1")
+
+    assert result == {
+        "projects": [{"id": "project-1", "name": "Project 1"}],
+        "states": [{"id": "state-1", "name": "Todo"}],
+    }
+    client.query.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_linear_resource_loading_accumulates_all_project_pages() -> None:
+    client = MagicMock()
+    client.query = AsyncMock(
+        side_effect=[
+            {
+                "team": {
+                    "projects": {
+                        "nodes": [{"id": "project-1"}],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                    },
+                    "states": {"nodes": [{"id": "state-1"}]},
+                }
+            },
+            {
+                "team": {
+                    "projects": {
+                        "nodes": [{"id": "project-2"}],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    },
+                    "states": {"nodes": [{"id": "state-2"}]},
+                }
+            },
+        ]
+    )
+
+    result = await load_team_resources(client, "team-1")
+
+    assert result == {
+        "projects": [{"id": "project-1"}, {"id": "project-2"}],
+        "states": [{"id": "state-1"}],
+    }
+    assert client.query.await_args_list[1].kwargs["projects_after"] == "cursor-1"
+
+
+@pytest.mark.asyncio
+async def test_linear_workflow_state_reconciliation_keeps_an_already_positioned_state() -> None:
+    client = MagicMock()
+    client.query = AsyncMock()
+    state = {"id": "state-1", "position": 1.0, "name": "Todo"}
+
+    assert await reconcile_workflow_state_position(client, state, position=1.0) is state
+    client.query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_linear_workflow_state_reconciliation_returns_provider_update() -> None:
+    client = MagicMock()
+    client.query = AsyncMock(
+        return_value={
+            "workflowStateUpdate": {
+                "success": True,
+                "workflowState": {"id": "state-1", "position": 2.0},
+            }
+        }
+    )
+
+    result = await reconcile_workflow_state_position(
+        client, {"id": "state-1", "position": 1.0}, position=2.0
+    )
+
+    assert result == {"id": "state-1", "position": 2.0}
+    client.query.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_linear_workflow_state_reconciliation_requires_an_id() -> None:
     class NoQueryClient:
         async def query(self, _query: str, **_variables: object) -> dict[str, object]:
