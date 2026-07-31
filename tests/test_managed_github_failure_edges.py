@@ -123,6 +123,44 @@ def test_does_not_close_untrusted_created_pr_url(git_env: dict) -> None:
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+def test_closes_a_configured_created_pr_when_verification_is_missing(git_env: dict) -> None:
+    """A created PR is compensated when the follow-up lookup cannot verify it."""
+    feature = "unverifiable-created-pr"
+    worktree = create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    gh_calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "gh":
+            gh_calls.append(args)
+            if args[1:3] == ["pr", "create"]:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="https://github.com/owner/repo/pull/1\n",
+                    stderr="",
+                )
+            if args[1:3] == ["pr", "close"]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            return no_pr_result(args)
+        return real_run(args, check=kwargs.pop("check", False), **kwargs)
+
+    with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=fake_run):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": (
+            "Publication blocked: could not verify managed feature PR after creation. "
+            "The host closed the newly created PR."
+        ),
+    }
+    assert [call[1:3] for call in gh_calls].count(["pr", "close"]) == 1
+    assert worktree.exists()
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_reports_created_pr_close_failure(git_env: dict) -> None:
     """A verification failure reports when compensating PR closure also fails."""
     feature = "close-failure-pr"
