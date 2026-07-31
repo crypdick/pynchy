@@ -13,6 +13,7 @@ from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
 from pynchy.plugins.contracts import NewMessage
 from pynchy.turn_outcomes import TurnOutcome
+from pynchy.work_items.api import WorkItemExecutionStatus
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -467,6 +468,23 @@ async def test_application_reports_admitted_linear_work_items(
         broadcast_host_message=app.broadcast_host_message,
         defer_plan_review=app_module.temporal_scheduler.start_linear_plan_review_workflow,
     )
+
+
+async def test_application_adapts_scheduled_execution_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    execution = MagicMock(id="execution-1", status=WorkItemExecutionStatus.COMPLETED)
+    get_execution = AsyncMock(return_value=execution)
+    monkeypatch.setattr(app_module, "get_work_item_execution_for_task", get_execution)
+
+    lifecycle = await app.scheduled_execution_lifecycle("task-1")
+
+    assert lifecycle is not None
+    assert lifecycle.execution_id == "execution-1"
+    assert lifecycle.status == "completed"
+    assert lifecycle.has_explicit_outcome is True
+    get_execution.assert_awaited_once_with("task-1")
 
 
 async def test_application_forwards_ask_user_answers_as_system_messages(
