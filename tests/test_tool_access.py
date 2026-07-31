@@ -181,6 +181,27 @@ def test_agent_process_receives_openai_gateway_environment(monkeypatch: pytest.M
     assert environment["WORKSPACE"] == "assigned:True"
 
 
+def test_gateway_without_a_hostname_keeps_no_proxy_hosts_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _HostnameLessGateway:
+        base_url = "http://"
+        key = "gateway-key"  # pragma: allowlist secret
+
+        def has_provider(self, provider: str) -> bool:
+            return provider == "openai"
+
+    monkeypatch.setattr("pynchy.host.container_manager.gateway.get_gateway", _HostnameLessGateway)
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.credentials._read_git_identity", lambda: (None, None)
+    )
+    configure_workspace_environment(lambda **_kwargs: {})
+
+    environment = build_agent_env_vars(is_admin=False, group_folder="assigned")
+
+    assert environment["NO_PROXY"] == "localhost,127.0.0.1,::1,host.docker.internal"
+
+
 def test_agent_environment_requires_composition_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
