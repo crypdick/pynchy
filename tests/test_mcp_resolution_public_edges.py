@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pynchy.config.api import BuiltinTool, validate_settings_mapping
+from pynchy.config.api import BuiltinTool, McpTool, McpToolConfig, validate_settings_mapping
 from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
@@ -99,6 +99,23 @@ def test_merged_servers_keeps_unmatched_plugin_servers_when_no_tool_overrides() 
     server = McpServerConfig(type="url", url="https://example.test/mcp")
 
     assert merged_mcp_servers(settings, {"remote": server}) == {"remote": server}
+
+
+def test_merged_servers_creates_a_server_for_a_tool_without_plugin_spec() -> None:
+    settings = FakeResolutionSettings(
+        tools={
+            "browser": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(runtime="docker", image="browser:latest", port=9100),
+            )
+        }
+    )
+
+    servers = merged_mcp_servers(settings, {})
+
+    assert servers["browser"].type == "docker"
+    assert servers["browser"].image == "browser:latest"
+    assert servers["browser"].port == 9100
 
 
 def test_resolve_workspace_servers_filters_unknown_tools_and_sorts_results(monkeypatch) -> None:
