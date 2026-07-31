@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config.api import RepoConfig, ReposConfig
@@ -125,6 +126,30 @@ def test_origin_without_owner_and_repo_is_rejected(tmp_path: Path):
             overrides={SLUG: RepoConfig(path=str(checkout))},
         )
     )
+    with patch("pynchy.config.api.get_settings", return_value=settings):
+        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://[invalid",
+        "https://user@github.com/owner/project.git",
+        "ssh://other@github.com/owner/project.git",
+        "git://github.com/owner/project.git",
+        "https://github.com/owner/project.git?token=embedded",
+    ],
+)
+def test_unsafe_github_origins_are_rejected(tmp_path: Path, origin: str):
+    checkout = tmp_path / "operator-checkout"
+    _init_repo(checkout, origin=origin)
+    settings = make_settings(
+        repos=ReposConfig(
+            root=tmp_path / "repos",
+            overrides={SLUG: RepoConfig(path=str(checkout))},
+        )
+    )
+
     with patch("pynchy.config.api.get_settings", return_value=settings):
         assert ensure_repo_cloned(_repo_context(tmp_path)) is False
 
