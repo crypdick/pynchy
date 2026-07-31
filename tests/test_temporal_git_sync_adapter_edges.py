@@ -36,6 +36,14 @@ class _ActivityDeps:
         return "skipped"
 
 
+@dataclass
+class _ExplicitSessionDeps(_ActivityDeps):
+    active_session: bool = True
+
+    def has_active_session(self, _group_folder: str) -> bool:
+        return self.active_session
+
+
 class _NotificationAdapter(Protocol):
     def has_active_session(self, group_folder: str) -> bool: ...
 
@@ -60,6 +68,7 @@ async def _run_host_offer(
     *,
     admin_workspace: str | None,
     broadcast_host_message: AsyncMock,
+    offer_update: AsyncMock | None = None,
 ) -> tuple[str, _ActivityDeps]:
     await init_test_database()
     applied = DeployRevision("deployed-sha", "config")
@@ -75,6 +84,8 @@ async def _run_host_offer(
         broadcast_host_message=broadcast_host_message,
         broadcast_system_notice=AsyncMock(),
     )
+    if offer_update is not None:
+        deps.offer_update = offer_update
     monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
     monkeypatch.setattr(
         git_sync,
@@ -148,6 +159,49 @@ async def test_host_git_sync_retries_when_update_offer_broadcast_fails(
     broadcast.assert_awaited_once()
 
 
+async def test_host_git_sync_uses_explicit_update_offer_dependency(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    offer_update = AsyncMock(return_value=True)
+
+    result, _deps = await _run_host_offer(
+        monkeypatch,
+        tmp_path,
+        admin_workspace="admin",
+        broadcast_host_message=AsyncMock(),
+        offer_update=offer_update,
+    )
+
+    assert result == "idle"
+    offer_update.assert_awaited_once_with("discord:admin", "new-origin")
+
+
+async def test_host_git_sync_initializes_state_when_no_state_is_persisted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    await init_test_database()
+    applied = DeployRevision("deployed-sha", "config")
+    await initialize_deployment_state(applied)
+    workspace = _admin_workspace()
+    deps = _ActivityDeps({workspace.jid: workspace}, AsyncMock(), AsyncMock())
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "host_get_origin_main_sha", lambda _root: "origin")
+    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "deployed-sha")
+    monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: "config")
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        git_sync,
+        "refresh_host_config",
+        AsyncMock(return_value=ConfigRefreshResult(ConfigRefreshStatus.UNCHANGED, "config")),
+    )
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
+
+    assert await git_sync.run_host_git_sync() == "idle"
+
+
 async def test_external_git_sync_routes_adapter_notifications_and_session_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -188,3 +242,37 @@ async def test_external_git_sync_routes_adapter_notifications_and_session_fallba
     assert notified == [False]
     host_message.assert_awaited_once_with("jid", "host update")
     system_notice.assert_awaited_once_with("jid", "system update")
+
+
+async def test_external_git_sync_uses_explicit_session_state_from_dependencies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    await init_test_database()
+    slug = "owner/explicit-session"
+    repo_ctx = RepoContext(slug, tmp_path / "repo", tmp_path / "worktrees")
+    deps = _ExplicitSessionDeps({}, AsyncMock(), AsyncMock())
+    notified: list[bool] = []
+
+    async def notify(_exclude: str | None, adapter: _NotificationAdapter, _repo: RepoContext):
+        notified.append(adapter.has_active_session("group"))
+        await adapter.broadcast_host_message("jid", "host update")
+
+    await set_router_state(f"temporal_git_sync_external_state:{slug}", "old-origin")
+    monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
+    monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
+    monkeypatch.setattr(
+        git_sync,
+        "probe_origin_main_sha",
+        lambda _root, _env: sync_poll.GitOriginProbe(sha="new-origin", error=None),
+    )
+    monkeypatch.setattr(
+        git_sync,
+        "host_update_main_result",
+        lambda _root, _env: sync_poll.GitUpdateResult(succeeded=True, error=None),
+    )
+    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-head")
+    monkeypatch.setattr(git_sync, "host_notify_worktree_updates", notify)
+
+    assert await git_sync.run_external_git_sync(slug) == "synced"
+    assert notified == [True]
