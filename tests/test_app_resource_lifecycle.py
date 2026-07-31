@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pynchy.host.orchestrator.app as app_module
+from pynchy.config.api import McpTool, McpToolConfig
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder
 from pynchy.learning_packets import LearningPacket
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+from conftest import make_settings
 
 
 class _CloseableObserver:
@@ -308,6 +311,35 @@ async def test_application_defers_channel_catch_up_when_temporal_startup_is_unav
     )
 
     await app.catch_up_channels()
+
+
+def test_application_exposes_selected_workspace_environment_through_host_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        chrome_profiles=["work"],
+        tools={
+            "browser.work": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(runtime="url", url="https://example.test/mcp"),
+            )
+        },
+    )
+    access = MagicMock(workspace_env={"SELECTED": "yes"})
+    resolved = MagicMock(tools=("browser.work", "missing", "not-mcp"))
+    monkeypatch.setattr(app_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(app_module, "load_resolved_tool_access", lambda _: access)
+    monkeypatch.setattr(app_module, "load_resolved_config", lambda *_args, **_kwargs: resolved)
+
+    app = PynchyApp()
+    environment = app.host_runtime_operations.build_agent_environment(
+        is_admin=False,
+        group_folder="group",
+        extra_env_vars={},
+    )
+
+    assert environment["SELECTED"] == "yes"
+    assert environment["PYNCHY_CHROME_PROFILES"] == "work"
 
 
 async def test_application_runs_learning_review_through_the_workspace_queue(
