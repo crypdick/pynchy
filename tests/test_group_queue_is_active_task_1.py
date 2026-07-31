@@ -31,6 +31,11 @@ if TYPE_CHECKING:
 class TestIsActiveTask:
     """Tests for is_active_task: checking whether a scheduled task is active."""
 
+    def test_stale_runtime_controls_are_noops(self, queue: GroupQueue) -> None:
+        runtime_id = _runtime("missing")
+
+        queue.defer_interrupt_until_tool_result(runtime_id)
+
     def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         """Not active when no container is running for the group."""
         assert queue.is_active_task(_runtime("group1@g.us")) is False
