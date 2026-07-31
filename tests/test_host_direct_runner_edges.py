@@ -56,6 +56,21 @@ def test_host_core_config_ignores_unnamed_direct_servers_and_rewrites_urls() -> 
     }
 
 
+def test_host_core_config_rewrites_a_direct_server_without_a_port() -> None:
+    config = host_direct.build_host_core_config(
+        ContainerInput.from_dict(
+            _input(
+                mcp_direct_servers=[
+                    {"name": "docs", "url": "http://proxy/path", "transport": "sse"}
+                ]
+            )
+        ),
+        cwd="/workspace",
+    )
+
+    assert config.mcp_servers["docs"]["url"] == "http://localhost/path/sse"
+
+
 @pytest.mark.parametrize(
     ("server", "error"),
     [
@@ -83,6 +98,7 @@ def test_host_runner_streams_query_events_and_query_id(monkeypatch, capsys) -> N
             self.session_id = "session-2"
 
         async def query(self, _prompt: str):
+            yield SystemEvent("before-init", {})
             yield SystemEvent("init", {"session_id": "session-from-event"})
             yield TextEvent("hello")
             yield ResultEvent("done", ResultMetadata("completed", False, "session-2"))
@@ -98,7 +114,7 @@ def test_host_runner_streams_query_events_and_query_id(monkeypatch, capsys) -> N
     assert exit_info.value.code == 0
 
     outputs = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert [output["type"] for output in outputs] == ["system", "text", "result"]
+    assert [output["type"] for output in outputs] == ["system", "system", "text", "result"]
     assert all(output["query_id"] == "query-1" for output in outputs)
     assert outputs[-1]["new_session_id"] == "session-2"
 
@@ -124,6 +140,16 @@ def test_host_runner_reports_startup_and_input_failures(monkeypatch, capsys) -> 
     core_output = json.loads(capsys.readouterr().out)
     assert core_output["query_id"] == "query-1"
     assert core_output["error"] == "Failed to start host runner: core unavailable"
+
+    for envelope in (
+        json.dumps({"input": [], "cwd": "/workspace"}),
+        json.dumps({"input": _input(), "cwd": ""}),
+    ):
+        monkeypatch.setattr(host_direct.sys, "stdin", io.StringIO(envelope))
+        with pytest.raises(SystemExit) as exit_info:
+            host_direct.main()
+        assert exit_info.value.code == 1
+        assert "Failed to start host runner" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_host_runner_reports_agent_failure_and_cleanup_failure(monkeypatch, capsys) -> None:
@@ -151,3 +177,28 @@ def test_host_runner_reports_agent_failure_and_cleanup_failure(monkeypatch, caps
     assert output["error"] == "query failed"
     assert output["new_session_id"] == "session-1"
     assert "stop failed" in captured.err
+
+
+def test_host_runner_uses_event_session_when_core_has_no_session(monkeypatch, capsys) -> None:
+    class _Core:
+        session_id = None
+
+        async def start(self) -> None:
+            return None
+
+        async def query(self, _prompt: str):
+            yield SystemEvent("init", {"session_id": "event-session"})
+            yield ResultEvent("done", ResultMetadata("completed", False))
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr(host_direct, "create_agent_core", lambda *_args: _Core())
+    monkeypatch.setattr(host_direct.sys, "stdin", io.StringIO(_envelope()))
+
+    with pytest.raises(SystemExit) as exit_info:
+        host_direct.main()
+
+    assert exit_info.value.code == 0
+    outputs = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert outputs[-1]["new_session_id"] == "event-session"
