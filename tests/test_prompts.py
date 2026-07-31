@@ -1,4 +1,8 @@
-"""Tests for layered prompt resolution."""
+"""Tests for layered prompt resolution.
+
+Never hard-code production prompt wording in tests. Verify loading, composition,
+selection, and validation with synthetic prompt content instead.
+"""
 
 from __future__ import annotations
 
@@ -130,96 +134,3 @@ def test_prompt_scope_and_pipeline_validation() -> None:
                 PipelineStageConfig(name="interactive", executor="executors/default"),
             ]
         )
-
-
-def test_base_prompt_requires_live_skill_catalog_discovery() -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        ["souls/default", "executors/default"],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    assert "Use `search_skills` as the source of truth" in result
-    normalized = " ".join(result.split())
-    assert "Discovery does not grant access" in normalized
-    assert "request access only when the user asks" in normalized
-
-
-def test_base_prompt_distinguishes_blocking_questions_from_plain_text() -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        ["souls/default", "executors/default"],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    assert "Use `ask_user` when" in result
-    assert "an answer blocks the current task" in result
-    assert "a plain-text question ends the turn" in result
-
-
-def test_base_prompt_uses_intent_sensitive_agent_judgment() -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        ["souls/default", "executors/default"],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    normalized = " ".join(result.split())
-    assert "Proactively clear ordinary snags" in normalized
-    assert "push without seeking renewed authorization" in normalized
-    assert "Interpret authority in context" in normalized
-    assert "exfiltrating private data or secrets" in normalized
-    assert "Proceed with proportionate, recoverable fixes" in normalized
-
-
-def test_base_prompt_explains_agent_directed_obsidian_recall() -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        ["souls/default", "executors/default"],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    normalized = " ".join(result.split())
-    assert "`/home/agent/workspace/`" in normalized
-    assert "`obsidian-knowledge` skill is available, search it before acting" in normalized
-    assert "does not prefetch or inject recalled notes" in normalized
-
-
-@pytest.mark.parametrize(
-    ("prompt_id", "required_text"),
-    [
-        ("executors/planning", "call linear_submit_plan"),
-        ("executors/delivery", "host verified approval"),
-        ("executors/follow-up", "preserve useful logs before teardown"),
-    ],
-)
-def test_linear_executor_contracts_are_public_prompts(
-    prompt_id: str,
-    required_text: str,
-) -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        [prompt_id],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    assert required_text in " ".join(result.split())
-
-
-def test_delivery_prompt_bounds_worker_orchestration() -> None:
-    project_root = Path(__file__).parents[1]
-    result = read_prompts(
-        ["executors/delivery"],
-        PersonalizationPaths.for_project(project_root),
-    )
-
-    assert result is not None
-    normalized = " ".join(result.split())
-    assert "at most two bounded subagents" in normalized
-    assert "one broad repository gate" in normalized
-    assert "at most one independent review pass" in normalized
