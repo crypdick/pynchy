@@ -40,6 +40,11 @@ _CR_ORCH = "pynchy.host.container_manager.orchestrator"
             None,
             ["repository recovered with local changes"],
         ),
+        (
+            ("repository recovered with local changes",),
+            ["existing system notice"],
+            ["existing system notice", "repository recovered with local changes"],
+        ),
         ((), ["existing system notice"], ["existing system notice"]),
     ],
 )
