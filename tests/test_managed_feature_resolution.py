@@ -662,3 +662,22 @@ class TestManagedFeatureResolution:
 
         assert patch_text is None
         assert diagnostic == "Committed patch exceeds the Cop inspection context limit"
+
+    def test_bounded_patch_reader_returns_a_small_committed_diff(self, git_env: dict) -> None:
+        worktree = create_managed_feature(git_env, "small-real-patch-feature")
+        (worktree / "small.txt").write_text("small change\n", encoding="utf-8")
+        git(worktree, "add", "small.txt")
+        git(worktree, "commit", "-m", "add small patch")
+        write_managed_manifest(git_env["project"], [managed_record("small-real-patch-feature")])
+
+        resolution = resolve_managed_feature_publication(
+            "small-real-patch-feature", [git_env["repo_ctx"]]
+        )
+        publication = resolution.publication
+        assert publication is not None, resolution.error
+
+        patch_text, diagnostic = read_managed_feature_patch(publication)
+
+        assert diagnostic is None
+        assert patch_text is not None
+        assert "+small change" in patch_text
