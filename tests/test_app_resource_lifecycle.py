@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import McpTool, McpToolConfig
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.identifiers import GroupFolder
+from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
 from pynchy.plugins.contracts import NewMessage
 from pynchy.turn_outcomes import TurnOutcome
@@ -59,6 +59,19 @@ async def test_application_owns_attached_resources_through_shutdown() -> None:
 
     assert observer.closed is True
     assert runner.cleaned is True
+
+
+async def test_live_routed_session_binding_updates_memory_and_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    persist_session = AsyncMock()
+    monkeypatch.setattr(app_module, "set_session", persist_session)
+
+    await app.bind_routed_session("project", SessionId("active-session"))
+
+    assert app.sessions == {"project": SessionId("active-session")}
+    persist_session.assert_awaited_once_with(GroupFolder("project"), SessionId("active-session"))
 
 
 def test_application_shutdown_transition_is_idempotent() -> None:
