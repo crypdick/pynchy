@@ -425,6 +425,14 @@ def test_idle_checkout_rejects_a_changed_remote_default_branch(tmp_path: Path):
         assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
 
 
+def test_idle_checkout_accepts_a_matching_origin(tmp_path: Path):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+
+    with _github_origin(repo, remote):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "idle"
+
+
 def test_idle_checkout_reports_divergence_check_failure(tmp_path: Path):
     project, remote = _personalization_repo(tmp_path)
     repo = project / "data/personalization"
