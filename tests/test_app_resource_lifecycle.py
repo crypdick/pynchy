@@ -20,6 +20,7 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
 from pynchy.plugins.contracts import NewMessage
+from pynchy.scheduling.types import ScheduledTask, SessionPolicy
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.work_items.api import WorkItemExecutionStatus
 from pynchy.workspace.api import WorkspaceProfile
@@ -619,6 +620,50 @@ async def test_application_adapts_scheduled_task_storage_operations(
     get_conversation.assert_awaited_once_with("conversation-1")
     update_task.assert_awaited_once_with("task-1", {"status": "paused"})
     cancel_task.assert_awaited_once_with("task-2")
+
+
+async def test_application_forwards_lifecycle_adapter_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    task = ScheduledTask(
+        id="task-1",
+        group_folder="chat",
+        chat_jid="chat",
+        prompt="run",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:00:00Z",
+        session_policy=SessionPolicy.CONTINUE,
+    )
+    context_reset = AsyncMock()
+    plugin_reset = AsyncMock()
+    scheduled_reset = AsyncMock()
+    end_session = AsyncMock()
+    rebind_workspace = AsyncMock()
+    create_todo = AsyncMock(return_value={"id": "todo-1"})
+    monkeypatch.setattr(app_module.session_handler, "handle_context_reset", context_reset)
+    monkeypatch.setattr(app_module, "prepare_context_reset", plugin_reset)
+    monkeypatch.setattr(
+        app_module.session_handler, "handle_scheduled_context_reset", scheduled_reset
+    )
+    monkeypatch.setattr(app_module.session_handler, "handle_end_session", end_session)
+    monkeypatch.setattr(app_module, "rebind_workspace_runtime", rebind_workspace)
+    monkeypatch.setattr(app_module, "create_linear_workspace_todo", create_todo)
+
+    await app.handle_context_reset("chat", group, "timestamp")
+    await app.prepare_context_reset(group)
+    await app.reset_scheduled_context(task, group, "occurrence-1")
+    await app.handle_end_session("chat", group, "timestamp")
+    await app.rebind_workspace(group)
+    assert await app.create_linear_workspace_todo(group, "Title") == {"id": "todo-1"}
+
+    context_reset.assert_awaited_once_with(app, "chat", group, "timestamp", source_message=None)
+    plugin_reset.assert_awaited_once_with(app.plugin_manager, group)
+    scheduled_reset.assert_awaited_once_with(app, "task-1", group, "occurrence-1")
+    end_session.assert_awaited_once_with(app, "chat", group, "timestamp", source_message=None)
+    rebind_workspace.assert_awaited_once_with(group, app.workspaces, app.queue)
+    create_todo.assert_awaited_once_with(group, "Title")
 
 
 async def test_application_unregisters_workspace_from_memory_and_state(
