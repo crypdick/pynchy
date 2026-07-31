@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.container_manager.api import RepoMountResolution
+from pynchy.agent_protocol.api import ContainerInput
+from pynchy.host.container_manager.api import McpStartupFailure, RepoMountResolution
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
 from pynchy.workspace.api import RuntimeTarget
@@ -126,3 +127,55 @@ async def test_app_ensures_optional_mcp_start_when_manager_is_configured(
 
     assert await app.container_agent_operations.ensure_workspace_mcp("test-group") == ()
     manager.ensure_workspace_running.assert_awaited_once_with("test-group")
+
+
+async def test_host_mcp_preparation_skips_when_manager_is_unconfigured(
+    app: PynchyApp, monkeypatch
+) -> None:
+    monkeypatch.setattr("pynchy.host.orchestrator.app.get_mcp_manager", lambda: None)
+    input_data = ContainerInput([], "test-group", "group@g.us", False)
+
+    await app.host_runtime_operations.prepare_mcp(
+        input_data,
+        "test-group",
+        "group@g.us",
+        AsyncMock(),
+    )
+
+    assert input_data.mcp_direct_servers is None
+
+
+async def test_host_mcp_preparation_notifies_failures_and_attaches_routes(
+    app: PynchyApp, monkeypatch
+) -> None:
+    failure = McpStartupFailure(
+        instance_id="docs-instance",
+        server_name="docs",
+        reason="start timed out",
+    )
+    manager = MagicMock()
+    manager.ensure_workspace_running = AsyncMock(
+        return_value=McpWorkspaceStartup(("docs-instance",), (failure,))
+    )
+    manager.get_direct_server_configs.return_value = [
+        {"name": "docs", "url": "http://mcp-docs:8000", "transport": "sse"}
+    ]
+    monkeypatch.setattr("pynchy.host.orchestrator.app.get_mcp_manager", lambda: manager)
+    input_data = ContainerInput([], "test-group", "group@g.us", False)
+    broadcast = AsyncMock()
+
+    await app.host_runtime_operations.prepare_mcp(
+        input_data,
+        "test-group",
+        "group@g.us",
+        broadcast,
+    )
+
+    assert input_data.mcp_direct_servers == manager.get_direct_server_configs.return_value
+    manager.ensure_workspace_running.assert_awaited_once_with("test-group")
+    manager.get_direct_server_configs.assert_called_once_with(
+        "test-group",
+        invocation_ts=input_data.invocation_ts,
+        instance_ids=("docs-instance",),
+    )
+    broadcast.assert_awaited_once()
