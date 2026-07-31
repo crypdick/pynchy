@@ -313,3 +313,33 @@ def test_startup_removes_old_worktree_when_git_move_fails(tmp_path: Path) -> Non
 
     _reconcile(repo_context, runtime, git_runner=run_git)
     assert not old.exists()
+
+
+def test_startup_leaves_unrelated_old_worktree_entries_untouched(tmp_path: Path) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+    old_base = runtime.home_dir / ".config" / "pynchy" / "worktrees"
+    old_base.mkdir(parents=True)
+    unrelated_file = old_base / "notes.txt"
+    unrelated_file.write_text("operator notes\n")
+    unrelated_directory = old_base / "not-a-worktree"
+    unrelated_directory.mkdir()
+
+    _reconcile(repo_context, runtime)
+
+    assert unrelated_file.read_text() == "operator notes\n"
+    assert unrelated_directory.is_dir()
+
+
+def test_startup_skips_rebase_when_worktree_divergence_cannot_be_read(tmp_path: Path) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+    repo_context.worktrees_dir.mkdir(parents=True)
+    (repo_context.worktrees_dir / "group").mkdir()
+
+    with (
+        patch("pynchy.host.git_ops.worktree._branch_exists", return_value=True),
+        patch("pynchy.host.git_ops.worktree.count_commits", return_value=None),
+        patch("pynchy.host.git_ops.worktree._safe_rebase") as rebase,
+    ):
+        _reconcile(repo_context, runtime)
+
+    rebase.assert_not_called()
