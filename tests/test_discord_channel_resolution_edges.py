@@ -13,6 +13,7 @@ from tests.discord_channel_support import (
     _channel,
     _FakeDiscordGuild,
     _FakeDiscordTextChannel,
+    _FakeThreadParent,
 )
 
 
@@ -27,6 +28,12 @@ async def test_resolve_channel_fetches_an_uncached_guild_channel() -> None:
 
     assert await channel.resolve_channel("discord:channel:42") is fetched
     client.fetch_channel.assert_awaited_once_with(42)
+
+
+@pytest.mark.asyncio
+async def test_resolve_channel_requires_a_connected_client() -> None:
+    with pytest.raises(RuntimeError, match="client is not connected"):
+        await _channel().resolve_channel("discord:channel:42")
 
 
 @pytest.mark.asyncio
@@ -47,6 +54,26 @@ async def test_resolve_chat_jid_fetches_a_configured_guild_when_not_cached() -> 
 
     assert await channel.resolve_chat_jid("123.channels.456") == "discord:channel:456"
     client.fetch_guild.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_prefers_a_cached_configured_channel() -> None:
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"123": {"channels": {"456": {"enabled": True}}}},
+        )
+    )
+    guild = _FakeDiscordGuild(123, "Pynchy", [])
+    cached = _FakeDiscordTextChannel(456, "general")
+    client = MagicMock()
+    client.get_guild.return_value = guild
+    client.get_channel.return_value = cached
+    channel.client = client
+
+    assert await channel.resolve_chat_jid("123.channels.456") == "discord:channel:456"
+    client.fetch_guild.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -78,6 +105,14 @@ async def test_find_thread_reuses_archived_thread_when_reopen_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_find_thread_returns_none_when_no_active_or_archived_match_exists() -> None:
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=_FakeThreadParent())  # type: ignore[method-assign]
+
+    assert await channel.find_thread("discord:channel:123", "family") is None
+
+
+@pytest.mark.asyncio
 async def test_find_thread_returns_none_without_thread_listing_support() -> None:
     class _Guild:
         pass
@@ -90,6 +125,19 @@ async def test_find_thread_returns_none_without_thread_listing_support() -> None
     channel.resolve_channel = AsyncMock(return_value=_Parent())  # type: ignore[method-assign]
 
     assert await channel.find_thread("discord:channel:123", "family") is None
+
+
+@pytest.mark.asyncio
+async def test_create_thread_survives_a_failed_announcement() -> None:
+    parent = _FakeThreadParent()
+    parent.send = AsyncMock(  # type: ignore[method-assign]
+        side_effect=discord.HTTPException(MagicMock(status=500, reason="offline"), "offline")
+    )
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    assert await channel.create_thread("discord:channel:123", "family") == "discord:channel:456"
+    assert parent.created_threads[0].id == 456
 
 
 @pytest.mark.asyncio
