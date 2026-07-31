@@ -652,6 +652,14 @@ class TestBuiltinGateway:
         assert gw.has_provider("openai") is False
 
     @pytest.mark.asyncio
+    async def test_stop_before_start_is_a_noop(self):
+        gw = BuiltinGateway(
+            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
+        )
+
+        await gw.stop()
+
+    @pytest.mark.asyncio
     async def test_uses_injected_credentials_after_start(self):
         gw = BuiltinGateway(
             port=0,
