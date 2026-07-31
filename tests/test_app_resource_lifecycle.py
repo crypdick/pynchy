@@ -450,6 +450,25 @@ async def test_application_skips_linear_reconciliation_without_configured_boards
     assert await app.reconcile_linear_work_items() is None
 
 
+async def test_application_reports_admitted_linear_work_items(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    boards = {"project": object()}
+    reconcile = AsyncMock(return_value=[object(), object()])
+    monkeypatch.setattr(app_module, "linear_workspace_boards", lambda: boards)
+    monkeypatch.setattr(app_module, "reconcile_all_linear_work_items", reconcile)
+
+    assert await app.reconcile_linear_work_items() == 2
+    reconcile.assert_awaited_once_with(
+        app.workspaces,
+        boards,
+        review_plan=app.review_linear_plan,
+        broadcast_host_message=app.broadcast_host_message,
+        defer_plan_review=app_module.temporal_scheduler.start_linear_plan_review_workflow,
+    )
+
+
 async def test_application_forwards_ask_user_answers_as_system_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
