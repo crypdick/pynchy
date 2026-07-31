@@ -97,7 +97,20 @@ class FakeLinearClient:
             self.issues.append(issue)
             return {"issueCreate": {"success": True, "issue": issue}}
         if "ListWorkspaceTodos" in query:
-            response = {"project": {"issues": {"nodes": self.issues}}}
+            page_start = int(variables["after"] or 0)
+            page_end = page_start + variables["first"]
+            next_page_start = str(page_end) if page_end < len(self.issues) else None
+            response = {
+                "project": {
+                    "issues": {
+                        "nodes": self.issues[page_start:page_end],
+                        "pageInfo": {
+                            "hasNextPage": next_page_start is not None,
+                            "endCursor": next_page_start,
+                        },
+                    }
+                }
+            }
         elif "MoveWorkspaceTodo" in query:
             issue = {
                 "id": variables["issue_id"],
@@ -649,6 +662,19 @@ class TestWorkspaceTodos:
             await list_workspace_todos(client, workspace, team_key=None, include_done=True)
             == client.issues
         )
+
+    async def test_listing_paginates_all_todos(self):
+        client = FakeLinearClient()
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+        await provision_workspace_board(client, workspace, team_key=None)
+        client.issues = [
+            {"id": f"issue-{index}", "state": {"type": "backlog"}} for index in range(51)
+        ]
+
+        issues = await list_workspace_todos(client, workspace, team_key=None)
+
+        assert len(issues) == 51
+        assert sum("ListWorkspaceTodos" in query for query in client.queries) == 2
 
     async def test_listing_rejects_a_missing_project_payload(self):
         class MissingProjectClient(FakeLinearClient):

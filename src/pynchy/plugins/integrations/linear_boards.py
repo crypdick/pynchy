@@ -51,6 +51,7 @@ _TEAM_PAYLOAD_MISSING_ID = "Linear team payload missing string id"
 _TEAM_KEY_NOT_VISIBLE = "LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}"
 _NO_VISIBLE_TEAMS = "Linear API key cannot see any teams"
 _LINEAR_PROJECT_MISSING = "Linear response did not include project"
+_LINEAR_ISSUES_PAGE_SIZE = 50
 
 
 @runtime_checkable
@@ -283,26 +284,45 @@ async def list_workspace_todos(
 ) -> list[dict[str, Any]]:
     """List issues in the workspace's Linear project."""
     board = await require_workspace_board(client, workspace, team_key=team_key)
-    data = await client.query(
-        """
-        query ListWorkspaceTodos($project_id: String!) {
-          project(id: $project_id) {
-            issues {
-              nodes {
-                id identifier title description url priority createdAt updatedAt
-                state { id name type }
-                project { id name }
+    issues: list[dict[str, Any]] = []
+    after: str | None = None
+    while True:
+        data = await client.query(
+            """
+            query ListWorkspaceTodos(
+              $project_id: String!,
+              $first: Int!,
+              $after: String
+            ) {
+              project(id: $project_id) {
+                issues(first: $first, after: $after) {
+                  nodes {
+                    id identifier title description url priority createdAt updatedAt
+                    state { id name type }
+                    project { id name }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
               }
             }
-          }
-        }
-        """,
-        project_id=board.project["id"],
-    )
-    project = data.get("project")
-    if not isinstance(project, dict):
-        raise LinearBoardError(_LINEAR_PROJECT_MISSING)
-    issues = nodes(project, "issues")
+            """,
+            project_id=board.project["id"],
+            first=_LINEAR_ISSUES_PAGE_SIZE,
+            after=after,
+        )
+        project = data.get("project")
+        if not isinstance(project, dict):
+            raise LinearBoardError(_LINEAR_PROJECT_MISSING)
+        issues.extend(nodes(project, "issues"))
+        connection = project["issues"]
+        page_info = connection.get("pageInfo")
+        if not isinstance(page_info, dict):
+            raise LinearBoardError("Linear issue response did not include pageInfo")
+        if not page_info.get("hasNextPage"):
+            break
+        after = page_info.get("endCursor")
+        if not isinstance(after, str) or not after:
+            raise LinearBoardError("Linear issue response did not include a pagination cursor")
     if include_done:
         return issues
     return [

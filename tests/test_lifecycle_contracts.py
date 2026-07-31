@@ -17,11 +17,12 @@ from pynchy.config.api import (
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
 )
-from pynchy.host.orchestrator import lifecycle
+from pynchy.host.orchestrator import lifecycle, linear_issue_controls
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_readiness import ControlPlaneReadiness
 from pynchy.plugins.api import NewMessage
+from pynchy.plugins.integrations.api import LinearIssueControl
 from pynchy.workspace.api import WorkspaceProfile
 
 SLACK_BOT_ENV = "SLACK_BOT_TOKEN"
@@ -225,8 +226,8 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
         reconcile_bindings,
     )
     monkeypatch.setattr(
-        lifecycle.linear_boot,
-        "reconcile_linear_workspace_boards",
+        lifecycle,
+        "reconcile_linear_boards",
         AsyncMock(return_value=boards),
     )
     monkeypatch.setattr(lifecycle, "load_connection_runtimes", MagicMock(return_value=runtimes))
@@ -244,6 +245,59 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
     )
     reconcile_bindings.assert_awaited_once_with([], app)
     assert app.connection_runtime_owner.runtimes() == tuple(runtimes)
+
+
+@pytest.mark.asyncio
+async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> None:
+    app = PynchyApp()
+    conversation = MagicMock(id="conversation-1", workspace="health")
+    ensured = MagicMock()
+    ensured.profile.folder = "health__thread_conversation-1"
+    apply_state = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "apply_conversation_control_state",
+        apply_state,
+    )
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "get_conversation_control_binding",
+        AsyncMock(return_value=None),
+    )
+    ensure_workspace = AsyncMock(return_value=ensured)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "ensure_conversation_workspace",
+        ensure_workspace,
+    )
+    ensure_policy = MagicMock()
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "ensure_runtime_workspace_policy_owner",
+        ensure_policy,
+    )
+    control = LinearIssueControl(
+        issue_id="issue-1",
+        workspace="health",
+        parent_jid="discord:channel:health-forum",
+        account_name="linear",
+        title="[SYN-1] Restore sleep access",
+        updated_at="2026-07-31T09:00:00Z",
+    )
+
+    await linear_issue_controls.ensure_issue_control(app, control, conversation)
+
+    apply_state.assert_awaited_once_with(
+        conversation.id,
+        closed=False,
+        control_state_revision=control.updated_at,
+    )
+    request = ensure_workspace.await_args.args[1]
+    assert request.parent_workspace == "health"
+    assert request.parent_jid == "discord:channel:health-forum"
+    assert request.title == control.title
+    assert request.kind == "issue"
+    ensure_policy.assert_called_once_with(ensured.profile.folder, "health")
 
 
 @pytest.mark.asyncio
