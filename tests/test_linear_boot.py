@@ -11,6 +11,7 @@ from pynchy.config.api import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
+    LinearIssueControl,
     configured_linear_workspace_names,
     create_linear_workspace_todo,
     reconcile_linear_workspace_boards,
@@ -99,6 +100,54 @@ async def test_reconcile_prefers_workspace_root_over_registered_thread(monkeypat
 
     _, args, _ = reconcile.mock_calls[0]
     assert args[1][0].jid == root.jid
+
+
+async def test_reconcile_materializes_active_issue_controls(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    root = _workspace("health", "Health")
+    root.jid = "discord:channel:forum"
+    ensure_control = AsyncMock()
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.list_workspace_todos",
+            AsyncMock(
+                return_value=[
+                    {
+                        "id": "issue-1",
+                        "identifier": "SYN-1",
+                        "title": "Restore sleep access",
+                        "updatedAt": "2026-07-31T09:00:00Z",
+                    }
+                ]
+            ),
+        ),
+    ):
+        await reconcile_linear_workspace_boards(
+            [root],
+            ensure_issue_control=ensure_control,
+        )
+
+    ensure_control.assert_awaited_once_with(
+        LinearIssueControl(
+            issue_id="issue-1",
+            workspace="health",
+            parent_jid=root.jid,
+            account_name="linear",
+            title="[SYN-1] Restore sleep access",
+            updated_at="2026-07-31T09:00:00Z",
+        )
+    )
 
 
 async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypatch):

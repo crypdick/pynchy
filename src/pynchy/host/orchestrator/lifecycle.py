@@ -69,11 +69,13 @@ from pynchy.plugins.api import (
     load_connection_runtimes,
     resolve_default_channel,
 )
-from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
+)
+from pynchy.plugins.integrations.linear_boot import (
+    reconcile_linear_workspace_boards as reconcile_linear_boards,
 )
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state.api import (
@@ -347,7 +349,9 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     if scheduled_bindings:
         logger.info("Scheduled task bindings reconciled", count=scheduled_bindings)
 
-    linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
+    linear_boards = await reconcile_linear_boards(
+        app.workspaces.values(), app.ensure_linear_issue_control
+    )
 
     plugin_manager = _require_plugin_manager(app, "_reconcile_state")
     app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))

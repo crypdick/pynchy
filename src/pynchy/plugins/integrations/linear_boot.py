@@ -8,6 +8,7 @@ avoid a plugin -> webhook -> boot import cycle.
 from __future__ import annotations
 
 from collections.abc import (
+    Awaitable,  # noqa: TC003 - beartype resolves Linear boot callbacks at runtime.
     Callable,  # noqa: TC003 - beartype resolves Linear boot callbacks at runtime.
     Iterable,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
@@ -23,6 +24,7 @@ from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceTodoProposal,
     create_workspace_todo,
+    list_workspace_todos,
     reconcile_workspace_boards,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient
@@ -84,10 +86,23 @@ class _LinearWorkspaceContext:
     account: LinearAccount
 
 
+@dataclass(frozen=True)
+class LinearIssueControl:
+    """One active Linear issue that needs a silent workspace control."""
+
+    issue_id: str
+    workspace: str
+    parent_jid: str
+    account_name: str
+    title: str
+    updated_at: str
+
+
 async def reconcile_linear_workspace_boards(
     workspaces: Iterable[WorkspaceProfile],
+    ensure_issue_control: Callable[[LinearIssueControl], Awaitable[None]] | None = None,
 ) -> dict[str, LinearWorkspaceBoard]:
-    """Create missing Linear projects/states for registered Pynchy workspaces."""
+    """Reconcile Linear boards and silently materialize their active issue controls."""
     selected_workspaces = _linear_workspaces(workspaces)
     _registry.configured_workspaces = frozenset(_configured_runtime().workspace_names)
     _registry.routable_workspaces = frozenset(
@@ -111,13 +126,18 @@ async def reconcile_linear_workspace_boards(
         async with aiohttp.ClientSession(timeout=timeout) as session:
             client = LinearClient(api_key=api_key, session=session, team_key=account.team_key)
             try:
-                boards.update(
-                    await reconcile_workspace_boards(
+                account_boards = await reconcile_workspace_boards(
+                    client,
+                    account_workspaces,
+                    team_key=account.team_key,
+                )
+                boards.update(account_boards)
+                if ensure_issue_control is not None:
+                    await _reconcile_issue_controls(
                         client,
                         account_workspaces,
-                        team_key=account.team_key,
+                        ensure_issue_control,
                     )
-                )
             except Exception as exc:  # noqa: BLE001 - one optional account must not block startup.
                 logger.warning(
                     "Linear workspace board reconciliation failed",
@@ -127,6 +147,75 @@ async def reconcile_linear_workspace_boards(
     logger.info("Linear workspace boards reconciled", count=len(boards))
     _registry.boards = dict(boards)
     return boards
+
+
+async def _reconcile_issue_controls(
+    client: LinearClient,
+    workspaces: list[_LinearWorkspaceContext],
+    ensure_issue_control: Callable[[LinearIssueControl], Awaitable[None]],
+) -> None:
+    reconciled = 0
+    for workspace in workspaces:
+        try:
+            issues = await list_workspace_todos(
+                client,
+                workspace,
+                team_key=workspace.account.team_key,
+            )
+        except Exception:  # noqa: BLE001 - one board must not strand other issue controls.
+            logger.exception(
+                "Linear issue control discovery failed",
+                workspace=workspace.folder,
+            )
+            continue
+        for issue in issues:
+            control = _issue_control(issue, workspace)
+            if control is None:
+                logger.warning(
+                    "Linear issue control skipped malformed issue",
+                    workspace=workspace.folder,
+                    issue=issue.get("identifier"),
+                )
+                continue
+            try:
+                await ensure_issue_control(control)
+                reconciled += 1
+            except Exception:  # noqa: BLE001 - one issue must not strand sibling controls.
+                logger.exception(
+                    "Linear issue control reconciliation failed",
+                    workspace=workspace.folder,
+                    issue=control.issue_id,
+                )
+    logger.info("Linear issue controls reconciled", count=reconciled)
+
+
+def _issue_control(
+    issue: dict[str, object],
+    workspace: _LinearWorkspaceContext,
+) -> LinearIssueControl | None:
+    issue_id = issue.get("id")
+    identifier = issue.get("identifier")
+    title = issue.get("title")
+    updated_at = issue.get("updatedAt")
+    if (
+        not isinstance(issue_id, str)
+        or not issue_id.strip()
+        or not isinstance(identifier, str)
+        or not identifier.strip()
+        or not isinstance(title, str)
+        or not title.strip()
+        or not isinstance(updated_at, str)
+        or not updated_at.strip()
+    ):
+        return None
+    return LinearIssueControl(
+        issue_id=issue_id,
+        workspace=workspace.folder,
+        parent_jid=workspace.jid,
+        account_name=workspace.account.name,
+        title=f"[{identifier}] {title}",
+        updated_at=updated_at,
+    )
 
 
 def configured_linear_workspace_names(account_name: str) -> tuple[str, ...]:

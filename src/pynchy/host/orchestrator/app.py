@@ -215,6 +215,7 @@ from pynchy.host.learning.skills import configure_personalized_skills_root
 from pynchy.host.orchestrator import (
     agent_runner,
     host_execution,
+    linear_issue_controls,
     linear_plan_review,
     session_handler,
     update_offer,
@@ -311,11 +312,13 @@ from pynchy.plugins.api import (
     prepare_context_reset,
 )
 from pynchy.plugins.integrations.api import (
+    LinearIssueControl,
     create_linear_workspace_todo,
     get_active_matrix_route,
     linear_workspace_boards,
     linear_workspace_enabled,
     reconcile_all_linear_work_items,
+    resolve_linear_issue_conversation,
 )
 from pynchy.plugins.integrations.api import (
     process_linear_plan_review_admission as admit_linear_plan_review,
@@ -1651,6 +1654,15 @@ class PynchyApp(ThreadRouting):
             defer_plan_review=temporal_scheduler.start_linear_plan_review_workflow,
         )
         return len(admitted)
+
+    async def ensure_linear_issue_control(self, control: LinearIssueControl) -> None:
+        """Project one active Linear issue into its silent forum control."""
+        conversation = await resolve_linear_issue_conversation(
+            control.issue_id,
+            control.workspace,
+            control.account_name,
+        )
+        await linear_issue_controls.ensure_issue_control(self, control, conversation)
 
     async def process_linear_plan_review_admission(
         self,
