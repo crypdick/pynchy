@@ -84,6 +84,13 @@ language = "system"
 types = ["python"]
 
 [[repos.hooks]]
+id = "forbid-superpowers-docs"
+name = "Forbid docs/superpowers plans"
+entry = "uv run python scripts/prek_hooks/forbid_superpowers_docs.py"
+language = "system"
+files = "^docs/superpowers/"
+
+[[repos.hooks]]
 id = "check-exception-handling"
 name = "Ban bare/broad exception handling"
 entry = "uv run python scripts/prek_hooks/check_exception_handling.py"
