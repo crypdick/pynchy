@@ -636,7 +636,7 @@ async def test_message_loop_does_not_run_channel_reconciliation_locally():
 
 @pytest.mark.asyncio
 async def test_message_loop_does_not_start_agent_for_host_only_messages():
-    deps = _make_deps()
+    deps = _make_deps(groups={"g@g.us": _make_group()})
     host_message = _make_message("host notice", message_id="host-only")
     host_message.message_type = "host"
 
