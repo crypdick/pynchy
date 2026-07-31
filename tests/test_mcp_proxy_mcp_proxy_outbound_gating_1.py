@@ -347,6 +347,9 @@ class TestMcpProxyOutboundGating:
 
 
 class TestMcpProxyLifecycle:
+    async def test_stop_before_start_is_idempotent(self):
+        await McpProxy().stop()
+
     async def test_start_and_stop(self):
         """McpProxy should start on a dynamic port and stop cleanly."""
         proxy = McpProxy()
