@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import (
     Mapping,  # noqa: TC003 - config validation annotations resolve at runtime.
 )
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -118,9 +118,7 @@ def semantic_workspace_configs(
     for parent, config in workspaces.items():
         semantic = [*config.scopes, *(thread for thread in config.threads if thread.workspace)]
         for child in semantic:
-            workspace = child.workspace
-            if workspace is None:
-                continue
+            workspace = cast("str", child.workspace)
             if workspace in workspaces:
                 raise ValueError(
                     f"semantic workspace {workspace!r} conflicts with a root workspace"
