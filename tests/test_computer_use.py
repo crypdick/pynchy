@@ -328,3 +328,24 @@ async def test_capability_probe_reports_fallback_degradation() -> None:
 
     assert result.status is ProbeStatus.DEGRADED
     assert result.reason == "Using fallback provider cua-driver: peekaboo: not installed"
+
+
+@pytest.mark.asyncio
+async def test_capability_probe_reports_ready_primary_provider() -> None:
+    registration = ComputerUsePlugin().pynchy_service_handler((_RecordingBackend("peekaboo"),))
+    probe = registration.actions[0].capability.probe
+    assert probe is not None
+
+    result = await probe(CapabilityProbeContext(workspace="admin"))
+
+    assert result.status is ProbeStatus.READY
+    assert result.reason is None
+
+
+def test_computer_use_plugin_returns_packaged_skill_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "is_dir", lambda _path: True)
+
+    paths = ComputerUsePlugin().pynchy_skill_paths()
+
+    assert len(paths) == 1
+    assert paths[0].endswith("/skills/computer-use")
