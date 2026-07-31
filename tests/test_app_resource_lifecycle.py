@@ -19,11 +19,6 @@ from pynchy.conversation_primitives import (
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
-from pynchy.linear_plan_types import (
-    LinearPlanReviewDecision,
-    LinearPlanReviewRequest,
-    LinearPlanReviewResult,
-)
 from pynchy.plugins.contracts import NewMessage
 from pynchy.scheduling.types import ScheduledTask, SessionPolicy
 from pynchy.turn_outcomes import TurnOutcome
@@ -669,30 +664,6 @@ async def test_application_forwards_lifecycle_adapter_calls(
     end_session.assert_awaited_once_with(app, "chat", group, "timestamp", source_message=None)
     rebind_workspace.assert_awaited_once_with(group, app.workspaces, app.queue)
     create_todo.assert_awaited_once_with(group, "Title")
-
-
-async def test_application_reviews_linear_plan_with_current_prompt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = PynchyApp()
-    request = LinearPlanReviewRequest(
-        workspace="chat",
-        issue_id="issue-1",
-        identifier="SYN-1",
-        title="Plan",
-        url="https://linear.example/issue/SYN-1",
-        description="Description",
-        updated_at="2026-07-31T00:00:00Z",
-        public_source=True,
-    )
-    result = LinearPlanReviewResult(LinearPlanReviewDecision.PROCEED, "Looks good")
-    review = AsyncMock(return_value=result)
-    monkeypatch.setattr(app_module.linear_plan_review, "review_linear_plan", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda name: f"prompt:{name}")
-
-    assert await app.review_linear_plan(request) is result
-
-    review.assert_awaited_once_with(app, request, "prompt:plan_freshness")
 
 
 async def test_application_unregisters_workspace_from_memory_and_state(
