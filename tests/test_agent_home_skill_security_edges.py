@@ -52,6 +52,23 @@ def test_refresh_personalized_skills_skips_trees_containing_symlinks(
     assert not (session_dir / "skills/linked").exists()
 
 
+def test_refresh_personalized_skills_ignores_non_directory_sources(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    skills_root = project_root / "data/personalization/skills"
+    skills_root.mkdir(parents=True)
+    (skills_root / "README.md").write_text("not a skill directory\n")
+
+    session_dir = tmp_path / "session"
+    refresh_personalized_skills(
+        session_dir,
+        project_root=project_root,
+        workspace_skills=["*"],
+        denied_skill_names=[],
+    )
+
+    assert not (session_dir / "skills/README.md").exists()
+
+
 def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     tmp_path: Path,
 ) -> None:
@@ -59,6 +76,8 @@ def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     companion = session_dir / "skills/provider"
     companion.mkdir(parents=True)
     (companion / "SKILL.md").write_text("---\nname: provider\ntier: community\n---\n")
+    ordinary = session_dir / "skills/ordinary"
+    ordinary.mkdir()
 
     refresh_personalized_skills(
         session_dir,
@@ -72,6 +91,7 @@ def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     )
 
     assert not companion.exists()
+    assert ordinary.is_dir()
 
 
 def test_refresh_personalized_skills_uses_companion_metadata_name_for_pruning(
