@@ -1,6 +1,5 @@
 Objective: deliver Human Approved Linear item in runtime context.
 
-<<<<<<< HEAD
 Authority: host verified approval and acquired execution lease. Approved issue
 and plan = alignment complete. No repeat interview or confirmation unless work
 reveals new product or architecture decision changing approved outcome.
