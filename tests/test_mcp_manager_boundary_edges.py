@@ -170,6 +170,36 @@ async def test_stop_idle_ignores_url_exited_process_and_stopped_container(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_stop_all_cancels_background_tasks_and_stops_processes(tmp_path, monkeypatch):
+    manager = await _synced_manager(
+        tmp_path,
+        monkeypatch,
+        {"script": McpServerConfig(type="script", command="run", port=9000)},
+        ("script",),
+    )
+    tasks: list[MagicMock] = []
+
+    def create_task(coroutine, **_kwargs):
+        coroutine.close()
+        task = MagicMock()
+        tasks.append(task)
+        return task
+
+    monkeypatch.setattr(manager_module, "create_background_task", create_task)
+    await manager.sync()
+    terminate = MagicMock()
+    monkeypatch.setattr(manager_module, "terminate_process", terminate)
+    monkeypatch.setattr(McpProxy, "stop", AsyncMock())
+
+    await manager.stop_all()
+
+    assert len(tasks) == 2
+    for task in tasks:
+        task.cancel.assert_called_once_with()
+    terminate.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_get_direct_server_configs_omits_routes_before_proxy_starts(tmp_path, monkeypatch):
     manager = await _synced_manager(
         tmp_path,
