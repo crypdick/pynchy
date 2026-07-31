@@ -17,6 +17,7 @@ from pynchy.host.git_ops.api import (
     RepoContext,
     RoutedHostWorktreeError,
     WorktreeError,
+    WorktreeResult,
     ensure_worktree,
     install_repo_hooks,
     reconcile_worktrees_at_startup,
@@ -371,6 +372,41 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    def test_provisioning_failure_is_reported_as_routed_worktree_error(self, git_env: dict):
+        with (
+            patch(
+                "pynchy.host.git_ops.worktree.ensure_worktree",
+                side_effect=OSError("worktree unavailable"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not prepare"),
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_failure",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+    def test_missing_mapped_subdirectory_is_rejected(self, git_env: dict, tmp_path: Path):
+        source_cwd = git_env["project"] / "tools"
+        source_cwd.mkdir()
+        replacement = tmp_path / "replacement-worktree"
+        replacement.mkdir()
+
+        with (
+            patch(
+                "pynchy.host.git_ops.worktree.ensure_worktree",
+                return_value=WorktreeResult(replacement),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="unavailable"),
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_missing-subdirectory",
+                source_cwd,
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
     def test_maps_relative_cwd_and_reuses_child_worktree_after_recovery(self, git_env: dict):
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]
