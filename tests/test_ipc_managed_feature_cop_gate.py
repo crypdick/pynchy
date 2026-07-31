@@ -42,6 +42,98 @@ def _managed_publication(tmp_path, *, slug: str = "safe-feature") -> ManagedFeat
 class TestManagedFeatureCopGate:
     """Managed publication must bind Cop to one host-derived feature identity."""
 
+    @pytest.mark.parametrize(
+        ("patch_text", "reason"),
+        [
+            ("GIT binary patch", "Committed patch for owner/repo contains binary content"),
+            ("patch" + "x" * 70_000, "Committed patch exceeds the Cop inspection context limit"),
+        ],
+        ids=["binary-patch", "oversized-patch"],
+    )
+    async def test_patch_content_requires_human_review(self, deps, tmp_path, patch_text, reason):
+        publication = _managed_publication(tmp_path)
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[publication.repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.resolve_managed_feature_publication",
+                return_value=ManagedFeatureResolution(publication, None),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.read_managed_feature_patch",
+                return_value=(patch_text, None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as cop,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.host_create_pr_from_managed_feature"
+            ) as publisher,
+        ):
+            await dispatch(
+                {
+                    "type": "publish_managed_feature",
+                    "request_id": "managed-patch-review",
+                    "publication": "pull-request",
+                    "feature_slug": publication.feature_slug,
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        assert cop.await_args.kwargs["required_human_reason"] == reason
+        publisher.assert_not_called()
+
+    async def test_changed_feature_invalidates_a_stale_approval_binding(self, deps, tmp_path):
+        publication = _managed_publication(tmp_path)
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[publication.repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.resolve_managed_feature_publication",
+                return_value=ManagedFeatureResolution(publication, None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ) as receipt,
+        ):
+            await dispatch(
+                {
+                    "type": "publish_managed_feature",
+                    "request_id": "managed-stale-binding",
+                    "publication": "pull-request",
+                    "feature_slug": publication.feature_slug,
+                    "_approval_receipt": "receipt",
+                    "_managed_feature_binding": {"feature_slug": "old-feature"},
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        receipt.assert_awaited_once()
+        response = (
+            tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "managed-stale-binding.json"
+        )
+        assert "managed feature changed after Cop inspection" in response.read_text()
+
     async def test_publication_rejects_a_group_without_a_repository(self, deps, tmp_path):
         with (
             patch(
