@@ -448,6 +448,32 @@ class TestEnsureWorkspaceBoard:
         assert board.project["name"] == "DDDD Evening Review"
         assert client.updated_projects[0]["name"] == "DDDD Evening Review"
 
+    async def test_updates_existing_project_when_workspace_target_changes(self):
+        client = FakeLinearClient()
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Systems",
+                "url": "https://linear.app/acme/project/existing",
+                "description": (
+                    "Managed by Pynchy.\n\n"
+                    "pynchy.workspace=systems\n"
+                    "pynchy.chat_jid=discord:channel:old"
+                ),
+            }
+        )
+        workspace = WorkspaceStub(
+            folder="systems",
+            name="Systems",
+            jid="discord:channel:forum",
+        )
+
+        board = await provision_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-existing"
+        assert board.project["description"].endswith("pynchy.chat_jid=discord:channel:forum")
+        assert client.updated_projects[0]["project_id"] == "project-existing"
+
     async def test_rejects_duplicate_workspace_projects_without_mutating_them(self):
         client = FakeLinearClient()
         client.projects.extend(
@@ -507,7 +533,9 @@ class TestEnsureWorkspaceBoard:
                     "id": "project-general",
                     "name": "General",
                     "url": "https://linear.app/acme/project/general",
-                    "description": "Managed by Pynchy.\n\npynchy.workspace=general\n",
+                    "description": (
+                        "Managed by Pynchy.\n\npynchy.workspace=general\npynchy.chat_jid=slack:C123"
+                    ),
                 },
                 {
                     "id": "project-general-voice",

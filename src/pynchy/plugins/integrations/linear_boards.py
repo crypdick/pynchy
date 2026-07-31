@@ -371,7 +371,9 @@ async def _ensure_project(
         raise _duplicate_projects_error(workspace_projects, workspace)
     if workspace_projects:
         existing = workspace_projects[0]
-        if norm_name(existing.get("name")) == norm_name(project_name):
+        if norm_name(existing.get("name")) == norm_name(project_name) and existing.get(
+            "description"
+        ) == project_description(workspace):
             return existing
         updated = await _update_project(client, existing, workspace)
         existing.update(updated)
