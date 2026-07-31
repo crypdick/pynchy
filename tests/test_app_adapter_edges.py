@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -67,6 +67,39 @@ async def test_application_reviews_linear_plan_with_current_prompt(
     assert app.host_runtime_operations.host_learning_vault("chat") is None
 
     review.assert_awaited_once_with(app, request, "prompt:plan-freshness:/project")
+
+
+async def test_application_persists_and_replays_approval_decision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    app = PynchyApp()
+    decision = {"request_id": "request-1", "approved": True}
+    deps = object()
+    write_decision = Mock()
+    process_decision = AsyncMock()
+    monkeypatch.setattr(app_module, "_approval_decisions_dir", lambda _group: tmp_path)
+    monkeypatch.setattr(app_module, "write_json_atomic", write_decision)
+    monkeypatch.setattr(app_module, "process_approval_decision", process_decision)
+
+    await app.approval_runtime_operations.persist_and_process("chat", decision, deps)
+
+    decision_path = tmp_path / "request-1.json"
+    write_decision.assert_called_once_with(decision_path, decision, indent=2)
+    process_decision.assert_awaited_once_with(
+        decision_path,
+        "chat",
+        deps=deps,
+    )
+
+
+def test_application_reports_no_live_session_when_runtime_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    monkeypatch.setattr(app_module, "get_session", lambda _folder: None)
+
+    assert app.ask_user_runtime_operations.has_live_session("chat") is False
 
 
 async def test_learning_review_drops_queued_callback_after_waiter_cancellation(
