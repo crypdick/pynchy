@@ -70,6 +70,44 @@ async def test_resuming_waiting_runtime_keeps_it_waiting_until_global_slot_is_fr
 
 
 @pytest.mark.asyncio
+async def test_paused_waiting_runtime_stays_deferred_after_global_slot_frees(
+    container_runtime,
+):
+    queue = GroupQueue(
+        QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0.0),
+        container_runtime,
+    )
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def process_messages(chat_jid: str) -> TurnOutcome:
+        if chat_jid == "first@g.us":
+            first_started.set()
+            await release_first.wait()
+        else:
+            second_started.set()
+        return TurnOutcome.COMPLETED
+
+    queue.set_process_messages_fn(process_messages)
+    queue.enqueue_message_check(_target("first@g.us", "first"))
+    await first_started.wait()
+
+    second = _target("second@g.us", "second")
+    queue.enqueue_message_check(second)
+    await queue.pause_runtime_policy((second,))
+    release_first.set()
+    await asyncio.sleep(0.05)
+
+    assert second_started.is_set() is False
+    assert queue.snapshot()["second"]["pending_messages"] is True
+
+    queue.resume_runtime_policy((second.id,))
+    await asyncio.wait_for(second_started.wait(), timeout=1)
+    await queue.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_suppresses_a_scheduled_retry(container_runtime):
     queue = GroupQueue(
         QueuePolicy(max_concurrent=1, max_retries=1, retry_base_seconds=0.05),
