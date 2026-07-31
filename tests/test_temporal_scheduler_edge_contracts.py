@@ -15,6 +15,7 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
 )
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from tests.temporal_scheduler_support import NullSchedulerDeps, _scheduler_runtime
 
 
@@ -104,6 +105,7 @@ def _learning_packet() -> LearningPacket:
         ("start_learning_review_workflow", (_learning_packet(),)),
         ("start_interactive_message_workflow", ("slack:admin",)),
         ("start_interrupted_turn_workflow", ("turn-1", "research")),
+        ("start_linear_work_item_reconciliation_workflow", ()),
         (
             "start_deploy_workflow",
             (
@@ -196,6 +198,28 @@ async def test_publishing_scheduler_config_updates_the_active_runtime(
 
 
 @pytest.mark.asyncio
+async def test_scheduled_task_workflow_wrapper_propagates_runtime_unavailability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = ScheduledTask(
+        id="task-1",
+        group_folder="group",
+        chat_jid="slack:group",
+        prompt="run",
+        schedule_type="once",
+        schedule_value="now",
+        session_policy=SessionPolicy.CONTINUE,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.temporal.scheduler._require_active_runtime",
+        AsyncMock(side_effect=TemporalRuntimeUnavailableError("unavailable")),
+    )
+
+    with pytest.raises(TemporalRuntimeUnavailableError, match="unavailable"):
+        await temporal_scheduler.start_scheduled_agent_task_workflow(task)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cleared", [False, True])
 async def test_terminal_scheduled_turn_reports_cleanup_result(
     monkeypatch: pytest.MonkeyPatch,
@@ -246,6 +270,26 @@ async def test_successful_canary_run_without_transitions_stays_quiet() -> None:
     assert result == "completed:0"
     deps.run_declared_canaries.assert_awaited_once_with("external-canary", ("calendar.round.trip",))
     deps.broadcast_host_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_canary_run_records_the_error_before_reraising() -> None:
+    deps = NullSchedulerDeps()
+    deps.scheduler_runtime = _scheduler_runtime(
+        canary=CanaryConfig(enabled=True, target_profile="external-canary")
+    )
+    deps.run_declared_canaries = AsyncMock(side_effect=RuntimeError("provider offline"))
+    temporal_scheduler.bind_scheduler_deps(deps)
+    temporal_scheduler.reset_temporal_scheduler_status()
+    try:
+        with pytest.raises(RuntimeError, match="provider offline"):
+            await temporal_scheduler.run_scheduled_canaries()
+    finally:
+        temporal_scheduler.bind_scheduler_deps(None)
+
+    status = temporal_scheduler.get_temporal_scheduler_status()
+    assert status["last_result"] == "error"
+    assert status["last_error"] == "RuntimeError"
 
 
 @pytest.mark.asyncio
