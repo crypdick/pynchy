@@ -64,6 +64,10 @@ async def test_start_rejects_unhealthy_phoenix_dependency(tmp_path: Path) -> Non
 @pytest.mark.asyncio
 async def test_start_proceeds_when_phoenix_is_healthy(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
+    (tmp_path / ".env").write_text(
+        "PHOENIX_COLLECTOR_HTTP_ENDPOINT=https://phoenix.example.test/v1/traces\n"
+        "PHOENIX_API_KEY=phoenix-test-key\n"  # pragma: allowlist secret
+    )
     session = MagicMock()
     session.get.return_value = _AsyncContext(MagicMock(status=204))
 
@@ -83,7 +87,9 @@ async def test_start_proceeds_when_phoenix_is_healthy(tmp_path: Path) -> None:
             "pynchy.host.container_manager.gateway_litellm.remove_container",
             new_callable=AsyncMock,
         ),
-        patch("pynchy.host.container_manager.gateway_litellm.run_docker", new_callable=AsyncMock),
+        patch(
+            "pynchy.host.container_manager.gateway_litellm.run_docker", new_callable=AsyncMock
+        ) as run_docker,
         patch("pynchy.host.container_manager.gateway_litellm.wait_healthy", new_callable=AsyncMock),
         patch(
             "pynchy.host.container_manager.litellm_responses.LiteLLMResponsesAvailability.refresh",
@@ -93,3 +99,7 @@ async def test_start_proceeds_when_phoenix_is_healthy(tmp_path: Path) -> None:
         await gateway.start()
 
     session.get.assert_called_once_with("https://phoenix.example.test/healthz")
+    forwarded_api_key = run_docker.await_args.kwargs["environment"][
+        "PHOENIX_API_KEY"
+    ]  # pragma: allowlist secret
+    assert forwarded_api_key == "phoenix-test-key"  # pragma: allowlist secret
