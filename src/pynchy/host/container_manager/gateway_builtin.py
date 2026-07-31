@@ -38,9 +38,6 @@ _STRIP_REQUEST_HEADERS = frozenset({"authorization", "x-api-key", "host", "conte
 _STRIP_RESPONSE_HEADERS = frozenset(
     {"transfer-encoding", "content-encoding", "connection", "keep-alive"}
 )
-_SESSION_NOT_INITIALIZED_ERROR = "Builtin gateway ClientSession not initialized"
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -214,10 +211,6 @@ class BuiltinGateway:
                 text=f"No credentials configured for {provider}",
             )
 
-        session = self._session
-        if session is None:
-            raise RuntimeError(_SESSION_NOT_INITIALIZED_ERROR)
-
         headers = build_upstream_headers(
             proxy_request.headers,
             provider,
@@ -231,7 +224,7 @@ class BuiltinGateway:
 
         try:
             return await _relay_upstream_response(
-                session=session,
+                session=cast("aiohttp.ClientSession", self._session),
                 request=request,
                 upstream_url=upstream_url,
                 headers=headers,
