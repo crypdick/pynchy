@@ -86,7 +86,7 @@ def test_invalid_explicit_path_is_not_cloned(tmp_path: Path):
         patch("pynchy.config.api.get_settings", return_value=settings),
         patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
     ):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
     clone.assert_not_called()
     assert checkout.read_text() == "operator data\n"
 
