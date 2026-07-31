@@ -257,6 +257,55 @@ class TestTemporalSchedulerRuntime:
         )
         assert temporal_scheduler.get_temporal_scheduler_status()["last_result"] == "completed"
 
+    @pytest.mark.asyncio
+    async def test_run_scheduled_canaries_notifies_admins_of_recovery(self):
+        deps = NullSchedulerDeps()
+        deps.groups = {
+            "admin": WorkspaceProfile(
+                jid="slack:admin",
+                name="admin",
+                folder="admin",
+                trigger="always",
+                is_admin=True,
+            ),
+        }
+        deps.broadcast_host_message = AsyncMock()
+        deps.scheduler_runtime = _scheduler_runtime(
+            canary=CanaryConfig(
+                enabled=True,
+                target_profile="external-canary",
+                scenario_ids=["calendar.round.trip"],
+            )
+        )
+        deps.run_declared_canaries = AsyncMock(
+            return_value=[
+                CanaryRun(
+                    run_id="run-1",
+                    scenario_id="calendar.round.trip",
+                    action_ids=("calendar.event.create",),
+                    target_profile="external-canary",
+                    code_revision="code",
+                    config_revision="config",
+                    started_at="2026-07-16T00:00:00+00:00",
+                    completed_at="2026-07-16T00:01:00+00:00",
+                    outcome=CanaryOutcome.PASSED,
+                    is_recovery=True,
+                )
+            ]
+        )
+        temporal_scheduler.bind_scheduler_deps(deps)
+        try:
+            result = await temporal_scheduler.run_scheduled_canaries()
+        finally:
+            temporal_scheduler.bind_scheduler_deps(None)
+
+        assert result == "completed:1"
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "slack:admin",
+            "Canary recovered: calendar.round.trip on external-canary. "
+            "See /canaries/report for current evidence.",
+        )
+
     @pytest.mark.live
     @pytest.mark.asyncio
     async def test_workflow_executes_activity_through_temporal_worker(
