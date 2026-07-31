@@ -7,6 +7,7 @@ import shutil
 import subprocess  # noqa: S404 - runtime adapter uses fixed no-shell container CLI argv.
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from pynchy.container_labels import (
     AGENT_CONTAINER_LABEL,
@@ -61,9 +62,7 @@ def _container_state(item: dict[str, object]) -> str:
 
 
 def _container_image(item: dict[str, object]) -> str:
-    config = item.get("configuration")
-    if not isinstance(config, dict):
-        return ""
+    config = cast("dict[str, object]", item["configuration"])
     image = config.get("image")
     if isinstance(image, dict):
         reference = image.get("reference")
@@ -72,9 +71,7 @@ def _container_image(item: dict[str, object]) -> str:
 
 
 def _container_labels(item: dict[str, object]) -> dict[str, str]:
-    config = item.get("configuration")
-    if not isinstance(config, dict):
-        return {}
+    config = cast("dict[str, object]", item["configuration"])
     raw = config.get("labels")
     if not isinstance(raw, dict):
         return {}
