@@ -182,6 +182,41 @@ def test_recovers_when_pr_creation_races_with_existing_pr(git_env: dict) -> None
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+def test_reports_pr_creation_failure_when_raced_pr_has_wrong_head(git_env: dict) -> None:
+    """A raced PR with different refs must not be treated as the requested PR."""
+    feature = "pr-create-race-wrong-head"
+    worktree = create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    base_sha = git(git_env["origin"], "rev-parse", "main").stdout.strip()
+    wrong_head = "f" * 40
+    lookup_results = iter(
+        (
+            no_pr_result([]),
+            no_pr_result([]),
+            managed_pr_result([], base_sha=base_sha, head_sha=wrong_head, branch_name=feature),
+        )
+    )
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "gh":
+            if args[1:3] == ["pr", "create"]:
+                return subprocess.CompletedProcess(
+                    args=args, returncode=1, stdout="", stderr="exists"
+                )
+            return next(lookup_results)
+        raise AssertionError(f"unexpected subprocess: {args}")
+
+    with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=fake_run):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": f"Pushed 1 commit(s) to {feature}, but PR creation failed: exists",
+    }
+    assert git(worktree, "rev-parse", "HEAD").stdout.strip() != wrong_head
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
