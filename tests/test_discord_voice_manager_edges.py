@@ -69,6 +69,47 @@ async def test_voice_room_with_only_bots_does_not_activate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_on_ready_rejoins_an_occupied_configured_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.release.set()
+    find_channel = AsyncMock(return_value=voice_channel)
+    monkeypatch.setattr(channel, "find_configured_channel", find_channel)
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    await channel.voice.on_ready()
+
+    find_channel.assert_awaited_once()
+    assert voice_channel.connect_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_voice_on_ready_ignores_non_voice_configurations() -> None:
+    channel = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            chat={"1": {"channels": {"2": {"kind": "text"}}}},
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _message: None,
+        on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.find_configured_channel = AsyncMock()  # type: ignore[method-assign]
+
+    await channel.voice.on_ready()
+
+    channel.find_configured_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_voice_room_disconnects_when_allowed_members_leave(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
