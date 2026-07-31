@@ -96,3 +96,13 @@ def test_gog_receipt_uses_nested_provider_identifier() -> None:
     )
 
     assert receipt.provider_request_id == "nested-message"
+
+
+def test_gog_receipt_hashes_provider_result_without_an_identifier() -> None:
+    action = gog.GOG_HOST_ACTIONS.action_for("gog_gmail_send")
+    assert action is not None
+    assert action.action_intent is not None
+
+    receipt = action.action_intent.receipt_from_response({"result": json.dumps({"status": "sent"})})
+
+    assert receipt.provider_request_id.startswith("gog:")
