@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -54,12 +55,18 @@ async def test_application_reviews_linear_plan_with_current_prompt(
     )
     result = LinearPlanReviewResult(LinearPlanReviewDecision.PROCEED, "Looks good")
     review = AsyncMock(return_value=result)
+    settings = MagicMock()
+    settings.prompts.plan_freshness = "plan-freshness"
+    settings.project_root = Path("/project")
     monkeypatch.setattr(app_module.linear_plan_review, "review_linear_plan", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda name: f"prompt:{name}")
+    monkeypatch.setattr(app_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(app_module, "read_prompt", lambda name, root: f"prompt:{name}:{root}")
+    monkeypatch.setattr(app_module, "resolve_learning_paths", lambda _folder: None)
 
     assert await app.review_linear_plan(request) is result
+    assert app.host_runtime_operations.host_learning_vault("chat") is None
 
-    review.assert_awaited_once_with(app, request, "prompt:plan_freshness")
+    review.assert_awaited_once_with(app, request, "prompt:plan-freshness:/project")
 
 
 async def test_learning_review_drops_queued_callback_after_waiter_cancellation(
