@@ -397,6 +397,7 @@ async def test_request_without_transport_still_requires_remote_auth() -> None:
     )
     middleware = build_control_plane_middleware(runtime)
     request = make_mocked_request("GET", "/status")
+    request._protocol.transport = None
 
     unexpected_handler = AsyncMock(side_effect=AssertionError("request should be denied"))
 
