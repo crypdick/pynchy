@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import NullChannel, make_host_action_catalog, make_settings
@@ -193,6 +193,50 @@ async def test_ipc_adapter_projects_sessions_snapshot_and_context_reset(tmp_path
     session_handler.clear_durable_context.assert_awaited_once_with(app, profile)
     snapshot = settings.data_dir / "ipc" / "project" / "available_groups.json"
     assert snapshot.exists()
+
+
+def test_ipc_adapter_projects_skill_access_status(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    deps = dep_factory.make_ipc_deps(PynchyApp())
+    resolved = MagicMock(denied_skills={"blocked"}, skills=["granted"])
+
+    with patch.object(dep_factory, "get_settings", return_value=settings):
+        with patch.object(dep_factory, "find_personalized_skill_dir", return_value=None):
+            assert deps.skill_access_status("project", "missing") == "unknown"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(dep_factory.workspace_config, "load_resolved_config", return_value=None),
+        ):
+            assert deps.skill_access_status("project", "unavailable") == "unavailable"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+        ):
+            assert deps.skill_access_status("project", "blocked") == "denied"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+            patch.object(dep_factory, "parse_skill_tier", return_value=("granted", "default")),
+            patch.object(dep_factory, "is_skill_selected", return_value=True),
+        ):
+            assert deps.skill_access_status("project", "granted") == "granted"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+            patch.object(dep_factory, "parse_skill_tier", return_value=("available", "default")),
+            patch.object(dep_factory, "is_skill_selected", return_value=False),
+        ):
+            assert deps.skill_access_status("project", "available") == "available"
 
 
 @pytest.mark.asyncio
