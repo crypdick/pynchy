@@ -134,6 +134,47 @@ async def test_endpoint_sync_survives_litellm_list_and_register_failures(
 
 
 @pytest.mark.asyncio
+async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    instance = _instance("browser")
+    calls: list[tuple[str, str]] = []
+
+    async def request(
+        _session: object,
+        _gateway: object,
+        method: str,
+        path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        calls.append((method, path))
+        if method == "GET":
+            return [
+                {
+                    "server_name": "browser",
+                    "url": instance.endpoint_url,
+                    "server_id": "keep",
+                },
+                {"server_name": "browser", "url": "stale", "server_id": ""},
+            ]
+        return True
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+            return_value=_LiteLLMSession(),
+        ),
+        patch("pynchy.host.container_manager.mcp.litellm.api_request", side_effect=request),
+    ):
+        await litellm.sync_mcp_endpoints(gateway, {"browser": instance})
+
+    assert ("POST", "/v1/mcp/server") not in calls
+    assert ("DELETE", "/v1/mcp/server/") not in calls
+
+
+@pytest.mark.asyncio
 async def test_team_is_not_cached_when_virtual_key_creation_fails(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     workspace_teams: dict[str, WorkspaceTeam] = {}
@@ -153,6 +194,30 @@ async def test_team_is_not_cached_when_virtual_key_creation_fails(tmp_path: Path
     with patch(
         "pynchy.host.container_manager.mcp.litellm.api_request",
         side_effect=partial_request,
+    ):
+        await litellm.sync_teams(gateway, {"workspace": ["browser"]}, workspace_teams)
+
+    assert workspace_teams == {}
+
+
+@pytest.mark.asyncio
+async def test_team_is_not_cached_when_team_creation_fails(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    workspace_teams: dict[str, WorkspaceTeam] = {}
+
+    async def failed_creation(
+        _session: object,
+        _gateway: object,
+        _method: str,
+        _path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        return None
+
+    with patch(
+        "pynchy.host.container_manager.mcp.litellm.api_request",
+        side_effect=failed_creation,
     ):
         await litellm.sync_teams(gateway, {"workspace": ["browser"]}, workspace_teams)
 
