@@ -1,4 +1,4 @@
-"""Reject commits that add, edit, rename, or delete docs/superpowers content."""
+"""Reject new or changed docs/superpowers content, but allow its deletion."""
 
 import subprocess  # noqa: S404 - required to inspect the local Git index.
 import sys
@@ -15,7 +15,7 @@ def blocked_paths(filenames: list[str]) -> list[str]:
 def staged_paths() -> list[str]:
     """Return paths in the Git index, rather than prek's optional all-files input."""
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],  # noqa: S607 - Git is required here.
+        ["git", "diff", "--cached", "--diff-filter=d", "--name-only"],  # noqa: S607 - Git is required here.
         check=True,
         capture_output=True,
         text=True,
