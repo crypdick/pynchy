@@ -11,7 +11,7 @@ import discord
 import pytest
 
 from pynchy.config.api import DiscordConnectionConfig
-from pynchy.plugins.api import AudioTranscriptionResult, OutboundEvent, OutboundEventType
+from pynchy.plugins.api import AudioTranscriptionResult
 from pynchy.plugins.channels.discord import DiscordChannel
 from pynchy.plugins.speech.api import SpeechSynthesisResult
 from tests.discord_channel_support import (
@@ -225,10 +225,7 @@ async def test_voice_reply_without_synthesis_provider_is_ignored(
     channel = _configured_voice_channel()
     voice_client = await _activate_voice_session(channel, monkeypatch)
 
-    await channel.send_event(
-        "discord:voice:2",
-        OutboundEvent(type=OutboundEventType.RESULT, content="hello"),
-    )
+    await channel.voice.speak("discord:voice:2", "hello")
 
     assert voice_client.played_audio == []
 
@@ -256,10 +253,7 @@ async def test_voice_reply_skips_failed_synthesis(monkeypatch: pytest.MonkeyPatc
     channel = _configured_voice_channel(FailingSynthesizer())
     voice_client = await _activate_voice_session(channel, monkeypatch)
 
-    await channel.send_event(
-        "discord:voice:2",
-        OutboundEvent(type=OutboundEventType.RESULT, content="hello"),
-    )
+    await channel.voice.speak("discord:voice:2", "hello")
 
     assert voice_client.played_audio == []
 
@@ -276,10 +270,7 @@ async def test_voice_reply_tolerates_disconnected_playback_client(
     voice_client = await _activate_voice_session(channel, monkeypatch)
 
     with patch.object(voice_client, "is_connected", return_value=False):
-        await channel.send_event(
-            "discord:voice:2",
-            OutboundEvent(type=OutboundEventType.RESULT, content="hello"),
-        )
+        await channel.voice.speak("discord:voice:2", "hello")
 
     assert voice_client.played_audio == []
 
@@ -296,10 +287,7 @@ async def test_voice_reply_tolerates_playback_start_failure(
     voice_client = await _activate_voice_session(channel, monkeypatch)
 
     with patch.object(voice_client, "play", side_effect=discord.DiscordException("offline")):
-        await channel.send_event(
-            "discord:voice:2",
-            OutboundEvent(type=OutboundEventType.RESULT, content="hello"),
-        )
+        await channel.voice.speak("discord:voice:2", "hello")
 
     assert voice_client.played_audio == []
 
