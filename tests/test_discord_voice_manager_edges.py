@@ -69,6 +69,18 @@ async def test_voice_room_with_only_bots_does_not_activate() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_room_with_an_allowed_member_activates() -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.release.set()
+    voice_channel.members = [_FakeDiscordUser(42, "Alice")]
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_voice_on_ready_rejoins_an_occupied_configured_room(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -87,6 +99,16 @@ async def test_voice_on_ready_rejoins_an_occupied_configured_room(
 
     find_channel.assert_awaited_once()
     assert voice_channel.connect_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_voice_on_ready_ignores_a_missing_configured_room() -> None:
+    channel = _configured_voice_channel()
+    channel.find_configured_channel = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+    await channel.voice.on_ready()
+
+    channel.find_configured_channel.assert_awaited_once()
 
 
 @pytest.mark.asyncio
