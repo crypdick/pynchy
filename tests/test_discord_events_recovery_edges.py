@@ -68,6 +68,43 @@ async def test_audio_processing_accepts_async_attachment_reads_and_patches_metad
     assert msg.metadata["attachments"][0]["transcription"] == {"success": True}
 
 
+async def test_audio_processing_ignores_patches_for_unknown_attachments():
+    async def process(_request: Any) -> InboundAudioProcessingResult:
+        await asyncio.sleep(0)
+        return InboundAudioProcessingResult(
+            content="processed",
+            metadata_patches=(
+                AudioMetadataPatch(index=1, cached_path="ignored", transcription={"ok": True}),
+            ),
+        )
+
+    audio = DiscordAttachment(
+        id="a1",
+        filename="voice.ogg",
+        url="https://example.invalid/voice.ogg",
+        proxy_url="https://cdn.example.invalid/voice.ogg",
+        content_type="audio/ogg",
+        size=17,
+        description=None,
+        spoiler=False,
+        read=lambda: b"voice",
+    )
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            attachments=(audio,),
+            mentions=(BOT_ID,),
+        ),
+        process_inbound_audio=process,
+        group_policy="open",
+    )
+
+    assert msg.content == "processed"
+    assert "cached_path" not in msg.metadata["attachments"][0]
+
+
 async def test_audio_read_failure_keeps_the_message_deliverable():
     def read_audio() -> bytes:
         raise OSError("attachment disappeared")
