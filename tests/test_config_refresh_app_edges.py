@@ -181,3 +181,44 @@ async def test_failed_live_publication_restores_workspace_profiles(
     assert publish_live_runtime.call_args_list[0].args[0] is candidate
     assert publish_live_runtime.call_args_list[1].args[0] is previous
     assert app.workspaces[profile.jid] is profile
+
+
+async def test_refresh_preserves_profile_when_candidate_config_is_unresolved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_runtime_tree(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    previous = load_runtime_candidate()
+    publish_settings(previous)
+    candidate = load_runtime_candidate()
+    readiness = StartupReadiness()
+    readiness.mark_ready()
+    profile = WorkspaceProfile(
+        jid="test@g.us",
+        name="Test",
+        folder="test",
+        trigger="@Pynchy",
+    )
+    app = _ConfigRefreshApp(readiness, object())
+    app.workspaces = {profile.jid: profile}
+    app.queue = Mock(
+        pause_runtime_policy=AsyncMock(),
+        resume_runtime_policy=Mock(),
+    )
+    persist_profiles = AsyncMock()
+
+    monkeypatch.setattr(app_module, "load_resolved_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app_module, "set_workspace_profiles", persist_profiles)
+    monkeypatch.setattr(app_module, "publish_settings", Mock())
+    monkeypatch.setattr(app, "_publish_live_runtime", Mock())
+    monkeypatch.setattr(app, "_retire_runtime_policy_sessions", AsyncMock())
+
+    await app.apply_config_candidate(
+        candidate,
+        affected_workspaces=("test",),
+        reconcile_automations=False,
+    )
+
+    assert persist_profiles.await_args_list == [call((profile,))]
+    assert app.workspaces[profile.jid] is profile
