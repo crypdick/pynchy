@@ -58,6 +58,9 @@ else:
     DiscordChannel = object
 
 
+_QUEUE_APPLICATION_COMMANDS = ("q", "queue", "btw")
+
+
 def _author_names(message: DiscordInboundMessage) -> frozenset[str]:
     names = {
         value
@@ -363,6 +366,26 @@ class DiscordEvents:
                 )
             )
 
+        def queue_callback(command_name: str) -> Callable[[discord.Interaction, str], Any]:
+            async def handler(interaction: discord.Interaction, message: str) -> None:
+                await self.handle_application_command(
+                    interaction, command_name, {"message": message}
+                )
+
+            return handler
+
+        for name in _QUEUE_APPLICATION_COMMANDS:
+            command_callback = app_commands.describe(message="Queue follow-up")(
+                queue_callback(name)
+            )
+            tree.add_command(
+                app_commands.Command(
+                    name=name,
+                    description="Queue a follow-up without interrupting the current turn",
+                    callback=command_callback,
+                )
+            )
+
         def approval_callback(
             selected_command: str,
         ) -> Callable[[discord.Interaction, str], Any]:
@@ -424,15 +447,21 @@ class DiscordEvents:
                 return
 
         command_options = dict(options or {})
-        content = f"/{command_name.replace('_', '-')}"
-        if short_id := command_options.get("short_id"):
-            content = f"{content} {short_id}"
-        sender = interaction.user
-        sender_name = getattr(sender, "display_name", None) or str(sender)
+        if command_name in _QUEUE_APPLICATION_COMMANDS:
+            queued_message = command_options.get("message", "").strip()
+            if not queued_message:
+                await self._respond_to_application_command(interaction, "❌ Message required")
+                return
+            content = f"btw {queued_message}"
+            acknowledgement = f"✅ /{command_name} queued"
+        else:
+            content = f"/{command_name.replace('_', '-')}"
+            if short_id := command_options.get("short_id"):
+                content = f"{content} {short_id}"
+            acknowledgement = f"✅ {content} received"
+        sender_name = getattr(interaction.user, "display_name", None) or str(interaction.user)
         created = getattr(interaction, "created_at", None)
-        timestamp = (
-            created.isoformat() if isinstance(created, datetime) else datetime.now(UTC).isoformat()
-        )
+        timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
         metadata: dict[str, Any] = {
             "discord_interaction_id": interaction_id,
             "discord_channel_name": ctx.channel_name or "",
@@ -457,7 +486,7 @@ class DiscordEvents:
                 metadata=metadata,
             ),
         )
-        await self._respond_to_application_command(interaction, f"✅ {content} received")
+        await self._respond_to_application_command(interaction, acknowledgement)
 
     async def _respond_to_application_command(
         self, interaction: discord.Interaction, content: str

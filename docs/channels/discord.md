@@ -86,6 +86,8 @@ controls do not depend on message text or the Message Content Intent:
 - `/redeploy`
 - `/pending`
 - `/approve short_id` and `/deny short_id`
+- `/q message`, `/queue message`, and `/btw message` to queue a follow-up without
+  interrupting the current turn
 
 Commands are registered globally when the bot connects. Discord can take time to
 propagate global command updates. Configured Discord magic-phrase controls are
