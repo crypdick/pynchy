@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
@@ -18,13 +19,17 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     acquire_work_item_lease,
     configure_linear_work_item_runtime,
     linear_client,
+    reconcile_work_item,
     state_id,
+    transition_linked_work_item,
     workspace_issue,
 )
 from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransition,
+    WorkItemTransitionRequest,
     WorkItemTransitionStatus,
 )
 from tests.linear_work_items_support import _board, _issue
@@ -56,6 +61,7 @@ def _runtime(
     get_active_execution: AsyncMock | None = None,
     create_claim: AsyncMock | None = None,
     resolve_transition: AsyncMock | None = None,
+    begin_transition: AsyncMock | None = None,
 ) -> LinearWorkItemRuntime:
     return LinearWorkItemRuntime(
         get_transition_by_request=get_transition_by_request or AsyncMock(return_value=None),
@@ -63,7 +69,7 @@ def _runtime(
         get_active_execution=get_active_execution or AsyncMock(return_value=None),
         create_claim=create_claim or AsyncMock(),
         claim_request=AsyncMock(),
-        begin_transition=AsyncMock(),
+        begin_transition=begin_transition or AsyncMock(),
         transition_resolution=Mock(),
         resolve_transition=resolve_transition or AsyncMock(),
         resolve_transition_if_lifecycle_current=AsyncMock(),
@@ -210,6 +216,131 @@ async def test_interrupted_succeeded_lease_is_idempotent() -> None:
     )
 
     assert await acquire_work_item_lease(_Client(None), _request()) == execution
+
+
+async def test_interrupted_lease_fails_if_its_execution_disappeared() -> None:
+    configure_linear_work_item_runtime(
+        _runtime(
+            get_transition_by_request=AsyncMock(return_value=_transition()),
+            get_execution=AsyncMock(return_value=None),
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="transition lost its execution"):
+        await acquire_work_item_lease(_Client(None), _request())
+
+
+async def test_interrupted_lease_rejects_a_request_owned_by_another_execution() -> None:
+    execution = replace(_execution(), workspace="other")
+    configure_linear_work_item_runtime(
+        _runtime(
+            get_transition_by_request=AsyncMock(return_value=_transition()),
+            get_execution=AsyncMock(return_value=execution),
+        )
+    )
+
+    with pytest.raises(ValueError, match="belongs to another execution"):
+        await acquire_work_item_lease(_Client(None), _request())
+
+
+async def test_claim_conflict_can_resume_the_matching_pending_lease() -> None:
+    execution = _execution()
+    transition = _transition()
+    configure_linear_work_item_runtime(
+        _runtime(
+            get_transition_by_request=AsyncMock(side_effect=[None, transition]),
+            get_active_execution=AsyncMock(return_value=None),
+            create_claim=AsyncMock(side_effect=WorkItemClaimConflictError(execution)),
+        )
+    )
+
+    assert await acquire_work_item_lease(_Client(_issue()), _request(board=_board())) == execution
+
+
+async def test_interrupted_lease_records_provider_state_conflict() -> None:
+    execution = _execution()
+    transition = replace(_transition(), status=WorkItemTransitionStatus.PENDING)
+    resolve = AsyncMock(return_value=execution)
+    configure_linear_work_item_runtime(
+        _runtime(
+            get_transition_by_request=AsyncMock(return_value=transition),
+            get_execution=AsyncMock(return_value=execution),
+            resolve_transition=resolve,
+        )
+    )
+
+    result = await acquire_work_item_lease(
+        _Client(_issue(state_id="state-follow-ups")),
+        _request(board=_board()),
+    )
+
+    assert result == execution
+    assert resolve.await_args.kwargs["transition_status"] is WorkItemTransitionStatus.CONFLICT
+
+
+async def test_unknown_claim_recovery_fails_if_execution_disappeared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transition = replace(_transition(), status=WorkItemTransitionStatus.UNKNOWN)
+    configure_linear_work_item_runtime(_runtime(get_execution=AsyncMock(return_value=None)))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.require_workspace_board",
+        AsyncMock(return_value=_board()),
+    )
+
+    with pytest.raises(RuntimeError, match="transition lost its execution"):
+        await reconcile_work_item(_Client(_issue()), "pynchy", "issue-1", transition)
+
+
+async def test_transition_fails_closed_when_provider_issue_disappears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _execution()
+    client = _Client(_issue())
+    client.get_issue = AsyncMock(side_effect=[_issue(), None])  # type: ignore[method-assign]
+    transition = replace(_transition(), status=WorkItemTransitionStatus.PENDING)
+    resolve = AsyncMock(return_value=execution)
+    configure_linear_work_item_runtime(
+        _runtime(
+            begin_transition=AsyncMock(return_value=transition),
+            resolve_transition=resolve,
+        )
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.require_workspace_board",
+        AsyncMock(return_value=_board()),
+    )
+
+    request = WorkItemTransitionRequest(
+        execution=execution,
+        request_id="move-1",
+        operation="move",
+        target_status="awaiting_review",
+        result_execution_status=WorkItemExecutionStatus.AWAITING_REVIEW,
+    )
+    assert (
+        await transition_linked_work_item(
+            client,
+            "pynchy",
+            "issue-1",
+            request,
+            {"human_approved"},
+        )
+        == execution
+    )
+    assert resolve.await_args.kwargs["execution_status"] is WorkItemExecutionStatus.UNKNOWN
+
+
+async def test_new_lease_fails_closed_when_claim_transition_is_missing() -> None:
+    execution = _execution()
+    configure_linear_work_item_runtime(
+        _runtime(
+            create_claim=AsyncMock(return_value=execution),
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="claim transition is missing"):
+        await acquire_work_item_lease(_Client(_issue()), _request(board=_board()))
 
 
 @pytest.mark.parametrize(
