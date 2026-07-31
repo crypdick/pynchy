@@ -259,6 +259,40 @@ async def test_human_approved_admission_ignores_claim_conflicts(
     )
 
 
+async def test_unplanned_human_approved_admission_ignores_lease_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_linear_work_item_task_runtime(_runtime())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.acquire_work_item_lease",
+        AsyncMock(side_effect=WorkItemClaimConflictError(_execution())),
+    )
+    payload = _issue(
+        "issue-approved",
+        "SYN-10",
+        "Start approved work",
+        "human_approved",
+        "project-beta",
+    )
+    issue = DecisionIssue.from_payload(payload)
+    assert issue is not None
+
+    assert (
+        await admit_decision_issue(
+            issue,
+            _Workspace("beta", "Beta", "linear:beta"),
+            _board("project-beta"),
+            HUMAN_APPROVED_STATUS,
+            _context(_DecisionClient()),
+        )
+        is None
+    )
+
+
 async def test_human_approved_admission_ignores_non_running_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
