@@ -243,6 +243,21 @@ async def test_application_routes_inbound_messages_and_interaction_answers(
     update_offer.assert_awaited_once_with("request-1", {"answer": "yes"}, app)
 
 
+async def test_application_routes_non_update_offer_answers_to_ask_user_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    update_offer = AsyncMock(return_value=False)
+    ask_user = AsyncMock()
+    monkeypatch.setattr(app_module.update_offer, "handle_update_offer_answer", update_offer)
+    monkeypatch.setattr(app_module.ask_user_handler, "handle_ask_user_answer", ask_user)
+
+    await app.on_ask_user_answer("request-1", {"answer": "yes"})
+
+    update_offer.assert_awaited_once_with("request-1", {"answer": "yes"}, app)
+    ask_user.assert_awaited_once_with("request-1", {"answer": "yes"}, app)
+
+
 def test_application_delegates_filtering_and_idle_callback_registration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -411,3 +426,12 @@ async def test_application_runs_declared_canaries_through_the_canary_adapter(
         scenario_ids=("scenario",),
         scheduler_deps=app,
     )
+
+
+async def test_application_skips_linear_reconciliation_without_configured_boards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    monkeypatch.setattr(app_module, "linear_workspace_boards", dict)
+
+    assert await app.reconcile_linear_work_items() is None
