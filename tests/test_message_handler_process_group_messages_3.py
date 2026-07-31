@@ -632,3 +632,19 @@ async def test_message_loop_does_not_run_channel_reconciliation_locally():
         await _run_loop_once(deps)
 
     deps.catch_up_channels.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_message_loop_does_not_start_agent_for_host_only_messages():
+    deps = _make_deps()
+    host_message = _make_message("host notice", message_id="host-only")
+    host_message.message_type = "host"
+
+    with (
+        patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([host_message], "poll-ts")),
+        patch(_PR_MSGS_SINCE, new_callable=AsyncMock, return_value=[host_message]),
+        patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
+    ):
+        await _run_loop_once(deps)
+
+    deps.run_agent.assert_not_awaited()
