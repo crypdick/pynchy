@@ -7,6 +7,8 @@ import json
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from pynchy.host.container_manager.api import RepoMountResolution
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
@@ -29,8 +31,23 @@ if TYPE_CHECKING:
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
 
+@pytest.mark.parametrize(
+    ("resolution_notices", "extra_system_notices", "expected_notices"),
+    [
+        (
+            ("repository recovered with local changes",),
+            None,
+            ["repository recovered with local changes"],
+        ),
+        ((), ["existing system notice"], ["existing system notice"]),
+    ],
+)
 async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
-    app: PynchyApp, tmp_path: Path
+    app: PynchyApp,
+    tmp_path: Path,
+    resolution_notices: tuple[str, ...],
+    extra_system_notices: list[str] | None,
+    expected_notices: list[str],
 ):
     fake_proc = FakeProcess(
         output={
@@ -47,9 +64,7 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
     configure_container_spawn_runtime(
         container_cli="docker",
         ensure_agent_image=lambda **_kwargs: None,
-        resolve_repo_mounts=lambda _folder, _repos: RepoMountResolution(
-            notices=("repository recovered with local changes",)
-        ),
+        resolve_repo_mounts=lambda _folder, _repos: RepoMountResolution(notices=resolution_notices),
     )
     group = app.workspaces["group@g.us"]
 
@@ -73,6 +88,7 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
                 group,
                 "group@g.us",
                 [{"message_type": "user", "content": "check repository"}],
+                extra_system_notices=extra_system_notices,
                 repo_access_override="owner/pynchy",
             ),
         )
@@ -82,7 +98,7 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
     initial_input = json.loads(
         (tmp_path / "data" / "ipc" / "test-group" / "input" / "initial.json").read_text()
     )
-    assert initial_input["system_notices"] == ["repository recovered with local changes"]
+    assert initial_input["system_notices"] == expected_notices
 
 
 async def test_app_skips_optional_mcp_start_when_manager_is_unconfigured(
@@ -94,3 +110,19 @@ async def test_app_skips_optional_mcp_start_when_manager_is_unconfigured(
     )
 
     assert await app.container_agent_operations.ensure_workspace_mcp("test-group") == ()
+
+
+async def test_app_ensures_optional_mcp_start_when_manager_is_configured(
+    app: PynchyApp, monkeypatch
+) -> None:
+    manager = MagicMock()
+    manager.ensure_workspace_running = AsyncMock(
+        return_value=McpWorkspaceStartup(("docs-instance",), ())
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.app.get_mcp_manager",
+        lambda: manager,
+    )
+
+    assert await app.container_agent_operations.ensure_workspace_mcp("test-group") == ()
+    manager.ensure_workspace_running.assert_awaited_once_with("test-group")
