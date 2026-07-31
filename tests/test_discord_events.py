@@ -336,6 +336,27 @@ async def test_application_command_becomes_an_intent_message_without_phrase_matc
     }
     assert responses == [("✅ /reset received", True)]
 
+    queue_interaction = _ApplicationInteraction(
+        id=43,
+        user=interaction.user,
+        guild=interaction.guild,
+        channel=interaction.channel,
+        created_at=None,
+        response=_ApplicationResponse(send_message=AsyncMock()),
+    )
+    queue_interaction.response.send_message.side_effect = record_response
+
+    await channel.events.handle_application_command(
+        queue_interaction, "q", {"message": "include the logs"}
+    )
+
+    assert delivered[1][1].content == "btw include the logs"
+    assert delivered[1][1].metadata["application_command"] == {
+        "name": "q",
+        "options": {"message": "include the logs"},
+    }
+    assert responses[-1] == ("✅ /q queued", True)
+
 
 def test_discord_registers_native_application_commands():
     channel = DiscordChannel(
@@ -356,14 +377,20 @@ def test_discord_registers_native_application_commands():
     commands = {command.name: command.to_dict(tree) for command in tree.get_commands()}
     assert set(commands) == {
         "approve",
+        "btw",
         "deny",
         "end-session",
         "pause",
         "pending",
+        "q",
+        "queue",
         "redeploy",
         "reset",
     }
     assert commands["approve"]["options"][0]["name"] == "short_id"
+    for name in ("btw", "q", "queue"):
+        assert commands[name]["options"][0]["name"] == "message"
+        assert commands[name]["options"][0]["required"] is True
 
 
 async def test_reply_context_is_preserved_in_message_metadata():
