@@ -44,9 +44,6 @@ class _SchedulerDeps:
     def automation_memory_dir(self, _task_id: str):
         return nullcontext(None)
 
-    def sync_automation_memory(self, _task_id: str) -> None:
-        pass
-
 
 @pytest.fixture(autouse=True)
 async def _setup_db(tmp_path):
@@ -192,12 +189,9 @@ class TestHostJobScheduling:
     async def test_temporal_config_host_job_skips_missing_definition(self):
         assert await run_config_host_cron_job("missing-job") == "skipped"
 
-    @patch.object(_SchedulerDeps, "sync_automation_memory")
     @patch.object(_SchedulerDeps, "automation_memory_dir")
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
-    async def test_temporal_database_host_job_memory_opt_out(
-        self, mock_shell, memory_context, sync_memory
-    ):
+    async def test_temporal_database_host_job_memory_opt_out(self, mock_shell, memory_context):
         mock_shell.return_value = ShellResult(returncode=0, stdout="", stderr="")
         await create_host_job(
             {
@@ -218,7 +212,6 @@ class TestHostJobScheduling:
 
         assert mock_shell.await_args.kwargs["env"] is None
         memory_context.assert_not_called()
-        sync_memory.assert_not_called()
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_failure_is_not_recorded_as_success(

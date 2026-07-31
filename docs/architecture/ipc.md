@@ -150,7 +150,6 @@ Service requests pass through the [security policy middleware](security.md) befo
 Current service tools:
 
 - **Calendar** — `list_calendars`, `list_calendar`, `create_event`, `delete_event` (CalDAV plugin)
-- **Memory** — `save_memory`, `recall_memories`, `forget_memory`, `list_memories` (sqlite-memory plugin)
 
 ## Security Requests
 

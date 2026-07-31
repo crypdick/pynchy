@@ -34,12 +34,6 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         "delete_event",
         canary="calendar.round.trip",
     ),
-    agent_action("memory.save", "sqlite-memory", "Create or update a memory.", "save_memory"),
-    agent_action(
-        "memory.recall", "sqlite-memory", "Retrieve relevant memories.", "recall_memories"
-    ),
-    agent_action("memory.forget", "sqlite-memory", "Delete a memory.", "forget_memory"),
-    agent_action("memory.list", "sqlite-memory", "List memories in a workspace.", "list_memories"),
     agent_action("task.list", "agent-tools", "List scheduled tasks.", "list_tasks"),
     agent_action("task.pause", "agent-tools", "Pause a scheduled task.", "pause_task"),
     agent_action("task.resume", "agent-tools", "Resume a scheduled task.", "resume_task"),

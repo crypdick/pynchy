@@ -98,7 +98,7 @@ one only for interactive diagnosis:
 uv run python scripts/runtime_harness.py setup
 ```
 
-The harness initializes `messages.db` and `memories.db`, starts a dedicated Temporal server, and
+The harness initializes `messages.db`, starts a dedicated Temporal server, and
 launches Pynchy with namespaced LiteLLM, PostgreSQL, and deterministic OpenAI sidecar containers.
 PostgreSQL uses a namespaced Docker volume so container ownership cannot prevent worktree removal.
 Generated configuration, logs, process state, and databases remain ignored inside the feature

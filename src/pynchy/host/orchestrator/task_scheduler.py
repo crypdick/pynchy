@@ -213,8 +213,6 @@ async def _finish_scheduled_agent_run(  # noqa: PLR0913 - scheduler completion n
     error: str | None,
     turn_id: str | None = None,
 ) -> TurnOutcome:
-    if task.memory_enabled:
-        deps.sync_automation_memory(task.id)
     outcome = await classify_scheduled_agent_outcome(deps, task.id, result=result, error=error)
     logger.info(
         "Task completed",

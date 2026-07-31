@@ -6,9 +6,9 @@ Contributions welcome. Here's how to get involved.
 
 ### Plugins (the main path)
 
-Pynchy uses a [plugin architecture](../plugins/index.md) with ten hook
-categories — agent cores, service handlers, skills, channels, container
-runtimes, tunnels, observers, memory backends, MCP servers, and workspaces.
+Pynchy uses a [plugin architecture](../plugins/index.md) with hook categories
+for agent cores, service handlers, skills, channels, container runtimes,
+tunnels, observers, MCP servers, and workspaces.
 Most new functionality belongs in a plugin, which keeps the core stable and
 lets users pick exactly what they want.
 

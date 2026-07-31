@@ -147,8 +147,6 @@ async def _run_database_host_job(
     log_shell_result(result, label="Database host job", job_id=job.id)
     _raise_for_failed_command(result, job.id)
 
-    if job.memory_enabled:
-        scheduler_deps.sync_automation_memory(job.id)
     await record_host_job_completion(job.id, completed=job.schedule_type == "once")
 
 

@@ -81,9 +81,7 @@ async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path
     monkeypatch.setattr(lifecycle, "initialize_deployment_state", AsyncMock())
     monkeypatch.setattr(lifecycle, "current_deploy_revision", MagicMock(return_value="revision"))
     monkeypatch.setattr(lifecycle, "attach_observers", MagicMock(return_value=[]))
-    monkeypatch.setattr(lifecycle, "get_memory_provider", MagicMock(return_value=None))
     monkeypatch.setattr(app, "attach_observers", MagicMock())
-    monkeypatch.setattr(app, "set_memory_provider", AsyncMock())
     monkeypatch.setattr(app, "load_state", AsyncMock())
 
     with pytest.raises(_CoreStopError):
@@ -94,7 +92,6 @@ async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path
     lifecycle.gateway_manager.start_gateway.assert_awaited_once_with(plugin_manager=plugin_manager)
     lifecycle.init_database.assert_awaited_once()
     app.attach_observers.assert_called_once_with([])
-    app.set_memory_provider.assert_awaited_once_with(None)
     app.load_state.assert_awaited_once_with()
 
 

@@ -214,7 +214,6 @@ trap finish_after_error EXIT
 
 dbs=(
   messages.db
-  memories.db
   neonize.db
 )
 

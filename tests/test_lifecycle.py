@@ -102,13 +102,11 @@ async def test_run_app_resolves_pynchyapp_runtime_annotation(monkeypatch):
         await lifecycle.run_app(PynchyApp())
 
 
-@pytest.mark.asyncio
-async def test_pynchyapp_startup_annotations_resolve() -> None:
+def test_pynchyapp_startup_annotations_resolve() -> None:
     app = PynchyApp()
 
     app.session_cleared.add("admin")
     app.attach_observers([])
-    await app.set_memory_provider(None)
 
     assert app.session_cleared == {"admin"}
 

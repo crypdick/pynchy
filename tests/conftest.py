@@ -91,10 +91,8 @@ from pynchy.host.learning.api import (
     LearningPathsRuntime,
     configure_learning_paths_runtime,
     prepare_agent_homes,
-    prepare_vault_mount_root,
     resolve_learning_paths,
 )
-from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
     SkillActivationRuntime,
     configure_skill_activation_runtime,
@@ -219,7 +217,6 @@ def configure_learning_paths_for(settings: Settings) -> None:
             vault_mount_path=settings.learning.obsidian.mount_path,
             default_profile_root=settings.learning.obsidian.default_profile_root,
             memory_dir_name=settings.learning.obsidian.memory_dir_name,
-            data_dir=settings.data_dir,
             profile_for_workspace=profile_for_workspace,
         )
     )
@@ -452,11 +449,7 @@ def reset_settings(monkeypatch):
             return AgentHomeMounts(
                 claude_home=homes.claude_home,
                 codex_home=homes.codex_home,
-                vault_mount_root=(
-                    prepare_vault_mount_root(homes.learning_paths)
-                    if homes.learning_paths is not None
-                    else None
-                ),
+                vault_mount_root=homes.learning_paths.vault_root if homes.learning_paths else None,
                 vault_mount_path=(
                     homes.learning_paths.vault_mount_path
                     if homes.learning_paths is not None
@@ -597,7 +590,6 @@ def reset_settings(monkeypatch):
                 redact_git_diagnostic=redact_git_diagnostic,
             )
         )
-        configure_vault_mount_mirror(enabled=False)
         yield
 
 

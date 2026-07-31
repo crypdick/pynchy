@@ -196,9 +196,6 @@ class MockSchedulerDeps:
     def automation_memory_dir(self, _task_id: str):
         return contextlib.nullcontext(None)
 
-    def sync_automation_memory(self, _task_id: str) -> None:
-        pass
-
     async def save_state(self) -> None:
         return None
 

@@ -122,7 +122,6 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "notebook",
     ),
     ("pynchy.plugins.observers.sqlite_observer", "SqliteObserverPlugin", "sqlite-observer"),
-    ("pynchy.plugins.memory.sqlite_memory", "SqliteMemoryPlugin", "sqlite-memory"),
 ]
 
 
@@ -235,9 +234,9 @@ def collect_hook_results[T](
     logged and skipped.
 
     Args:
-        hook_attr: Name of the hook attribute on ``pm.hook`` (e.g. ``"pynchy_memory"``).
+        hook_attr: Name of the hook attribute on ``pm.hook``.
         validator: Callable that returns ``True`` for valid hook results.
-        label: Human-readable label for log messages (e.g. ``"memory"``).
+        label: Human-readable label for log messages.
         pm: Optional pre-existing plugin manager.  If ``None``, calls
             :func:`get_plugin_manager`.
     """

@@ -62,7 +62,6 @@ from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
     attach_observers,
-    get_memory_provider,
     get_plugin_manager,
     initialize_host_action_catalog,
     load_channels,
@@ -133,7 +132,6 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 async def _close_runtime_resources(app: PynchyApp) -> None:
     await app.connection_runtime_owner.close()
     await app.close_observers()
-    await app.close_memory_provider()
     batcher = output_handler.get_trace_batcher()
     if batcher is not None:
         await batcher.flush_all()
@@ -180,7 +178,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
 
 async def _initialize_core(app: PynchyApp) -> None:
-    """Plugins, gateway, database, observers, memory, state."""
+    """Plugins, gateway, database, observers, and state."""
     settings = get_settings()
 
     service_installer.install_service(settings.project_root)
@@ -216,10 +214,6 @@ async def _initialize_core(app: PynchyApp) -> None:
     logger.info("Database initialized")
 
     app.attach_observers(attach_observers(app.plugin_manager, app.event_bus))
-
-    await app.set_memory_provider(
-        get_memory_provider(app.plugin_manager, settings.data_dir / "memories.db")
-    )
     await app.load_state()
 
 

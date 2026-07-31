@@ -25,8 +25,6 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from pynchy.config import reset_settings
-from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 from pynchy.state.schema import create_schema
 
 if TYPE_CHECKING:
@@ -73,7 +71,7 @@ _PROCESS_SUPERVISOR_SCRIPT = '"$@" &\nchild=$!\nwait "$child"\n'
 _PROCESS_PID_KEYS = ("pynchy_pid", "temporal_pid")
 _FAILED_SETUP_ARCHIVE_LIMIT = 5
 _FEATURE_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")
-_RUNTIME_DATABASE_NAMES = ("messages.db", "memories.db", "temporal.db")
+_RUNTIME_DATABASE_NAMES = ("messages.db", "temporal.db")
 _RUNTIME_CONTAINER_SUFFIXES = (
     "pynchy",
     "litellm",
@@ -392,13 +390,6 @@ async def _initialize_databases(root: Path) -> None:
             ),
         )
         await database.commit()
-    reset_settings()
-    memory = SqliteMemoryBackend(data_dir / "memories.db")
-    try:
-        await memory.init()
-    finally:
-        await memory.close()
-        reset_settings()
 
 
 def _reset_runtime_databases(root: Path) -> None:

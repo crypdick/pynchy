@@ -181,7 +181,7 @@ class TestRunScheduledAgent:
         assert run["messages"][0]["sender"] == "scheduled_task"
 
     @pytest.mark.asyncio
-    async def test_memory_opt_out_skips_directory_and_sync(
+    async def test_memory_opt_out_skips_directory(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
         task = replace(sample_task, memory_enabled=False)
@@ -192,11 +192,6 @@ class TestRunScheduledAgent:
                 mock_deps,
                 "automation_memory_dir",
                 side_effect=AssertionError("memory directory must stay disabled"),
-            ),
-            patch.object(
-                mock_deps,
-                "sync_automation_memory",
-                side_effect=AssertionError("disabled memory must not sync"),
             ),
             patch(
                 "pynchy.host.orchestrator.task_scheduler.log_task_run",

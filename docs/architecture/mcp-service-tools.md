@@ -2,7 +2,9 @@
 
 How host-side service tools work — tools that agents invoke via MCP but that run on the host process rather than inside the container. Use this page to build plugins that give agents access to host resources (calendars, databases, external APIs) while keeping security boundaries intact.
 
-MCP service tool handlers are pluggable. The built-in CalDAV plugin provides calendar tools and the memory plugin provides memory tools. Additional host-side tools can be added via plugins.
+MCP service tool handlers are pluggable. Built-in handlers provide calendar,
+Google setup, and Gog tools. Additional host-side tools can be added via
+plugins.
 
 ## How Service Tools Work
 
@@ -67,7 +69,6 @@ for the full descriptor shape.
 | `caldav` | `list_calendars`, `list_calendar`, `create_event`, `delete_event` | CalDAV calendar access (Nextcloud, etc.) |
 | `google-setup` | `setup_google_{profile}` | Idempotent Google setup — GCP project, API enablement, OAuth authorization. One tool per chrome profile. ([guide](../integrations/google/index.md)) |
 | `gog` | `gog_*` | Reviewed host-only Gmail, Contacts, Docs, and Sheets operations. ([guide](../integrations/google/workspace-gog.md)) |
-| `sqlite-memory` | `save_memory`, `recall_memories`, `forget_memory`, `list_memories` | Per-group persistent memory |
 
 For the full IPC protocol that carries service requests, see [IPC](ipc.md#service-requests).
 
