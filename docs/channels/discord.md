@@ -72,6 +72,7 @@ configuration.
 - Guild channels, threads, and DMs
 - Inbound and outbound reactions
 - Streaming responses with safe 2,000-character splitting
+- Interactive `ask_user` prompts with buttons, selects, and multi-question modals
 - Safe mention defaults that never ping `@everyone` unless asked
 - History catch-up after reconnect
 
