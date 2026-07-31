@@ -103,6 +103,24 @@ class TestSlackConfiguredChats:
         app.client.conversations_join.assert_awaited_once_with(channel="C12345")
 
     @pytest.mark.asyncio
+    async def test_sync_allowed_channels_finds_a_configured_chat_on_a_later_page(self) -> None:
+        channel = make_slack_channel()
+        app = attach_slack_app(channel)
+        app.client.conversations_list.side_effect = [
+            {"channels": [], "response_metadata": {"next_cursor": "next-page"}},
+            {
+                "channels": [{"id": "C987", "name": "general"}],
+                "response_metadata": {"next_cursor": ""},
+            },
+        ]
+
+        await channel.sync_allowed_channels()
+
+        assert channel.owns_jid("slack:C987") is True
+        app.client.conversations_join.assert_awaited_once_with(channel="C987")
+        assert app.client.conversations_list.await_args_list[1].kwargs["cursor"] == "next-page"
+
+    @pytest.mark.asyncio
     async def test_sync_allowed_channels_creates_a_missing_configured_chat(self) -> None:
         channel = SlackChannel(
             connection_name="connection.slack.main",
