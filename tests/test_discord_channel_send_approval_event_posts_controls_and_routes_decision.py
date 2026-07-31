@@ -145,6 +145,16 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 
 
 @pytest.mark.asyncio
+async def test_approval_button_rejects_an_unattached_view():
+    _channel_instance, view = await _approval_view(callback=MagicMock())
+    button = view.children[0]
+    view.remove_item(button)
+
+    with pytest.raises(RuntimeError, match="before the view was attached"):
+        await button.callback(_interaction())
+
+
+@pytest.mark.asyncio
 async def test_empty_approval_event_does_not_send_an_empty_message():
     ch = _channel()
     ch.client = object()
