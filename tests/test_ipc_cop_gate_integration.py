@@ -22,6 +22,7 @@ from conftest import init_test_database, make_settings
 
 from pynchy.config.api import CommandCenterConfig
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.state import get_all_host_jobs, get_all_tasks
 from pynchy.workspace.api import WorkspaceProfile
@@ -338,6 +339,35 @@ class TestSyncWorktreeCopGate:
 class TestRegisterGroupCopGate:
     """register_group should call cop_gate and block on flag."""
 
+    async def test_valid_receipt_registers_without_rechecking_cop(self, deps):
+        """A valid approval receipt authorizes registration without another gate."""
+        with (
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+            ) as mock_cop,
+        ):
+            await dispatch(
+                {
+                    "type": "register_group",
+                    "jid": "approved@g.us",
+                    "name": "Approved Group",
+                    "folder": "approved",
+                    "trigger": "@pynchy",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        mock_cop.assert_not_awaited()
+        assert deps.workspaces()["approved@g.us"].name == "Approved Group"
+
     async def test_blocked_by_cop_skips_registration(self, deps):
         """When cop_gate returns False, register_workspace is not called."""
         with patch(
@@ -421,6 +451,36 @@ class TestRegisterGroupCopGate:
 
 class TestCreatePeriodicAgentCopGate:
     """create_periodic_agent should call cop_gate and block on flag."""
+
+    async def test_valid_receipt_creates_without_rechecking_cop(self, deps):
+        """A valid approval receipt authorizes creation without another gate."""
+        deps.create_periodic_agent = AsyncMock()
+        with (
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+            ) as mock_cop,
+        ):
+            await dispatch(
+                {
+                    "type": "create_periodic_agent",
+                    "name": "approved-agent",
+                    "profile": "pynchy-worker",
+                    "schedule": "0 9 * * *",
+                    "prompt": "Do good things",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        mock_cop.assert_not_awaited()
+        deps.create_periodic_agent.assert_awaited_once()
 
     async def test_blocked_by_cop_creates_nothing(self, deps, tmp_path):
         """When cop_gate returns False, no folder, config, or task is created."""
