@@ -182,7 +182,8 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(
         "linear.workitem.reconcile",
         "linear",
-        "Reconcile an uncertain Linear work-item transition from provider state.",
+        "Reconcile an uncertain or reviewed conflicted Linear work-item transition "
+        "from provider state.",
         "linear_reconcile_work_item",
     ),
     mcp_action(

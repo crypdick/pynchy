@@ -67,7 +67,7 @@ class LinearWorkItemsRuntime:
     get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
     get_in_flight_turn: Callable[[str], Awaitable[Any]]
     bind_execution_to_turn: Callable[..., Awaitable[WorkItemExecution]]
-    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
+    get_latest_reconcilable_transition: Callable[[str], Awaitable[Any]]
 
 
 @dataclass
@@ -300,7 +300,7 @@ async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
     execution = await runtime.get_execution_for_issue(issue_id, workspace=workspace)
     if execution is None:
         return {"error": _ACTIVE_EXECUTION_REQUIRED}
-    transition = await runtime.get_latest_unresolved_transition(execution.id)
+    transition = await runtime.get_latest_reconcilable_transition(execution.id)
     if transition is None:
         return {"error": _UNKNOWN_TRANSITION_REQUIRED}
     try:

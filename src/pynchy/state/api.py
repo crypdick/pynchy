@@ -1,3 +1,4 @@
+# allow: file-length - facade re-exports are state package's enforced public surface.
 """Public API for the built-in SQLite state package.
 # allow: file-length - curated state facade preserves one explicit cross-package surface.
 
@@ -252,6 +253,7 @@ from pynchy.state.work_item_terminal_recovery import (
 from pynchy.state.work_item_transitions import (
     begin_work_item_transition,
     begin_work_item_transition_if_lifecycle_current,
+    get_latest_reconcilable_work_item_transition,
     get_latest_unresolved_work_item_transition,
     get_work_item_transition_by_request,
     resolve_work_item_transition,
@@ -458,6 +460,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "cancel_work_item_execution_if_lifecycle_current",
     "create_work_item_claim",
     "get_active_work_item_execution",
+    "get_latest_reconcilable_work_item_transition",
     "get_latest_unresolved_work_item_transition",
     "get_work_item_execution",
     "get_work_item_execution_for_issue",

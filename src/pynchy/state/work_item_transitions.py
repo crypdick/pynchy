@@ -123,6 +123,24 @@ async def get_latest_unresolved_work_item_transition(
     return row_to_transition(row) if row else None
 
 
+async def get_latest_reconcilable_work_item_transition(
+    execution_id: str,
+) -> WorkItemTransition | None:
+    """Return latest transition eligible for explicit state-only reconciliation."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM work_item_transitions
+        WHERE execution_id = ? AND status IN ('pending', 'unknown', 'conflict')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (execution_id,),
+    )
+    row = await cursor.fetchone()
+    return row_to_transition(row) if row else None
+
+
 async def _persist_work_item_transition(
     database: aiosqlite.Connection,
     request: WorkItemTransitionRequest,
@@ -194,6 +212,10 @@ async def _resolve_work_item_transition(
             WorkItemExecutionStatus.HANDED_OFF,
         }
     )
+    repairs_conflict = (
+        transition.status is WorkItemTransitionStatus.CONFLICT
+        and transition_status is WorkItemTransitionStatus.SUCCEEDED
+    )
     completed_at = (
         now
         if execution_status
@@ -209,14 +231,13 @@ async def _resolve_work_item_transition(
     async with atomic_write() as db:
         if lifecycle_fence is not None and not await lifecycle_fence_matches(db, lifecycle_fence):
             return None
-        # Provider reconciliation may retry an unresolved intent, but its first
-        # settled receipt owns the resulting execution projection.
+        # Explicit reconciliation can settle uncertainty or a reviewed conflict.
         cursor = await db.execute(
             """
             UPDATE work_item_transitions
             SET status = ?, resolved_at = ?
             WHERE id = ?
-              AND status IN (?, ?)
+              AND status IN (?, ?, ?)
             """,
             (
                 transition_status.value,
@@ -224,6 +245,7 @@ async def _resolve_work_item_transition(
                 transition.id,
                 WorkItemTransitionStatus.PENDING.value,
                 WorkItemTransitionStatus.UNKNOWN.value,
+                WorkItemTransitionStatus.CONFLICT.value,
             ),
         )
         if cursor.rowcount == 1:
@@ -255,7 +277,7 @@ async def _resolve_work_item_transition(
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
                 WHERE id = ?
-                  AND status NOT IN (?, ?, ?, ?)
+                  AND (status NOT IN (?, ?, ?, ?) OR ?)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM work_item_transitions AS newer
@@ -274,6 +296,7 @@ async def _resolve_work_item_transition(
                     WorkItemExecutionStatus.CANCELLED.value,
                     WorkItemExecutionStatus.HANDED_OFF.value,
                     WorkItemExecutionStatus.FAILED.value,
+                    repairs_conflict,
                     transition.id,
                 ),
             )
@@ -288,7 +311,7 @@ async def _resolve_work_item_transition(
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
                 WHERE id = ?
-                  AND status NOT IN (?, ?, ?, ?)
+                  AND (status NOT IN (?, ?, ?, ?) OR ?)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM work_item_transitions AS newer
@@ -308,6 +331,7 @@ async def _resolve_work_item_transition(
                     WorkItemExecutionStatus.CANCELLED.value,
                     WorkItemExecutionStatus.HANDED_OFF.value,
                     WorkItemExecutionStatus.FAILED.value,
+                    repairs_conflict,
                     transition.id,
                 ),
             )

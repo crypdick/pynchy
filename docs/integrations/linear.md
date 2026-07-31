@@ -191,7 +191,9 @@ through the generic tool. A direct Linear UI move is handled only through the
 authenticated user-transition path above.
 
 If the provider result is uncertain after a network failure, use
-`linear_reconcile_work_item` before retrying a mutation.
+`linear_reconcile_work_item` before retrying a mutation. After reviewing a
+conflict, use it only when Linear already has the intended state; it reads
+Linear and never retries the provider write.
 
 ## Receive Linear callbacks
 
@@ -375,7 +377,7 @@ actions:
 |------|---------|
 | `linear_create_comment` | Adds a workspace-owned comment to an issue without reopening its own conversation. |
 | `linear_submit_plan` | Atomically persists an initial or revised plan and leaves it `Awaiting Plan Approval`. |
-| `linear_reconcile_work_item` | Resolves an uncertain provider transition. |
+| `linear_reconcile_work_item` | Resolves an uncertain transition or reviewed conflict already at its intended state. |
 | `linear_list_work_items` | Lists durable execution records for the workspace. |
 | `linear_move_todo` | Moves work to an agent-managed outcome with typed evidence, or to a directly human-authorized state. |
 

@@ -32,11 +32,13 @@ class FakeLinearState:
 
     issue: dict[str, Any]
     fail_after_update: bool = False
+    update_calls: int = 0
 
     async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
         return deepcopy(self.issue) if issue_id == self.issue["id"] else None
 
     async def query(self, _query: str, **variables: object) -> dict[str, Any]:
+        self.update_calls += 1
         state_id = variables.get("state_id")
         if not isinstance(state_id, str):
             raise TypeError("test client only supports issue state updates")
