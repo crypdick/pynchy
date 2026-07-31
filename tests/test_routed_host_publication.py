@@ -153,3 +153,51 @@ class TestPublicationRepositorySelection:
             runtime.resolve_publication_repos(folder, "turn-stale")
 
         resolve_repos_for_group.assert_not_called()
+
+    @pytest.mark.parametrize("lookup_raises", [False, True])
+    def test_active_route_without_a_resolvable_repository_stays_blocked(
+        self, lookup_raises: bool
+    ) -> None:
+        folder = "host__thread_conversation-conv_missing_repo"
+        route_slug = "owner/missing"
+        turn_id = "turn-active"
+        with patch("pynchy.host.orchestrator.app.configure_lifecycle_runtime") as configure:
+            PynchyApp()
+        runtime = configure.call_args.args[0]
+
+        lookup = patch(
+            "pynchy.host.orchestrator.app.get_repo_context",
+            side_effect=ValueError("unknown repository") if lookup_raises else None,
+            return_value=None,
+        )
+
+        host_execution.bind_active_routed_host_repo(folder, route_slug, turn_id)
+        try:
+            with lookup, pytest.raises(PublicationRepositoryError, match="unavailable repository"):
+                runtime.resolve_publication_repos(folder, turn_id)
+        finally:
+            host_execution.clear_active_routed_host_repo(folder, route_slug, turn_id)
+
+    def test_unrouted_publication_falls_back_to_workspace_repositories(
+        self, tmp_path: Path
+    ) -> None:
+        folder = "group"
+        repo = RepoContext(
+            slug="owner/repo",
+            root=tmp_path / "repo",
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        with patch("pynchy.host.orchestrator.app.configure_lifecycle_runtime") as configure:
+            PynchyApp()
+        runtime = configure.call_args.args[0]
+
+        with (
+            patch("pynchy.host.orchestrator.app.load_resolved_config", return_value=None),
+            patch(
+                "pynchy.host.orchestrator.app.resolve_repos_for_group",
+                return_value=(repo,),
+            ) as resolve_repos_for_group,
+        ):
+            assert runtime.resolve_publication_repos(folder, None) == (repo,)
+
+        resolve_repos_for_group.assert_called_once_with(folder)
