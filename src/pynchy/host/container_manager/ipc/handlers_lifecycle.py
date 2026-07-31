@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import (
+    Awaitable,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
     Callable,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
     Sequence,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
 )
@@ -22,10 +24,17 @@ from pynchy.logger import logger
 
 _MAX_COP_PATCH_CHARS = 64 * 1024
 GIT_POLICY_PR = "pull-request"
+_LINEAR_IDENTIFIER = re.compile(r"^(?P<team>[A-Za-z][A-Za-z0-9]*)-(?P<number>[1-9][0-9]*)$")
+_BRANCH_SLUG = re.compile(r"[^a-z0-9]+")
 
 
 class LifecycleSettings(Protocol):
     data_dir: Path
+
+
+class LinearExecution(Protocol):
+    @property
+    def linear_issue_identifier(self) -> str: ...
 
 
 @runtime_checkable
@@ -58,12 +67,19 @@ def _unconfigured_repos(_source_group: str, _turn_id: str | None = None) -> Sequ
     raise RuntimeError("Lifecycle repository resolution has not been composed")
 
 
+async def _unconfigured_execution(_turn_id: str) -> LinearExecution | None:  # noqa: RUF029 - async callback contract.
+    raise RuntimeError("Lifecycle execution lookup has not been composed")
+
+
 def _unconfigured_git(*_args: object, **_kwargs: object) -> NoReturn:
     raise RuntimeError("Lifecycle Git operations have not been composed")
 
 
 _get_settings: Callable[[], LifecycleSettings] = _unconfigured_settings
 _resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]] = _unconfigured_repos
+get_work_item_execution_for_turn: Callable[[str], Awaitable[LinearExecution | None]] = (
+    _unconfigured_execution
+)
 detect_main_branch: Callable[..., str] = _unconfigured_git
 host_create_pr_from_worktree: Callable[..., dict[str, Any]] = _unconfigured_git
 redact_git_diagnostic: Callable[[str], str] = _unconfigured_git
@@ -74,6 +90,7 @@ run_git: Callable[..., _GitResult] = _unconfigured_git
 class LifecycleRuntime:
     settings: Callable[[], LifecycleSettings]
     resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]]
+    get_work_item_execution_for_turn: Callable[[str], Awaitable[LinearExecution | None]]
     detect_main_branch: Callable[..., str]
     host_create_pr_from_worktree: Callable[..., dict[str, Any]]
     redact_git_diagnostic: Callable[[str], str]
@@ -82,11 +99,12 @@ class LifecycleRuntime:
 
 def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
     """Bind settings and source-control operations at host composition."""
-    global _get_settings, _resolve_publication_repos  # noqa: PLW0603 - one host process owns these composed operations.
+    global _get_settings, _resolve_publication_repos, get_work_item_execution_for_turn  # noqa: PLW0603 - one host process owns these composed operations.
     global detect_main_branch, host_create_pr_from_worktree  # noqa: PLW0603 - one host process owns these composed operations.
     global redact_git_diagnostic, run_git  # noqa: PLW0603 - one host process owns these composed operations.
     _get_settings = runtime.settings
     _resolve_publication_repos = runtime.resolve_publication_repos
+    get_work_item_execution_for_turn = runtime.get_work_item_execution_for_turn
     detect_main_branch = runtime.detect_main_branch
     host_create_pr_from_worktree = runtime.host_create_pr_from_worktree
     redact_git_diagnostic = runtime.redact_git_diagnostic
@@ -115,6 +133,36 @@ def _aggregate_publication_results(
         else "One or more repo publications failed.",
         "repos": safe_results,
     }
+
+
+async def publication_metadata(  # noqa: PLR0911 - each validation error is user-actionable.
+    data: dict[str, Any], turn_id: str | None
+) -> tuple[str | None, str | None, str | None] | str:
+    """Validate agent-authored PR text and derive a Linear-readable branch."""
+    title = data.get("title")
+    body = data.get("body")
+    if title is None and body is None:
+        return None, None, None
+    if not isinstance(title, str) or not title.strip() or len(title.encode()) > 256:
+        return "Publication blocked: PR title must be non-empty and at most 256 bytes."
+    if not isinstance(body, str) or not body.strip() or len(body.encode()) > 64 * 1024:
+        return "Publication blocked: PR body must be non-empty and at most 64 KiB."
+    if turn_id is None:
+        return title.strip(), body.strip(), None
+    execution = await get_work_item_execution_for_turn(turn_id)
+    if execution is None:
+        return title.strip(), body.strip(), None
+    identifier = _LINEAR_IDENTIFIER.fullmatch(execution.linear_issue_identifier)
+    if identifier is None:
+        return "Publication blocked: Linear issue identifier cannot form a branch name."
+    slug = _BRANCH_SLUG.sub("-", title.lower()).strip("-")[:60]
+    if not slug:
+        return "Publication blocked: PR title cannot form a branch name."
+    return (
+        title.strip(),
+        body.strip(),
+        f"{identifier.group('team').lower()}/{identifier.group('number')}/{slug}",
+    )
 
 
 def _publication_patch_context(
@@ -251,6 +299,13 @@ async def _handle_sync_worktree_to_main(
 
     raw_turn_id = data.get("turn_id")
     turn_id = raw_turn_id if isinstance(raw_turn_id, str) and raw_turn_id else None
+    metadata = await publication_metadata(data, turn_id)
+    if isinstance(metadata, str):
+        write_ipc_response(
+            result_dir / f"{request_id}.json", {"success": False, "message": metadata}
+        )
+        return
+    pr_title, pr_body, publication_branch = metadata
     try:
         repo_contexts = _resolve_publication_repos(source_group, turn_id)
     except PublicationRepositoryError as exc:
@@ -298,11 +353,21 @@ async def _handle_sync_worktree_to_main(
             return
 
     publication_results: list[tuple[RepoContext, dict[str, Any]]] = []
+    publication_options = (
+        {
+            "publication_branch": publication_branch,
+            "pr_title": pr_title,
+            "pr_body": pr_body,
+        }
+        if pr_title is not None
+        else {}
+    )
     for repo_ctx in repo_contexts:
         repo_result = await asyncio.to_thread(
             host_create_pr_from_worktree,
             source_group,
             repo_ctx,
+            **publication_options,
         )
         publication_results.append((repo_ctx, repo_result))
     result = _aggregate_publication_results(publication_results)
