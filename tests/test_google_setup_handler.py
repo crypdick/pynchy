@@ -349,6 +349,47 @@ async def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
     assert await setup_google_profile({}) == {"result": {"status": "interactive_setup_required"}}
 
 
+@pytest.mark.action("integration.google.profile.setup")
+@pytest.mark.asyncio
+async def test_google_setup_fast_path_ignores_malformed_project_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    keys_file = tmp_path / "gcp-oauth.keys.json"
+    keys_file.write_text("{")
+    credentials_file = tmp_path / "credentials.json"
+    credentials_file.write_text("{}")
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.keys_path",
+        lambda _profile: keys_file,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.credentials_path",
+        lambda _profile: credentials_file,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.compute_scopes_for_profile",
+        lambda _profile: ("scope-a", ["drive.googleapis.com"]),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.refresh_access_token",
+        lambda _profile: "access-token",
+    )
+
+    setup_google_profile = _google_setup_tool(monkeypatch, "profile")
+
+    assert await setup_google_profile({}) == {
+        "result": {
+            "status": "already_configured",
+            "message": (
+                "Google setup for profile 'profile' is already configured. Tokens are valid."
+            ),
+            "steps": [],
+        }
+    }
+
+
 async def _raise_login_failed(_page) -> None:
     await asyncio.sleep(0)
     raise RuntimeError(LOGIN_FAILED_MESSAGE)
