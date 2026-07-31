@@ -147,6 +147,7 @@ async def test_unconfigured_voice_room_is_ignored() -> None:
 async def test_voice_room_from_a_different_guild_is_ignored() -> None:
     channel = _configured_voice_channel()
     voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.guild.id = 999
     voice_channel.guild.name = "Unconfigured guild"
 
     await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
@@ -287,6 +288,26 @@ async def test_voice_reply_tolerates_playback_start_failure(
     voice_client = await _activate_voice_session(channel, monkeypatch)
 
     with patch.object(voice_client, "play", side_effect=discord.DiscordException("offline")):
+        await channel.voice.speak("discord:voice:2", "hello")
+
+    assert voice_client.played_audio == []
+
+
+@pytest.mark.asyncio
+async def test_voice_reply_tolerates_playback_completion_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Synthesizer:
+        async def synthesize(self, _text: str, output_path) -> SpeechSynthesisResult:
+            return SpeechSynthesisResult(success=True, output_path=output_path)
+
+    channel = _configured_voice_channel(Synthesizer())
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+
+    def play_with_error(_audio: object, *, after) -> None:
+        after(RuntimeError("playback failed"))
+
+    with patch.object(voice_client, "play", side_effect=play_with_error):
         await channel.voice.speak("discord:voice:2", "hello")
 
     assert voice_client.played_audio == []
