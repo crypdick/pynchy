@@ -99,6 +99,17 @@ def test_placeholder_injection_is_never_treated_as_a_request_reference() -> None
     assert restored == source
 
 
+def test_redaction_skips_a_placeholder_that_collides_with_the_next_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("pynchy.redaction.secrets.token_hex", lambda _size: "fixed")
+    session = RedactionSession()
+
+    redacted = session.redact_text("[[PYNCHY_REDACTED:fixed:1:EMAIL]] real@example.test")
+
+    assert redacted.refs[0].token.endswith(":2:EMAIL]]")
+
+
 def test_redaction_mappings_are_isolated_per_request() -> None:
     first = RedactionSession()
     second = RedactionSession()
