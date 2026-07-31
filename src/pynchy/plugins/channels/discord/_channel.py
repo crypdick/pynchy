@@ -426,7 +426,12 @@ class DiscordChannel:
 
     async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None:
         """Map conversation closed state to Discord's thread archive flag."""
-        thread = cast("Any", await self.resolve_channel(child_jid))
+        try:
+            thread = cast("Any", await self.resolve_channel(child_jid))
+        except discord.NotFound:
+            if closed:
+                return
+            raise
         if bool(getattr(thread, "archived", False)) == closed:
             return
         edit = getattr(thread, "edit", None)

@@ -11,7 +11,7 @@ import asyncio
 import struct
 from pathlib import Path
 from typing import NamedTuple, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -202,6 +202,20 @@ async def test_maps_conversation_closed_state_to_thread_archival():
 
     assert thread.archived is False
     assert thread.archive_edits == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_treats_missing_thread_as_already_closed():
+    ch = _channel()
+    missing = discord.NotFound(
+        MagicMock(status=404, reason="Not Found"),
+        {"code": 10003, "message": "Unknown Channel"},
+    )
+    ch.resolve_channel = AsyncMock(side_effect=missing)  # type: ignore[method-assign]
+
+    await ch.set_thread_closed("discord:channel:456", closed=True)
+    with pytest.raises(discord.NotFound):
+        await ch.set_thread_closed("discord:channel:456", closed=False)
 
 
 @pytest.mark.asyncio
