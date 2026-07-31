@@ -83,7 +83,11 @@ class _Control:
         if self._name == "save-and-continue":
             return int(self._page.save_steps > 0)
         if self._name == "textbox":
-            return 2 if self._page.phase == "consent" else 1
+            if self._page.phase == "consent":
+                return self._page.consent_textbox_count
+            if self._page.phase == "oauth-client":
+                return self._page.oauth_textbox_count
+            return 1
         return 1
 
     async def fill(self, value: str) -> None:
@@ -115,6 +119,8 @@ class _SetupPage:
         requires_login: bool = False,
         login_return_url: str = "https://console.cloud.google.com/home",
         save_steps: int = 0,
+        consent_textbox_count: int = 2,
+        oauth_textbox_count: int = 1,
     ) -> None:
         self.api_already_enabled = api_already_enabled
         self.api_enabled = True
@@ -135,6 +141,8 @@ class _SetupPage:
         self.requires_login = requires_login
         self.login_return_url = login_return_url
         self.save_steps = save_steps
+        self.consent_textbox_count = consent_textbox_count
+        self.oauth_textbox_count = oauth_textbox_count
         self.screenshoted = False
         self.url = "about:blank"
 
@@ -401,6 +409,30 @@ async def test_setup_action_accepts_manual_credential_download_after_selector_br
             b"{}",
             "Invalid credentials JSON",
             id="invalid-downloaded-credentials",
+        ),
+        pytest.param(
+            {"project_confirmation": True, "requires_login": True, "save_steps": 4},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="consent-save-loop-exhaustion",
+        ),
+        pytest.param(
+            {"consent_textbox_count": 0},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="consent-without-textboxes",
+        ),
+        pytest.param(
+            {"consent_textbox_count": 1},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="consent-with-one-textbox",
+        ),
+        pytest.param(
+            {"oauth_textbox_count": 0},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="oauth-dialog-without-name-field",
         ),
     ],
 )
