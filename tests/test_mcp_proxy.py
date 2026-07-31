@@ -443,6 +443,47 @@ class TestMcpProxyFencing:
         finally:
             await client.close()
 
+    async def test_non_text_content_is_returned_unchanged(self):
+        """Fencing only rewrites text blocks in a public MCP result."""
+
+        async def handle(_request: web.Request) -> web.Response:
+            await asyncio.sleep(0)
+            return web.json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {"content": [{"type": "image", "data": "abc"}]},
+                }
+            )
+
+        backend_app = web.Application()
+        backend_app.router.add_route("*", "/mcp", handle)
+        backend = TestServer(backend_app)
+        await backend.start_server()
+        create_gate("test-ws", 1000.0, WorkspaceSecurity(services={"browser": _SAFE_TRUST}))
+        client = TestClient(
+            TestServer(
+                create_proxy_app(
+                    {"browser": f"http://localhost:{backend.port}/mcp"},
+                    trust_map={"browser": {"public_source": True}},
+                )
+            )
+        )
+        await client.start_server()
+
+        try:
+            response = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+            assert response.status == 200
+            assert (await response.json())["result"]["content"] == [
+                {"type": "image", "data": "abc"}
+            ]
+        finally:
+            await client.close()
+            await backend.close()
+
     async def test_fencing_sets_corruption_taint(self, mock_backend):
         """Reading from a public_source server should set corruption taint on the gate."""
         security = WorkspaceSecurity(
