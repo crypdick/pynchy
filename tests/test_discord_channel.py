@@ -569,6 +569,30 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata(
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_name():
+    async def find_chat_jids(_name: str) -> list[str]:
+        await asyncio.sleep(0)
+        return ["discord:direct:41", "discord:direct:42"]
+
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        find_chat_jids_by_name=find_chat_jids,
+    )
+
+    assert await ch.resolve_chat_jid("direct.alice") is None
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
