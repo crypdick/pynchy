@@ -264,6 +264,32 @@ def test_rejects_existing_pr_update_when_refs_drift_after_lookup(git_env: dict) 
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+def test_rechecks_object_store_before_reading_commit_metadata(
+    git_env: dict, tmp_path: Path
+) -> None:
+    """A store mutation after the ref check blocks isolated commit reads."""
+    feature = "metadata-store-drift"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    alternates = git_env["project"] / ".git" / "objects" / "info" / "alternates"
+
+    def drift_store(*_args: object, **_kwargs: object) -> bool:
+        alternates.symlink_to(tmp_path / "missing-alternates")
+        return True
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync._managed_refs_match", side_effect=drift_store),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature object store is unavailable.",
+    }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
