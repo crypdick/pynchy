@@ -386,9 +386,12 @@ class DiscordChannel:
         if not matching_threads:
             archived_threads = getattr(parent, "archived_threads", None)
             if callable(archived_threads):
+                archived_kwargs: dict[str, object] = {"limit": 100}
+                if not hasattr(parent, "available_tags"):
+                    archived_kwargs["private"] = False
                 matching_threads = [
                     thread
-                    async for thread in archived_threads(private=False, limit=100)
+                    async for thread in archived_threads(**archived_kwargs)
                     if getattr(thread, "parent_id", None) == parent_id
                     and getattr(thread, "name", None) == name
                 ]
