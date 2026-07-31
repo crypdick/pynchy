@@ -12,7 +12,7 @@ from conftest import make_settings
 import pynchy.host.container_manager.mcp.manager as manager_module
 from pynchy.config.api import McpTool, McpToolConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
-from pynchy.host.container_manager.mcp.manager import McpManager
+from pynchy.host.container_manager.mcp.manager import McpManager, configure_mcp_manager_runtime
 from pynchy.host.container_manager.mcp.proxy import McpProxy
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
@@ -138,6 +138,53 @@ async def test_canary_rejects_docker_server_without_host_port(tmp_path, monkeypa
         await manager.get_canary_server_endpoint("browser")
 
     start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stop_idle_ignores_url_exited_process_and_stopped_container(tmp_path, monkeypatch):
+    servers = {
+        "url": McpServerConfig(type="url", url="https://mcp.test/mcp"),
+        "script": McpServerConfig(type="script", command="run", port=9000, idle_timeout=1),
+        "docker": McpServerConfig(type="docker", image="browser", port=9001, idle_timeout=1),
+    }
+    manager = await _synced_manager(tmp_path, monkeypatch, servers, tuple(servers))
+    process = MagicMock(spec=["poll"])
+    process.poll.return_value = 0
+    monkeypatch.setattr(
+        manager_module,
+        "ensure_script_running",
+        AsyncMock(side_effect=lambda instance: setattr(instance, "process", process)),
+    )
+    terminate = MagicMock()
+    stop = AsyncMock()
+    monkeypatch.setattr(manager_module, "terminate_process", terminate)
+    monkeypatch.setattr(manager_module, "is_container_running", AsyncMock(return_value=False))
+    monkeypatch.setattr(manager_module, "stop_container", stop)
+    monkeypatch.setattr(manager_module, "time", MagicMock(monotonic=lambda: 2.0))
+
+    await manager.ensure_running("script")
+    await manager.stop_idle()
+
+    terminate.assert_not_called()
+    stop.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_direct_server_configs_omits_routes_before_proxy_starts(tmp_path, monkeypatch):
+    manager = await _synced_manager(
+        tmp_path,
+        monkeypatch,
+        {"browser": McpServerConfig(type="url", url="https://mcp.test/mcp")},
+        ("browser",),
+    )
+    configure_mcp_manager_runtime(
+        static_workspace_folder=lambda folder: folder,
+        load_resolved_workspace_config=lambda _folder, _settings: None,
+    )
+
+    configs = manager.get_direct_server_configs("workspace", invocation_ts=42.0)
+
+    assert configs == []
 
 
 def test_routed_workspace_without_resolved_policy_has_no_instances(tmp_path, monkeypatch):
