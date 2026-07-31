@@ -23,6 +23,18 @@ def _runtime() -> temporal_scheduler.TemporalSchedulerRuntime:
     return temporal_scheduler.TemporalSchedulerRuntime(NullSchedulerDeps(), _scheduler_runtime())
 
 
+def _scheduled_task() -> ScheduledTask:
+    return ScheduledTask(
+        id="task-1",
+        group_folder="group",
+        chat_jid="slack:group",
+        prompt="run",
+        schedule_type="once",
+        schedule_value="now",
+        session_policy=SessionPolicy.CONTINUE,
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method_name",
@@ -201,22 +213,31 @@ async def test_publishing_scheduler_config_updates_the_active_runtime(
 async def test_scheduled_task_workflow_wrapper_propagates_runtime_unavailability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    task = ScheduledTask(
-        id="task-1",
-        group_folder="group",
-        chat_jid="slack:group",
-        prompt="run",
-        schedule_type="once",
-        schedule_value="now",
-        session_policy=SessionPolicy.CONTINUE,
-    )
     monkeypatch.setattr(
         "pynchy.host.orchestrator.temporal.scheduler._require_active_runtime",
         AsyncMock(side_effect=TemporalRuntimeUnavailableError("unavailable")),
     )
 
     with pytest.raises(TemporalRuntimeUnavailableError, match="unavailable"):
-        await temporal_scheduler.start_scheduled_agent_task_workflow(task)
+        await temporal_scheduler.start_scheduled_agent_task_workflow(_scheduled_task())
+
+
+@pytest.mark.asyncio
+async def test_scheduled_task_start_fails_closed_without_a_temporal_client() -> None:
+    with pytest.raises(RuntimeError, match="has not been started"):
+        await _runtime().start_scheduled_agent_task(_scheduled_task())
+
+
+@pytest.mark.asyncio
+async def test_channel_reconciliation_starts_when_temporal_is_ready() -> None:
+    runtime = _runtime()
+    client = Mock()
+    client.start_workflow = AsyncMock()
+    runtime.client = client
+
+    await runtime.start_channel_reconciliation()
+
+    client.start_workflow.assert_awaited_once()
 
 
 @pytest.mark.asyncio
