@@ -88,8 +88,9 @@ controls do not depend on message text or the Message Content Intent:
 - `/approve short_id` and `/deny short_id`
 
 Commands are registered globally when the bot connects. Discord can take time to
-propagate global command updates. Discord message text is not interpreted as a
-host control; other channels retain their configured text controls.
+propagate global command updates. Configured Discord magic-phrase controls are
+not interpreted from message text; explicit `!` direct commands remain available.
+Other channels retain their configured text controls.
 
 For the optional voice workspace and inbound audio transcription, see [Voice and
 speech](voice-and-speech.md).
