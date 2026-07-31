@@ -206,6 +206,7 @@ class PynchySpec:
             Or None if this plugin doesn't provide one.
         """
 
+    @hookspec
     def pynchy_before_context_reset(
         self,
         group: WorkspaceProfile,
