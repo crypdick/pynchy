@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess  # noqa: S404 - test double models fixed gh subprocess responses.
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -382,6 +382,42 @@ def test_rejects_fetched_managed_base_sha_mismatch(git_env: dict) -> None:
         "success": False,
         "message": "Publication blocked: managed feature target changed after Cop inspection.",
     }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+@pytest.mark.parametrize("metadata_phase", ["title", "body"])
+def test_rechecks_object_store_after_each_commit_metadata_read(
+    git_env: dict, tmp_path: Path, metadata_phase: str
+) -> None:
+    """Commit metadata reads never proceed after the store changes."""
+    feature = f"metadata-read-{metadata_phase}"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    alternates = git_env["project"] / ".git" / "objects" / "info" / "alternates"
+    alternates.parent.mkdir(exist_ok=True)
+
+    def bounded_git(*args: str, **_kwargs: object) -> object:
+        phase = "title" if "-1" in args else "body"
+        if phase == metadata_phase:
+            alternates.symlink_to(tmp_path / f"missing-{metadata_phase}")
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = phase
+        result.exceeded_limit = False
+        return result
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync.run_git_bounded_stdout", side_effect=bounded_git),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    expected_message = (
+        "Publication blocked: managed feature object store is unavailable."
+        if metadata_phase == "title"
+        else "Publication blocked: managed feature refs changed after inspection."
+    )
+    assert result == {"success": False, "message": expected_message}
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
