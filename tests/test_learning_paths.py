@@ -144,8 +144,8 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
     assert paths.profile_slug == "shopping"
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/shopping"
     assert paths.memory_root == paths.profile_root / "memory"
-    assert paths.mounted_profile_root == "/workspace/vault/systems/pynchy/profiles/shopping"
-    assert paths.mounted_memory_root == "/workspace/vault/systems/pynchy/profiles/shopping/memory"
+    assert paths.mounted_profile_root == "/home/agent/memory/systems/pynchy/profiles/shopping"
+    assert paths.mounted_memory_root == "/home/agent/memory/systems/pynchy/profiles/shopping/memory"
 
 
 def test_profile_root_template_errors_are_reported_as_learning_config_errors(tmp_path):
@@ -173,8 +173,8 @@ def test_root_profile_mount_uses_the_mount_path_directly(tmp_path):
         paths = resolve_learning_paths("shopping-group")
 
     assert paths is not None
-    assert paths.mounted_profile_root == "/workspace/vault"
-    assert paths.mounted_memory_root == "/workspace/vault/memory"
+    assert paths.mounted_profile_root == "/home/agent/memory"
+    assert paths.mounted_memory_root == "/home/agent/memory/memory"
 
 
 def test_vault_root_expands_home_directory(tmp_path, monkeypatch):
@@ -350,7 +350,7 @@ def test_settings_validation_allows_learning_enabled_without_vault_root(tmp_path
                 "max_attempts": 3,
                 "packet_max_chars": 12_000,
                 "obsidian": {
-                    "mount_path": "/workspace/vault",
+                    "mount_path": "/home/agent/memory",
                     "default_profile_root": "systems/pynchy/profiles/{profile}",
                     "memory_dir_name": "memory",
                 },
@@ -390,12 +390,12 @@ def test_mount_path_must_be_absolute_posix_container_path():
     with pytest.raises(ValidationError, match="absolute"):
         ObsidianLearningConfig(mount_path="workspace/vault")
 
-    for mount_path in ("/", "/workspace/../vault", "/workspace\\vault"):
+    for mount_path in ("/", "/home/agent/../memory", "/home/agent\\memory"):
         with pytest.raises(ValidationError, match="mount_path"):
             ObsidianLearningConfig(mount_path=mount_path)
 
 
 def test_mount_path_normalizes_repeated_and_trailing_slashes():
-    cfg = ObsidianLearningConfig(mount_path="//workspace//vault//")
+    cfg = ObsidianLearningConfig(mount_path="//home//agent//memory//")
 
-    assert cfg.mount_path == "/workspace/vault"
+    assert cfg.mount_path == "/home/agent/memory"

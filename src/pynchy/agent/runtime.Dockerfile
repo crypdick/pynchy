@@ -9,22 +9,34 @@ WORKDIR /app
 COPY agent_runner/pyproject.toml agent_runner/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY agent_runner/src ./src
-RUN uv sync --locked --no-dev
+RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.13.12-slim-bookworm@sha256:a58daefb915e1e03ad48f3ca4df8832065412c5c35cacb9d39f4229184de12b6
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:${PATH}"
-ENV PYTHONPATH=/app/src
+ENV VIRTUAL_ENV=/opt/pynchy/venv
+ENV PATH="/opt/pynchy/venv/bin:${PATH}"
+ENV PYTHONPATH=/opt/pynchy/agent-runner/src
 ENV PYTHONUNBUFFERED=1
-WORKDIR /app
-COPY --from=build /app/.venv /app/.venv
+WORKDIR /opt/pynchy/agent-runner
+COPY --from=build /app/.venv /opt/pynchy/venv
 COPY agent_runner/src ./src
-COPY runtime_entrypoint.sh /usr/local/bin/pynchy-runtime-entrypoint
-RUN chmod 0555 /usr/local/bin/pynchy-runtime-entrypoint
+COPY runtime_entrypoint.sh /opt/pynchy/runtime-entrypoint
+RUN chmod 0555 /opt/pynchy/runtime-entrypoint \
+ && mkdir -p \
+    /home/agent/src \
+    /home/agent/workspace \
+    /home/agent/skills \
+    /home/agent/memory \
+    /home/agent/automation-memory \
+    /home/agent/mnt \
+    /opt/pynchy/scripts \
+    /opt/pynchy/plugin-hooks \
+    /run/pynchy/messages /run/pynchy/requests /run/pynchy/input /run/pynchy/output \
+    /tmp \
+ && chmod 1777 /tmp
 
 # Keep this harness image as root: Docker bind mounts inherit arbitrary local
 # and CI host UIDs. Production uses its separate non-root agent image; this
 # image exists to exercise the runner and IPC behavior without changing mount
 # permissions solely for test infrastructure.
-WORKDIR /workspace/group
-ENTRYPOINT ["/usr/local/bin/pynchy-runtime-entrypoint"]
+WORKDIR /home/agent/workspace
+ENTRYPOINT ["/opt/pynchy/runtime-entrypoint"]

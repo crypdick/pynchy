@@ -144,7 +144,7 @@ def test_server_streams_a_scripted_patch_probe_before_its_completion() -> None:
     assert events[1]["item"]["type"] == "apply_patch_call"
     assert events[1]["item"]["operation"] == {
         "type": "create_file",
-        "path": "/workspace/group/runtime-patch-proof.txt",
+        "path": "/home/agent/workspace/runtime-patch-proof.txt",
         "diff": "+PYNCHY_RUNTIME_PATCH_OK",
     }
     assert events[-1]["response"]["output"] == [events[1]["item"]]
@@ -185,7 +185,7 @@ def test_server_streams_a_scripted_shell_probe_before_its_completion() -> None:
         "call_id": "call_runtime_shell_probe",
         "action": {
             "commands": [
-                "printf PYNCHY_RUNTIME_SHELL_OK > /workspace/group/runtime-shell-proof.txt"
+                "printf PYNCHY_RUNTIME_SHELL_OK > /home/agent/workspace/runtime-shell-proof.txt"
             ],
             "timeout_ms": 5_000,
         },
@@ -426,7 +426,7 @@ def test_server_returns_a_patch_update_probe() -> None:
             "call_id": "call_runtime_patch_update_probe",
             "operation": {
                 "type": "update_file",
-                "path": "/workspace/group/runtime-patch-update.txt",
+                "path": "/home/agent/workspace/runtime-patch-update.txt",
                 "diff": "@@\n-seed\n+PYNCHY_RUNTIME_PATCH_UPDATE_OK",
             },
         }
@@ -450,7 +450,7 @@ def test_server_returns_a_patch_delete_probe() -> None:
             "call_id": "call_runtime_patch_delete_probe",
             "operation": {
                 "type": "delete_file",
-                "path": "/workspace/group/runtime-patch-delete.txt",
+                "path": "/home/agent/workspace/runtime-patch-delete.txt",
             },
         }
     ]

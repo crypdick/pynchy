@@ -538,7 +538,7 @@ async def test_structured_credential_read_is_confirmed_without_cop_veto(tmp_path
                     {
                         "rule_id": "CRED001",
                         "artifact_kind": "path_read",
-                        "artifact_value": "/workspace/group/.env",
+                        "artifact_value": "/home/agent/workspace/.env",
                     }
                 ],
             },

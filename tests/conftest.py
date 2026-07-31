@@ -460,7 +460,7 @@ def reset_settings(monkeypatch):
         configure_mount_operations(
             MountOperations(
                 prepare_agent_homes=mount_agent_homes,
-                repo_container_path=lambda slug: f"/workspace/repos/{slug}",
+                repo_container_path=lambda slug: f"/home/agent/src/{slug}",
                 runtime_name=lambda: "docker",
             )
         )

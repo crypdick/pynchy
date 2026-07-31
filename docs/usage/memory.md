@@ -8,7 +8,7 @@ across sessions and workspaces.
 
 Enable `[learning]`, set `[learning.obsidian].vault_root`, and select the
 `obsidian-knowledge` skill in the workspace profile. Pynchy mounts the
-configured vault directly at `/workspace/vault`.
+configured vault directly at `/home/agent/memory`.
 
 The agent decides when prior context is relevant and searches the vault through
 the skill. Pynchy doesn't search every inbound message or inject matches into
@@ -18,7 +18,7 @@ the prompt.
 
 Automatic learning can use an Obsidian vault as a shared memory namespace.
 Enable `[learning]` and set `[learning.obsidian].vault_root` to the vault root.
-Pynchy mounts that root read-write at `/workspace/vault` by default.
+Pynchy mounts that root read-write at `/home/agent/memory` by default.
 
 After each successful turn, Pynchy starts a Temporal learning review workflow.
 The workflow runs a hidden reviewer agent that decides whether the turn
@@ -56,7 +56,7 @@ conversation as Markdown in the group's `conversations/` folder.
 
 Scheduled jobs get a stable task-owned directory under
 `wiki/systems/pynchy/automation-memory/<task-id>/`. Container jobs see it at
-`/workspace/automation-memory`; host jobs receive its canonical path through
+`/home/agent/automation-memory`; host jobs receive its canonical path through
 `PYNCHY_AUTOMATION_MEMORY_DIR`.
 
 Memory is enabled by default. Set `memory = false` in the job definition to

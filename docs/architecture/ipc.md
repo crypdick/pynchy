@@ -8,7 +8,7 @@ Containers have no network route back to the host. File mounts are the only shar
 
 ## Directory Layout
 
-Each group gets its own IPC directory, mounted into the container at `/workspace/ipc`:
+Each group gets its own IPC directory, mounted into the container at `/run/pynchy`:
 
 ```
 data/ipc/{group}/

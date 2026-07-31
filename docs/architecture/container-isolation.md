@@ -29,20 +29,21 @@ Pynchy labels agent containers and removes stopped agent containers when it obse
 
 | Host Path | Container Path | Access | Groups |
 |-----------|---------------|---------|--------|
-| `groups/{name}/` | `/workspace/group` | Read-write | All |
+| `groups/{name}/` | `/home/agent/workspace` | Read-write | All |
 | `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
 | `data/sessions/{group}/.codex/` | `/home/agent/.codex` | Read-write | All (isolated per-group) |
-| `src/pynchy/agent/scripts/` | `/workspace/scripts` | Readonly | All |
-| `src/pynchy/agent/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
-| `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
-| Obsidian vault root | `/workspace/vault` | Read-write | Learning-enabled groups |
-| Repo worktrees | `/workspace/repos/<owner>/<repo>` | Read-write | Workspaces with profile `repo` |
-| `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
+| `src/pynchy/agent/scripts/` | `/opt/pynchy/scripts` | Readonly | All |
+| `src/pynchy/agent/agent_runner/src` | `/opt/pynchy/agent-runner/src` | Readonly | All (agent runner source) |
+| `data/ipc/{group}/` | `/run/pynchy` | Read-write | All (IPC channel) |
+| Obsidian vault root | `/home/agent/memory` | Read-write | Learning-enabled groups |
+| Repo worktrees | `/home/agent/src/<owner>/<repo>` | Read-write | Workspaces with profile `repo` |
+| `{additional mounts}` | `/home/agent/mnt/*` | Configurable | Per containerConfig |
 
 **Notes:**
 
-- Workspaces with profile `repo` receive worktree mounts at `/workspace/repos/<owner>/<repo>` (see [Worktrees](../usage/worktrees.md))
-- Automatic learning mounts the configured Obsidian vault root at `/workspace/vault` by default. That vault root acts as the global memory namespace.
+- Agent working files live under `/home/agent`: the group workspace is `/home/agent/workspace`, and repository worktrees are `/home/agent/src/<owner>/<repo>` (see [Worktrees](../usage/worktrees.md)).
+- Harness files live outside the agent home: runner code and scripts are under `/opt/pynchy`, while IPC is under `/run/pynchy`.
+- Automatic learning mounts the configured Obsidian vault root at `/home/agent/memory` by default. That vault root acts as the global memory namespace.
 - Shared agent instructions are delivered via [prompts](../usage/prompts.md), not filesystem mounts
 - Apple Container requires `--mount "type=bind,source=...,target=...,readonly"` syntax for readonly mounts (the `:ro` suffix does not work)
 
@@ -67,7 +68,7 @@ Configure additional directory mounts via `containerConfig` in the SQLite `regis
 
 Pynchy constructs each agent process environment from a small operational
 baseline plus variables authorized by selected tools. It never generates a
-workspace env file or mounts `/workspace/env-dir`.
+workspace env file or mounts an environment directory.
 
 **LLM credentials** flow through the host gateway (see [Security Model](security.md#6-credential-handling)). Containers receive gateway URLs and an ephemeral key — never real API keys:
 

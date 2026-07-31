@@ -91,7 +91,7 @@ class TestOpenAICoreInstantiation:
 
     def _make_config(self, **overrides) -> AgentCoreConfig:
         defaults = {
-            "cwd": "/workspace/repos/owner/project",
+            "cwd": "/home/agent/src/owner/project",
             "session_id": None,
             "group_folder": "admin-1",
             "chat_jid": "test@g.us",
@@ -242,7 +242,7 @@ class TestOpenAIQueryModel:
         if metadata is not None:
             extra["metadata"] = metadata
         return AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",

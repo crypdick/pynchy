@@ -40,7 +40,7 @@ class AgentToolRuntime:
             group_folder=os.environ.get("PYNCHY_GROUP_FOLDER", ""),
             is_admin=os.environ.get("PYNCHY_IS_ADMIN") == "1",
             is_scheduled_task=os.environ.get("PYNCHY_IS_SCHEDULED_TASK") == "1",
-            ipc_dir=Path(os.environ.get("PYNCHY_IPC_DIR", "/workspace/ipc")),
+            ipc_dir=Path(os.environ.get("PYNCHY_IPC_DIR", "/run/pynchy")),
             turn_id=os.environ.get("PYNCHY_TURN_ID", ""),
         )
 

@@ -19,6 +19,7 @@ import aiohttp
 import pluggy
 
 from pynchy.actions.api import ActionId
+from pynchy.host.paths import PYNCHY_IPC_CONTAINER_PATH
 from pynchy.plugins.api import (
     ApprovalContract,
     AuditContract,
@@ -37,7 +38,7 @@ from pynchy.plugins.api import (
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 _SCREENSHOT_BIN = "/usr/sbin/screencapture"
-_CONTAINER_SCREENSHOT_DIR = "/workspace/ipc/screenshots"
+_CONTAINER_SCREENSHOT_DIR = f"{PYNCHY_IPC_CONTAINER_PATH}/screenshots"
 _VALID_MODES = {"full", "selection", "window"}
 _ScreenshotRequest = tuple[str, Path, list[str]]
 _DEFAULT_ANALYSIS_PROMPT = (

@@ -6,7 +6,9 @@ import asyncio
 from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
 from typing import Any
 
-_CONTAINER_ARTIFACT_DIR = "/workspace/ipc/computer-use"
+from pynchy.host.paths import PYNCHY_IPC_CONTAINER_PATH
+
+_CONTAINER_ARTIFACT_DIR = f"{PYNCHY_IPC_CONTAINER_PATH}/computer-use"
 
 
 async def screenshot_artifact(path: Path) -> dict[str, Any]:

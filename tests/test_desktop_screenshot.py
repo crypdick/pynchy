@@ -102,7 +102,7 @@ async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: P
     assert result == {
         "result": {
             "host_path": str(host_path),
-            "container_path": "/workspace/ipc/screenshots/20260709T120000Z-main-display.png",
+            "container_path": "/run/pynchy/screenshots/20260709T120000Z-main-display.png",
             "format": "png",
             "mode": "full",
             "bytes": len(b"png bytes"),
@@ -158,7 +158,7 @@ async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path
         str(host_path),
     )
     assert result["result"]["container_path"] == (
-        "/workspace/ipc/screenshots/20260709T120000Z-screenshot.png"
+        "/run/pynchy/screenshots/20260709T120000Z-screenshot.png"
     )
 
 
@@ -201,7 +201,7 @@ async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: P
         result = await handler(
             {
                 "source_group": "admin",
-                "image_path": "/workspace/ipc/screenshots/screen.png",
+                "image_path": "/run/pynchy/screenshots/screen.png",
                 "prompt": "What changed?",
             }
         )
@@ -210,7 +210,7 @@ async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: P
     assert result == {
         "result": {
             "analysis": "The screen shows a terminal.",
-            "container_path": "/workspace/ipc/screenshots/screen.png",
+            "container_path": "/run/pynchy/screenshots/screen.png",
             "format": "png",
             "model": "gpt-5.5",
         }
@@ -270,7 +270,7 @@ async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Pat
     assert result == {
         "result": {
             "analysis": "The screen shows the latest capture.",
-            "container_path": "/workspace/ipc/screenshots/20260709T020000Z-latest.png",
+            "container_path": "/run/pynchy/screenshots/20260709T020000Z-latest.png",
             "format": "png",
             "model": "gpt-5.5",
         }

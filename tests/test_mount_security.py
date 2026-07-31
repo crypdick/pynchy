@@ -581,7 +581,7 @@ allow_read_write = true
         ):
             result = validate_additional_mounts(mounts, "TestGroup", is_admin=True)
         assert len(result) == 1
-        assert result[0]["containerPath"] == "/workspace/extra/good"
+        assert result[0]["containerPath"] == "/home/agent/mnt/good"
 
 
 class TestTemplate:

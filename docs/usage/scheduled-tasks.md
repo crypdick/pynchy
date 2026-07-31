@@ -18,7 +18,7 @@ directory at
 `wiki/systems/pynchy/automation-memory/<task-id>/` in the configured vault.
 Pynchy exposes that directory as `PYNCHY_AUTOMATION_MEMORY_DIR` to agent tasks,
 pre-run gates, deterministic workspace commands, and host commands. Container
-agents see `/workspace/automation-memory`; host processes receive an absolute
+agents see `/home/agent/automation-memory`; host processes receive an absolute
 host path.
 
 Memory defaults on. Set `memory = false` in an automation's `[job]` table to

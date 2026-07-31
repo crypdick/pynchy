@@ -2,7 +2,7 @@
 
 Workspaces whose profiles select `repo = "owner/repo"` get an isolated git
 worktree instead of sharing a project checkout. Container execution mounts that
-worktree at `/workspace/repos/<owner>/<repo>`. This stops concurrent agents
+worktree at `/home/agent/src/<owner>/<repo>`. This stops concurrent agents
 from editing the same files.
 
 **Sync behavior:** Existing worktrees use best-effort `git fetch` + `git merge`, never `git reset --hard`. A service restart kills all running containers, so agents may leave uncommitted work in their worktree. That state is preserved and reported via system notices so the agent can resume cleanly.
