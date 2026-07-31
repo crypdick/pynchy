@@ -435,3 +435,26 @@ async def test_application_skips_linear_reconciliation_without_configured_boards
     monkeypatch.setattr(app_module, "linear_workspace_boards", dict)
 
     assert await app.reconcile_linear_work_items() is None
+
+
+async def test_application_forwards_ask_user_answers_as_system_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    store = AsyncMock()
+    broadcast = AsyncMock()
+    start_turn = AsyncMock()
+    monkeypatch.setattr(app_module, "store_message", store)
+    monkeypatch.setattr(app, "broadcast_host_message", broadcast)
+    monkeypatch.setattr(app, "start_interactive_turn", start_turn)
+
+    await app.enqueue_message("chat", "answer")
+
+    message = store.await_args.args[0]
+    assert message.chat_jid == "chat"
+    assert message.sender == "system"
+    assert message.content == "answer"
+    assert message.message_type == "system"
+    store.assert_awaited_once_with(message, message_type="system")
+    broadcast.assert_awaited_once_with("chat", "😎 Answer forwarded to agent")
+    start_turn.assert_awaited_once_with("chat")
