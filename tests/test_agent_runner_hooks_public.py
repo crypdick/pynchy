@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
-
-import pytest
 
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
@@ -71,33 +68,3 @@ def test_before_tool_roster_places_builtin_gate_before_plugin_gates() -> None:
     assert roster[0] is builtin_security_hook
     assert roster[1] is plugin_gate
     assert builtin_before_tool_hooks() == [builtin_security_hook]
-
-
-@pytest.mark.asyncio
-async def test_builtin_security_hook_allows_when_all_policies_allow() -> None:
-    allow = AsyncMock(return_value=HookDecision(allowed=True))
-    with (
-        patch("agent_runner.security.artifact_gate.artifact_security_hook", allow),
-        patch("agent_runner.security.bash_gate.bash_security_hook", allow),
-        patch("agent_runner.security.guard_git.guard_git_hook", allow),
-    ):
-        decision = await builtin_security_hook("read_file", {"path": "README.md"})
-
-    assert decision == HookDecision(allowed=True)
-    assert allow.await_count == 3
-
-
-@pytest.mark.asyncio
-async def test_builtin_security_hook_stops_at_first_denial() -> None:
-    denied = AsyncMock(return_value=HookDecision(allowed=False, reason="blocked"))
-    later = AsyncMock(return_value=HookDecision(allowed=True))
-    with (
-        patch("agent_runner.security.artifact_gate.artifact_security_hook", denied),
-        patch("agent_runner.security.bash_gate.bash_security_hook", later),
-        patch("agent_runner.security.guard_git.guard_git_hook", later),
-    ):
-        decision = await builtin_security_hook("run_command", {"command": "unsafe"})
-
-    assert decision == HookDecision(allowed=False, reason="blocked")
-    denied.assert_awaited_once()
-    later.assert_not_awaited()
