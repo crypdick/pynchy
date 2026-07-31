@@ -224,6 +224,39 @@ async def test_setup_action_reopens_interactive_setup_after_rest_transport_error
 
 
 @pytest.mark.asyncio
+async def test_interactive_setup_reads_project_id_from_existing_client_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure_runtime(tmp_path)
+    profile_dir = tmp_path / "chrome-profiles" / "personal"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / "gcp-oauth.keys.json").write_text(
+        '{"installed": {"client_id": "123456-client.apps.googleusercontent.com", '
+        '"client_secret": "client-secret", '  # pragma: allowlist secret
+        '"project_id": "existing-project"}}'
+    )
+    project_ids: list[str] = []
+
+    async def run_body(setup: Any, *_args: object) -> dict[str, object]:
+        await asyncio.sleep(0)
+        project_ids.append(setup.project_id)
+        return {"result": {"status": "interactive_setup_required"}}
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler.has_display", lambda: True
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._handler._run_interactive_setup_body",
+        run_body,
+    )
+
+    result = await _handler()({"source_group": "assigned"})
+
+    assert result == {"result": {"status": "interactive_setup_required"}}
+    assert project_ids == ["existing-project"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("workspace_tools", "mcp_tool_names"),
     [
