@@ -176,6 +176,28 @@ async def test_script_start_fails_when_process_supervision_shell_is_missing(monk
         await ensure_script_running(_script_instance())
 
 
+async def test_script_start_uses_the_available_process_supervision_shell(monkeypatch):
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.pid = 1234
+    popen = MagicMock(return_value=process)
+    wait_healthy = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "/bin/sh"
+    )
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.subprocess.Popen", popen)
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.wait_healthy", wait_healthy)
+
+    instance = _script_instance()
+    await ensure_script_running(instance)
+
+    assert instance.process is process
+    command = popen.call_args.args[0]
+    assert command[:3] == ["/bin/sh", "-c", '"$@" &\nchild=$!\nwait "$child"\n']
+    assert command[-1] == "backend"
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert wait_healthy.await_count == 1
+
+
 async def test_script_start_terminates_process_when_record_persistence_fails(tmp_path: Path):
     process = subprocess.Popen.__new__(subprocess.Popen)
     process.pid = 1234
