@@ -104,3 +104,8 @@ workspace.
 After changing the tool declarations or host environment, restart through the
 normal managed deployment flow. Inspect requirement names and availability,
 never credential values.
+
+The proposed [KeePassXC secret enrollment](../superpowers/future-work/keepassxc-secret-enrollment.md)
+design describes a local, tailnet-only publication path that refreshes secret
+values without making tool-definition changes hot reloadable. It has not been
+implemented.
