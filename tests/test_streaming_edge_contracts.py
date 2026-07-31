@@ -79,6 +79,18 @@ async def test_streaming_delivery_failure_does_not_escape_channel_boundary() -> 
 
 
 @pytest.mark.asyncio
+async def test_streaming_does_not_store_missing_post_message_id() -> None:
+    channel = _channel("chat")
+    channel.post_event.return_value = None
+    state = _state()
+
+    await stream_text_to_channels(_deps(channel), "chat:1", state, final=True)
+
+    assert state.message_ids == {}
+    channel.post_event.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_trace_batcher_flush_all_closes_every_buffered_chat() -> None:
     channel = _channel("chat")
     batcher = TraceBatcher(_deps(channel), cooldown=999.0)
