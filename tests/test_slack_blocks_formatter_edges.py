@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from pynchy.plugins.api import OutboundEvent, OutboundEventType
@@ -77,3 +79,65 @@ def test_approval_without_short_id_has_no_action_block():
     )
 
     assert result.blocks == [{"type": "markdown", "text": "Approval required"}]
+
+
+@pytest.mark.parametrize(
+    ("tool_input", "expected"),
+    [
+        ({}, "Edit"),
+        ({"file_path": "src/example.py"}, "src/example.py"),
+        ({"old_string": "old"}, "- old"),
+        ({"new_string": "new"}, "+ new"),
+    ],
+)
+def test_edit_tool_trace_handles_partial_input(tool_input, expected):
+    result = SlackBlocksFormatter().render(
+        OutboundEvent(
+            type=OutboundEventType.TOOL_TRACE,
+            content="",
+            metadata={"tool_name": "Edit", "tool_input": tool_input},
+        )
+    )
+
+    assert _code_block(result)["text"] == expected
+
+
+def test_unknown_event_type_uses_plain_text_fallback():
+    event = OutboundEvent(type=cast("OutboundEventType", "future"), content="fallback")
+
+    result = SlackBlocksFormatter().render(event)
+
+    assert result.text == "fallback"
+    assert result.blocks is None
+    assert (
+        SlackBlocksFormatter()
+        .render_batch([OutboundEvent(type=cast("OutboundEventType", "future"), content="")])
+        .blocks
+        is None
+    )
+
+
+def test_streaming_text_with_group_name_includes_stop_action():
+    result = SlackBlocksFormatter().render(
+        OutboundEvent(
+            type=OutboundEventType.TEXT,
+            content="Working",
+            metadata={"cursor": True, "group_name": "research"},
+        )
+    )
+
+    assert result.blocks is not None
+    assert result.blocks[1]["elements"][0]["action_id"] == "agent_stop_research"
+
+
+def test_approval_with_short_id_includes_controls():
+    result = SlackBlocksFormatter().render(
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approve this?",
+            metadata={"short_id": "a1"},
+        )
+    )
+
+    assert result.blocks is not None
+    assert result.blocks[1]["elements"][0]["action_id"] == "cop_approve_a1"
