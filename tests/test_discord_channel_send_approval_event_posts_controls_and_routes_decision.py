@@ -377,6 +377,17 @@ async def test_fetch_inbound_since_filters_bot_and_self():
     assert result.high_water_mark
 
 
+@pytest.mark.asyncio
+async def test_fetch_inbound_since_skips_forum_root_without_message_history():
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+
+    result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
+
+    assert result.messages == []
+
+
 def test_plugin_returns_none_without_context():
     assert DiscordChannelPlugin().pynchy_create_channel(context=None) is None
 

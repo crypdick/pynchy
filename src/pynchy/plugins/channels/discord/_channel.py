@@ -715,11 +715,14 @@ class DiscordChannel:
             channel = await self.resolve_channel(channel_jid)
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
+        history = getattr(channel, "history", None)
+        if not callable(history):
+            return InboundFetchResult(messages=[])
 
         after = history_after(since)
         messages: list[NewMessage] = []
         high_water_mark = ""
-        async for message in channel.history(after=after, limit=1000, oldest_first=True):
+        async for message in history(after=after, limit=1000, oldest_first=True):
             high_water_mark = history_high_water_mark(message, high_water_mark)
             inbound = history_message(
                 channel_jid=channel_jid,
