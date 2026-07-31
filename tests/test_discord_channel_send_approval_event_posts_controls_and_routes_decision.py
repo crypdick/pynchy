@@ -437,6 +437,21 @@ async def test_post_event_returns_none_when_too_large_to_stream():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("jid", ["slack:C1", "discord:voice:2"])
+async def test_post_event_skips_non_text_destinations(jid: str):
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve a non-text destination")
+    )
+
+    assert (
+        await ch.post_event(jid, OutboundEvent(type=OutboundEventType.TEXT, content="preview"))
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_event_edits_message_in_place():
     ch = _channel()
     ch.client = object()
@@ -471,6 +486,25 @@ async def test_update_result_uses_discord_identity_without_mutating_shared_event
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("jid", "message_id"),
+    [("slack:C1", "slack-101"), ("discord:voice:2", "discord-101"), ("discord:channel:1", "bad")],
+)
+async def test_update_event_skips_non_streaming_targets(jid: str, message_id: str):
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve an invalid streaming target")
+    )
+
+    await ch.update_event(
+        jid,
+        message_id,
+        OutboundEvent(type=OutboundEventType.TEXT, content="updated text"),
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_event_raises_when_too_large_so_core_falls_back():
     # Discord can't edit a message beyond the limit; raising lets sender.py
     # fall back to chunked send_event.
@@ -484,6 +518,43 @@ async def test_update_event_raises_when_too_large_so_core_falls_back():
             "discord-101",
             OutboundEvent(type=OutboundEventType.TEXT, content="x" * 2001),
         )
+
+
+@pytest.mark.asyncio
+async def test_send_reaction_ignores_discord_fetch_failure():
+    ch = _channel()
+    ch.client = object()
+    destination = MagicMock()
+    destination.fetch_message = AsyncMock(side_effect=discord.DiscordException("offline"))
+    ch.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+
+    await ch.send_reaction("discord:channel:1", "discord-101", "u1", "👀")
+
+
+@pytest.mark.asyncio
+async def test_typing_refresh_failure_does_not_escape_channel_boundary():
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(side_effect=discord.DiscordException("offline"))  # type: ignore[method-assign]
+
+    await ch.set_typing("discord:channel:1", is_typing=True)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_typing_request_does_not_start_another_refresh():
+    ch = _channel()
+    ch.client = object()
+    destination = _FakeTypingChannel()
+    ch.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+
+    await ch.set_typing("discord:channel:1", is_typing=True)
+    await asyncio.sleep(0)
+    await ch.set_typing("discord:channel:1", is_typing=True)
+
+    assert ch.resolve_channel.await_count == 1
+    await ch.set_typing("discord:channel:1", is_typing=False)
 
 
 def test_streaming_channel_satisfies_protocol_and_is_detected():
