@@ -257,6 +257,19 @@ async def test_claim_conflict_can_resume_the_matching_pending_lease() -> None:
     assert await acquire_work_item_lease(_Client(_issue()), _request(board=_board())) == execution
 
 
+async def test_claim_conflict_is_re_raised_when_its_transition_is_not_recoverable() -> None:
+    execution = _execution()
+    configure_linear_work_item_runtime(
+        _runtime(
+            get_transition_by_request=AsyncMock(side_effect=[None, None]),
+            create_claim=AsyncMock(side_effect=WorkItemClaimConflictError(execution)),
+        )
+    )
+
+    with pytest.raises(WorkItemClaimConflictError):
+        await acquire_work_item_lease(_Client(_issue()), _request(board=_board()))
+
+
 async def test_interrupted_lease_records_provider_state_conflict() -> None:
     execution = _execution()
     transition = replace(_transition(), status=WorkItemTransitionStatus.PENDING)
@@ -290,6 +303,28 @@ async def test_unknown_claim_recovery_fails_if_execution_disappeared(
 
     with pytest.raises(RuntimeError, match="transition lost its execution"):
         await reconcile_work_item(_Client(_issue()), "pynchy", "issue-1", transition)
+
+
+async def test_unknown_claim_recovery_retries_when_execution_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _execution()
+    transition = replace(_transition(), status=WorkItemTransitionStatus.UNKNOWN)
+    configure_linear_work_item_runtime(_runtime(get_execution=AsyncMock(return_value=execution)))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.require_workspace_board",
+        AsyncMock(return_value=_board()),
+    )
+    retry = AsyncMock(return_value=execution)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.transition_issue",
+        retry,
+    )
+
+    assert (
+        await reconcile_work_item(_Client(_issue()), "pynchy", "issue-1", transition) == execution
+    )
+    retry.assert_awaited_once()
 
 
 async def test_transition_fails_closed_when_provider_issue_disappears(

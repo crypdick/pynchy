@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
@@ -20,6 +21,7 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     admit_decision_issue,
     configure_linear_work_item_task_runtime,
 )
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.work_items.api import (
     WorkItemClaimConflictError,
     WorkItemExecution,
@@ -30,17 +32,24 @@ from tests.linear_decision_inbox_support import _board, _DecisionClient, _issue,
 pytest_plugins = ("tests.linear_decision_inbox_support",)
 
 
-def _runtime(*, active_execution=None) -> LinearWorkItemTaskRuntime:
+def _runtime(
+    *,
+    active_execution=None,
+    get_execution_for_issue: AsyncMock | None = None,
+    get_task: AsyncMock | None = None,
+    resume_once_task: AsyncMock | None = None,
+    bind_execution_to_task: AsyncMock | None = None,
+) -> LinearWorkItemTaskRuntime:
     return LinearWorkItemTaskRuntime(
         get_control_binding=AsyncMock(),
-        get_task=AsyncMock(),
+        get_task=get_task or AsyncMock(),
         create_task=AsyncMock(),
         update_task=AsyncMock(),
         get_task_logs=AsyncMock(),
-        bind_execution_to_task=AsyncMock(),
+        bind_execution_to_task=bind_execution_to_task or AsyncMock(),
         get_active_execution=AsyncMock(return_value=active_execution),
-        resume_once_task=AsyncMock(),
-        get_execution_for_issue=AsyncMock(),
+        resume_once_task=resume_once_task or AsyncMock(),
+        get_execution_for_issue=get_execution_for_issue or AsyncMock(),
     )
 
 
@@ -284,3 +293,82 @@ async def test_human_approved_admission_ignores_non_running_lease(
         )
         is None
     )
+
+
+async def test_follow_up_admission_defers_an_uncertain_execution() -> None:
+    latest = Mock(id="execution-1", status=WorkItemExecutionStatus.UNKNOWN)
+    configure_linear_work_item_task_runtime(
+        _runtime(get_execution_for_issue=AsyncMock(return_value=latest))
+    )
+    issue = DecisionIssue.from_payload(
+        _issue("issue-follow-up", "SYN-11", "Follow up", "follow_ups", "project-beta")
+    )
+    assert issue is not None
+
+    assert (
+        await admit_decision_issue(
+            issue,
+            _Workspace("beta", "Beta", "linear:beta"),
+            _board("project-beta"),
+            "follow_ups",
+            _context(_DecisionClient()),
+        )
+        is None
+    )
+
+
+async def test_in_progress_admission_binds_a_paused_task_when_resume_stays_paused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = replace(
+        _execution(),
+        linear_issue_id="issue-progress",
+        linear_issue_identifier="SYN-12",
+        linear_issue_url="https://linear.app/example/issue/SYN-12",
+        task_id="task-1",
+    )
+    paused = ScheduledTask(
+        id="task-1",
+        group_folder="beta",
+        chat_jid="linear:beta",
+        prompt="existing",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:05:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        status="paused",
+        last_run="2026-07-30T00:00:00+00:00",
+        derived_thread_name="[SYN-12] Work",
+    )
+    bind = AsyncMock()
+    configure_linear_work_item_task_runtime(
+        _runtime(
+            active_execution=execution,
+            get_task=AsyncMock(return_value=paused),
+            resume_once_task=AsyncMock(return_value=True),
+            bind_execution_to_task=bind,
+        )
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.ensure_task_active",
+        AsyncMock(return_value=(paused, False)),
+    )
+    issue = DecisionIssue.from_payload(
+        _issue("issue-progress", "SYN-12", "Resume work", "in_progress", "project-beta")
+    )
+    assert issue is not None
+
+    assert (
+        await admit_decision_issue(
+            issue,
+            _Workspace("beta", "Beta", "linear:beta"),
+            _board("project-beta"),
+            "in_progress",
+            _context(_DecisionClient()),
+        )
+        is None
+    )
+    bind.assert_awaited_once()
