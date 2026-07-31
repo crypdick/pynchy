@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess  # noqa: S404 - test double models fixed gh subprocess responses.
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -16,7 +17,9 @@ from pynchy.host.git_ops.api import (
 from tests.git_policy_support import (
     create_managed_feature,
     git,
+    managed_pr_result,
     managed_record,
+    no_pr_result,
     write_managed_manifest,
 )
 
@@ -142,3 +145,37 @@ def test_rejects_special_files_in_object_store(git_env: dict) -> None:
     assert resolution.error == (
         "Publication blocked: configured repository 'owner/repo' object store is unavailable."
     )
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+def test_recovers_when_pr_creation_races_with_existing_pr(git_env: dict) -> None:
+    """A PR created concurrently still counts when its refs revalidate."""
+    feature = "pr-create-race"
+    worktree = create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    base_sha = git(git_env["origin"], "rev-parse", "main").stdout.strip()
+    head_sha = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    lookup_results = iter(
+        (
+            no_pr_result([]),
+            no_pr_result([]),
+            managed_pr_result([], base_sha=base_sha, head_sha=head_sha, branch_name=feature),
+        )
+    )
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "gh":
+            if args[1:3] == ["pr", "create"]:
+                return subprocess.CompletedProcess(
+                    args=args, returncode=1, stdout="", stderr="exists"
+                )
+            return next(lookup_results)
+        raise AssertionError(f"unexpected subprocess: {args}")
+
+    with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=fake_run):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": True,
+        "message": f"Pushed 1 commit(s) to {feature}. PR updated: https://github.com/owner/repo/pull/1",
+    }
