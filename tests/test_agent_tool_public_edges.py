@@ -226,6 +226,57 @@ async def test_host_service_request_reports_a_timeout(
     assert result[0].text == "Error: Request timed out waiting for host response"
 
 
+async def test_host_service_request_uses_polling_when_watchdog_misses_the_response(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    response_file = tmp_path / "responses" / "request-4.json"
+    response_file.parent.mkdir(parents=True, exist_ok=True)
+    response_file.write_text(json.dumps({"result": {"ready": True}}), encoding="utf-8")
+    observer = _Observer()
+    exists = Mock(side_effect=(False, False, False, True))
+    wait_calls: list[float] = []
+
+    async def wait_for(awaitable: object, **kwargs: float) -> bool:
+        await asyncio.sleep(0)
+        wait_calls.append(kwargs["timeout"])
+        awaitable.close()
+        return True
+
+    monkeypatch.setattr("agent_runner.agent_tools._ipc_request.Observer", lambda: observer)
+    monkeypatch.setattr("agent_runner.agent_tools._ipc_request._response_file_exists", exists)
+    monkeypatch.setattr("agent_runner.agent_tools._ipc_request.asyncio.wait_for", wait_for)
+    monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", Mock())
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await request_host_service("calendar", {}, guarded_action_id="request-4")
+
+    assert result[0].text == json.dumps({"ready": True}, indent=2)
+    assert len(wait_calls) == 1
+
+
+async def test_host_service_request_falls_back_to_polling_when_watchdog_cannot_start(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    response_file = tmp_path / "responses" / "request-5.json"
+    response_file.parent.mkdir(parents=True, exist_ok=True)
+    response_file.write_text(json.dumps({"result": {"ready": True}}), encoding="utf-8")
+
+    class _UnavailableObserver(_Observer):
+        def start(self) -> None:
+            raise OSError("watch limit")
+
+    observer = _UnavailableObserver()
+    monkeypatch.setattr("agent_runner.agent_tools._ipc_request.Observer", lambda: observer)
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await request_host_service("calendar", {}, guarded_action_id="request-5")
+
+    assert result[0].text == json.dumps({"ready": True}, indent=2)
+    assert observer.stopped is False
+
+
 async def test_sync_worktree_tool_reports_a_successful_pull_request_publication(
     monkeypatch,
     tmp_path: Path,
