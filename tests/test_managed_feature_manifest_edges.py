@@ -125,6 +125,19 @@ slug = "duplicate-feature"
             "manifest."
         )
 
+    def test_rejects_managed_feature_worktree_slot_that_is_a_file(self, git_env: dict) -> None:
+        worktree = git_env["project"] / ".worktrees" / "file-feature"
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        worktree.write_text("not a worktree\n", encoding="utf-8")
+        write_managed_manifest(git_env["project"], [managed_record("file-feature")])
+
+        result = resolve_managed_feature_publication("file-feature", [git_env["repo_ctx"]])
+
+        assert result.publication is None
+        assert result.error == (
+            "Publication blocked: managed feature 'file-feature' worktree is invalid."
+        )
+
     def test_rejects_git_identity_when_path_resolution_races(
         self, git_env: dict, tmp_path: Path
     ) -> None:
