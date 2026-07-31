@@ -118,6 +118,18 @@ class TestContainerArgs:
         assert environment["ANTHROPIC_AUTH_TOKEN"] == gateway.key
         assert environment["EXTRA"] == "selected"
 
+    def test_agent_environment_omits_unavailable_openai_gateway(self, tmp_path: Path):
+        gateway = _MockGateway(providers={"anthropic"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gateway),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert environment["ANTHROPIC_BASE_URL"] == gateway.base_url
+        assert "OPENAI_BASE_URL" not in environment
+
     def test_has_api_credentials_reflects_gateway_provider(self):
         gateway = _MockGateway(providers={"anthropic"})
         with patch(f"{_GATEWAY}.get_gateway", return_value=gateway):
