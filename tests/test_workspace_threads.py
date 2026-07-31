@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from conftest import init_test_database, make_settings
@@ -243,6 +243,34 @@ async def test_declared_child_workspace_uses_its_resolved_policy(monkeypatch) ->
     assert child.folder == "family-space"
     assert child.name == "Family Space"
     assert child.is_admin is True
+
+
+@pytest.mark.asyncio
+async def test_declared_child_workspace_requires_a_resolved_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Mock()
+    settings.workspace_config.return_value = None
+    settings.resolved_workspace_config.return_value = None
+    monkeypatch.setattr(workspace_threads, "get_settings", lambda: settings)
+    parent = _parent()
+    child_jid = "discord:channel:family"
+
+    with pytest.raises(RuntimeError, match="lacks policy: family-space"):
+        await reconcile_workspace_threads(
+            {parent.jid: parent},
+            {
+                "relationships": WorkspaceConfig(
+                    threads=[
+                        WorkspaceThreadConfig(
+                            name="family", workspace="family-space", profiles=["child"]
+                        )
+                    ]
+                )
+            },
+            [_ThreadChannel({"family": child_jid})],
+            AsyncMock(),
+        )
 
 
 @pytest.mark.asyncio
