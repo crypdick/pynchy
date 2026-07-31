@@ -8,10 +8,23 @@ from unittest.mock import MagicMock
 import pluggy
 import pytest
 
-from pynchy.agent_home import CompanionSkillAccess, refresh_personalized_skills, sync_skills
+from pynchy.agent_home import (
+    CompanionSkillAccess,
+    parse_skill_tier,
+    refresh_personalized_skills,
+    sync_skills,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def test_parse_skill_tier_defaults_when_metadata_cannot_be_read(tmp_path: Path) -> None:
+    skill = tmp_path / "unreadable"
+    skill.mkdir()
+    (skill / "SKILL.md").mkdir()
+
+    assert parse_skill_tier(skill) == ("unreadable", "community")
 
 
 class _FakePluginManager(pluggy.PluginManager):
