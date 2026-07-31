@@ -11,8 +11,10 @@ from pynchy.config.api import DiscordConnectionConfig
 from tests.discord_channel_support import (
     DISCORD_BOT_ENV,
     _channel,
+    _DirectMessageClient,
     _FakeDiscordGuild,
     _FakeDiscordTextChannel,
+    _FakeDiscordUser,
     _FakeThreadParent,
 )
 
@@ -74,6 +76,38 @@ async def test_resolve_chat_jid_prefers_a_cached_configured_channel() -> None:
 
     assert await channel.resolve_chat_jid("123.channels.456") == "discord:channel:456"
     client.fetch_guild.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_uses_connected_client_for_numeric_direct_ref() -> None:
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["discord:42"],
+            group_policy="disabled",
+        )
+    )
+    channel.client = _DirectMessageClient(
+        get_user=lambda user_id: _FakeDiscordUser(user_id, "asmith"),
+        fetch_user=None,
+    )
+
+    assert await channel.resolve_chat_jid("direct.42") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client() -> None:
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        )
+    )
+
+    assert await channel.resolve_chat_jid("direct.alice") is None
 
 
 @pytest.mark.asyncio
