@@ -26,6 +26,7 @@ from pynchy.host.orchestrator.scheduled_binding import (
     ScheduledTaskTerminalError,
     ensure_scheduled_task_binding,
     ensure_scheduled_task_conversation_open,
+    reconcile_scheduled_task_bindings,
 )
 from pynchy.identifiers import ChatJid, GroupFolder
 from pynchy.state import (
@@ -62,6 +63,29 @@ async def test_existing_binding_with_wrong_folder_recreates_named_thread(tmp_pat
 
     assert deps.ensured == [(owner.jid, task.derived_thread_name)]
     assert ensured.bound_chat_jid == deps.ensured_jid
+
+
+async def test_startup_reconciles_active_and_paused_automation_bindings() -> None:
+    active = _task()
+    paused = replace(active, id="task-paused", status="paused")
+    cancelled = replace(active, id="task-cancelled", status="cancelled")
+    routed = replace(active, id="task-routed", conversation_id="conversation-1")
+    ensure = AsyncMock(side_effect=[active, OSError("obsolete owner")])
+
+    with patch(
+        "pynchy.host.orchestrator.scheduled_binding.ensure_scheduled_task_binding",
+        ensure,
+    ):
+        reconciled = await reconcile_scheduled_task_bindings(
+            [active, paused, cancelled, routed],
+            _BindingDeps({}),
+        )
+
+    assert reconciled == 1
+    assert [call.args[0].id for call in ensure.await_args_list] == [
+        active.id,
+        paused.id,
+    ]
 
 
 async def test_existing_binding_from_another_owner_recreates_named_thread(tmp_path) -> None:

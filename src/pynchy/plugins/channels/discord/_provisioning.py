@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import discord
+
 from pynchy.discord import (
     DiscordChatTarget,
     parse_discord_chat_target,
@@ -13,6 +15,7 @@ from pynchy.logger import logger
 
 from ._ids import channel_jid
 from ._lookup import normalize_discord_channel_name, same_name
+from ._targets import configured_channel_kind
 
 DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
 DISCORD_CHAT_REF_NOT_CONFIGURED_GUILD_CHANNEL = (
@@ -33,6 +36,8 @@ MULTIPLE_DISCORD_GUILDS_AVAILABLE = (
     "Multiple Discord guilds are available; configure one Discord guild for "
     "workspace channel provisioning"
 )
+# NOTE: Update docs/channels/discord.md § Forum Workspaces if these tags change.
+FORUM_POST_KINDS = ("issue", "automation", "planning", "testing", "topic")
 
 
 def _require_client(client: object) -> object:
@@ -59,6 +64,8 @@ async def _create_configured_channel(channel: object, target: DiscordChatTarget)
     channel_like = cast("Any", channel)
     existing = await channel_like.find_configured_channel(target)
     if existing is not None:
+        if configured_channel_kind(channel_like.config, target) == "forum":
+            existing = await ensure_forum_configuration(channel_like, target, existing)
         return channel_jid(str(existing.id))
 
     guild = await channel_like.find_configured_guild(target)
@@ -68,12 +75,99 @@ async def _create_configured_channel(channel: object, target: DiscordChatTarget)
         )
 
     channel_name = channel_like.configured_channel_name(target)
+    if configured_channel_kind(channel_like.config, target) == "forum":
+        category = await _ensure_configured_category(channel_like, target, guild)
+        created = await guild.create_forum(
+            channel_name,
+            category=category,
+            available_tags=[discord.ForumTag(name=name) for name in FORUM_POST_KINDS],
+            reason="Pynchy configured workspace forum",
+        )
+        _log_created_channel(channel_like, guild, channel_name, created)
+        return channel_jid(str(created.id))
+
     created = await guild.create_text_channel(
         channel_name,
         reason="Pynchy configured workspace channel",
     )
     _log_created_channel(channel_like, guild, channel_name, created)
     return channel_jid(str(created.id))
+
+
+async def ensure_forum_configuration(
+    channel: object,
+    target: DiscordChatTarget,
+    forum: object,
+) -> object:
+    """Ensure one configured forum has its category and canonical kind tags."""
+    channel_like = cast("Any", channel)
+    forum_like = cast("Any", forum)
+    options: dict[str, object] = {}
+
+    existing_tags = list(getattr(forum_like, "available_tags", ()) or ())
+    known_names = {
+        str(getattr(tag, "name", "")).casefold()
+        for tag in existing_tags
+        if getattr(tag, "name", None)
+    }
+    missing = [
+        discord.ForumTag(name=name)
+        for name in FORUM_POST_KINDS
+        if name.casefold() not in known_names
+    ]
+    if missing:
+        options["available_tags"] = [*existing_tags, *missing]
+
+    guild = getattr(forum_like, "guild", None)
+    if guild is not None:
+        category = await _ensure_configured_category(channel_like, target, guild)
+        if category is not None and getattr(forum_like, "category_id", None) != getattr(
+            category, "id", None
+        ):
+            options["category"] = category
+
+    if not options:
+        return forum
+    edit = getattr(forum_like, "edit", None)
+    if not callable(edit):
+        raise TypeError("Discord forum does not support configuration reconciliation")
+    updated = await edit(
+        **options,
+        reason="Pynchy configured workspace forum reconciliation",
+    )
+    return updated or forum
+
+
+async def _ensure_configured_category(
+    channel: object,
+    target: DiscordChatTarget,
+    guild: object,
+) -> object | None:
+    channel_like = cast("Any", channel)
+    guild_like = cast("Any", guild)
+    guild_config = channel_like.config.chat.get(target.guild_id or "")
+    channel_config = guild_config.channels.get(target.target_id) if guild_config else None
+    category_name = channel_config.category if channel_config is not None else None
+    if not category_name:
+        return None
+
+    existing = next(
+        (
+            category
+            for category in getattr(guild_like, "categories", ())
+            if same_name(getattr(category, "name", None), category_name)
+        ),
+        None,
+    )
+    if existing is not None:
+        return cast("object", existing)
+    return cast(
+        "object",
+        await guild_like.create_category(
+            category_name,
+            reason="Pynchy configured workspace category",
+        ),
+    )
 
 
 async def _create_workspace_channel(channel: object, name: str) -> str:

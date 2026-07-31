@@ -131,7 +131,7 @@ def workspace_security(
     )
 
 
-async def ensure_workspace_registered(  # noqa: PLR0913 - registration boundary keeps the full workspace creation contract explicit.
+async def ensure_workspace_registered(  # noqa: PLR0911,PLR0913 - registration boundary keeps the full workspace creation contract explicit.
     folder: str,
     config: WorkspaceConfig,
     resolved: ResolvedWorkspaceConfig,
@@ -141,14 +141,52 @@ async def ensure_workspace_registered(  # noqa: PLR0913 - registration boundary 
     channels: list[Channel],
     settings: Settings,
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
+    rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None = None,
 ) -> str | None:
     """Return or create the concrete chat JID for a configured workspace."""
     jid = folder_to_jid.get(folder)
-    if jid is not None:
-        return jid
 
     if config.chat is not None:
         created_jid = await _resolve_configured_chat_jid(folder, config.chat, channels)
+        if created_jid is None:
+            return jid
+        if jid == created_jid:
+            return jid
+        if jid is not None:
+            existing_target = workspaces.get(created_jid)
+            if existing_target is not None and existing_target.folder != folder:
+                logger.warning(
+                    "Configured workspace target is registered to another workspace",
+                    folder=folder,
+                    existing_folder=existing_target.folder,
+                    jid=created_jid,
+                )
+                return jid
+            if rebind_fn is None:
+                logger.warning(
+                    "Configured workspace target changed without rebind support",
+                    folder=folder,
+                    old_jid=jid,
+                    new_jid=created_jid,
+                )
+                return jid
+            current_profile = workspaces[jid]
+            profile = WorkspaceProfile(
+                jid=created_jid,
+                name=display_name,
+                folder=folder,
+                trigger=f"@{settings.agent.name}",
+                added_at=current_profile.added_at,
+                is_admin=resolved.is_admin,
+                security=workspace_security(config, resolved),
+            )
+            await rebind_fn(profile)
+            workspaces.pop(jid, None)
+            workspaces[created_jid] = profile
+            folder_to_jid[folder] = created_jid
+            return created_jid
+    elif jid is not None:
+        return jid
     else:
         channel = _workspace_creation_channel(channels, settings.command_center.connection)
         if channel is None:

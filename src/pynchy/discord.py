@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 DiscordChatKind = Literal["channel", "direct"]
-DiscordChannelKind = Literal["text", "voice"]
+DiscordChannelKind = Literal["text", "voice", "forum"]
 DiscordDmPolicy = Literal["open", "allowlist", "disabled"]
 DiscordGroupPolicy = Literal["open", "disabled", "allowlist"]
 
@@ -20,6 +20,7 @@ class DiscordAccessSettings:
 class DiscordChannelSettings:
     name: str | None = None
     kind: DiscordChannelKind = "text"
+    category: str | None = None
     enabled: bool = True
     require_mention: bool | None = None
     users: list[str] = field(default_factory=list)

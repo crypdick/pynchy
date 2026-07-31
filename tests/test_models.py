@@ -147,6 +147,11 @@ class TestWorkspaceConfigFields:
                 threads=[WorkspaceThreadConfig(name="Family"), WorkspaceThreadConfig(name="family")]
             )
 
+    def test_workspace_thread_accepts_a_native_post_kind(self):
+        thread = WorkspaceThreadConfig(name="roadmap", kind="planning")
+
+        assert thread.kind == "planning"
+
 
 class TestWorkspaceThreadSemanticWorkspace:
     def test_semantic_workspace_requires_profiles(self) -> None:

@@ -48,6 +48,7 @@ class _ThreadChannel:
     def __init__(self, existing: dict[str, str] | None = None) -> None:
         self.existing = existing or {}
         self.created: list[tuple[str, str]] = []
+        self.kinds: list[tuple[str, str]] = []
 
     async def connect(self) -> None: ...
 
@@ -79,6 +80,9 @@ class _ThreadChannel:
         assert participant_ids == ()
         self.created.append((parent_jid, name))
         return f"discord:channel:new-{name}"
+
+    async def set_thread_kind(self, child_jid: str, kind: str) -> None:
+        self.kinds.append((child_jid, kind))
 
 
 class _CreationOnlyChannel(_ThreadChannel):
@@ -143,7 +147,7 @@ async def test_reconciles_declared_threads_by_reusing_or_creating_them() -> None
             "relationships": WorkspaceConfig(
                 threads=[
                     WorkspaceThreadConfig(name="family"),
-                    WorkspaceThreadConfig(name="family-gardening"),
+                    WorkspaceThreadConfig(name="family-gardening", kind="automation"),
                 ]
             )
         },
@@ -153,6 +157,10 @@ async def test_reconciles_declared_threads_by_reusing_or_creating_them() -> None
 
     assert channel.created == [
         ("discord:channel:relationships", "family-gardening"),
+    ]
+    assert channel.kinds == [
+        ("discord:channel:family", "topic"),
+        ("discord:channel:new-family-gardening", "automation"),
     ]
     assert [action.operation for action in actions] == [
         "reuse",

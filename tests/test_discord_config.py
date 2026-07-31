@@ -95,6 +95,27 @@ def test_voice_channel_config_uses_a_name_not_a_snowflake():
     assert voice.kind == "voice"
 
 
+def test_forum_channel_config_carries_its_category():
+    cfg = DiscordConnectionConfig(
+        bot_token_env=DISCORD_BOT_ENV,
+        chat={
+            "pynchy": {
+                "channels": {
+                    "systems": {
+                        "name": "Systems",
+                        "kind": "forum",
+                        "category": "Systems",
+                    }
+                }
+            }
+        },
+    )
+
+    forum = cfg.to_runtime_settings().chat["pynchy"].channels["systems"]
+    assert forum.kind == "forum"
+    assert forum.category == "Systems"
+
+
 def test_discord_connection_rejects_multiple_voice_channels():
     with pytest.raises(ValidationError, match="one active Pynchy voice channel"):
         DiscordConnectionConfig(

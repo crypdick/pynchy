@@ -79,8 +79,8 @@ every conversation.
 profiles = ["relationships"]
 threads = [
   { name = "family" },
-  { name = "family-gardening" },
-  { name = "chat-manager" },
+  { name = "family-gardening", kind = "automation" },
+  { name = "chat-manager", kind = "testing" },
 ]
 ```
 
@@ -89,6 +89,11 @@ registers it, or creates it when the channel supports both child-thread lookup
 and creation. Lookup is required before creation so a restart cannot create a
 duplicate. The Discord channel supports this arrangement; channels without
 idempotent lookup report the thread as blocked and receive no mutation.
+
+Set `kind` to `automation`, `planning`, `testing`, or `topic` to describe the
+conversation. `topic` provides the default. Discord forum workspaces apply the
+kind as the post's only managed tag. Pynchy reserves `issue` for routed issue
+bindings; see [Forum Workspaces](../channels/discord.md#forum-workspaces).
 
 `reconcile_workspace_threads(..., dry_run=True)` returns the same proposed
 thread actions without creating threads or changing registrations. Use it from

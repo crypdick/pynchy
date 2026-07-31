@@ -53,6 +53,7 @@ from pynchy.host.orchestrator.http_control import resolve_control_plane_runtime
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.host.orchestrator.scheduled_binding import reconcile_scheduled_task_bindings
 from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.logger import logger
 from pynchy.plugins.api import (
@@ -76,6 +77,7 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartyp
 )
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state.api import (
+    get_all_tasks,
     get_chat_jids_by_name,
     get_last_group_sync,
     init_database,
@@ -338,7 +340,12 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
         channels=app.channels,
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
+        rebind_fn=app.rebind_workspace,
     )
+
+    scheduled_bindings = await reconcile_scheduled_task_bindings(await get_all_tasks(), app)
+    if scheduled_bindings:
+        logger.info("Scheduled task bindings reconciled", count=scheduled_bindings)
 
     linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
 

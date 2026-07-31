@@ -198,6 +198,8 @@ The command runs on the host. Non-empty output goes to the derived thread under
 the workspace's physical Discord root, and Pynchy registers that thread with
 the logical owner's profile for future replies. Successful output ending in
 `{"wakeAgent": false}` skips delivery but retains the job's thread binding.
+Pynchy creates or repairs active and paused task bindings at startup, before
+their first run. Discord forum workspaces tag these posts as `automation`.
 
 ## Plugin-Sourced Jobs
 

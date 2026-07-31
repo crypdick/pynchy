@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
-from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001
+from pynchy.host.orchestrator.threads import EnsuredThread, set_thread_kind
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.identifiers import (
@@ -29,6 +29,7 @@ from pynchy.identifiers import (
     GroupFolder,
     SessionId,
 )
+from pynchy.logger import logger
 from pynchy.plugins.api import (
     Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -163,6 +164,7 @@ async def _bind_named_thread(
     ensured = await deps.ensure_thread(placement.control_parent.jid, title)
     if ensured.jid is None:
         raise ScheduledTaskOwnershipError("Scheduled task thread creation returned no chat JID")
+    await set_thread_kind(deps.channels, ensured.jid, "automation")
     profile = replace(
         placement.owner,
         jid=ensured.jid,
@@ -210,6 +212,7 @@ async def _bind_routed_conversation(
                     parent_jid=ChatJid(placement.control_parent.jid),
                     title=title,
                     owner_workspace=conversation.workspace,
+                    kind="issue" if _is_linear_task(task) else "automation",
                 ),
             )
         except ConversationControlClosedError as exc:
@@ -332,3 +335,27 @@ async def _ensure_scheduled_task_binding(
             derived_thread_name=title,
         )
     return task
+
+
+async def reconcile_scheduled_task_bindings(
+    tasks: list[ScheduledTask],
+    deps: ScheduledBindingDeps,
+) -> int:
+    """Eagerly create or repair automation posts for active and paused tasks."""
+    reconciled = 0
+    for task in tasks:
+        if task.status not in {"active", "paused"} or task.conversation_id is not None:
+            continue
+        try:
+            await ensure_scheduled_task_binding(task, deps)
+        except Exception as exc:  # noqa: BLE001 - one invalid task must not block startup.
+            logger.warning(
+                "Scheduled task binding reconciliation failed",
+                task_id=task.id,
+                group_folder=task.group_folder,
+                exc_type=type(exc).__name__,
+                err=str(exc),
+            )
+            continue
+        reconciled += 1
+    return reconciled

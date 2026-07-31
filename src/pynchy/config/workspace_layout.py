@@ -27,6 +27,9 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
     """
 
     name: str
+    # NOTE: Update docs/usage/workspaces.md § Organize Child Conversations if
+    # these kinds change.
+    kind: Literal["automation", "planning", "testing", "topic"] = "topic"
     workspace: str | None = None
     profiles: list[str] = []
     soul: str | None = None

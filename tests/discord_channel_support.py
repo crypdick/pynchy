@@ -115,15 +115,27 @@ class _FakeThread:
     name: str = ""
     parent_id: int | None = None
     archived: bool = False
+    parent: object | None = None
+    applied_tags: list[object] = field(default_factory=list)
     added_user_ids: list[int] = field(default_factory=list)
     archive_edits: list[bool] = field(default_factory=list)
+    tag_edits: list[list[object]] = field(default_factory=list)
 
     async def add_user(self, user: discord.Object) -> None:
         self.added_user_ids.append(int(user.id))
 
-    async def edit(self, *, archived: bool) -> None:
-        self.archived = archived
-        self.archive_edits.append(archived)
+    async def edit(
+        self,
+        *,
+        archived: bool | None = None,
+        applied_tags: list[object] | None = None,
+    ) -> None:
+        if archived is not None:
+            self.archived = archived
+            self.archive_edits.append(archived)
+        if applied_tags is not None:
+            self.applied_tags = list(applied_tags)
+            self.tag_edits.append(list(applied_tags))
 
 
 class _FakeThreadParent:
@@ -276,6 +288,31 @@ class _FakeDiscordVoiceChannel:
     name: str
 
 
+@dataclass(slots=True)
+class _FakeDiscordCategory:
+    id: int
+    name: str
+
+
+@dataclass(slots=True)
+class _FakeDiscordForum:
+    id: int
+    name: str
+    guild: object
+    available_tags: list[object]
+    category_id: int | None = None
+    edits: list[dict[str, object]] = field(default_factory=list)
+
+    async def edit(self, **options: object) -> _FakeDiscordForum:
+        self.edits.append(options)
+        if "available_tags" in options:
+            self.available_tags = list(cast("list[object]", options["available_tags"]))
+        category = options.get("category")
+        if category is not None:
+            self.category_id = int(category.id)
+        return self
+
+
 class _FakeDiscordUser:
     def __init__(self, user_id: int, name: str, *, display_name: str | None = None) -> None:
         self.id = user_id
@@ -295,12 +332,16 @@ class _FakeDiscordGuild:
         channels: list[_FakeDiscordTextChannel],
         members: list[_FakeDiscordUser] | None = None,
         voice_channels: list[_FakeDiscordVoiceChannel] | None = None,
+        forums: list[_FakeDiscordForum] | None = None,
+        categories: list[_FakeDiscordCategory] | None = None,
     ) -> None:
         self.id = guild_id
         self.name = name
         self.text_channels = channels
         self.members = members or []
         self.voice_channels = voice_channels or []
+        self.forums = forums or []
+        self.categories = categories or []
         self.created: list[str] = []
 
     async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
@@ -308,6 +349,29 @@ class _FakeDiscordGuild:
         channel = _FakeDiscordTextChannel(789, name)
         self.text_channels.append(channel)
         return channel
+
+    async def create_category(self, name: str, **_kwargs: object) -> _FakeDiscordCategory:
+        category = _FakeDiscordCategory(890, name)
+        self.categories.append(category)
+        return category
+
+    async def create_forum(
+        self,
+        name: str,
+        *,
+        category: _FakeDiscordCategory | None,
+        available_tags: list[object],
+        **_kwargs: object,
+    ) -> _FakeDiscordForum:
+        forum = _FakeDiscordForum(
+            id=891,
+            name=name,
+            guild=self,
+            available_tags=available_tags,
+            category_id=category.id if category is not None else None,
+        )
+        self.forums.append(forum)
+        return forum
 
 
 class _FakeDiscordClient:

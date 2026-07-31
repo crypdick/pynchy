@@ -217,6 +217,13 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
     monkeypatch.setattr(lifecycle.workspace_config, "get_repo_access_groups", lambda _: {"group"})
     monkeypatch.setattr(lifecycle, "reconcile_worktrees_at_startup", reconcile_worktrees)
     monkeypatch.setattr(lifecycle.workspace_config, "reconcile_workspaces", reconcile_workspaces)
+    reconcile_bindings = AsyncMock(return_value=0)
+    monkeypatch.setattr(lifecycle, "get_all_tasks", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        lifecycle,
+        "reconcile_scheduled_task_bindings",
+        reconcile_bindings,
+    )
     monkeypatch.setattr(
         lifecycle.linear_boot,
         "reconcile_linear_workspace_boards",
@@ -233,7 +240,9 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
         channels=app.channels,
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
+        rebind_fn=app.rebind_workspace,
     )
+    reconcile_bindings.assert_awaited_once_with([], app)
     assert app.connection_runtime_owner.runtimes() == tuple(runtimes)
 
 
