@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -134,3 +136,47 @@ def test_application_syncs_personalization_with_the_validator(
 
     assert app.sync_personalization(tmp_path) == "synced"
     assert calls == [(tmp_path, validator)]
+
+
+async def test_application_routes_manual_redeploy_and_temporal_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    redeploy = AsyncMock()
+    channel_reconciliation = AsyncMock()
+    linear_reconciliation = AsyncMock()
+    monkeypatch.setattr(app_module.session_handler, "trigger_manual_redeploy", redeploy)
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "start_channel_reconciliation_workflow",
+        channel_reconciliation,
+    )
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "start_linear_work_item_reconciliation_workflow",
+        linear_reconciliation,
+    )
+
+    await app.trigger_manual_redeploy("chat")
+    await app.start_channel_reconciliation()
+    await app.start_linear_work_item_reconciliation()
+
+    redeploy.assert_awaited_once_with(app, "chat", source_message=None)
+    channel_reconciliation.assert_awaited_once_with()
+    linear_reconciliation.assert_awaited_once_with()
+
+
+def test_application_delegates_host_and_workspace_policy_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    monkeypatch.setattr(app_module, "is_repo_dirty", lambda: True)
+    monkeypatch.setattr(app_module, "has_api_credentials", lambda: False)
+    monkeypatch.setattr(app_module, "linear_workspace_enabled", lambda _: False)
+    monkeypatch.setattr(app.queue, "has_active_host_process", lambda folder: folder == "chat")
+
+    assert app.repo_is_dirty() is True
+    assert app.has_api_credentials() is False
+    assert app.has_active_host_process("chat") is True
+    assert app.linear_workspace_enabled(group) is False
