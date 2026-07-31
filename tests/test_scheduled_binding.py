@@ -247,7 +247,8 @@ async def test_existing_named_task_binding_reconciles_its_title() -> None:
     bound = replace(bound, name="Owner/owner | durable task")
     task = replace(
         _task(),
-        derived_thread_name="⚙️ durable task",
+        config_job_name="vault-durable-task",
+        derived_thread_name="owner | durable task",
         bound_chat_jid=bound.jid,
         bound_group_folder=bound.folder,
     )
@@ -257,10 +258,11 @@ async def test_existing_named_task_binding_reconciles_its_title() -> None:
 
     ensured = await ensure_scheduled_task_binding(task, deps)
 
-    assert ensured == task
+    assert ensured.derived_thread_name == "⚙️ durable task"
     assert channel.titles == [(bound.jid, "⚙️ durable task")]
     assert deps.workspaces[bound.jid].name == "Owner/⚙️ durable task"
     assert deps.ensured == []
+    assert deps.scheduled_task_updates == [(task.id, {"derived_thread_name": "⚙️ durable task"})]
 
 
 async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> None:
