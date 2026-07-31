@@ -542,6 +542,71 @@ class TestLiteLLMGatewayStart:
         assert litellm_environment["UI_PASSWORD"] == "dashboard-password"  # noqa: S105  # pragma: allowlist secret
 
     @pytest.mark.asyncio
+    async def test_start_accepts_non_mapping_phoenix_config(self, tmp_path: Path):
+        """Malformed optional Phoenix settings do not block gateway startup."""
+        config = tmp_path / "litellm_config.yaml"
+        config.write_text("- malformed\n")
+        gw = LiteLLMGateway(config_path=str(config), data_dir=tmp_path, **_LITELLM_KWARGS)
+        calls: list[list[str]] = []
+
+        with (
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(
+                f"{_LITELLM_MOD}.run_docker",
+                new_callable=AsyncMock,
+                side_effect=self._fake_docker_recorder(calls),
+            ),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
+            patch.object(gw, "_wait_postgres_healthy", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.wait_healthy", new_callable=AsyncMock),
+        ):
+            await gw.start()
+
+        assert any("pynchy-litellm" in " ".join(command) for command in calls)
+
+    @pytest.mark.asyncio
+    async def test_start_times_out_when_postgres_never_becomes_ready(self, tmp_path: Path):
+        """Gateway startup reports a PostgreSQL sidecar that never becomes ready."""
+        config = tmp_path / "litellm_config.yaml"
+        config.write_text("litellm_settings: {}\n")
+        gw = LiteLLMGateway(config_path=str(config), data_dir=tmp_path, **_LITELLM_KWARGS)
+        calls: list[list[str]] = []
+
+        class _Clock:
+            def __init__(self) -> None:
+                self._times = iter((0.0, 0.0, 30.0))
+
+            def time(self) -> float:
+                return next(self._times)
+
+        def fake_docker(*args: str, **_kwargs: object) -> MagicMock:
+            calls.append(list(args))
+            result = MagicMock()
+            result.returncode = 1 if args[0] == "exec" else 0
+            result.stdout = "true" if args[0] == "inspect" else ""
+            return result
+
+        with (
+            patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.remove_container", new_callable=AsyncMock),
+            patch(
+                f"{_LITELLM_MOD}.run_docker",
+                new_callable=AsyncMock,
+                side_effect=fake_docker,
+            ),
+            patch(f"{_LITELLM_MOD}.asyncio.get_running_loop", return_value=_Clock()),
+            patch(f"{_LITELLM_MOD}.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(TimeoutError, match="PostgreSQL did not become ready"),
+        ):
+            await gw.start()
+
+        assert ["exec", "pynchy-litellm-db", "pg_isready", "-U", "litellm"] in calls
+        assert not any(_LITELLM_KWARGS["image"] in command for command in calls)
+
+    @pytest.mark.asyncio
     async def test_stop_removes_all_containers_and_network(self, gw: LiteLLMGateway):
         calls: list[list[str]] = []
 
