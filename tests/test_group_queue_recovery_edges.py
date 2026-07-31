@@ -67,3 +67,24 @@ async def test_resuming_waiting_runtime_keeps_it_waiting_until_global_slot_is_fr
     await second_started.wait()
     await asyncio.sleep(0)
     await queue.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_suppresses_a_scheduled_retry(container_runtime):
+    queue = GroupQueue(
+        QueuePolicy(max_concurrent=1, max_retries=1, retry_base_seconds=0.05),
+        container_runtime,
+    )
+
+    async def process_messages(_chat_jid: str) -> TurnOutcome:
+        await asyncio.sleep(0)
+        return TurnOutcome.RETRY
+
+    queue.set_process_messages_fn(process_messages)
+    target = _target("retry-shutdown@g.us", "retry-shutdown")
+
+    assert await queue.run_message_turn(target) is TurnOutcome.RETRY
+    await queue.shutdown()
+    await asyncio.sleep(0.06)
+
+    assert queue.has_activity(target.id) is False
