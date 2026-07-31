@@ -108,9 +108,11 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
     assert initial_input["system_notices"] == expected_notices
 
 
+@pytest.mark.parametrize("repository_available", [True, False])
 async def test_agent_resolves_repo_mounts_through_the_public_spawn_path(
     app: PynchyApp,
     tmp_path: Path,
+    repository_available: bool,
 ) -> None:
     fake_proc = FakeProcess(
         output={
@@ -136,7 +138,10 @@ async def test_agent_resolves_repo_mounts_through_the_public_spawn_path(
     with (
         patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
         _patch_test_settings(tmp_path),
-        patch("pynchy.host.orchestrator.app.get_repo_context", return_value=repo),
+        patch(
+            "pynchy.host.orchestrator.app.get_repo_context",
+            return_value=repo if repository_available else None,
+        ),
         patch("pynchy.host.orchestrator.app.ensure_worktree", return_value=worktree),
     ):
         (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -158,7 +163,9 @@ async def test_agent_resolves_repo_mounts_through_the_public_spawn_path(
         (tmp_path / "data" / "ipc" / "test-group" / "input" / "initial.json").read_text()
     )
     assert initial_input["repo_accesses"] == [repo.slug]
-    assert initial_input["system_notices"] == list(worktree.notices)
+    assert initial_input.get("system_notices", []) == (
+        list(worktree.notices) if repository_available else []
+    )
 
 
 async def test_app_skips_optional_mcp_start_when_manager_is_unconfigured(
