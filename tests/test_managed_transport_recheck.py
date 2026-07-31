@@ -328,6 +328,63 @@ def test_rechecks_object_store_between_isolated_transport_commands(
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+@pytest.mark.parametrize(
+    "remote_output",
+    [
+        "not-a-sha\trefs/heads/main\n",
+        f"{'a' * 40}\trefs/heads/main\n{'b' * 40}\trefs/heads/main\n",
+    ],
+)
+def test_rejects_malformed_final_managed_ref_response(git_env: dict, remote_output: str) -> None:
+    """A malformed final remote-ref response cannot authorize PR publication."""
+    feature = "malformed-final-refs"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    real_run_git = run_git
+
+    def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[-2:] == ("refs/heads/main", f"refs/heads/{feature}"):
+            return subprocess.CompletedProcess(args, 0, remote_output, "")
+        return real_run_git(*args, **kwargs)
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync.run_git", side_effect=fake_run_git),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature refs changed after inspection.",
+    }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+def test_rejects_fetched_managed_base_sha_mismatch(git_env: dict) -> None:
+    """A fetched base ref that resolves to another SHA blocks publication."""
+    feature = "mismatched-fetched-base"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    real_run_git = run_git
+
+    def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[-1:] == ("refs/pynchy/managed-base",):
+            return subprocess.CompletedProcess(args, 0, f"{'f' * 40}\n", "")
+        return real_run_git(*args, **kwargs)
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync.run_git", side_effect=fake_run_git),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature target changed after Cop inspection.",
+    }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
