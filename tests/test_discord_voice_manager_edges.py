@@ -110,6 +110,32 @@ async def test_voice_on_ready_ignores_non_voice_configurations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_unconfigured_voice_room_is_ignored() -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.id = 999
+    voice_channel.name = "Other"
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_voice_connection_failure_does_not_activate_session() -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.connect = AsyncMock(  # type: ignore[method-assign]
+        side_effect=discord.DiscordException("gateway unavailable")
+    )
+    with patch.object(type(channel.voice), "_allowed_members", return_value={"42": "Alice"}):
+        await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    await channel.voice.speak("discord:voice:2", "hello")
+
+    voice_channel.connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_voice_room_disconnects_when_allowed_members_leave(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
