@@ -236,6 +236,34 @@ def test_rejects_remote_ref_drift_before_opening_a_pr(git_env: dict) -> None:
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+def test_rejects_existing_pr_update_when_refs_drift_after_lookup(git_env: dict) -> None:
+    """An existing PR is not reported updated after its final refs recheck fails."""
+    feature = "existing-pr-ref-drift"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+
+    with (
+        patch(
+            "pynchy.host.git_ops.sync._managed_existing_pr",
+            side_effect=[
+                (None, None),
+                ("https://github.com/owner/repo/pull/1", None),
+            ],
+        ),
+        patch(
+            "pynchy.host.git_ops.sync._managed_refs_match",
+            side_effect=[True, False],
+        ),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature refs changed after inspection.",
+    }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
