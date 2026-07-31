@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -126,3 +127,18 @@ def test_blocks_object_store_mutation_before_push(git_env: dict, tmp_path: Path)
     git_runner.assert_not_called()
     open_pr.assert_not_called()
     assert "mutated-store-feature" not in git(git_env["origin"], "branch").stdout
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+def test_rejects_special_files_in_object_store(git_env: dict) -> None:
+    """Managed Git never traverses special files from an agent-owned object store."""
+    create_managed_feature(git_env, "special-store-feature")
+    write_managed_manifest(git_env["project"], [managed_record("special-store-feature")])
+    os.mkfifo(git_env["project"] / ".git" / "objects" / "unsafe-pipe")
+
+    resolution = resolve_managed_feature_publication("special-store-feature", [git_env["repo_ctx"]])
+
+    assert resolution.publication is None
+    assert resolution.error == (
+        "Publication blocked: configured repository 'owner/repo' object store is unavailable."
+    )
