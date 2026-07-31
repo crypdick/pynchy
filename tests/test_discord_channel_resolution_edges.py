@@ -96,6 +96,16 @@ async def test_create_thread_rejects_target_without_thread_support() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_thread_succeeds_when_parent_cannot_announce() -> None:
+    parent = _FakeThreadParent()
+    parent.send = None  # type: ignore[method-assign]
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    assert await channel.create_thread("discord:channel:123", "family") == "discord:channel:456"
+
+
+@pytest.mark.asyncio
 async def test_thread_participant_failure_does_not_fail_existing_thread() -> None:
     thread = MagicMock(id=456)
     thread.add_user = AsyncMock(  # type: ignore[method-assign]
@@ -107,6 +117,31 @@ async def test_thread_participant_failure_does_not_fail_existing_thread() -> Non
     await channel.add_thread_participants("discord:channel:456", ("42",))
 
     thread.add_user.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_find_thread_reuses_archived_thread_without_edit_support() -> None:
+    class _ArchivedThread:
+        id = 456
+        name = "family"
+        parent_id = 123
+        archived = True
+
+    class _Guild:
+        async def active_threads(self) -> list[object]:
+            return []
+
+    class _Parent:
+        id = 123
+        guild = _Guild()
+
+        async def archived_threads(self, **_kwargs: object):
+            yield _ArchivedThread()
+
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=_Parent())  # type: ignore[method-assign]
+
+    assert await channel.find_thread("discord:channel:123", "family") == "discord:channel:456"
 
 
 @pytest.mark.asyncio

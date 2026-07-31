@@ -265,6 +265,34 @@ async def test_send_reaction_ignores_non_discord_message_id():
 
 
 @pytest.mark.asyncio
+async def test_send_reaction_adds_emoji_to_discord_message():
+    ch = _channel()
+    ch.client = object()
+    message = MagicMock()
+    message.add_reaction = AsyncMock()
+    destination = MagicMock()
+    destination.fetch_message = AsyncMock(return_value=message)
+    ch.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+
+    await ch.send_reaction("discord:channel:1", "discord-101", "u1", "👀")
+
+    destination.fetch_message.assert_awaited_once_with(101)
+    message.add_reaction.assert_awaited_once_with("👀")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("jid", ["discord:channel:1", "discord:voice:2"])
+async def test_send_reaction_skips_unavailable_or_voice_destination(jid: str):
+    ch = _channel()
+    ch.client = None if jid.endswith("channel:1") else object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve an unavailable destination")
+    )
+
+    await ch.send_reaction(jid, "discord-101", "u1", "👀")
+
+
+@pytest.mark.asyncio
 async def test_resolve_channel_caches_direct_message_channels():
     ch = _channel()
 
@@ -386,6 +414,26 @@ async def test_fetch_inbound_since_skips_forum_root_without_message_history():
     result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
 
     assert result.messages == []
+
+
+@pytest.mark.parametrize("jid", ["discord:channel:1", "discord:voice:2"])
+async def test_fetch_inbound_since_skips_unavailable_or_voice_destination(jid: str):
+    ch = _channel()
+    ch.client = None if jid.endswith("channel:1") else object()
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve an unavailable destination")
+    )
+
+    result = await ch.fetch_inbound_since(jid, "2026-07-06T00:00:00+00:00")
+
+    assert result.messages == []
+
+
+@pytest.mark.asyncio
+async def test_send_ask_user_skips_voice_destination():
+    ch = _channel()
+
+    assert await ch.send_ask_user("discord:voice:2", "request-1", []) is None
 
 
 def test_plugin_returns_none_without_context():
