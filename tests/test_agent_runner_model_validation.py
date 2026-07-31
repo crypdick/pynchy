@@ -44,6 +44,12 @@ def test_container_input_accepts_an_empty_typed_mapping() -> None:
     assert input_data.agent_core_config == {}
 
 
+def test_container_input_preserves_explicit_repository_scopes() -> None:
+    input_data = ContainerInput.from_dict(_input_data() | {"repo_accesses": []})
+
+    assert input_data.repo_accesses == []
+
+
 def test_container_output_includes_a_query_id_in_the_wire_shape() -> None:
     output = ContainerOutput(status="success", result="done", query_id="query-1")
 

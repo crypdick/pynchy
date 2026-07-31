@@ -171,6 +171,24 @@ def test_stdio_mcp_requires_a_reachable_host_process(mcp, message) -> None:
         validate_settings_mapping({"tools": {"local": {"type": "mcp", "mcp": mcp}}})
 
 
+def test_stdio_mcp_accepts_http_transport() -> None:
+    validate_settings_mapping(
+        {
+            "tools": {
+                "local": {
+                    "type": "mcp",
+                    "mcp": {
+                        "runtime": "stdio",
+                        "command": "npx",
+                        "port": 8474,
+                        "transport": "streamable_http",
+                    },
+                }
+            }
+        }
+    )
+
+
 @pytest.mark.parametrize(
     ("tool", "message"),
     [
