@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -92,26 +91,6 @@ async def send_ask_user_prompt(
 def encode_button_custom_id(request_id: str, option_index: int) -> str:
     """Build a compact button custom ID."""
     return f"{_ASK_USER_PREFIX}:{request_id}:{option_index}"
-
-
-@dataclass(frozen=True)
-class DecodedButtonId:
-    request_id: str
-    option_index: int
-
-
-def decode_button_custom_id(custom_id: str) -> DecodedButtonId | None:
-    """Parse a button custom ID back into its routing payload."""
-    prefix, sep, remainder = custom_id.partition(":")
-    if prefix != _ASK_USER_PREFIX or not sep:
-        return None
-    request_id, sep, raw_index = remainder.rpartition(":")
-    if not request_id or not sep:
-        return None
-    try:
-        return DecodedButtonId(request_id=request_id, option_index=int(raw_index))
-    except ValueError:
-        return None
 
 
 class AskUserButton(discord.ui.Button["DiscordAskUserView"]):
