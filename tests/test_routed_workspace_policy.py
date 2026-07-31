@@ -86,3 +86,28 @@ async def test_startup_does_not_restore_policy_for_closed_conversation(monkeypat
     await restore_routed_workspace_policy_owners([routed])
 
     ensure_owner.assert_not_called()
+
+
+async def test_startup_ignores_a_workspace_without_a_routed_conversation(monkeypatch) -> None:
+    workspace = WorkspaceProfile(
+        jid="discord:channel:regular",
+        name="Regular",
+        folder="support",
+        trigger="@pynchy",
+        is_admin=True,
+    )
+    get_conversation = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.get_conversation",
+        get_conversation,
+    )
+    ensure_owner = MagicMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.ensure_runtime_workspace_policy_owner",
+        ensure_owner,
+    )
+
+    await restore_routed_workspace_policy_owners([workspace])
+
+    get_conversation.assert_not_awaited()
+    ensure_owner.assert_not_called()
