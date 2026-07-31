@@ -301,6 +301,43 @@ async def test_x_session_setup_reports_existing_login_with_vnc(
 
 
 @pytest.mark.asyncio
+async def test_x_session_setup_omits_vnc_url_when_display_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_path = tmp_path / "x-profile"
+    action_handler = _action_handler(_handler("setup_x_session"))
+    action_globals = action_handler.__globals__
+    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
+    monkeypatch.setitem(action_globals, "profile_dir", lambda _name: profile_path)
+    monkeypatch.setitem(action_globals, "cleanup_lock_files", lambda _path: None)
+    monkeypatch.setitem(action_globals, "launch_kwargs", lambda _path: {"headless": False})
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+
+    logged_in_page = _FakePage(visible=(True,))
+    _install_playwright(monkeypatch, logged_in_page, profile_path)
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=True))
+    assert await _handler("setup_x_session")({}) == {
+        "result": {
+            "status": "ok",
+            "message": f"Already logged in to X. Profile saved at {profile_path}",
+        }
+    }
+
+    completed_login_page = _FakePage(visible=(False,))
+    _install_playwright(monkeypatch, completed_login_page, profile_path)
+    monkeypatch.setitem(action_globals, "is_visible", AsyncMock(return_value=False))
+    assert await _handler("setup_x_session")({}) == {
+        "result": {
+            "status": "ok",
+            "profile_dir": str(profile_path),
+            "message": "X session saved. Future tool calls will use this session.",
+        }
+    }
+
+
+@pytest.mark.asyncio
 async def test_x_session_setup_waits_for_login_and_reports_timeout(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
