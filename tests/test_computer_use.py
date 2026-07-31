@@ -349,3 +349,9 @@ def test_computer_use_plugin_returns_packaged_skill_path(monkeypatch: pytest.Mon
 
     assert len(paths) == 1
     assert paths[0].endswith("/skills/computer-use")
+
+
+def test_computer_use_plugin_skips_missing_skill_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "is_dir", lambda _path: False)
+
+    assert ComputerUsePlugin().pynchy_skill_paths() == []
