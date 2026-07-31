@@ -13,6 +13,7 @@ from pynchy.agent_protocol.api import ContainerInput
 from pynchy.host.container_manager.api import McpStartupFailure, RepoMountResolution
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.orchestrator import configure_container_spawn_runtime
+from pynchy.host.git_ops.api import RepoContext, WorktreeResult
 from pynchy.workspace.api import RuntimeTarget
 from tests.app_integration_support import (
     FakeProcess,
@@ -105,6 +106,59 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
         (tmp_path / "data" / "ipc" / "test-group" / "input" / "initial.json").read_text()
     )
     assert initial_input["system_notices"] == expected_notices
+
+
+async def test_agent_resolves_repo_mounts_through_the_public_spawn_path(
+    app: PynchyApp,
+    tmp_path: Path,
+) -> None:
+    fake_proc = FakeProcess(
+        output={
+            "status": "success",
+            "result": "repo mounted",
+            "new_session_id": "s-repo-mounted",
+        }
+    )
+    driver = asyncio.create_task(fake_proc.schedule_output())
+    repo = RepoContext(
+        slug="owner/pynchy",
+        root=tmp_path / "repo",
+        worktrees_dir=tmp_path / "worktrees",
+    )
+    worktree = WorktreeResult(
+        path=repo.worktrees_dir / "test-group",
+        notices=["repository recovered with local changes"],
+    )
+
+    def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+        return _completed_awaitable(fake_proc)
+
+    with (
+        patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
+        _patch_test_settings(tmp_path),
+        patch("pynchy.host.orchestrator.app.get_repo_context", return_value=repo),
+        patch("pynchy.host.orchestrator.app.ensure_worktree", return_value=worktree),
+    ):
+        (tmp_path / "groups" / "test-group").mkdir(parents=True)
+        group = app.workspaces["group@g.us"]
+        result = await app.queue.run_serialized_task(
+            RuntimeTarget.from_workspace(group),
+            "test-run-repo-mount",
+            lambda: app.run_agent(
+                group,
+                "group@g.us",
+                [{"message_type": "user", "content": "check repository"}],
+                repo_access_override=repo.slug,
+            ),
+        )
+
+    await driver
+    assert result == "success"
+    initial_input = json.loads(
+        (tmp_path / "data" / "ipc" / "test-group" / "input" / "initial.json").read_text()
+    )
+    assert initial_input["repo_accesses"] == [repo.slug]
+    assert initial_input["system_notices"] == list(worktree.notices)
 
 
 async def test_app_skips_optional_mcp_start_when_manager_is_unconfigured(
