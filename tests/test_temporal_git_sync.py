@@ -84,6 +84,64 @@ async def test_host_git_sync_skips_the_hermetic_runtime(
     assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "skipped")]
 
 
+async def test_host_git_sync_reinitializes_corrupt_persisted_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    await set_router_state(git_sync.HOST_STATE_KEY, "not-json")
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "host_get_origin_main_sha", lambda _root: "origin")
+    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "local")
+    monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: "config")
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        git_sync,
+        "refresh_host_config",
+        AsyncMock(return_value=ConfigRefreshResult(ConfigRefreshStatus.UNCHANGED, "config")),
+    )
+    monkeypatch.setattr(
+        git_sync,
+        "_require_scheduler_deps",
+        lambda: _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock()),
+    )
+
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert await git_sync.get_router_state(git_sync.HOST_STATE_KEY)
+
+
+async def test_host_git_sync_reports_a_successful_personalization_push(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    applied = DeployRevision("deployed-sha", "config")
+    await initialize_deployment_state(applied)
+    await set_router_state(
+        git_sync.HOST_STATE_KEY,
+        '{"last_origin_sha":"origin","deployed_sha":"deployed-sha",'
+        '"config_hash":"config","local_head":"deployed-sha"}',
+    )
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(git_sync, "get_settings", lambda: make_settings(project_root=tmp_path))
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_local_head_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        git_sync,
+        "refresh_host_config",
+        AsyncMock(return_value=ConfigRefreshResult(ConfigRefreshStatus.UNCHANGED, "config")),
+    )
+    deps = _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock())
+    monkeypatch.setattr(deps, "sync_personalization", lambda _root: "pushed")
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
+
+    assert await git_sync.run_host_git_sync() == "personalization_pushed"
+
+
 async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
