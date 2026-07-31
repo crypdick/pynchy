@@ -118,6 +118,37 @@ def test_merged_servers_creates_a_server_for_a_tool_without_plugin_spec() -> Non
     assert servers["browser"].port == 9100
 
 
+def test_merged_servers_ignores_non_mcp_tools() -> None:
+    settings = FakeResolutionSettings(
+        tools={
+            "workspace": BuiltinTool(
+                type="builtin",
+                public_source=True,
+            )
+        }
+    )
+    server = McpServerConfig(type="url", url="https://example.test/mcp")
+
+    assert merged_mcp_servers(settings, {"workspace": server}) == {"workspace": server}
+
+
+def test_merged_servers_uses_default_runtime_for_explicit_mcp_fields() -> None:
+    settings = FakeResolutionSettings(
+        tools={
+            "browser": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(image="browser:latest", port=9100),
+            )
+        }
+    )
+
+    servers = merged_mcp_servers(settings, {})
+
+    assert servers["browser"].type == "docker"
+    assert servers["browser"].image == "browser:latest"
+    assert servers["browser"].port == 9100
+
+
 def test_resolve_workspace_servers_filters_unknown_tools_and_sorts_results(monkeypatch) -> None:
     settings = FakeResolutionSettings(
         workspace_config=_workspace_config("zeta", "unknown", "alpha"),
