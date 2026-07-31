@@ -14,6 +14,9 @@ from pynchy.host.git_ops.api import (
     read_managed_feature_patch,
     resolve_managed_feature_publication,
 )
+from pynchy.host.git_ops.api import (
+    run_git as host_run_git,
+)
 from tests.git_policy_support import (
     create_managed_feature,
     git,
@@ -369,6 +372,236 @@ class TestManagedFeatureResolution:
             "Publication blocked: could not verify commits for managed feature "
             "'remote-metadata-feature'."
         )
+
+    @pytest.mark.parametrize("count_result", [(1, ""), (0, "not-an-integer")])
+    def test_rejects_unreadable_commit_count(
+        self, git_env: dict, count_result: tuple[int, str]
+    ) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "unreadable-count-feature")
+        write_managed_manifest(project, [managed_record("unreadable-count-feature")])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if "rev-list" in args:
+                return subprocess.CompletedProcess(
+                    args=["git", *args],
+                    returncode=count_result[0],
+                    stdout=count_result[1],
+                    stderr="",
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(
+                "unreadable-count-feature", [git_env["repo_ctx"]]
+            )
+
+        assert result.publication is None
+        assert result.error == (
+            "Publication blocked: could not verify commits for managed feature "
+            "'unreadable-count-feature'."
+        )
+
+    def test_rejects_failed_isolated_git_initialization(self, git_env: dict) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "isolated-init-feature")
+        write_managed_manifest(project, [managed_record("isolated-init-feature")])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if args[:1] == ("init",):
+                return subprocess.CompletedProcess(
+                    args=["git", *args], returncode=1, stdout="", stderr=""
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(
+                "isolated-init-feature", [git_env["repo_ctx"]]
+            )
+
+        assert result.publication is None
+        assert result.error == (
+            "Publication blocked: could not initialize isolated Git for 'owner/repo'."
+        )
+
+    @pytest.mark.parametrize(
+        ("remote_mode", "expected"),
+        [
+            (
+                "failure",
+                (
+                    "Publication blocked: managed feature 'remote-parse-feature' targets 'main', "
+                    "not the configured remote default branch."
+                ),
+            ),
+            (
+                "wrong-branch",
+                (
+                    "Publication blocked: managed feature 'remote-parse-feature' targets 'main', "
+                    "not the configured remote default branch."
+                ),
+            ),
+        ],
+    )
+    def test_rejects_unusable_remote_default_branch(
+        self, git_env: dict, remote_mode: str, expected: str
+    ) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "remote-parse-feature")
+        write_managed_manifest(project, [managed_record("remote-parse-feature")])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if "--symref" in args:
+                if remote_mode == "failure":
+                    return subprocess.CompletedProcess(
+                        args=["git", *args], returncode=1, stdout="", stderr=""
+                    )
+                return subprocess.CompletedProcess(
+                    args=["git", *args],
+                    returncode=0,
+                    stdout="not-a-head-ref\n",
+                    stderr="",
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(
+                "remote-parse-feature", [git_env["repo_ctx"]]
+            )
+
+        assert result.publication is None
+        assert result.error == expected
+
+    @pytest.mark.parametrize(
+        "remote_output",
+        [
+            "",
+            "not-a-sha\trefs/heads/main\n",
+            "a" * 40 + "\trefs/heads/release\n",
+            ("a" * 40 + "\trefs/heads/main\n") * 2,
+        ],
+    )
+    def test_rejects_malformed_remote_base_record(self, git_env: dict, remote_output: str) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "remote-base-parse-feature")
+        write_managed_manifest(project, [managed_record("remote-base-parse-feature")])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if "--refs" in args:
+                return subprocess.CompletedProcess(
+                    args=["git", *args], returncode=0, stdout=remote_output, stderr=""
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(
+                "remote-base-parse-feature", [git_env["repo_ctx"]]
+            )
+
+        assert result.publication is None
+        assert result.error == (
+            "Publication blocked: could not verify base for managed feature "
+            "'remote-base-parse-feature'."
+        )
+
+    @pytest.mark.parametrize("fetch_mode", ["fetch-failed", "resolved-sha-mismatch"])
+    def test_rejects_remote_base_fetch_integrity_failure(
+        self, git_env: dict, fetch_mode: str
+    ) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "remote-fetch-integrity-feature")
+        write_managed_manifest(project, [managed_record("remote-fetch-integrity-feature")])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if fetch_mode == "fetch-failed" and "fetch" in args:
+                return subprocess.CompletedProcess(
+                    args=["git", *args], returncode=1, stdout="", stderr=""
+                )
+            if fetch_mode == "resolved-sha-mismatch" and "refs/pynchy/managed-base" in args:
+                return subprocess.CompletedProcess(
+                    args=["git", *args], returncode=0, stdout=("b" * 40) + "\n", stderr=""
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(
+                "remote-fetch-integrity-feature", [git_env["repo_ctx"]]
+            )
+
+        assert result.publication is None
+        assert result.error == (
+            "Publication blocked: could not verify base for managed feature "
+            "'remote-fetch-integrity-feature'."
+        )
+
+    @pytest.mark.parametrize(
+        ("command", "returncode", "expected"),
+        [
+            (
+                "read-tree",
+                1,
+                (
+                    "Publication blocked: could not inspect managed feature "
+                    "'status-read-tree-feature' status."
+                ),
+            ),
+            (
+                "update-index",
+                2,
+                (
+                    "Publication blocked: could not inspect managed feature "
+                    "'status-update-index-feature' status."
+                ),
+            ),
+            (
+                "diff-index",
+                1,
+                (
+                    "Publication blocked: managed feature has uncommitted changes. "
+                    "Commit all changes first."
+                ),
+            ),
+            (
+                "diff-index",
+                2,
+                (
+                    "Publication blocked: could not inspect managed feature "
+                    "'status-diff-index-feature' status."
+                ),
+            ),
+            (
+                "ls-files",
+                1,
+                (
+                    "Publication blocked: could not inspect managed feature "
+                    "'status-ls-files-feature' status."
+                ),
+            ),
+        ],
+    )
+    def test_rejects_unreadable_managed_worktree_status(
+        self,
+        git_env: dict,
+        command: str,
+        returncode: int,
+        expected: str,
+    ) -> None:
+        feature_slug = f"status-{command}-feature"
+        create_managed_feature(git_env, feature_slug)
+        write_managed_manifest(git_env["project"], [managed_record(feature_slug)])
+
+        def fake_run_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if command in args:
+                return subprocess.CompletedProcess(
+                    args=["git", *args], returncode=returncode, stdout="", stderr=""
+                )
+            return host_run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.managed_feature.run_git", side_effect=fake_run_git):
+            result = resolve_managed_feature_publication(feature_slug, [git_env["repo_ctx"]])
+
+        assert result.publication is None
+        assert result.error == expected
 
     def test_revalidates_remote_base_and_redacts_patch_failure(self, git_env: dict) -> None:
         project = git_env["project"]
