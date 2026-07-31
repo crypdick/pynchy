@@ -32,7 +32,9 @@ from agent_runner.events import (
 )
 from agent_runner.ipc import IpcMessage, drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
+    apply_followup_metadata,
     build_agent_prompt,
+    build_core_config,
     build_initial_prompt,
     build_sdk_messages,
     event_to_output,
@@ -220,6 +222,51 @@ class TestContainerInput:
         assert "check whether it has already been reported in Linear" in prompt
         assert "create an Agent Proposed work item" in prompt
         assert "Do not report problems that you fix yourself" in prompt
+
+    def test_system_notices_precede_the_agent_prompt(self):
+        input_data = ContainerInput(
+            messages=[{"sender_name": "Operator", "content": "Continue."}],
+            group_folder="review",
+            chat_jid="scheduled:review",
+            is_admin=False,
+            system_notices=["Worktree has unpushed commits", "A tool is unavailable"],
+        )
+
+        prompt = build_agent_prompt(input_data)
+
+        assert prompt.startswith(
+            "[System Notice] Worktree has unpushed commits\n"
+            "[System Notice] A tool is unavailable\n\n"
+        )
+        assert prompt.endswith(">Continue.</message>\n</messages>")
+
+    def test_initial_prompt_appends_pending_ipc_messages(self):
+        input_data = ContainerInput(
+            messages=[],
+            group_folder="review",
+            chat_jid="chat:review",
+            is_admin=False,
+        )
+
+        with patch("agent_runner.main.drain_ipc_input", return_value=["A new message"]):
+            prompt = build_initial_prompt(input_data)
+
+        assert prompt == "\nA new message"
+
+    def test_followup_metadata_ignores_an_empty_update(self):
+        config = build_core_config(
+            ContainerInput(
+                messages=[],
+                group_folder="review",
+                chat_jid="chat:review",
+                is_admin=False,
+                agent_core_config={"metadata": {"existing": "value"}},
+            )
+        )
+
+        apply_followup_metadata(config, turn_id=None, metadata={})
+
+        assert config.extra == {"metadata": {"existing": "value"}}
 
     def test_defaults_agent_core(self):
         data = {
