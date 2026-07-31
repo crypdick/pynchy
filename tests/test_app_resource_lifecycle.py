@@ -570,7 +570,7 @@ async def test_application_adapts_scheduled_execution_lifecycle(
 ) -> None:
     app = PynchyApp()
     execution = MagicMock(id="execution-1", status=WorkItemExecutionStatus.COMPLETED)
-    get_execution = AsyncMock(return_value=execution)
+    get_execution = AsyncMock(side_effect=[execution, None])
     monkeypatch.setattr(app_module, "get_work_item_execution_for_task", get_execution)
 
     lifecycle = await app.scheduled_execution_lifecycle("task-1")
@@ -579,7 +579,9 @@ async def test_application_adapts_scheduled_execution_lifecycle(
     assert lifecycle.execution_id == "execution-1"
     assert lifecycle.status == "completed"
     assert lifecycle.has_explicit_outcome is True
-    get_execution.assert_awaited_once_with("task-1")
+    assert await app.scheduled_execution_lifecycle("task-2") is None
+    assert get_execution.await_args_list[0].args == ("task-1",)
+    assert get_execution.await_args_list[1].args == ("task-2",)
 
 
 async def test_application_unregisters_workspace_from_memory_and_state(
