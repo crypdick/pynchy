@@ -497,9 +497,11 @@ async def test_external_git_sync_update_failure_fails_temporal_and_status(
     assert status["tracked_results"][task_id]["error"] == status["last_error"]
 
 
+@pytest.mark.parametrize("already_notified", [False, True])
 async def test_external_git_sync_notifies_after_a_successful_update(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
+    already_notified: bool,
 ) -> None:
     await init_test_database()
     slug = "owner/synced"
@@ -526,12 +528,19 @@ async def test_external_git_sync_notifies_after_a_successful_update(
     )
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-head")
     monkeypatch.setattr(git_sync, "host_notify_worktree_updates", notify)
-    monkeypatch.setattr(git_sync, "last_notified_sha", {})
+    monkeypatch.setattr(
+        git_sync,
+        "last_notified_sha",
+        {str(repo_ctx.root): "new-head"} if already_notified else {},
+    )
 
     assert await git_sync.run_external_git_sync(slug) == "synced"
-    notify.assert_awaited_once()
-    assert notify.await_args.args[0] is None
-    assert notify.await_args.args[2] == repo_ctx
+    if already_notified:
+        notify.assert_not_awaited()
+    else:
+        notify.assert_awaited_once()
+        assert notify.await_args.args[0] is None
+        assert notify.await_args.args[2] == repo_ctx
 
 
 async def test_origin_drift_offers_update_without_changing_checkout_by_default(
