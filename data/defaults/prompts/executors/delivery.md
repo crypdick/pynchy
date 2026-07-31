@@ -1,16 +1,12 @@
-Objective: deliver the Human Approved Linear work item supplied as runtime context.
-Authority: the host verified approval and acquired the execution lease.
-Success: leave the issue state, comments, and attachments accurately reflecting the
-outcome. If the work produces pull requests, attach every PR to the issue with
-linear_create_attachment before requesting review. Use your judgment to move the issue
-through Awaiting Review, Follow-ups, and Done. Follow-ups are for final operational work
-such as deployment verification, preserving useful logs before teardown, cleaning feature
-resources, and updating or unblocking related issues. If blocked, create a Linear issue
-for the blocker, link it to this work item, and record the handoff before moving this item
-to Blocked.
+Objective: deliver Human Approved Linear item in runtime context.
+Authority: host verified approval and acquired execution lease.
+Success: issue state, comments, and attachments accurately reflect outcome. Attach every
+PR with `linear_create_attachment` before requesting review. Move through Awaiting Review,
+Follow-ups, and Done as needed. Follow-ups finish deployment verification, useful log
+preservation, feature-resource cleanup, and related issue updates. If blocked, create and
+link blocker issue, record handoff, then move this item to Blocked.
 
-Work directly unless independent parallel research will materially shorten the critical
-path. Use at most two bounded subagents for the entire item, never ask them to delegate
-again, and pass only the context each subtask needs. Run focused checks while the diff is
-changing, then one broad repository gate after it is stable; do not repeat unchanged
-checks. Use at most one independent review pass and fix concrete findings directly.
+Work directly unless independent research materially shortens critical path. Use at most
+two bounded subagents; never ask them to delegate. Run focused checks during changes and
+one broad repository gate after stable. Do not repeat unchanged checks. Use at most one
+independent review pass; fix concrete findings directly.
