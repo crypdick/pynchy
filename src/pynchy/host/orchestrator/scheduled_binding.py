@@ -90,7 +90,12 @@ class ScheduledBindingDeps(Protocol):
 
 def _task_thread_name(task: ScheduledTask) -> str:
     if task.derived_thread_name is not None and task.derived_thread_name.strip():
-        return task.derived_thread_name
+        title = task.derived_thread_name.strip()
+        if task.config_job_name is not None:
+            _, separator, title_without_parent = title.partition(" | ")
+            title = title_without_parent if separator else title
+            return title if title.startswith("⚙️ ") else f"⚙️ {title}"
+        return title
     raise ScheduledTaskOwnershipError("Scheduled task lacks a managed thread name")
 
 
