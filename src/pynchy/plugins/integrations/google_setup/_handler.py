@@ -166,8 +166,7 @@ async def _ensure_oauth_credentials(
     shutil.copy2(creds_path, dest)
 
     dl = download_dir()
-    if await asyncio.to_thread(dl.exists):
-        await asyncio.to_thread(shutil.rmtree, dl, ignore_errors=True)
+    await asyncio.to_thread(shutil.rmtree, dl, ignore_errors=True)
 
     return "OAuth credentials created"
 
