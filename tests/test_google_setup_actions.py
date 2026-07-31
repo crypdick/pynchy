@@ -190,6 +190,8 @@ class _SetupPage:
         elif "/oauthclient" in url:
             self.phase = "oauth-client"
         elif "/dashboard" in url:
+            if self.project_stalls and self.phase == "project-create":
+                self.project_exists = True
             self.phase = "dashboard"
         else:
             self.phase = "console"
@@ -388,7 +390,7 @@ async def test_setup_action_accepts_manual_credential_download_after_selector_br
             id="console-confirmation",
         ),
         pytest.param(
-            {"project_stalls": True, "project_exists": True},
+            {"project_stalls": True},
             b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
             None,
             id="project-poll-fallback",
