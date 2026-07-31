@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack, asynccontextmanager
+from dataclasses import replace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -9,6 +11,7 @@ import pytest
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.api import CanaryConfig
 from pynchy.deployments import DeployChangeKind, DeployClaim, DeployClaimStatus
+from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskTerminalError
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
@@ -16,6 +19,7 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
+from pynchy.turn_outcomes import TurnOutcome
 from tests.temporal_scheduler_support import NullSchedulerDeps, _scheduler_runtime
 
 
@@ -91,6 +95,38 @@ async def test_scheduler_waits_briefly_for_runtime_startup(
         await temporal_scheduler.start_channel_reconciliation_workflow()
 
     sleep.assert_awaited_once_with(0.05)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_wrapper_uses_runtime_that_appears_during_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    client.start_workflow = AsyncMock()
+    runtime = temporal_scheduler.TemporalSchedulerRuntime(NullSchedulerDeps(), _scheduler_runtime())
+    runtime.client = client
+    loop = Mock()
+    loop.time.side_effect = [0.0, 0.0]
+    runtime_stack = AsyncExitStack()
+
+    @asynccontextmanager
+    async def fake_worker(*_args: object, **_kwargs: object):
+        yield object()
+
+    async def wait_for_runtime(_delay: float) -> None:
+        await runtime_stack.enter_async_context(runtime)
+
+    monkeypatch.setattr(temporal_scheduler.asyncio, "get_running_loop", lambda: loop)
+    monkeypatch.setattr(temporal_scheduler.asyncio, "sleep", wait_for_runtime)
+    monkeypatch.setattr(temporal_scheduler.Client, "connect", AsyncMock(return_value=client))
+    monkeypatch.setattr(temporal_scheduler, "Worker", fake_worker)
+
+    try:
+        await temporal_scheduler.start_channel_reconciliation_workflow()
+    finally:
+        await runtime_stack.aclose()
+
+    client.start_workflow.assert_awaited_once()
 
 
 def _learning_packet() -> LearningPacket:
@@ -247,6 +283,79 @@ async def test_scheduled_task_rejects_binding_that_loses_its_queue_target(
             await temporal_scheduler.run_scheduled_agent_task(task.id)
     finally:
         temporal_scheduler.bind_scheduler_deps(None)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_task_activity_skips_terminal_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = _scheduled_task()
+    monkeypatch.setattr(temporal_scheduler, "get_task_by_id", AsyncMock(return_value=task))
+    monkeypatch.setattr(
+        temporal_scheduler,
+        "ensure_scheduled_task_binding",
+        AsyncMock(side_effect=ScheduledTaskTerminalError("conversation is terminal")),
+    )
+    monkeypatch.setattr(
+        temporal_scheduler.activity,
+        "info",
+        lambda: Mock(workflow_id="workflow-terminal"),
+    )
+    temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+    temporal_scheduler.reset_temporal_scheduler_status()
+
+    try:
+        assert await temporal_scheduler.run_scheduled_agent_task(task.id) == "skipped"
+    finally:
+        temporal_scheduler.bind_scheduler_deps(None)
+
+    status = temporal_scheduler.get_temporal_scheduler_status()
+    assert status["last_workflow_id"] == "workflow-terminal"
+    assert status["last_result"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_task_activity_opens_routed_conversation_before_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = replace(
+        _scheduled_task(),
+        bound_chat_jid="slack:group",
+        bound_group_folder="group",
+        conversation_id="conversation-1",
+    )
+    deps = NullSchedulerDeps()
+
+    async def run_serialized_task(_target, _task_id, run):
+        return await run()
+
+    deps.queue.run_serialized_task = run_serialized_task
+    open_conversation = AsyncMock()
+    run_agent = AsyncMock(return_value=TurnOutcome.COMPLETED)
+    monkeypatch.setattr(temporal_scheduler, "get_task_by_id", AsyncMock(return_value=task))
+    monkeypatch.setattr(
+        temporal_scheduler, "ensure_scheduled_task_binding", AsyncMock(return_value=task)
+    )
+    monkeypatch.setattr(
+        temporal_scheduler,
+        "ensure_scheduled_task_conversation_open",
+        open_conversation,
+    )
+    monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", run_agent)
+    monkeypatch.setattr(
+        temporal_scheduler.activity,
+        "info",
+        lambda: Mock(workflow_id="workflow-routed", workflow_run_id="run-1"),
+    )
+    temporal_scheduler.bind_scheduler_deps(deps)
+
+    try:
+        assert await temporal_scheduler.run_scheduled_agent_task(task.id) == "completed"
+    finally:
+        temporal_scheduler.bind_scheduler_deps(None)
+
+    open_conversation.assert_awaited_once_with(task, deps)
+    run_agent.assert_awaited_once_with(task, deps, occurrence_id="run-1")
 
 
 @pytest.mark.asyncio
