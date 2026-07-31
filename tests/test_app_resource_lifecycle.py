@@ -327,6 +327,18 @@ def test_application_delegates_filtering_and_idle_callback_registration(
     assert session.callback is callback
 
 
+def test_application_does_not_register_idle_callback_without_live_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    callback = MagicMock()
+    monkeypatch.setattr(app_module, "get_session", lambda _group: None)
+
+    app.register_idle_callback(GroupFolder("chat"), callback)
+
+    callback.assert_not_called()
+
+
 def test_application_delegates_host_and_workspace_policy_queries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
