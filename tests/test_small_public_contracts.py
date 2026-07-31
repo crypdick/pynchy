@@ -28,7 +28,7 @@ from pynchy.plugins.integrations.linear_planning_tasks import (
     configure_linear_planning_task_runtime,
 )
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
-from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue
+from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue, decision_state_id
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.webhook_effects import WebhookEffectId
 from pynchy.workspace.api import WorkspaceProfile
@@ -60,6 +60,55 @@ def test_wake_gate_returns_none_for_empty_output() -> None:
 def test_plugin_namespace_rejects_unknown_attributes() -> None:
     with pytest.raises(AttributeError, match="no attribute"):
         _ = pynchy.plugins.not_a_plugin
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ([], TypeError),
+        ({"state": "not-an-object", "project": {}}, TypeError),
+        ({"state": {}, "project": "not-an-object"}, TypeError),
+    ],
+)
+def test_decision_issue_rejects_malformed_payloads(payload: object, error: type[Exception]) -> None:
+    with pytest.raises(error):
+        DecisionIssue.from_payload(payload)
+
+
+def test_decision_issue_without_project_is_not_a_managed_issue() -> None:
+    assert DecisionIssue.from_payload({"state": {}, "project": None}) is None
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "error"),
+    [("id", 42, TypeError), ("id", "", ValueError)],
+)
+def test_decision_issue_requires_nonempty_text_fields(
+    key: str, value: object, error: type[Exception]
+) -> None:
+    payload = {
+        "id": "issue-1",
+        "identifier": "SYN-1",
+        "title": "Work",
+        "url": "https://linear.app/issue/SYN-1",
+        "updatedAt": "2026-07-31T00:00:00Z",
+        "state": {"id": "state-1"},
+        "project": {"id": "project-1"},
+    }
+    payload[key] = value
+
+    with pytest.raises(error):
+        DecisionIssue.from_payload(payload)
+
+
+def test_linear_decision_state_id_rejects_missing_or_non_text_state() -> None:
+    with pytest.raises(ValueError, match="lacks decision state"):
+        decision_state_id(LinearWorkspaceBoard(team={}, project={}, states={}), "approved")
+    with pytest.raises(TypeError, match="lacks a text ID"):
+        decision_state_id(
+            LinearWorkspaceBoard(team={}, project={}, states={"approved": {"id": 42}}),
+            "approved",
+        )
 
 
 def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
