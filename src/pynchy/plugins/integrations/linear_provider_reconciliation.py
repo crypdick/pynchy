@@ -19,6 +19,7 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartyp
 from pynchy.plugins.integrations.linear_statuses import (
     AWAITING_REVIEW_STATUS,
     FOLLOW_UPS_STATUS,
+    LINEAR_TODO_STATUSES,
     TERMINAL_STATE_TYPES,
 )
 from pynchy.plugins.integrations.linear_work_item_completion import (
@@ -70,6 +71,17 @@ _EXECUTION_PROVIDER_STATUS = {
     WorkItemExecutionStatus.BLOCKED: "blocked",
     WorkItemExecutionStatus.UNKNOWN: "in_progress",
 }
+if (
+    _RECONCILABLE_EXECUTION_STATUSES & _HARD_TERMINAL_EXECUTION_STATUSES
+    or frozenset(WorkItemExecutionStatus)
+    != _RECONCILABLE_EXECUTION_STATUSES | _HARD_TERMINAL_EXECUTION_STATUSES
+    or frozenset(_EXECUTION_PROVIDER_STATUS) != _RECONCILABLE_EXECUTION_STATUSES
+    or frozenset(_EXECUTION_PROVIDER_STATUS.values())
+    != frozenset(status for status, spec in LINEAR_TODO_STATUSES.items() if spec.type == "started")
+):
+    raise RuntimeError(
+        "Linear reconciliation must classify every execution status and started provider state"
+    )
 _PROVIDER_DRIFT_BLOCKER = "Linear state no longer authorizes this execution"
 
 
