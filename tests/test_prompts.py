@@ -175,6 +175,20 @@ def test_base_prompt_uses_intent_sensitive_agent_judgment() -> None:
     assert "Proceed with proportionate, recoverable fixes" in normalized
 
 
+def test_base_prompt_explains_agent_directed_obsidian_recall() -> None:
+    project_root = Path(__file__).parents[1]
+    result = read_prompts(
+        ["souls/default", "executors/default"],
+        PersonalizationPaths.for_project(project_root),
+    )
+
+    assert result is not None
+    normalized = " ".join(result.split())
+    assert "`/home/agent/workspace/`" in normalized
+    assert "`obsidian-knowledge` skill is available, search it before acting" in normalized
+    assert "does not prefetch or inject recalled notes" in normalized
+
+
 @pytest.mark.parametrize(
     ("prompt_id", "required_text"),
     [

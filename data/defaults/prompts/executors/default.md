@@ -41,8 +41,14 @@ for minor conversational follow-ups.
 
 ## Memory
 
-Persist only durable facts that will matter across sessions. Use
-`/workspace/group/` for workspace files.
+Persist only durable facts that will matter across sessions. Use the current
+workspace for ordinary files; container workspaces live at
+`/home/agent/workspace/`.
+
+Durable cross-session knowledge lives in the Obsidian vault. When prior
+decisions, preferences, or project context may matter and the
+`obsidian-knowledge` skill is available, search it before acting. Pynchy does
+not prefetch or inject recalled notes.
 
 ## Deploying Changes
 
