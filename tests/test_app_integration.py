@@ -21,6 +21,7 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.config.api import NotificationsConfig
 from pynchy.deployments import DeployRevision
+from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_ipc_deps
@@ -394,6 +395,24 @@ class TestRunAgent:
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
             _patch_test_settings(tmp_path),
+            patch(
+                "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
+                return_value=MagicMock(
+                    get_workspace_instance_ids=MagicMock(return_value=["docs-instance"]),
+                    ensure_workspace_running=AsyncMock(
+                        return_value=McpWorkspaceStartup(("docs-instance",), ())
+                    ),
+                    get_direct_server_configs=MagicMock(
+                        return_value=[
+                            {
+                                "name": "docs",
+                                "url": "http://mcp-proxy:8000/docs",
+                                "transport": "streamable_http",
+                            }
+                        ]
+                    ),
+                ),
+            ),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
             result = await app.queue.run_serialized_task(
