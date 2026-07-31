@@ -64,6 +64,13 @@ def test_configure_gateway_runtime_publishes_composed_settings() -> None:
     assert get_settings() is settings
 
 
+def test_gateway_settings_require_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pynchy.host.container_manager.gateway._get_settings", None)
+
+    with pytest.raises(RuntimeError, match="Gateway configuration has not been composed"):
+        get_settings()
+
+
 @pytest.mark.asyncio
 async def test_litellm_start_requires_master_key(tmp_path: Path) -> None:
     config = tmp_path / "litellm.yaml"
