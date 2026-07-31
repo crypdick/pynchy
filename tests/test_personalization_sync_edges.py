@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+
 from pynchy.host.git_ops.api import run_git, sync_personalization_repo
 
 if TYPE_CHECKING:
@@ -138,6 +140,41 @@ def test_clean_local_commit_detects_head_change_during_validation(tmp_path: Path
         patch(
             "pynchy.host.git_ops.personalization._clean_current_main_head",
             side_effect=["head-before", "head-after"],
+        ),
+    ):
+        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+
+
+@pytest.mark.parametrize(
+    ("remote_head", "tracking_returncode"),
+    [
+        ("ref: refs/heads/main\tHEAD\n", 1),
+        ("ref: refs/heads/main\tHEAD\nref: refs/heads/dev\tHEAD\n", 0),
+    ],
+)
+def test_publication_target_rejects_untrusted_remote_state(
+    tmp_path: Path, remote_head: str, tracking_returncode: int
+):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+
+    def git_result(command: str, *args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command == "remote":
+            return _result(stdout="git@github.com:owner/personalization.git\n")
+        if command == "check-ref-format":
+            return _result(stdout=f"{args[-1]}\n")
+        return {
+            "branch": _result(stdout="main\n"),
+            "symbolic-ref": _result(stdout="refs/remotes/origin/main\n"),
+            "ls-remote": _result(stdout=remote_head),
+            "rev-parse": _result(tracking_returncode),
+        }.get(command, _result(1))
+
+    with (
+        _github_origin(repo, remote),
+        patch(
+            "pynchy.host.git_ops._personalization_target.run_personalization_git",
+            side_effect=git_result,
         ),
     ):
         assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"

@@ -61,6 +61,36 @@ def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     assert not companion.exists()
 
 
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_refresh_personalized_skills_prunes_unselected_companion_non_directories(
+    tmp_path: Path, kind: str
+) -> None:
+    session_dir = tmp_path / "session"
+    skills_dir = session_dir / "skills"
+    skills_dir.mkdir(parents=True)
+    companion = skills_dir / "provider"
+    if kind == "file":
+        companion.write_text("unexpected skill shape\n")
+    else:
+        target = tmp_path / "outside"
+        target.write_text("unexpected skill shape\n")
+        companion.symlink_to(target)
+
+    refresh_personalized_skills(
+        session_dir,
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+        companion_skill_access=CompanionSkillAccess(
+            selected_names=frozenset(),
+            all_names=frozenset({"provider"}),
+        ),
+    )
+
+    assert not companion.exists()
+    assert not companion.is_symlink()
+
+
 def test_sync_skills_rejects_plugin_skill_collision_with_reserved_marker(
     tmp_path: Path,
 ) -> None:
