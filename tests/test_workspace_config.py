@@ -481,6 +481,28 @@ class TestGetRepoAccessGroups:
 
 
 @pytest.mark.asyncio
+async def test_reconcile_skips_workspace_without_resolved_policy():
+    settings = make_settings(
+        profiles={"support": ProfileConfig()},
+        workspaces={"support": WorkspaceConfig(profiles=["support"])},
+    )
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+            return_value=None,
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await reconcile_workspaces({}, [], AsyncMock())
+
+
+@pytest.mark.asyncio
 async def test_reconcile_syncs_existing_profile_admin_and_contains_secrets():
     s = make_settings(
         profiles={"admin": ProfileConfig(is_admin=True, contains_secrets=True)},
