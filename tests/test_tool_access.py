@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+
+import pytest
 
 from pynchy.config.api import (
     apply_tool_access,
@@ -22,9 +23,6 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_tool_access,
     register_runtime_workspace_restriction,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 _GITHUB_SECRET = "github-secret"  # noqa: S105  # pragma: allowlist secret
 _LINEAR_SECRET = "linear-secret"  # noqa: S105  # pragma: allowlist secret
@@ -156,6 +154,44 @@ def test_agent_process_receives_only_selected_workspace_environment(
     assert environment["LINEAR_SYNAPSE_API_KEY"] == _LINEAR_SECRET
     assert "PROTON_PASSWORD" not in environment
     assert "UNRELATED_HOST_SECRET" not in environment
+
+
+def test_agent_process_receives_openai_gateway_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _OpenAIGateway:
+        base_url = "http://gateway.example:4000"
+        key = "gateway-key"  # pragma: allowlist secret
+
+        def has_provider(self, provider: str) -> bool:
+            return provider == "openai"
+
+    monkeypatch.setattr("pynchy.host.container_manager.gateway.get_gateway", _OpenAIGateway)
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.credentials._read_git_identity", lambda: (None, None)
+    )
+    configure_workspace_environment(
+        lambda *, is_admin, group_folder: {"WORKSPACE": f"{group_folder}:{is_admin}"}
+    )
+
+    environment = build_agent_env_vars(is_admin=True, group_folder="assigned")
+
+    assert environment["OPENAI_BASE_URL"] == "http://gateway.example:4000"
+    assert environment["OPENAI_API_KEY"] == "gateway-key"  # pragma: allowlist secret
+    assert "ANTHROPIC_BASE_URL" not in environment
+    assert environment["NO_PROXY"].endswith("gateway.example")
+    assert environment["WORKSPACE"] == "assigned:True"
+
+
+def test_agent_environment_requires_composition_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("pynchy.host.container_manager.gateway.get_gateway", lambda: None)
+    monkeypatch.setattr("pynchy.host.container_manager.credentials._workspace_env_vars", None)
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.credentials._read_git_identity", lambda: (None, None)
+    )
+
+    with pytest.raises(RuntimeError, match="workspace environment has not been configured"):
+        build_agent_env_vars(is_admin=False, group_folder="assigned")
 
 
 def test_missing_required_environment_disables_only_affected_tool_value_free() -> None:
