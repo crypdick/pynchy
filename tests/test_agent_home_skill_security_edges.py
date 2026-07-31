@@ -74,6 +74,28 @@ def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     assert not companion.exists()
 
 
+def test_refresh_personalized_skills_uses_companion_metadata_name_for_pruning(
+    tmp_path: Path,
+) -> None:
+    session_dir = tmp_path / "session"
+    companion = session_dir / "skills/provider-copy"
+    companion.mkdir(parents=True)
+    (companion / "SKILL.md").write_text("---\nname: provider\ntier: community\n---\n")
+
+    refresh_personalized_skills(
+        session_dir,
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+        companion_skill_access=CompanionSkillAccess(
+            selected_names=frozenset(),
+            all_names=frozenset({"provider"}),
+        ),
+    )
+
+    assert not companion.exists()
+
+
 @pytest.mark.parametrize("kind", ["file", "symlink"])
 def test_refresh_personalized_skills_prunes_unselected_companion_non_directories(
     tmp_path: Path, kind: str
@@ -122,6 +144,33 @@ def test_sync_skills_rejects_plugin_skill_collision_with_reserved_marker(
     with pytest.raises(ValueError, match="Skill name collision"):
         sync_skills(
             session_dir,
+            project_root=tmp_path / "project",
+            plugin_manager=_FakePluginManager(hook),
+            workspace_skills=["*"],
+        )
+
+
+@pytest.mark.parametrize("destination_kind", ["file", "marker-directory"])
+def test_sync_skills_rejects_malformed_plugin_destination(
+    tmp_path: Path, destination_kind: str
+) -> None:
+    plugin_skill = tmp_path / "plugin/skill"
+    plugin_skill.mkdir(parents=True)
+    (plugin_skill / "SKILL.md").write_text("---\nname: skill\ntier: community\n---\n")
+
+    destination = tmp_path / "session/skills/skill"
+    if destination_kind == "file":
+        destination.parent.mkdir(parents=True)
+        destination.write_text("existing content\n")
+    else:
+        (destination / ".pynchy-plugin-skill").mkdir(parents=True)
+
+    hook = MagicMock()
+    hook.pynchy_skill_paths.return_value = [[str(plugin_skill)]]
+
+    with pytest.raises(ValueError, match="Skill name collision"):
+        sync_skills(
+            tmp_path / "session",
             project_root=tmp_path / "project",
             plugin_manager=_FakePluginManager(hook),
             workspace_skills=["*"],
