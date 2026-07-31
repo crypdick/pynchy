@@ -298,6 +298,22 @@ def test_startup_migrates_old_worktree_when_git_move_succeeds(tmp_path: Path) ->
     assert any(call[:2] == ("worktree", "move") for call in calls)
 
 
+def test_startup_keeps_old_worktree_when_destination_already_exists(tmp_path: Path) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+    old = runtime.home_dir / ".config" / "pynchy" / "worktrees" / "group"
+    old.mkdir(parents=True)
+    (old / ".git").write_text("gitdir: /tmp/metadata")
+    destination = repo_context.worktrees_dir / "group"
+    destination.mkdir(parents=True)
+
+    with patch("pynchy.host.git_ops.worktree.run_git") as run_git:
+        _reconcile(repo_context, runtime)
+
+    run_git.assert_not_called()
+    assert old.is_dir()
+    assert destination.is_dir()
+
+
 def test_startup_removes_old_worktree_when_git_move_fails(tmp_path: Path) -> None:
     repo_context, runtime = _repo_context(tmp_path)
     old = runtime.home_dir / ".config" / "pynchy" / "worktrees" / "group"
@@ -313,6 +329,20 @@ def test_startup_removes_old_worktree_when_git_move_fails(tmp_path: Path) -> Non
 
     _reconcile(repo_context, runtime, git_runner=run_git)
     assert not old.exists()
+
+
+def test_hook_installation_accepts_linked_worktree_git_metadata(tmp_path: Path) -> None:
+    git_dir = tmp_path / "main-git" / "worktrees" / "group"
+    git_dir.mkdir(parents=True)
+    (tmp_path / ".git").write_text(f"gitdir: {git_dir}")
+    (git_dir / "commondir").write_text("../..")
+    (tmp_path / "prek.toml").write_text("repos = []")
+    result = subprocess.CompletedProcess([], 0)
+
+    with patch("pynchy.host.git_ops.worktree._run_hook_installer", return_value=result) as install:
+        install_repo_hooks(tmp_path)
+
+    install.assert_called_once_with(tmp_path, "prek")
 
 
 def test_startup_leaves_unrelated_old_worktree_entries_untouched(tmp_path: Path) -> None:
