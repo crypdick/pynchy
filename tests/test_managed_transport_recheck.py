@@ -290,6 +290,44 @@ def test_rechecks_object_store_before_reading_commit_metadata(
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+@pytest.mark.parametrize("mutation_point", ["init", "target", "fetch", "base", "remote"])
+def test_rechecks_object_store_between_isolated_transport_commands(
+    git_env: dict, tmp_path: Path, mutation_point: str
+) -> None:
+    """Every isolated Git command revalidates the agent-owned object store."""
+    feature = f"transport-store-{mutation_point}"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    alternates = git_env["project"] / ".git" / "objects" / "info" / "alternates"
+    alternates.parent.mkdir(exist_ok=True)
+    real_run_git = run_git
+
+    def mutate_after_command(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        result = real_run_git(*args, **kwargs)
+        matches = {
+            "init": args[:2] == ("init", "--bare"),
+            "target": args[-1:] == ("refs/heads/main",),
+            "fetch": "fetch" in args,
+            "base": args[-1:] == ("refs/pynchy/managed-base",),
+            "remote": args[-1:] == (f"refs/heads/{feature}",),
+        }
+        if matches[mutation_point]:
+            alternates.symlink_to(tmp_path / f"missing-{mutation_point}")
+        return result
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync.run_git", side_effect=mutate_after_command),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature object store is unavailable.",
+    }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
