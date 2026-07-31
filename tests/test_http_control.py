@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp.test_utils import AioHTTPTestCase, make_mocked_request
 
 from pynchy.config.api import ServerConfig
 from pynchy.host.orchestrator.http_control import (
@@ -380,6 +380,29 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
         await runner.cleanup()
 
     assert not socket_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_request_without_transport_still_requires_remote_auth() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host=PUBLIC_BIND_TEST_HOST,
+        port=8484,
+        unix_socket=None,
+        public_bind=True,
+        remote_auth_required=True,
+        allow_remote_deploy=True,
+        auth_token=ControlPlaneToken(TEST_TOKEN),
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    middleware = build_control_plane_middleware(runtime)
+    request = make_mocked_request("GET", "/status")
+
+    unexpected_handler = AsyncMock(side_effect=AssertionError("request should be denied"))
+
+    response = await middleware(request, unexpected_handler)
+
+    assert response.status == 401
 
 
 @pytest.mark.asyncio
