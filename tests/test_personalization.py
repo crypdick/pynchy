@@ -297,6 +297,19 @@ def test_requires_bundled_defaults_and_allows_an_absent_optional_overlay(tmp_pat
     assert mapping["agent"]["name"] == "Default"
 
 
+def test_loads_defaults_without_an_optional_personalization_directory(tmp_path: Path) -> None:
+    defaults = tmp_path / "data" / "defaults"
+    defaults.mkdir(parents=True)
+    (defaults / "pynchy.toml").write_text('[agent]\nname = "Default"\n', encoding="utf-8")
+
+    mapping = load_layered_settings_mapping(
+        tmp_path,
+        personalization_root=tmp_path / "missing-personalization",
+    )
+
+    assert mapping["agent"]["name"] == "Default"
+
+
 def test_rejects_non_mapping_jobs_when_automation_is_declared(tmp_path: Path) -> None:
     defaults, personalization = _write_tree(tmp_path)
     automations = defaults / "automations"
