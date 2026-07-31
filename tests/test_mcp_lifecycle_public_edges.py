@@ -246,6 +246,21 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
     )
 
 
+async def test_warm_image_cache_pulls_a_registry_image_without_a_dockerfile():
+    instance = _instance(server_name="browser")
+    instance.server_config = McpServerConfig(
+        type="docker",
+        image="registry.example/browser:latest",
+        port=8000,
+    )
+    ensure_image = AsyncMock()
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.ensure_image", ensure_image):
+        await warm_image_cache({"browser": instance})
+
+    ensure_image.assert_awaited_once_with("registry.example/browser:latest")
+
+
 def test_terminate_process_clears_an_already_exited_process_and_record(tmp_path: Path):
     record = tmp_path / "process.json"
     record.write_text("{}")
