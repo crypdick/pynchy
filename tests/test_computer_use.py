@@ -231,9 +231,32 @@ async def test_router_rejects_empty_shortcuts(keys: object) -> None:
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
+        ({"source_group": "admin", "action": "click"}, "click actions require"),
+        ({"source_group": "admin", "action": "type"}, "type requires text"),
+        ({"source_group": "admin", "action": "scroll"}, "scroll requires direction"),
+        ({"source_group": "admin", "action": "launch_app"}, "launch_app requires"),
         ({"source_group": "admin", "action": "launch_app", "app": " "}, "must not be empty"),
         ({"source_group": "../admin", "action": "list_apps"}, "one path component"),
         ({"source_group": "admin", "action": "set_value", "value": "x"}, "requires element"),
+        (
+            {"source_group": "admin", "action": "set_value", "element": "button"},
+            "requires value",
+        ),
+        (
+            {"source_group": "admin", "action": "perform_action", "accessibility_action": "press"},
+            "requires element",
+        ),
+        (
+            {"source_group": "admin", "action": "perform_action", "element": "button"},
+            "requires accessibility_action",
+        ),
+        ({"source_group": "admin", "action": "menu_click"}, "menu_click requires"),
+        ({"source_group": "admin", "action": "dialog_click"}, "dialog_click requires"),
+        ({"source_group": "admin", "action": "dialog_input"}, "dialog_input requires"),
+        ({"source_group": "admin", "action": "dialog_file"}, "dialog_file requires"),
+        ({"source_group": "admin", "action": "clipboard_set"}, "clipboard_set requires"),
+        ({"source_group": "admin", "action": "space_switch"}, "space_switch requires"),
+        ({"source_group": "admin", "action": "space_move_window"}, "space_move_window requires"),
     ],
 )
 @pytest.mark.asyncio
