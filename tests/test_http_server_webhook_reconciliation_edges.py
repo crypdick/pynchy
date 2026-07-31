@@ -35,6 +35,23 @@ def runtime() -> ControlPlaneRuntime:
     )
 
 
+class _NoRuntimeIngress:
+    def __init__(self) -> None:
+        self._delegate = MockHttpDeps()
+
+    def __getattr__(self, name: str) -> object:
+        if name == "ingest_runtime_harness_message":
+            raise AttributeError(name)
+        return getattr(self._delegate, name)
+
+
+def test_runtime_harness_requires_message_ingress(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+
+    with pytest.raises(TypeError, match="do not provide message ingress"):
+        create_http_app(_NoRuntimeIngress(), runtime=runtime())
+
+
 @pytest.mark.asyncio
 async def test_webhook_effect_absence_wakes_released_deliveries() -> None:
     client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=runtime())))

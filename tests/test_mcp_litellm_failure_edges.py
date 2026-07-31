@@ -134,6 +134,33 @@ async def test_endpoint_sync_survives_litellm_list_and_register_failures(
 
 
 @pytest.mark.asyncio
+async def test_endpoint_sync_treats_non_list_server_response_as_empty(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+
+    async def malformed_list(
+        _session: object,
+        _gateway: object,
+        method: str,
+        _path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        return {} if method == "GET" else None
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+            return_value=_LiteLLMSession(),
+        ),
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.api_request",
+            side_effect=malformed_list,
+        ),
+    ):
+        await litellm.sync_mcp_endpoints(gateway, {})
+
+
+@pytest.mark.asyncio
 async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
     tmp_path: Path,
 ) -> None:
