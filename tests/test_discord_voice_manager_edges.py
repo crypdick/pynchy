@@ -99,6 +99,35 @@ async def test_voice_reply_without_an_active_session_is_ignored() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_reply_without_synthesis_provider_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+
+    await channel.send_event(
+        "discord:voice:2",
+        OutboundEvent(type=OutboundEventType.RESULT, content="hello"),
+    )
+
+    assert voice_client.played_audio == []
+
+
+@pytest.mark.asyncio
+async def test_voice_disconnect_skips_already_disconnected_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+    voice_client.is_connected = lambda: False  # type: ignore[method-assign]
+    voice_client.disconnect = AsyncMock()  # type: ignore[method-assign]
+
+    await channel.voice.disconnect()
+
+    voice_client.disconnect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_voice_reply_skips_failed_synthesis(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingSynthesizer:
         async def synthesize(self, _text: str, _output_path) -> SpeechSynthesisResult:
