@@ -22,6 +22,7 @@ from pynchy.host.git_ops.api import (
     install_repo_hooks,
     reconcile_worktrees_at_startup,
     resolve_routed_host_worktree_cwd,
+    select_routed_host_repo,
 )
 
 if TYPE_CHECKING:
@@ -372,6 +373,38 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    def test_selects_repository_that_owns_source_checkout(self, git_env: dict):
+        assert (
+            select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
+            is git_env["repo_ctx"]
+        )
+
+    def test_rejects_routed_slot_occupied_by_a_file(self, git_env: dict):
+        folder = "host__thread_conversation-conv_file_slot"
+        worktree_path = git_env["worktrees_dir"] / folder
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        worktree_path.write_text("do not replace\n")
+
+        with pytest.raises(RoutedHostWorktreeError, match="non-directory"):
+            resolve_routed_host_worktree_cwd(
+                folder,
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert worktree_path.read_text() == "do not replace\n"
+
+    def test_selection_fails_closed_when_git_inspection_errors(self, git_env: dict):
+        with (
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.run_git",
+                side_effect=OSError("git unavailable"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not inspect"),
+        ):
+            select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
+
     def test_provisioning_failure_is_reported_as_routed_worktree_error(self, git_env: dict):
         with (
             patch(
