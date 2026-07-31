@@ -1,5 +1,6 @@
 Objective: deliver Human Approved Linear item in runtime context.
 
+<<<<<<< HEAD
 Authority: host verified approval and acquired execution lease. Approved issue
 and plan = alignment complete. No repeat interview or confirmation unless work
 reveals new product or architecture decision changing approved outcome.
@@ -7,6 +8,11 @@ reveals new product or architecture decision changing approved outcome.
 Success: issue state, comments, and attachments match real outcome. Work creates
 pull requests? Attach every PR with `linear_create_attachment` before review.
 Move issue through Awaiting Review, Follow-ups, and Done using judgment.
+
+Before calling `sync_worktree_to_main`, write the pull-request title and body
+yourself. The body must be a concise Markdown review summary of implemented
+behavior and checks actually run; do not use generic automation text, workspace
+paths, or a raw commit list.
 
 Follow-ups = final operational work: deployment verification, useful log
 preservation before teardown, feature cleanup, related issue update or unblock.

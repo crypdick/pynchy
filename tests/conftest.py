@@ -134,6 +134,7 @@ from pynchy.state import (
     record_canary_run,
     store_message_direct,
 )
+from pynchy.state.api import get_work_item_execution_for_turn
 from pynchy.workspace.api import WorkspaceProfile
 from tests.conftest_helpers import (
     NullChannel,
@@ -574,6 +575,7 @@ def reset_settings(monkeypatch):
             LifecycleRuntime(
                 settings=settings_source,
                 resolve_publication_repos=resolve_repositories,
+                get_work_item_execution_for_turn=get_work_item_execution_for_turn,
                 detect_main_branch=detect_main_branch,
                 host_create_pr_from_worktree=host_create_pr_from_worktree,
                 redact_git_diagnostic=redact_git_diagnostic,

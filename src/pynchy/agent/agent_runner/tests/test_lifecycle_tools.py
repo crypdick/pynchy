@@ -63,7 +63,13 @@ async def test_publication_failure_prefers_per_repository_diagnostic(
         )
     )
 
-    result = await asyncio.wait_for(call_tool("sync_worktree_to_main", {}), timeout=2)
+    result = await asyncio.wait_for(
+        call_tool(
+            "sync_worktree_to_main",
+            {"title": "Fix publication", "body": "## Summary\nFix it."},
+        ),
+        timeout=2,
+    )
     await responder
 
     assert result.isError is True
@@ -73,6 +79,7 @@ async def test_publication_failure_prefers_per_repository_diagnostic(
     request_file = next((agent_tool_runtime / "requests").glob("*.json"))
     request = json.loads(request_file.read_text(encoding="utf-8"))
     assert request["payload"]["turn_id"] == "turn-syn-88"
+    assert request["payload"]["title"] == "Fix publication"
 
 
 @pytest.mark.asyncio
@@ -89,7 +96,13 @@ async def test_publication_failure_without_repository_result_keeps_aggregate_dia
         )
     )
 
-    result = await asyncio.wait_for(call_tool("sync_worktree_to_main", {}), timeout=2)
+    result = await asyncio.wait_for(
+        call_tool(
+            "sync_worktree_to_main",
+            {"title": "Fix publication", "body": "## Summary\nFix it."},
+        ),
+        timeout=2,
+    )
     await responder
 
     assert result.isError is True
