@@ -120,6 +120,7 @@ class _FakeThread:
     added_user_ids: list[int] = field(default_factory=list)
     archive_edits: list[bool] = field(default_factory=list)
     tag_edits: list[list[object]] = field(default_factory=list)
+    name_edits: list[str] = field(default_factory=list)
 
     async def add_user(self, user: discord.Object) -> None:
         self.added_user_ids.append(int(user.id))
@@ -129,6 +130,7 @@ class _FakeThread:
         *,
         archived: bool | None = None,
         applied_tags: list[object] | None = None,
+        name: str | None = None,
     ) -> None:
         if archived is not None:
             self.archived = archived
@@ -136,6 +138,9 @@ class _FakeThread:
         if applied_tags is not None:
             self.applied_tags = list(applied_tags)
             self.tag_edits.append(list(applied_tags))
+        if name is not None:
+            self.name = name
+            self.name_edits.append(name)
 
 
 class _FakeThreadParent:

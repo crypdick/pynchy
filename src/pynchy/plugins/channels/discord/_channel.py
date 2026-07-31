@@ -364,6 +364,16 @@ class DiscordChannel:
             raise TypeError("Discord target does not support forum post tags")
         await edit(applied_tags=[tag])
 
+    async def set_thread_title(self, child_jid: str, title: str) -> None:
+        """Update a child thread's visible title."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        if getattr(thread, "name", None) == title:
+            return
+        edit = getattr(thread, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord target does not support thread titles")
+        await edit(name=title)
+
     async def find_thread(self, parent_jid: str, name: str) -> str | None:
         """Find a child thread with *name* below the given parent.
 

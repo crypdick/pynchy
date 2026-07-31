@@ -219,6 +219,18 @@ async def test_treats_missing_thread_as_already_closed():
 
 
 @pytest.mark.asyncio
+async def test_updates_thread_title_only_when_changed():
+    ch = _channel()
+    thread = _FakeThread(id=456, name="systems | secret scrubber")
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await ch.set_thread_title("discord:channel:456", "⚙️ secret scrubber")
+    await ch.set_thread_title("discord:channel:456", "⚙️ secret scrubber")
+
+    assert thread.name_edits == ["⚙️ secret scrubber"]
+
+
+@pytest.mark.asyncio
 async def test_adds_active_human_to_reused_scheduled_child_thread():
     ch = _channel()
     thread = _FakeThread(id=456)
