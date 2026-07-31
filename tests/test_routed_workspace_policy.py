@@ -1,6 +1,6 @@
 """Tests for startup restoration of routed workspace policy."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from conftest import init_test_database, make_settings
 
@@ -63,3 +63,26 @@ async def test_startup_restores_policy_for_deliveryless_open_conversation(tmp_pa
     assert resolved is not None
     assert resolved.repo == ["owner/project"]
     assert resolved.execution_mode == "host"
+
+
+async def test_startup_does_not_restore_policy_for_closed_conversation(monkeypatch) -> None:
+    routed = WorkspaceProfile(
+        jid="discord:channel:routed",
+        name="Closed",
+        folder=routed_conversation_folder("support", "closed"),
+        trigger="@pynchy",
+        is_admin=True,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.get_conversation",
+        AsyncMock(return_value=MagicMock(control_closed=True)),
+    )
+    ensure_owner = MagicMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.ensure_runtime_workspace_policy_owner",
+        ensure_owner,
+    )
+
+    await restore_routed_workspace_policy_owners([routed])
+
+    ensure_owner.assert_not_called()
