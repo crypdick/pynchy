@@ -164,15 +164,14 @@ def linear_workspace_boards() -> dict[str, LinearWorkspaceBoard]:
 def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[_LinearWorkspaceContext]:
     registered = list(workspaces)
     candidates = [*registered, *_configured_runtime().additional_workspaces(registered)]
-    result: list[_LinearWorkspaceContext] = []
-    seen_folders: set[str] = set()
+    result: dict[str, _LinearWorkspaceContext] = {}
     for workspace in candidates:
         context = _linear_workspace_context(workspace)
-        if context is None or context.folder in seen_folders:
+        if context is None:
             continue
-        seen_folders.add(context.folder)
-        result.append(context)
-    return result
+        if context.folder not in result or workspace.folder == context.folder:
+            result[context.folder] = context
+    return list(result.values())
 
 
 def _linear_workspace_context(workspace: WorkspaceProfile) -> _LinearWorkspaceContext | None:

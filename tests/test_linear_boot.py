@@ -74,6 +74,33 @@ async def test_reconcile_linear_workspace_boards_uses_env_defaults(monkeypatch):
     assert kwargs["team_key"] == "SYN"
 
 
+async def test_reconcile_prefers_workspace_root_over_registered_thread(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    thread = _workspace(
+        dynamic_thread_folder("health", "discord:channel:thread"),
+        "Health/body-checkins",
+    )
+    thread.jid = "discord:channel:thread"
+    root = _workspace("health", "Health")
+    root.jid = "discord:channel:forum"
+    reconcile = AsyncMock(return_value={})
+
+    with patch(
+        "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+        reconcile,
+    ):
+        await reconcile_linear_workspace_boards([thread, root])
+
+    _, args, _ = reconcile.mock_calls[0]
+    assert args[1][0].jid == root.jid
+
+
 async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypatch):
     monkeypatch.setenv("LINEAR_PUBLIC_KEY", "lin_public")
     monkeypatch.setenv("LINEAR_PUBLIC_TEAM", "PUB")
