@@ -6,6 +6,7 @@ dist/
 site/
 
 # Local data & auth (data/* not data/ — allows re-including subdirectories)
+# Note: data/personalization/ is its own user-managed subrepo. cd into it to make edits
 data/*
 !data/defaults/
 !data/defaults/**
