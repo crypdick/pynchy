@@ -170,8 +170,16 @@ async def test_finds_existing_active_child_thread_for_scheduled_task():
 
 @pytest.mark.asyncio
 async def test_reopens_archived_child_thread_instead_of_creating_a_duplicate():
+    class _ForumParent(_FakeThreadParent):
+        available_tags: list[object] = []
+
+        async def archived_threads(self, *, limit: int):
+            assert limit == 100
+            for thread in self.archived:
+                yield thread
+
     ch = _channel()
-    parent = _FakeThreadParent()
+    parent = _ForumParent()
     archived = _FakeThread(id=456, name="family", parent_id=parent.id, archived=True)
     parent.archived = [archived]
     ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
