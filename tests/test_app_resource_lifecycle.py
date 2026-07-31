@@ -487,6 +487,22 @@ async def test_application_adapts_scheduled_execution_lifecycle(
     get_execution.assert_awaited_once_with("task-1")
 
 
+async def test_application_unregisters_workspace_from_memory_and_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    app.workspaces["chat"] = WorkspaceProfile(
+        jid="chat", name="Chat", folder="chat", trigger="@Pynchy"
+    )
+    delete_workspace = AsyncMock()
+    monkeypatch.setattr(app_module, "delete_workspace_profile", delete_workspace)
+
+    await app.unregister_workspace("chat")
+
+    assert "chat" not in app.workspaces
+    delete_workspace.assert_awaited_once_with("chat")
+
+
 async def test_application_forwards_ask_user_answers_as_system_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
