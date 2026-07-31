@@ -68,6 +68,7 @@ class _Control:
             self._name == "create"
             and self._page.phase == "project-create"
             and not self._page.project_confirmation
+            and not self._page.project_stalls
         ):
             self._page.url = "https://console.cloud.google.com/home/dashboard?project=pynchy-gdrive"
         if self._name == "enable":
@@ -115,12 +116,14 @@ class _SetupPage:
         manual_project: bool = False,
         modal_visible: bool = False,
         project_confirmation: bool = False,
+        project_stalls: bool = False,
         project_exists: bool = False,
         requires_login: bool = False,
         login_return_url: str = "https://console.cloud.google.com/home",
         save_steps: int = 0,
         consent_textbox_count: int = 2,
         oauth_textbox_count: int = 1,
+        timeout_before_manual_check: bool = False,
     ) -> None:
         self.api_already_enabled = api_already_enabled
         self.api_enabled = True
@@ -137,12 +140,14 @@ class _SetupPage:
         self.modal_visible = modal_visible
         self.phase = ""
         self.project_confirmation = project_confirmation
+        self.project_stalls = project_stalls
         self.project_exists = project_exists
         self.requires_login = requires_login
         self.login_return_url = login_return_url
         self.save_steps = save_steps
         self.consent_textbox_count = consent_textbox_count
         self.oauth_textbox_count = oauth_textbox_count
+        self.timeout_before_manual_check = timeout_before_manual_check
         self.screenshoted = False
         self.url = "about:blank"
 
@@ -383,6 +388,12 @@ async def test_setup_action_accepts_manual_credential_download_after_selector_br
             id="console-confirmation",
         ),
         pytest.param(
+            {"project_stalls": True, "project_exists": True},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="project-poll-fallback",
+        ),
+        pytest.param(
             {
                 "api_already_enabled": True,
                 "consent_configured": True,
@@ -434,6 +445,12 @@ async def test_setup_action_accepts_manual_credential_download_after_selector_br
             None,
             id="oauth-dialog-without-name-field",
         ),
+        pytest.param(
+            {"manual_project": True, "timeout_before_manual_check": True},
+            b'{"installed": {"client_id": "123.apps.googleusercontent.com"}}',
+            None,
+            id="manual-step-already-expired",
+        ),
     ],
 )
 async def test_setup_action_handles_console_recovery_paths(
@@ -447,6 +464,11 @@ async def test_setup_action_handles_console_recovery_paths(
     page = _SetupPage(credential_contents=credential_contents, **page_options)
     _install_playwright(monkeypatch, page)
     _stub_oauth(monkeypatch, [])
+    if page_options.get("timeout_before_manual_check"):
+        times = iter((1000.0, 2000.0))
+        monkeypatch.setattr(
+            "pynchy.plugins.integrations.google_setup._console.time.time", times.__next__
+        )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.google_setup._handler.has_display", lambda: True
     )
