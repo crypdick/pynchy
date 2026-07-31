@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -204,6 +204,78 @@ async def test_provider_failure_isolated_to_one_execution(monkeypatch: pytest.Mo
     client.get_issue = AsyncMock(side_effect=RuntimeError("provider unavailable"))  # type: ignore[method-assign]
 
     assert await reconcile_provider_work_item_state(client, {"pynchy": _board()}) == 0
+
+
+async def test_terminal_repair_candidate_without_latest_execution_is_ignored() -> None:
+    execution = _execution()
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=AsyncMock(return_value=[]),
+            list_terminal_repair_candidates=AsyncMock(return_value=[execution]),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
+            cancel_execution=AsyncMock(),
+            retire_execution=AsyncMock(),
+            retire_terminal_execution_if_unowned=AsyncMock(),
+            retire_terminal_execution=AsyncMock(),
+        )
+    )
+
+    assert await reconcile_provider_work_item_state(_Client(None), {}) == 0
+
+
+async def test_reconciliation_skips_execution_owned_by_another_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _execution()
+    _configure_runtime(execution)
+    account = Mock()
+    account.name = "other-account"
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_provider_reconciliation.linear_account_for_workspace",
+        lambda _workspace: account,
+    )
+    client = _Client({"id": "issue-1"})
+
+    assert (
+        await reconcile_provider_work_item_state(
+            client,
+            {"pynchy": _board()},
+            account_name="requested-account",
+        )
+        == 0
+    )
+
+
+async def test_unavailable_probe_records_the_account_without_retiring_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = _execution()
+    _configure_runtime(execution)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_provider_reconciliation.linear_account_for_workspace",
+        lambda _workspace: None,
+    )
+    probes: dict[str, object] = {}
+
+    assert (
+        await reconcile_provider_work_item_state(
+            _Client(None),
+            {"pynchy": _board()},
+            account_name="requested-account",
+            unavailable_probes=probes,
+        )
+        == 0
+    )
+    probe = probes[execution.id]
+    assert probe.account_names == {"requested-account"}
+    assert (
+        await reconcile_provider_work_item_state(
+            _Client(None),
+            {"pynchy": _board()},
+            account_name="requested-account",
+        )
+        == 0
+    )
 
 
 def _state(name: str) -> dict[str, str]:
