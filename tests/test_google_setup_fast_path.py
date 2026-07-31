@@ -135,6 +135,32 @@ async def test_setup_action_uses_valid_tokens_to_enable_apis_without_browser(
 
 
 @pytest.mark.asyncio
+async def test_setup_action_skips_service_usage_when_project_number_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure_runtime(tmp_path)
+    _write_valid_credentials(tmp_path)
+    keys_file = tmp_path / "chrome-profiles" / "personal" / "gcp-oauth.keys.json"
+    keys_file.write_text('{"installed": {"client_id": "", "client_secret": "client-secret"}}')
+    requests: list[str] = []
+
+    def urlopen_https_request(request: urllib.request.Request) -> _Response:
+        requests.append(request.full_url)
+        return _Response(b'{"access_token": "access-token"}')
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.google_setup._rest_api.urlopen_https_request",
+        urlopen_https_request,
+    )
+
+    result = await _handler()({"source_group": "assigned"})
+
+    assert result["result"]["status"] == "already_configured"
+    assert result["result"]["steps"] == []
+    assert requests == ["https://oauth2.googleapis.com/token"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("response_body", [b"SCOPE_INSUFFICIENT", b"unexpected failure"])
 async def test_setup_action_reopens_interactive_setup_when_rest_enablement_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, response_body: bytes
