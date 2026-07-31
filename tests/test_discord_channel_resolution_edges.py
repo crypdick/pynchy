@@ -77,6 +77,39 @@ async def test_resolve_chat_jid_prefers_a_cached_configured_channel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_matches() -> None:
+    channel = _channel()
+    channel._find_chat_jids_by_name = AsyncMock(  # type: ignore[attr-defined]
+        return_value=["discord:direct:1", "discord:direct:2"]
+    )
+
+    assert await channel.resolve_chat_jid("direct.alice") is None
+
+
+@pytest.mark.asyncio
+async def test_create_thread_rejects_target_without_thread_support() -> None:
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+
+    with pytest.raises(TypeError, match="does not support child threads"):
+        await channel.create_thread("discord:channel:123", "family")
+
+
+@pytest.mark.asyncio
+async def test_thread_participant_failure_does_not_fail_existing_thread() -> None:
+    thread = MagicMock(id=456)
+    thread.add_user = AsyncMock(  # type: ignore[method-assign]
+        side_effect=discord.HTTPException(MagicMock(status=500, reason="offline"), "offline")
+    )
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await channel.add_thread_participants("discord:channel:456", ("42",))
+
+    thread.add_user.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_find_thread_reuses_archived_thread_when_reopen_fails() -> None:
     class _ArchivedThread:
         id = 456
