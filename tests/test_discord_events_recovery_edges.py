@@ -5,6 +5,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import discord
+import pytest
 
 from pynchy.config.api import DiscordConnectionConfig
 from pynchy.plugins.api import AudioMetadataPatch, InboundAudioProcessingResult
@@ -103,6 +107,54 @@ async def test_audio_processing_ignores_patches_for_unknown_attachments():
 
     assert msg.content == "processed"
     assert "cached_path" not in msg.metadata["attachments"][0]
+
+
+@pytest.mark.asyncio
+async def test_application_command_sync_is_one_shot_after_success():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.client = discord.Client(intents=discord.Intents.none())
+    channel.events.register()
+
+    with patch.object(
+        discord.app_commands.CommandTree,
+        "sync",
+        new=AsyncMock(return_value=[object(), object()]),
+    ) as sync:
+        await channel.events.sync_application_commands()
+        await channel.events.sync_application_commands()
+
+    sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_application_command_sync_retries_after_discord_failure():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.client = discord.Client(intents=discord.Intents.none())
+    channel.events.register()
+
+    with patch.object(
+        discord.app_commands.CommandTree,
+        "sync",
+        new=AsyncMock(side_effect=[discord.DiscordException("offline"), []]),
+    ) as sync:
+        await channel.events.sync_application_commands()
+        await channel.events.sync_application_commands()
+
+    assert sync.await_count == 2
 
 
 async def test_audio_read_failure_keeps_the_message_deliverable():
