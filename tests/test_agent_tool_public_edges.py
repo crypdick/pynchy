@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ from agent_runner.agent_tools import (
 )
 
 
-def _runtime(tmp_path: Path) -> AgentToolRuntime:
+def _runtime(tmp_path: Path, *, turn_id: str = "") -> AgentToolRuntime:
     return AgentToolRuntime(
         chat_jid="slack:group",
         group_folder="group",
@@ -30,6 +31,7 @@ def _runtime(tmp_path: Path) -> AgentToolRuntime:
         is_scheduled_task=False,
         ipc_dir=tmp_path,
         ask_user_timeout_seconds=17.0,
+        turn_id=turn_id,
     )
 
 
@@ -249,6 +251,27 @@ async def test_sync_worktree_tool_reports_a_successful_pull_request_publication(
     )
 
 
+async def test_sync_worktree_tool_includes_the_active_turn_id(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _publication_response(tmp_path, {"success": True, "message": "https://github/pr/2"})
+    write_request = Mock()
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: 1700000000.0)
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", write_request)
+
+    with use_agent_tool_runtime(_runtime(tmp_path, turn_id="turn-1")):
+        result = await call_tool("sync_worktree_to_main", {})
+
+    assert result[0].text == "https://github/pr/2"
+    assert write_request.call_args.kwargs["request_id"] == "1700000000000-fixed"
+    assert write_request.call_args.args[1]["turn_id"] == "turn-1"
+
+
 async def test_sync_worktree_tool_reports_per_repository_publication_failure(
     monkeypatch,
     tmp_path: Path,
@@ -274,6 +297,89 @@ async def test_sync_worktree_tool_reports_per_repository_publication_failure(
     assert result.content[0].text == "pynchy: branch is dirty"
 
 
+async def test_publication_tool_recovers_from_a_malformed_host_response(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    response_file = tmp_path / "merge_results" / "1700000000000-fixed.json"
+    response_file.parent.mkdir(parents=True, exist_ok=True)
+    response_file.write_text("not json", encoding="utf-8")
+    write_request = Mock()
+    original_sleep = asyncio.sleep
+
+    async def repair_response(_delay: float) -> None:
+        await original_sleep(0)
+        response_file.write_text(
+            json.dumps({"success": True, "message": "recovered"}),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: 1700000000.0)
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle._ipc.write_request_file",
+        write_request,
+    )
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.asyncio.sleep",
+        repair_response,
+    )
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("sync_worktree_to_main", {})
+
+    assert result[0].text == "recovered"
+
+
+async def test_publication_tool_reports_timeout_without_a_host_response(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    clock = iter((1700000000.0, 1700000000.0, 1700000001.0, 1700000121.0))
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: next(clock))
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle._ipc.write_request_file", Mock())
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.asyncio.sleep",
+        AsyncMock(),
+    )
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("sync_worktree_to_main", {})
+
+    assert result.isError is True
+    assert result.content[0].text == "Timed out (120s). Retry or check with the host."
+
+
+async def test_managed_feature_publication_forwards_the_feature_slug(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _publication_response(tmp_path, {"success": True, "message": "https://github/pr/3"})
+    write_request = Mock()
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: 1700000000.0)
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", write_request)
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("publish_managed_feature", {"feature_slug": "feature-1"})
+
+    assert result[0].text == "https://github/pr/3"
+    assert write_request.call_args.args[:2] == (
+        "publish_managed_feature",
+        {"feature_slug": "feature-1", "publication": "pull-request"},
+    )
+
+
 async def test_reset_context_writes_a_handoff_request_before_exit(
     monkeypatch,
     tmp_path: Path,
@@ -297,3 +403,28 @@ async def test_reset_context_writes_a_handoff_request_before_exit(
         reply_to=None,
     )
     exit_container.assert_called_once_with()
+
+
+async def test_reset_context_writes_the_close_sentinel_without_a_message(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_request = Mock()
+    exit_container = Mock()
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle._ipc.write_request_file",
+        write_request,
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.os._exit", exit_container)
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("reset_context", {})
+
+    assert result is None
+    assert (tmp_path / "input" / "_close").exists()
+    write_request.assert_called_once_with(
+        "reset_context",
+        {"chatJid": "slack:group", "groupFolder": "group"},
+        reply_to=None,
+    )
+    exit_container.assert_called_once_with(0)
