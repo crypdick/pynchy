@@ -400,6 +400,29 @@ def test_reap_stale_processes_treats_permission_denied_as_an_existing_group(
     ]
 
 
+def test_reap_stale_processes_accepts_a_group_that_exits_during_cleanup(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "owned.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess([], 0, marker, "")),
+    )
+
+    with patch(
+        "pynchy.host.container_manager.mcp.lifecycle.os.killpg",
+        side_effect=[None, ProcessLookupError],
+    ) as killpg:
+        assert reap_stale_processes(record_dir) == 1
+
+    killpg.assert_has_calls([((1234, signal.SIGTERM),), ((1234, 0),)])
+    assert not list(record_dir.iterdir())
+
+
 def test_reap_stale_processes_reaps_a_verified_owned_group(monkeypatch, tmp_path: Path):
     record_dir = tmp_path / "records"
     record_dir.mkdir()
