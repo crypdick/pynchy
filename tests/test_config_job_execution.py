@@ -161,6 +161,22 @@ async def test_deterministic_job_requires_a_durable_delivery_binding() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deterministic_job_without_output_completes_without_delivery() -> None:
+    deps = _Deps()
+
+    with patch(
+        "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+        AsyncMock(return_value=ShellResult(returncode=0, stdout="", stderr="")),
+    ):
+        execution = await run_deterministic_config_job(_task(bound_chat_jid=None), deps)
+
+    assert execution is not None
+    assert execution.result == "Completed"
+    assert execution.error is None
+    assert deps.messages == []
+
+
+@pytest.mark.asyncio
 async def test_only_complete_deterministic_jobs_reach_the_shell() -> None:
     deps = _Deps()
 

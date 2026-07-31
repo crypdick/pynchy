@@ -467,3 +467,29 @@ class TestAgentRunnerPreContainerHelpers:
         assert any("uncommitted local changes" in notice for notice in notices)
         assert any("haven't been pushed" in notice for notice in notices)
         assert notices[-1].startswith("Consider whether to address")
+
+    @pytest.mark.parametrize(
+        ("is_admin", "repo_dirty", "unpushed_commits"),
+        [
+            (False, True, 2),
+            (True, False, 0),
+            (True, True, 0),
+            (True, False, 1),
+        ],
+    )
+    def test_build_admin_system_notices_only_reports_relevant_repository_state(
+        self,
+        is_admin: bool,
+        repo_dirty: bool,
+        unpushed_commits: int,
+    ) -> None:
+        notices = build_admin_system_notices(
+            is_admin=is_admin,
+            repo_dirty=repo_dirty,
+            unpushed_commits=unpushed_commits,
+        )
+
+        if not is_admin or (not repo_dirty and unpushed_commits == 0):
+            assert notices == []
+        else:
+            assert notices[-1].startswith("Consider whether to address")

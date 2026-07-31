@@ -121,6 +121,21 @@ class TestSlackConfiguredChats:
         assert app.client.conversations_list.await_args_list[1].kwargs["cursor"] == "next-page"
 
     @pytest.mark.asyncio
+    async def test_resolve_chat_jid_skips_nonmatching_channels_on_a_page(self) -> None:
+        channel = make_slack_channel()
+        app = attach_slack_app(channel)
+        app.client.conversations_list.return_value = {
+            "channels": [
+                {"id": "C-other", "name": "other"},
+                {"id": "C987", "name": "engineering"},
+            ],
+            "response_metadata": {"next_cursor": ""},
+        }
+
+        assert await channel.resolve_chat_jid("Engineering") == "slack:C987"
+        app.client.conversations_join.assert_awaited_once_with(channel="C987")
+
+    @pytest.mark.asyncio
     async def test_sync_allowed_channels_creates_a_missing_configured_chat(self) -> None:
         channel = SlackChannel(
             connection_name="connection.slack.main",
