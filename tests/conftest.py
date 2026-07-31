@@ -91,10 +91,8 @@ from pynchy.host.learning.api import (
     LearningPathsRuntime,
     configure_learning_paths_runtime,
     prepare_agent_homes,
-    prepare_vault_mount_root,
     resolve_learning_paths,
 )
-from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
     SkillActivationRuntime,
     configure_skill_activation_runtime,
@@ -136,6 +134,7 @@ from pynchy.state import (
     record_canary_run,
     store_message_direct,
 )
+from pynchy.state.api import get_work_item_execution_for_turn
 from pynchy.workspace.api import WorkspaceProfile
 from tests.conftest_helpers import (
     NullChannel,
@@ -219,7 +218,6 @@ def configure_learning_paths_for(settings: Settings) -> None:
             vault_mount_path=settings.learning.obsidian.mount_path,
             default_profile_root=settings.learning.obsidian.default_profile_root,
             memory_dir_name=settings.learning.obsidian.memory_dir_name,
-            data_dir=settings.data_dir,
             profile_for_workspace=profile_for_workspace,
         )
     )
@@ -452,11 +450,7 @@ def reset_settings(monkeypatch):
             return AgentHomeMounts(
                 claude_home=homes.claude_home,
                 codex_home=homes.codex_home,
-                vault_mount_root=(
-                    prepare_vault_mount_root(homes.learning_paths)
-                    if homes.learning_paths is not None
-                    else None
-                ),
+                vault_mount_root=homes.learning_paths.vault_root if homes.learning_paths else None,
                 vault_mount_path=(
                     homes.learning_paths.vault_mount_path
                     if homes.learning_paths is not None
@@ -467,7 +461,7 @@ def reset_settings(monkeypatch):
         configure_mount_operations(
             MountOperations(
                 prepare_agent_homes=mount_agent_homes,
-                repo_container_path=lambda slug: f"/workspace/repos/{slug}",
+                repo_container_path=lambda slug: f"/home/agent/src/{slug}",
                 runtime_name=lambda: "docker",
             )
         )
@@ -581,6 +575,7 @@ def reset_settings(monkeypatch):
             LifecycleRuntime(
                 settings=settings_source,
                 resolve_publication_repos=resolve_repositories,
+                get_work_item_execution_for_turn=get_work_item_execution_for_turn,
                 detect_main_branch=detect_main_branch,
                 host_create_pr_from_worktree=host_create_pr_from_worktree,
                 redact_git_diagnostic=redact_git_diagnostic,
@@ -597,7 +592,6 @@ def reset_settings(monkeypatch):
                 redact_git_diagnostic=redact_git_diagnostic,
             )
         )
-        configure_vault_mount_mirror(enabled=False)
         yield
 
 

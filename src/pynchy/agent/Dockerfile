@@ -40,34 +40,48 @@ RUN /bin/sh /tmp/install_codex.sh && rm /tmp/install_codex.sh
 # Install Claude Code plugins (loaded via Agent SDK's plugins option at runtime)
 RUN git clone --depth 1 https://github.com/obra/superpowers.git /opt/plugins/superpowers
 
-# Create app directory
-WORKDIR /app
+# Create harness directory
+WORKDIR /opt/pynchy/agent-runner
 
 # Copy Python agent runner and install with uv
-COPY agent_runner/ /app/
-RUN uv pip install --system --no-cache-dir /app/
+COPY agent_runner/ /opt/pynchy/agent-runner/
+RUN uv pip install --system --no-cache-dir /opt/pynchy/agent-runner
 
 # Pynchy uses prek; pre-commit remains available for managed external repositories
 # that still declare the legacy YAML hook format.
 RUN uv pip install --system --no-cache-dir prek pre-commit
 
 # Install custom plugin dependencies (users add packages to this file)
-COPY requirements-plugins.txt /app/requirements-plugins.txt
-RUN uv pip install --system --no-cache-dir -r /app/requirements-plugins.txt
+COPY requirements-plugins.txt /opt/pynchy/requirements-plugins.txt
+RUN uv pip install --system --no-cache-dir -r /opt/pynchy/requirements-plugins.txt
 
-# Create workspace directories
-RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/requests /workspace/ipc/input /workspace/ipc/output
+# Create agent and harness directories. /tmp is intentionally empty in the image
+# and remains a normal sticky temporary directory at runtime.
+RUN mkdir -p \
+    /home/agent/src \
+    /home/agent/workspace \
+    /home/agent/skills \
+    /home/agent/memory \
+    /home/agent/automation-memory \
+    /home/agent/mnt \
+    /opt/pynchy/scripts \
+    /opt/pynchy/agent-runner/src \
+    /opt/pynchy/plugin-hooks \
+    /run/pynchy/messages /run/pynchy/requests /run/pynchy/input /run/pynchy/output \
+    /tmp \
+ && find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + \
+ && chmod 1777 /tmp
 
 # Copy entrypoint script (restores .claude.json from backup, runs agent)
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+COPY entrypoint.sh /opt/pynchy/entrypoint.sh
+RUN chmod +x /opt/pynchy/entrypoint.sh
 
 # Create non-root user with passwordless sudo.
 # Claude Code refuses --dangerously-skip-permissions as root, so we run as a
 # regular user but grant sudo so agents can apt-get install tools they need.
 RUN useradd -m -s /bin/bash agent \
  && echo 'agent ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/agent \
- && chown -R agent:agent /workspace
+ && chown -R agent:agent /home/agent /opt/pynchy /run/pynchy
 
 USER agent
 
@@ -77,7 +91,7 @@ RUN git config --global credential.helper '!gh auth git-credential' \
  && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
 # Set working directory to group workspace
-WORKDIR /workspace/group
+WORKDIR /home/agent/workspace
 
 # Entry point reads initial input from IPC files, writes output as IPC files
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/opt/pynchy/entrypoint.sh"]

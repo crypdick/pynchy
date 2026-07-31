@@ -197,12 +197,9 @@ from pynchy.host.learning.api import (
     automation_memory_dir,
     configure_learning_paths_runtime,
     prepare_agent_homes,
-    prepare_full_vault_host_root,
-    prepare_vault_mount_root,
     profile_name_for_group,
     refresh_personalized_agent_skills,
     resolve_learning_paths,
-    sync_automation_memory,
 )
 from pynchy.host.learning.api import (
     capture as learning_capture,
@@ -210,7 +207,6 @@ from pynchy.host.learning.api import (
 from pynchy.host.learning.api import (
     run_learning_review as run_host_learning_review,
 )
-from pynchy.host.learning.mirror import configure_vault_mount_mirror
 from pynchy.host.learning.skill_activation import (
     SkillActivationRuntime,
     configure_skill_activation_runtime,
@@ -219,6 +215,7 @@ from pynchy.host.learning.skills import configure_personalized_skills_root
 from pynchy.host.orchestrator import (
     agent_runner,
     host_execution,
+    linear_issue_controls,
     linear_plan_review,
     session_handler,
     update_offer,
@@ -309,18 +306,19 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     # beartype resolves app annotations at runtime.
     Channel,
-    MemoryProvider,
     NewMessage,
     ObserverProvider,
     OutboundEvent,
     prepare_context_reset,
 )
 from pynchy.plugins.integrations.api import (
+    LinearIssueControl,
     create_linear_workspace_todo,
     get_active_matrix_route,
     linear_workspace_boards,
     linear_workspace_enabled,
     reconcile_all_linear_work_items,
+    resolve_linear_issue_conversation,
 )
 from pynchy.plugins.integrations.api import (
     process_linear_plan_review_admission as admit_linear_plan_review,
@@ -350,6 +348,7 @@ from pynchy.state.api import (
     get_router_state,
     get_unresolved_canary_regressions,
     get_work_item_execution_for_task,
+    get_work_item_execution_for_turn,
     prune_messages_by_sender,
     record_canary_run,
     save_router_state_batch,
@@ -428,11 +427,7 @@ def _mount_agent_homes(
     return AgentHomeMounts(
         claude_home=homes.claude_home,
         codex_home=homes.codex_home,
-        vault_mount_root=(
-            prepare_vault_mount_root(homes.learning_paths)
-            if homes.learning_paths is not None
-            else None
-        ),
+        vault_mount_root=homes.learning_paths.vault_root if homes.learning_paths else None,
         vault_mount_path=(
             homes.learning_paths.vault_mount_path if homes.learning_paths is not None else None
         ),
@@ -630,6 +625,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
         LifecycleRuntime(
             settings=cast("Callable[[], LifecycleSettings]", get_settings),
             resolve_publication_repos=resolve_publication_repos,
+            get_work_item_execution_for_turn=get_work_item_execution_for_turn,
             detect_main_branch=detect_main_branch,
             host_create_pr_from_worktree=host_create_pr_from_worktree,
             redact_git_diagnostic=redact_git_diagnostic,
@@ -794,7 +790,6 @@ def _configure_learning_runtime(settings: Settings) -> None:
             vault_mount_path=settings.learning.obsidian.mount_path,
             default_profile_root=settings.learning.obsidian.default_profile_root,
             memory_dir_name=settings.learning.obsidian.memory_dir_name,
-            data_dir=settings.data_dir,
             profile_for_workspace=profile_for_workspace,
         )
     )
@@ -861,7 +856,7 @@ class PynchyApp(ThreadRouting):
 
         def host_learning_vault(folder: str) -> Path | None:
             paths = resolve_learning_paths(folder)
-            return prepare_full_vault_host_root(paths) if paths is not None else None
+            return paths.vault_root if paths is not None else None
 
         def resolve_routed_host_cwd(
             group_folder: str,
@@ -924,7 +919,6 @@ class PynchyApp(ThreadRouting):
         self._shutting_down: bool = False
         self._http_runner: object | None = None
         self._observers: list[ObserverProvider] = []
-        self._memory: MemoryProvider | None = None
         self._speech_synthesizer: SpeechSynthesizer | None = None
         self.subsystem_tasks = RuntimeTaskOwner()
         self.startup_readiness = StartupReadiness()
@@ -1245,7 +1239,6 @@ class PynchyApp(ThreadRouting):
             container_is_running=lambda name: name in runtime.list_running_containers(prefix=name),
         )
         _configure_container_policy_runtime(is_apple_container=runtime.name == "apple")
-        configure_vault_mount_mirror(enabled=runtime.name == "apple")
         configure_cop_gateway(
             model=settings.security.cop_model or settings.agent.model,
             wire_api=settings.security.cop_wire_api,
@@ -1335,15 +1328,6 @@ class PynchyApp(ThreadRouting):
     async def close_observers(self) -> None:
         for observer in self._observers:
             await observer.close()
-
-    async def set_memory_provider(self, memory: MemoryProvider | None) -> None:
-        self._memory = memory
-        if self._memory:
-            await self._memory.init()
-
-    async def close_memory_provider(self) -> None:
-        if self._memory:
-            await self._memory.close()
 
     def set_speech_synthesizer(self, speech_synthesizer: SpeechSynthesizer | None) -> None:
         """Set the host-side provider used for spoken channel replies."""
@@ -1472,7 +1456,6 @@ class PynchyApp(ThreadRouting):
 
     run_agent = agent_runner.run_agent
     automation_memory_dir = staticmethod(automation_memory_dir)
-    sync_automation_memory = staticmethod(sync_automation_memory)
 
     async def review_linear_plan(
         self,
@@ -1673,6 +1656,15 @@ class PynchyApp(ThreadRouting):
             defer_plan_review=temporal_scheduler.start_linear_plan_review_workflow,
         )
         return len(admitted)
+
+    async def ensure_linear_issue_control(self, control: LinearIssueControl) -> None:
+        """Project one active Linear issue into its silent forum control."""
+        conversation = await resolve_linear_issue_conversation(
+            control.issue_id,
+            control.workspace,
+            control.account_name,
+        )
+        await linear_issue_controls.ensure_issue_control(self, control, conversation)
 
     async def process_linear_plan_review_admission(
         self,

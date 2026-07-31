@@ -498,6 +498,47 @@ class TestReconcileWorkspaces:
         mock_channel.create_group.assert_not_called()
         register_fn.assert_not_called()
 
+    async def test_configured_workspace_rebinds_when_its_provider_target_changes(
+        self, db, monkeypatch, tmp_path
+    ):
+        conn_ref = "connection.discord.main"
+        chat_ref = f"{conn_ref}.chat.synapse.channels.systems"
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+        _write_workspace_yaml(workspaces, "systems", {"chat": chat_ref})
+
+        old = WorkspaceProfile(
+            jid="discord:channel:old",
+            name="Systems",
+            folder="systems",
+            trigger="@Pynchy",
+            added_at="2026-07-31T00:00:00+00:00",
+        )
+        registered = {old.jid: old}
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = "main"
+        mock_channel.resolve_chat_jid = AsyncMock(return_value="discord:channel:forum")
+        rebind_fn = AsyncMock()
+
+        await reconcile_workspaces(
+            registered,
+            [mock_channel],
+            AsyncMock(),
+            rebind_fn=rebind_fn,
+        )
+
+        rebound = rebind_fn.await_args.args[0]
+        assert rebound.jid == "discord:channel:forum"
+        assert rebound.folder == "systems"
+        assert "discord:channel:old" not in registered
+        assert registered[rebound.jid] == rebound
+
     async def test_discord_workspace_resolves_configured_voice_channel(
         self, db, monkeypatch, tmp_path
     ):

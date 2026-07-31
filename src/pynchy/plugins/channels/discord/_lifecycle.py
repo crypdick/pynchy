@@ -44,7 +44,13 @@ class DiscordLifecycle:
     async def connect(self) -> None:
         ch = self._channel
         ch.shutting_down = False
-        client = discord.Client(intents=_intents())
+        if ch.config.application_id is None:
+            client = discord.Client(intents=_intents())
+        else:
+            client = discord.Client(
+                intents=_intents(),
+                application_id=int(ch.config.application_id),
+            )
         ch.client = client
         ch.events.register()
 
@@ -53,6 +59,7 @@ class DiscordLifecycle:
             ch.bot_user_id = str(client.user.id) if client.user else ""
             ch.connected = True
             logger.info("Connected to Discord", connection=ch.name, bot_user_id=ch.bot_user_id)
+            await ch.events.sync_application_commands()
             await ch.voice.on_ready()
 
         @client.event

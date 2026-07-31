@@ -21,7 +21,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 | [Channels and speech](channels.md) | `pynchy_create_channel`, `pynchy_speech_synthesizer` |
 | [Connection runtimes](connections.md) | `pynchy_connection_runtime` |
 | [Runtime and tunnels](runtime-and-tunnels.md) | `pynchy_container_runtime`, `pynchy_tunnel` |
-| [Observers and memory](observers-and-memory.md) | `pynchy_observer`, `pynchy_memory` |
+| [Observers](observers.md) | `pynchy_observer` |
 | [Webhooks](webhooks.md) | `pynchy_webhook_routes` |
 | [MCP servers, workspaces, and jobs](mcp-and-workspaces.md) | `pynchy_mcp_server_spec`, `pynchy_workspace_spec`, `pynchy_job_specs` |
 

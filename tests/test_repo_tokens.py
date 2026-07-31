@@ -108,7 +108,7 @@ class TestRepoContext:
         )
 
     def test_repo_container_path_uses_workspace_repos_pattern(self):
-        assert repo_container_path("owner/project") == "/workspace/repos/owner/project"
+        assert repo_container_path("owner/project") == "/home/agent/src/owner/project"
 
 
 # ---------------------------------------------------------------------------

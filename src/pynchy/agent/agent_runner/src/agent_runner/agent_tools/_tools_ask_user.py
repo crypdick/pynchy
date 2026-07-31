@@ -33,7 +33,8 @@ if TYPE_CHECKING:
         "Use this when you need user input, confirmation, or a decision "
         "before proceeding.\n\n"
         "Each question can optionally include predefined options for "
-        "the user to choose from."
+        "the user to choose from. To request Discord files, set "
+        "fileUpload to an object with optional required and maxFiles fields."
     ),
     {
         "type": "object",
@@ -58,6 +59,25 @@ if TYPE_CHECKING:
                                 "required": ["label", "description"],
                             },
                             "description": "Optional predefined answer options",
+                        },
+                        "fileUpload": {
+                            "type": "object",
+                            "properties": {
+                                "required": {
+                                    "type": "boolean",
+                                    "default": True,
+                                    "description": "Whether at least one file is required",
+                                },
+                                "maxFiles": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10,
+                                    "default": 1,
+                                    "description": "Maximum number of files to accept",
+                                },
+                            },
+                            "additionalProperties": False,
+                            "description": "Optional Discord file-upload prompt",
                         },
                     },
                     "required": ["question"],

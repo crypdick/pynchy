@@ -126,9 +126,6 @@ class NullSchedulerDeps:
     def automation_memory_dir(self, _task_id: str):
         return nullcontext(None)
 
-    def sync_automation_memory(self, _task_id: str) -> None:
-        pass
-
     async def broadcast_to_channels(self, jid, event) -> None: ...
 
     async def broadcast_host_message(self, chat_jid, text) -> None: ...

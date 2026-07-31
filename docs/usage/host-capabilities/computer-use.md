@@ -147,7 +147,7 @@ policy precedence.
 ## Artifacts and safety
 
 Screenshots are saved under the workspace IPC directory and exposed inside the
-agent container at `/workspace/ipc/computer-use/<file>.png`.
+agent container at `/run/pynchy/computer-use/<file>.png`.
 
 This tool controls the real host desktop. Gate it with workspace security
 policy for non-admin workspaces. When policy requires approval, the approval

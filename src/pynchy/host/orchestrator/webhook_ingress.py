@@ -6,7 +6,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
@@ -265,7 +265,9 @@ async def _prepared_event_and_workspace(
     workspace = (
         _resolve_route_workspace(ingress.deps, target_workspace) if target_workspace else None
     )
-    if target_workspace is not None and workspace is None:
+    if workspace is None and (
+        target_workspace is not None or prepared_event.instructions is not None
+    ):
         logger.error("Webhook route lost its resolved workspace", route=route.path)
         return web.json_response({"error": "webhook route unavailable"}, status=503)
     if workspace is not None and workspace.is_admin and not route.allow_admin_workspaces:
@@ -290,8 +292,7 @@ def _task_for_event(
 ) -> ScheduledTask | None:
     if event.instructions is None or event.conversation is not None:
         return None
-    if workspace is None:
-        raise RuntimeError("Actionable webhook event has no resolved workspace")
+    workspace = cast("WorkspaceProfile", workspace)
     return ScheduledTask(
         id=f"webhook-{route.provider}-{route.name}-{event.delivery_id}",
         group_folder=workspace.folder,
@@ -312,8 +313,8 @@ async def _prepare_conversation_routes(  # noqa: RUF029 - aiohttp startup hooks 
     app: web.Application,
 ) -> None:
     ingress = app[webhook_ingress_key]
-    if ingress.conversation_dispatcher is not None:
-        ingress.conversation_dispatcher.prepare()
+    dispatcher = cast("WebhookConversationDispatcher", ingress.conversation_dispatcher)
+    dispatcher.prepare()
 
 
 async def recover_webhook_conversations(app: web.Application) -> None:
@@ -327,8 +328,8 @@ async def _stop_conversation_routes(  # noqa: RUF029 - aiohttp cleanup hooks use
     app: web.Application,
 ) -> None:
     ingress = app[webhook_ingress_key]
-    if ingress.conversation_dispatcher is not None:
-        ingress.conversation_dispatcher.close()
+    dispatcher = cast("WebhookConversationDispatcher", ingress.conversation_dispatcher)
+    dispatcher.close()
 
 
 async def _dispatch_admitted_event(
@@ -340,9 +341,7 @@ async def _dispatch_admitted_event(
 ) -> None:
     dispatcher = ingress.conversation_dispatcher
     if conversation_id is not None:
-        if dispatcher is None:
-            raise RuntimeError("Routed webhook dispatcher disappeared after startup")
-        await dispatcher.wake(conversation_id)
+        await cast("WebhookConversationDispatcher", dispatcher).wake(conversation_id)
     if admission.created and admission.task is not None:
         ingress.deps.dispatch_scheduled_task(admission.task)
     if admission.created and event.host_message is not None and workspace is not None:
@@ -385,7 +384,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)
-    disposition: Literal["accepted", "routed", "lifecycle", "notified", "ignored"]
+    disposition: Literal["accepted", "routed", "lifecycle", "notified", "ignored"] = "ignored"
     if task is not None:
         disposition = "accepted"
     elif event.ignored_reason is not None:
@@ -394,10 +393,8 @@ async def handle_webhook(request: web.Request) -> web.Response:
         disposition = "lifecycle"
     elif event.conversation is not None:
         disposition = "routed"
-    elif event.host_message is not None:
-        disposition = "notified"
     else:
-        disposition = "ignored"
+        disposition = "notified"
     receipt = WebhookReceipt(
         provider=route.provider,
         route=route.name,

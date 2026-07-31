@@ -19,7 +19,7 @@ from pynchy.conversation.api import (
     parent_workspace_name,
     routed_conversation_folder,
 )
-from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
+from pynchy.host.orchestrator.threads import ThreadKind, ensure_thread, set_thread_closed
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.identifiers import (
     ChatJid,
@@ -52,6 +52,7 @@ class ConversationControlRequest:
     parent_jid: ChatJid
     title: str
     owner_workspace: GroupFolder | None = None
+    kind: ThreadKind = "topic"
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -146,6 +147,9 @@ async def ensure_conversation_control(
             channels,
             request.parent_jid,
             title,
+            kind=(
+                "issue" if str(conversation.subject.namespace).endswith(":issue") else request.kind
+            ),
         )
         if ensured.jid is None:
             raise RuntimeError("Ensured conversation control returned no chat JID")

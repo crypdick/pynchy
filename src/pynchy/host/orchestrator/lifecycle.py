@@ -53,6 +53,7 @@ from pynchy.host.orchestrator.http_control import resolve_control_plane_runtime
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.host.orchestrator.scheduled_binding import reconcile_scheduled_task_bindings
 from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.logger import logger
 from pynchy.plugins.api import (
@@ -62,21 +63,23 @@ from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
     attach_observers,
-    get_memory_provider,
     get_plugin_manager,
     initialize_host_action_catalog,
     load_channels,
     load_connection_runtimes,
     resolve_default_channel,
 )
-from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
+from pynchy.plugins.integrations.linear_boot import (
+    reconcile_linear_workspace_boards as reconcile_linear_boards,
+)
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state.api import (
+    get_all_tasks,
     get_chat_jids_by_name,
     get_last_group_sync,
     init_database,
@@ -133,7 +136,6 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 async def _close_runtime_resources(app: PynchyApp) -> None:
     await app.connection_runtime_owner.close()
     await app.close_observers()
-    await app.close_memory_provider()
     batcher = output_handler.get_trace_batcher()
     if batcher is not None:
         await batcher.flush_all()
@@ -180,7 +182,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
 
 async def _initialize_core(app: PynchyApp) -> None:
-    """Plugins, gateway, database, observers, memory, state."""
+    """Plugins, gateway, database, observers, and state."""
     settings = get_settings()
 
     service_installer.install_service(settings.project_root)
@@ -216,10 +218,6 @@ async def _initialize_core(app: PynchyApp) -> None:
     logger.info("Database initialized")
 
     app.attach_observers(attach_observers(app.plugin_manager, app.event_bus))
-
-    await app.set_memory_provider(
-        get_memory_provider(app.plugin_manager, settings.data_dir / "memories.db")
-    )
     await app.load_state()
 
 
@@ -344,9 +342,16 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
         channels=app.channels,
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
+        rebind_fn=app.rebind_workspace,
     )
 
-    linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
+    scheduled_bindings = await reconcile_scheduled_task_bindings(await get_all_tasks(), app)
+    if scheduled_bindings:
+        logger.info("Scheduled task bindings reconciled", count=scheduled_bindings)
+
+    linear_boards = await reconcile_linear_boards(
+        app.workspaces.values(), app.ensure_linear_issue_control
+    )
 
     plugin_manager = _require_plugin_manager(app, "_reconcile_state")
     app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))

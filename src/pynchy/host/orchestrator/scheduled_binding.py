@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
-from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001
+from pynchy.host.orchestrator.threads import EnsuredThread, set_thread_kind, set_thread_title
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.identifiers import (
@@ -29,6 +29,7 @@ from pynchy.identifiers import (
     GroupFolder,
     SessionId,
 )
+from pynchy.logger import logger
 from pynchy.plugins.api import (
     Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -89,7 +90,12 @@ class ScheduledBindingDeps(Protocol):
 
 def _task_thread_name(task: ScheduledTask) -> str:
     if task.derived_thread_name is not None and task.derived_thread_name.strip():
-        return task.derived_thread_name
+        title = task.derived_thread_name.strip()
+        if task.config_job_name is not None:
+            _, separator, title_without_parent = title.partition(" | ")
+            title = title_without_parent if separator else title
+            return title if title.startswith("⚙️ ") else f"⚙️ {title}"
+        return title
     raise ScheduledTaskOwnershipError("Scheduled task lacks a managed thread name")
 
 
@@ -100,7 +106,7 @@ def _is_linear_task(task: ScheduledTask) -> bool:
 def _existing_named_task_binding(
     task: ScheduledTask,
     deps: ScheduledBindingDeps,
-) -> WorkspaceProfile | None:
+) -> tuple[WorkspaceProfile, WorkspaceProfile] | None:
     """Return a task's already-registered child runtime for its current owner."""
     if task.bound_chat_jid is None or task.bound_group_folder is None:
         return None
@@ -114,7 +120,7 @@ def _existing_named_task_binding(
         )
     if parent_workspace_name(profile.folder) != placement.owner.folder:
         return None
-    return profile
+    return profile, placement.owner
 
 
 def resolve_scheduled_group(
@@ -147,8 +153,7 @@ async def _register_bound_profile(
     if prior_jid is not None:
         await deps.rebind_workspace(profile)
         return
-    if deps.workspaces.get(profile.jid) != profile:
-        await deps.register_workspace(profile)
+    await deps.register_workspace(profile)
 
 
 async def _bind_named_thread(
@@ -164,6 +169,7 @@ async def _bind_named_thread(
     ensured = await deps.ensure_thread(placement.control_parent.jid, title)
     if ensured.jid is None:
         raise ScheduledTaskOwnershipError("Scheduled task thread creation returned no chat JID")
+    await set_thread_kind(deps.channels, ensured.jid, "automation")
     profile = replace(
         placement.owner,
         jid=ensured.jid,
@@ -178,9 +184,11 @@ async def _bind_named_thread(
 async def _bind_routed_conversation(
     task: ScheduledTask,
     deps: ScheduledBindingDeps,
+    conversation_id: ConversationId,
 ) -> tuple[WorkspaceProfile, str]:
-    for attempt in range(2):
-        conversation = await _open_routed_conversation(task, deps)
+    attempt = 0
+    while True:
+        conversation = await _open_routed_conversation(task, deps, conversation_id)
         placement = resolve_workspace_placement(deps.workspaces.values(), conversation.workspace)
         if placement is None:
             raise ScheduledTaskOwnershipError(
@@ -209,23 +217,25 @@ async def _bind_routed_conversation(
                     parent_jid=ChatJid(placement.control_parent.jid),
                     title=title,
                     owner_workspace=conversation.workspace,
+                    kind="issue" if _is_linear_task(task) else "automation",
                 ),
             )
         except ConversationControlClosedError as exc:
             await deps.cancel_scheduled_task(task.id)
             raise ScheduledTaskTerminalError(
-                f"Scheduled task belongs to a terminal conversation: {task.conversation_id}"
+                f"Scheduled task belongs to a terminal conversation: {conversation_id}"
             ) from exc
         except ConversationControlWorkspaceChangedError as exc:
             if attempt == 1:
                 raise ScheduledTaskOwnershipError(
                     "Conversation workspace changed while binding scheduled work"
                 ) from exc
+            attempt = 1
             continue
         if ensured.control.binding.closed:
             await deps.cancel_scheduled_task(task.id)
             raise ScheduledTaskTerminalError(
-                f"Scheduled task belongs to a terminal conversation: {task.conversation_id}"
+                f"Scheduled task belongs to a terminal conversation: {conversation_id}"
             )
         if _is_linear_task(task):
             # Linear controller-created conversations bypass webhook dispatcher registration.
@@ -235,25 +245,23 @@ async def _bind_routed_conversation(
                 placement.owner.folder,
             )
         return ensured.profile, ensured.control.binding.title
-    raise RuntimeError("Scheduled conversation workspace did not stabilize")
 
 
 async def _open_routed_conversation(
     task: ScheduledTask,
     deps: ScheduledBindingDeps,
+    conversation_id: ConversationId,
 ) -> Conversation:
     """Return a routed task's open durable conversation or cancel its task."""
-    if task.conversation_id is None:
-        raise ScheduledTaskOwnershipError("Routed task lost its conversation identity")
-    conversation = await deps.get_scheduled_conversation(ConversationId(task.conversation_id))
+    conversation = await deps.get_scheduled_conversation(conversation_id)
     if conversation is None:
         raise ScheduledTaskOwnershipError(
-            f"Scheduled task references a missing conversation: {task.conversation_id}"
+            f"Scheduled task references a missing conversation: {conversation_id}"
         )
     if conversation.control_closed:
         await deps.cancel_scheduled_task(task.id)
         raise ScheduledTaskTerminalError(
-            f"Scheduled task belongs to a terminal conversation: {task.conversation_id}"
+            f"Scheduled task belongs to a terminal conversation: {conversation_id}"
         )
     return conversation
 
@@ -265,8 +273,9 @@ async def ensure_scheduled_task_conversation_open(
     """Reject queued scheduled work after its routed conversation became terminal."""
     if task.conversation_id is None:
         return
-    async with conversation_runtime_lock(ConversationId(task.conversation_id)):
-        await _open_routed_conversation(task, deps)
+    conversation_id = ConversationId(task.conversation_id)
+    async with conversation_runtime_lock(conversation_id):
+        await _open_routed_conversation(task, deps, conversation_id)
 
 
 async def _bind_task_runtime(
@@ -274,10 +283,21 @@ async def _bind_task_runtime(
     deps: ScheduledBindingDeps,
 ) -> tuple[WorkspaceProfile, str]:
     if task.conversation_id is not None:
-        return await _bind_routed_conversation(task, deps)
+        return await _bind_routed_conversation(
+            task,
+            deps,
+            ConversationId(task.conversation_id),
+        )
     existing = _existing_named_task_binding(task, deps)
     if existing is not None:
-        return existing, _task_thread_name(task)
+        profile, owner = existing
+        title = _task_thread_name(task)
+        await set_thread_title(deps.channels, profile.jid, title)
+        desired_name = f"{owner.name}/{title}"
+        if profile.name != desired_name:
+            profile = replace(profile, name=desired_name)
+            await deps.register_workspace(profile)
+        return profile, title
     return await _bind_named_thread(task, deps)
 
 
@@ -287,9 +307,10 @@ async def ensure_scheduled_task_binding(
 ) -> ScheduledTask:
     """Persist and return the one thread runtime owned by a scheduled task."""
     if task.conversation_id is not None:
-        async with conversation_runtime_lock(ConversationId(task.conversation_id)):
+        conversation_id = ConversationId(task.conversation_id)
+        async with conversation_runtime_lock(conversation_id):
             bound = await _ensure_scheduled_task_binding(task, deps)
-            await _open_routed_conversation(bound, deps)
+            await _open_routed_conversation(bound, deps, conversation_id)
             return bound
     return await _ensure_scheduled_task_binding(task, deps)
 
@@ -325,6 +346,28 @@ async def _ensure_scheduled_task_binding(
             bound_group_folder=profile.folder,
             derived_thread_name=title,
         )
-    if task.bound_chat_jid is None or task.bound_group_folder is None:
-        raise ScheduledTaskOwnershipError("Scheduled task destination binding was not persisted")
     return task
+
+
+async def reconcile_scheduled_task_bindings(
+    tasks: list[ScheduledTask],
+    deps: ScheduledBindingDeps,
+) -> int:
+    """Eagerly create or repair automation posts for active and paused tasks."""
+    reconciled = 0
+    for task in tasks:
+        if task.status not in {"active", "paused"} or task.conversation_id is not None:
+            continue
+        try:
+            await ensure_scheduled_task_binding(task, deps)
+        except Exception as exc:  # noqa: BLE001 - one invalid task must not block startup.
+            logger.warning(
+                "Scheduled task binding reconciliation failed",
+                task_id=task.id,
+                group_folder=task.group_folder,
+                exc_type=type(exc).__name__,
+                err=str(exc),
+            )
+            continue
+        reconciled += 1
+    return reconciled

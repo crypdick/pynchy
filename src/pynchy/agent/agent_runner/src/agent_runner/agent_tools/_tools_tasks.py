@@ -21,7 +21,7 @@ def _list_tasks_definition() -> Tool:
     return Tool(
         name="list_tasks",
         description=(
-            "Read a bounded snapshot of current scheduled-work health for visible "
+            "Read a complete snapshot of current scheduled-work health for visible "
             "database-backed agent tasks and host jobs, including "
             "status, last results, recent failure summaries, Temporal next-run times, and "
             "orchestration errors. "
@@ -68,7 +68,7 @@ async def _list_tasks_handle(
     live_error = " ".join(live_error.split())
     if len(live_error) > 240:
         live_error = f"{live_error[:237]}..."
-    return tool_error(f"{live_error}\nNo complete bounded scheduled-work inventory is available.")
+    return tool_error(f"{live_error}\nNo complete scheduled-work inventory is available.")
 
 
 # -- pause/resume/cancel --

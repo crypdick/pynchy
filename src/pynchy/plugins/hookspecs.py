@@ -7,7 +7,6 @@ All hooks use the "pynchy" namespace and are validated by pluggy at registration
 from __future__ import annotations
 
 from collections.abc import Awaitable  # noqa: TC003 - hook contracts resolve at runtime.
-from pathlib import Path  # noqa: TC003 - hook contracts resolve at runtime.
 from typing import TYPE_CHECKING
 
 import pluggy
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
         McpServerSpec,
         WorkspaceSpec,
     )
-    from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
     from pynchy.plugins.speech.api import SpeechSynthesizer
     from pynchy.plugins.tunnels.api import TunnelProvider
@@ -205,25 +203,6 @@ class PynchySpec:
                 - name (str): observer identifier (e.g., "sqlite", "otel")
                 - subscribe(event_bus: EventBus) -> None: attach listeners
                 - close() -> coroutine: async teardown / flush
-            Or None if this plugin doesn't provide one.
-        """
-
-    @hookspec
-    def pynchy_memory(self, database_path: Path) -> MemoryProvider | None:
-        """Provide a memory backend implementation.
-
-        Args:
-            database_path: Concrete SQLite database path resolved at application composition.
-
-        Returns:
-            Memory provider object with:
-                - name (str): backend identifier (e.g., "sqlite", "jsonl")
-                - save(group_folder, key, content, category, metadata) -> dict
-                - recall(group_folder, query, category, limit) -> list[dict]
-                - forget(group_folder, key) -> dict
-                - list_keys(group_folder, category) -> list[dict]
-                - init() -> coroutine: async setup (create tables, etc.)
-                - close() -> coroutine: async teardown
             Or None if this plugin doesn't provide one.
         """
 

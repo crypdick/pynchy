@@ -485,6 +485,7 @@ async def reconcile_workspaces(
     channels: list[Channel],
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     unregister_fn: Callable[[str], Awaitable[None]] | None = None,
+    rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None = None,
 ) -> None:
     """Ensure workspace state matches personalized desired state.
 
@@ -514,6 +515,7 @@ async def reconcile_workspaces(
             channels,
             s,
             register_fn,
+            rebind_fn,
         )
         if jid is None:
             continue

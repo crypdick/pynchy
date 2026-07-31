@@ -253,7 +253,7 @@ async def reconcile_agent_jobs(
                 SessionPolicy.RESET_BEFORE_RUN if job.reset_before_run else SessionPolicy.CONTINUE
             ),
             memory_enabled=job.memory,
-            derived_thread_name=(f"{context.root_folder} | {job.display_name or job_name}"),
+            derived_thread_name=f"⚙️ {job.display_name or job_name}",
             is_deterministic=job.is_deterministic,
             command=job.command if job.is_deterministic else None,
             command_cwd=(

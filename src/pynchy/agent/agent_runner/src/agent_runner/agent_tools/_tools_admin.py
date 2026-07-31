@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess  # noqa: S404 - deploy helper uses fixed no-shell git argv.
-from pathlib import Path
 from typing import Any
 
 from mcp.types import CallToolResult, TextContent
+
+from agent_runner.paths import PYNCHY_SOURCE
 
 from . import _ipc
 from ._registry import tool, tool_error
@@ -120,7 +121,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
                     "rev-parse",
                     "HEAD",
                 ],  # git is a trusted workspace executable; no shell or user-controlled argv.
-                cwd=Path("/workspace/project"),
+                cwd=PYNCHY_SOURCE,
                 capture_output=True,
                 text=True,
                 check=True,

@@ -235,6 +235,7 @@ async def test_ensure_control_suffixes_a_thread_owned_by_another_conversation():
 
     assert result.binding == saved
     assert [call.args[2] for call in ensured_thread.await_args_list] == ["A", "A (2)"]
+    assert {call.kwargs["kind"] for call in ensured_thread.await_args_list} == {"issue"}
 
 
 async def test_ensure_control_retries_after_concurrent_binding_claim():

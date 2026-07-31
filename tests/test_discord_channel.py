@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import struct
 from pathlib import Path
-from typing import cast
-from unittest.mock import AsyncMock, patch
+from typing import NamedTuple, cast
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -71,6 +71,40 @@ async def test_creates_child_thread_for_scheduled_task():
     assert parent.thread_requests == [("pynchy-dev-1", discord.ChannelType.public_thread)]
     assert parent.sent_messages == ["Created thread: <#456>"]
     ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
+
+
+@pytest.mark.asyncio
+async def test_creates_forum_post_with_starter_message_and_one_kind_tag():
+    class _CreatedForumPost(NamedTuple):
+        thread: _FakeThread
+
+    class _Forum:
+        id = 123
+
+        def __init__(self) -> None:
+            self.available_tags = [
+                discord.ForumTag(name=name)
+                for name in ("issue", "automation", "planning", "testing", "topic")
+            ]
+            self.requests: list[tuple[str, str]] = []
+            self.thread = _FakeThread(id=456, parent=self)
+
+        async def create_thread(self, *, name: str, content: str):
+            self.requests.append((name, content))
+            return _CreatedForumPost(self.thread)
+
+    ch = _channel()
+    forum = _Forum()
+    ch.resolve_channel = AsyncMock(side_effect=[forum, forum.thread])  # type: ignore[method-assign]
+
+    child_jid = await ch.create_thread("discord:channel:123", "secret scrubber")
+    await ch.set_thread_kind(child_jid, "automation")
+
+    assert child_jid == "discord:channel:456"
+    assert forum.requests == [
+        ("secret scrubber", "Pynchy conversation initialized."),
+    ]
+    assert [tag.name for tag in forum.thread.applied_tags] == ["automation"]
 
 
 @pytest.mark.asyncio
@@ -136,8 +170,16 @@ async def test_finds_existing_active_child_thread_for_scheduled_task():
 
 @pytest.mark.asyncio
 async def test_reopens_archived_child_thread_instead_of_creating_a_duplicate():
+    class _ForumParent(_FakeThreadParent):
+        available_tags: list[object] = []
+
+        async def archived_threads(self, *, limit: int):
+            assert limit == 100
+            for thread in self.archived:
+                yield thread
+
     ch = _channel()
-    parent = _FakeThreadParent()
+    parent = _ForumParent()
     archived = _FakeThread(id=456, name="family", parent_id=parent.id, archived=True)
     parent.archived = [archived]
     ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
@@ -160,6 +202,32 @@ async def test_maps_conversation_closed_state_to_thread_archival():
 
     assert thread.archived is False
     assert thread.archive_edits == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_treats_missing_thread_as_already_closed():
+    ch = _channel()
+    missing = discord.NotFound(
+        MagicMock(status=404, reason="Not Found"),
+        {"code": 10003, "message": "Unknown Channel"},
+    )
+    ch.resolve_channel = AsyncMock(side_effect=missing)  # type: ignore[method-assign]
+
+    await ch.set_thread_closed("discord:channel:456", closed=True)
+    with pytest.raises(discord.NotFound):
+        await ch.set_thread_closed("discord:channel:456", closed=False)
+
+
+@pytest.mark.asyncio
+async def test_updates_thread_title_only_when_changed():
+    ch = _channel()
+    thread = _FakeThread(id=456, name="systems | secret scrubber")
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await ch.set_thread_title("discord:channel:456", "⚙️ secret scrubber")
+    await ch.set_thread_title("discord:channel:456", "⚙️ secret scrubber")
+
+    assert thread.name_edits == ["⚙️ secret scrubber"]
 
 
 @pytest.mark.asyncio

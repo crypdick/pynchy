@@ -81,10 +81,6 @@ violation_guidance = "Use a use-case-owned host capability and wire the concrete
 allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
 violation_guidance = "Use an integration-neutral application port instead of importing another concrete adapter."
 
-[roles.memory_adapter]
-allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
-violation_guidance = "Use the plugin memory contract and select the concrete provider at composition."
-
 [roles.observer_adapter]
 allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
 violation_guidance = "Use the plugin observer contract and select the concrete observer at composition."
@@ -476,12 +472,6 @@ name = "integrations"
 root = "pynchy.plugins.integrations"
 role = "integration_adapter"
 public_modules = ["pynchy.plugins.integrations.api"]
-
-[[packages]]
-name = "sqlite_memory"
-root = "pynchy.plugins.memory.sqlite_memory"
-role = "memory_adapter"
-public_modules = []
 
 [[packages]]
 name = "sqlite_observer"

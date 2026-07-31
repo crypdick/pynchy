@@ -80,9 +80,10 @@ Each checkpoint has a durable control state:
 | `paused` | The occurrence is frozen, unclaimed, and waiting for a user reply. |
 | `reset_requested` | The host consumed a context reset and is discarding the occurrence. |
 
-The router consumes an exact pause or reset command as a host message and
-updates the checkpoint and durable input cursor in one SQLite transaction. A
-stopped pause request becomes `paused` and releases its execution claim.
+The router consumes an exact pause or reset phrase, or a native application
+command intent from a channel adapter, as a host message and updates the
+checkpoint and durable input cursor in one SQLite transaction. A stopped pause
+request becomes `paused` and releases its execution claim.
 Pause is a terminal orchestration outcome, so the queue and Temporal do not
 emit an error warning or retry the frozen work. Repeated pause commands leave
 the same row paused.

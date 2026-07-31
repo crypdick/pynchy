@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from pynchy.host.paths import AGENT_EXTRA_MOUNT_CONTAINER_ROOT
 from pynchy.logger import logger
 from pynchy.workspace.api import (
     AdditionalMount,
@@ -227,7 +228,7 @@ def _find_allowed_root(real_path: str, allowed_roots: list[AllowedRoot]) -> Allo
 
 
 def _is_valid_container_path(container_path: str) -> bool:
-    """Validate the container path to prevent escaping /workspace/extra/."""
+    """Validate the relative suffix below the agent's extra-mount root."""
     if ".." in container_path:
         return False
     if container_path.startswith("/"):
@@ -385,7 +386,9 @@ def validate_additional_mounts(
             validated.append(
                 {
                     "hostPath": result.real_host_path,
-                    "containerPath": f"/workspace/extra/{result.resolved_container_path}",
+                    "containerPath": (
+                        f"{AGENT_EXTRA_MOUNT_CONTAINER_ROOT}/{result.resolved_container_path}"
+                    ),
                     "readonly": result.effective_readonly,
                 }
             )

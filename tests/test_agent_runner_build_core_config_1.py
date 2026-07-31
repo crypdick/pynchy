@@ -44,17 +44,17 @@ class TestBuildCoreConfig:
     def test_admin_without_repo_access_cwd(self):
         ci = self._make_input(is_admin=True)
         config = build_core_config(ci)
-        assert config.cwd == "/workspace/group"
+        assert config.cwd == "/home/agent/workspace"
 
     def test_non_admin_with_repo_access_cwd(self):
         ci = self._make_input(is_admin=False, repo_access="owner/pynchy")
         config = build_core_config(ci)
-        assert config.cwd == "/workspace/repos/owner/pynchy"
+        assert config.cwd == "/home/agent/src/owner/pynchy"
 
     def test_non_admin_without_repo_access_cwd(self):
         ci = self._make_input(is_admin=False)
         config = build_core_config(ci)
-        assert config.cwd == "/workspace/group"
+        assert config.cwd == "/home/agent/workspace"
 
     def test_mcp_servers_include_pynchy(self):
         ci = self._make_input()
@@ -69,11 +69,11 @@ class TestBuildCoreConfig:
         assert env["PYNCHY_CHAT_JID"] == "456@g.us"
 
     def test_mcp_env_includes_global_learned_skill_root(self, monkeypatch):
-        monkeypatch.setenv("PYNCHY_SKILLS_ROOT", "/workspace/personalization/skills")
+        monkeypatch.setenv("PYNCHY_SKILLS_ROOT", "/home/agent/skills")
         config = build_core_config(self._make_input())
         env = config.mcp_servers["pynchy"]["env"]
 
-        assert env["PYNCHY_SKILLS_ROOT"] == "/workspace/personalization/skills"
+        assert env["PYNCHY_SKILLS_ROOT"] == "/home/agent/skills"
         assert "PYNCHY_PROFILE_SKILLS_ROOT" not in env
 
     def test_mcp_env_is_admin_flag(self):
@@ -156,7 +156,7 @@ class TestBuildCoreConfig:
 
     def test_followup_metadata_updates_warm_core_config(self):
         config = AgentCoreConfig(
-            cwd="/workspace/group",
+            cwd="/home/agent/workspace",
             session_id="resp_1",
             group_folder="test-group",
             chat_jid="123@g.us",

@@ -7,7 +7,6 @@ import json
 import os
 import secrets
 import time
-from pathlib import Path
 from typing import Any, NoReturn
 
 from mcp.types import CallToolResult, TextContent
@@ -75,17 +74,40 @@ async def _request_publication(
     "sync_worktree_to_main",
     (
         "Publish committed workspace changes for review. The host pushes the isolated "
-        "worktree branch and opens or updates a pull request, returning its canonical URL. "
+        "worktree branch and opens a pull request, returning its canonical URL. Write a "
+        "review-ready title and Markdown body that explain the actual change, behavior, and "
+        "checks run; never mention the workspace path or call the PR automated. For a Linear "
+        "work item, the host derives its branch as team-key/issue-number/title-slug. "
         "Attach every returned PR URL to the current Linear issue before moving it to "
         "Awaiting Review. Resolve any reported conflict or publication failure and retry."
     ),
-    {"type": "object", "properties": {}},
+    {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Concise, imperative pull-request title.",
+            },
+            "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "description": "Markdown review summary with behavior and checks run.",
+            },
+        },
+        "required": ["title", "body"],
+        "additionalProperties": False,
+    },
 )
-async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     runtime = _ipc.get_agent_tool_runtime()
     payload = {
         "groupFolder": runtime.group_folder,
         "publication": "pull-request",
+        "title": arguments["title"],
+        "body": arguments["body"],
     }
     if runtime.turn_id:
         payload["turn_id"] = runtime.turn_id
@@ -129,7 +151,7 @@ async def _publish_managed_feature_handle(
 
 def _exit_container() -> NoReturn:
     """Write the close sentinel and terminate after an explicit context reset."""
-    close_sentinel = Path("/workspace/ipc/input/_close")
+    close_sentinel = _ipc.get_agent_tool_runtime().ipc_dir / "input" / "_close"
     close_sentinel.parent.mkdir(parents=True, exist_ok=True)
     close_sentinel.write_text("", encoding="utf-8")
     os._exit(0)

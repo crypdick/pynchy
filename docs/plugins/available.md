@@ -44,7 +44,6 @@ installed; add the named extra without pruning existing packages with
 | `marketplace-health` | Service handler | Aggregate marketplace counts and mail-reader health | Host-owned action ledger and Proton Mail tool | [Marketplace health](../integrations/marketplace-health.md) |
 | `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --locked --inexact --extra notebook` | [Notebooks](../integrations/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational event summaries | No external dependency | [Observers](../architecture/observers.md) |
-| `sqlite-memory` | Memory backend | Per-workspace memory with FTS5 search | No external dependency | [Memory](../usage/memory.md) |
 
 Install every optional extra with `uv sync --locked --inexact --all-extras` when
 you want the full built-in set available.

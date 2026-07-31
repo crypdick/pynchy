@@ -16,10 +16,10 @@ part instead of editing the core, illegal combinations become unrepresentable, a
 part is testable on its own.
 
 **pynchy already lives this pattern — keep following it.** The plugin system is
-composition: `MemoryProvider` (`plugins/memory/__init__.py`), channel/runtime/tunnel
-Protocols, and `BaseFormatter` are strategy interfaces that implementations satisfy
-structurally. When you add a backend, write a new part that satisfies the Protocol —
-don't subclass an existing provider or add a variant flag to the core.
+composition: channel/runtime/tunnel Protocols and `BaseFormatter` are strategy
+interfaces that implementations satisfy structurally. When you add a backend, write a
+new part that satisfies the Protocol — don't subclass an existing provider or add a
+variant flag to the core.
 
 **Two smells this replaces:**
 

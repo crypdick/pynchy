@@ -164,6 +164,17 @@ class _BindingDeps:
 
 
 @dataclass
+class _TitleChannel:
+    titles: list[tuple[str, str]] = field(default_factory=list)
+
+    def owns_jid(self, jid: str) -> bool:
+        return jid.startswith("discord:channel:")
+
+    async def set_thread_title(self, child_jid: str, title: str) -> None:
+        self.titles.append((child_jid, title))
+
+
+@dataclass
 class _RetirementBindingDeps(_BindingDeps):
     terminal_persisted: asyncio.Event = field(default_factory=asyncio.Event)
     retired_conversations: list[ConversationId] = field(default_factory=list)
@@ -225,6 +236,33 @@ async def test_existing_named_task_binding_skips_thread_recreation() -> None:
     assert ensured == task
     assert deps.ensured == []
     assert deps.scheduled_task_updates == []
+
+
+async def test_existing_named_task_binding_reconciles_its_title() -> None:
+    owner = _profile()
+    bound = _profile(
+        jid="discord:channel:scheduled-task",
+        folder="owner__thread_discord-channel-scheduled-task",
+    )
+    bound = replace(bound, name="Owner/owner | durable task")
+    task = replace(
+        _task(),
+        config_job_name="vault-durable-task",
+        derived_thread_name="owner | durable task",
+        bound_chat_jid=bound.jid,
+        bound_group_folder=bound.folder,
+    )
+    await create_task(task)
+    channel = _TitleChannel()
+    deps = _BindingDeps({owner.jid: owner, bound.jid: bound}, channels=[channel])
+
+    ensured = await ensure_scheduled_task_binding(task, deps)
+
+    assert ensured.derived_thread_name == "⚙️ durable task"
+    assert channel.titles == [(bound.jid, "⚙️ durable task")]
+    assert deps.workspaces[bound.jid].name == "Owner/⚙️ durable task"
+    assert deps.ensured == []
+    assert deps.scheduled_task_updates == [(task.id, {"derived_thread_name": "⚙️ durable task"})]
 
 
 async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> None:

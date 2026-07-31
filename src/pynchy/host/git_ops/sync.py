@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from pynchy.host.git_ops._bounded_git import run_git_bounded_stdout
+from pynchy.host.git_ops._pr_publication import PrPublication
 from pynchy.host.git_ops.managed_feature import resolve_managed_feature_publication
 from pynchy.host.git_ops.managed_github import (
     created_managed_pr_failure as _created_managed_pr_failure,
@@ -51,7 +52,6 @@ from pynchy.logger import logger
 _MAX_MANAGED_PR_TITLE_BYTES = 256
 _MAX_MANAGED_PR_BODY_BYTES = 64 * 1024
 
-
 # ---------------------------------------------------------------------------
 # host_create_pr_from_worktree — push branch and open/update a PR
 # ---------------------------------------------------------------------------
@@ -60,6 +60,10 @@ _MAX_MANAGED_PR_BODY_BYTES = 64 * 1024
 def host_create_pr_from_worktree(
     group_folder: str,
     repo_ctx: RepoContext,
+    *,
+    publication_branch: str | None = None,
+    pr_title: str | None = None,
+    pr_body: str | None = None,
 ) -> dict[str, Any]:
     """Host-side: push worktree branch to origin and open/update a PR.
 
@@ -74,8 +78,13 @@ def host_create_pr_from_worktree(
     return _create_pr_from_context(
         ctx,
         repo_ctx,
-        source_label=f"workspace `{group_folder}`",
-        fallback_title=f"Changes from {group_folder}",
+        PrPublication(
+            source_label=f"workspace `{group_folder}`",
+            fallback_title=f"Changes from {group_folder}",
+            branch_name=publication_branch,
+            title=pr_title,
+            body=pr_body,
+        ),
     )
 
 
@@ -122,27 +131,28 @@ def host_create_pr_from_managed_feature(
             remote_url=publication.remote_url,
         ),
         publication.repo_ctx,
-        source_label=f"managed feature `{publication.feature_slug}`",
-        fallback_title=f"Changes from managed feature {publication.feature_slug}",
+        PrPublication(
+            source_label=f"managed feature `{publication.feature_slug}`",
+            fallback_title=f"Changes from managed feature {publication.feature_slug}",
+        ),
     )
 
 
 def _create_pr_from_context(
     ctx: _WorktreeContext,
     repo_ctx: RepoContext,
-    *,
-    source_label: str,
-    fallback_title: str,
+    publication: PrPublication,
 ) -> dict[str, Any]:
     """Push a validated branch and open or update its pull request."""
     token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
+    branch_name = publication.branch_name or ctx.branch_name
 
     if ctx.head_sha is None:
         push = run_git(
             "push",
             "-u",
             "origin",
-            ctx.branch_name,
+            f"{ctx.branch_name}:{branch_name}",
             "--force-with-lease",
             cwd=repo_ctx.root,
             env=ctx.env,
@@ -155,9 +165,8 @@ def _create_pr_from_context(
         return _open_or_update_pr(
             ctx,
             repo_ctx,
-            source_label=source_label,
-            fallback_title=fallback_title,
-            gh_cwd=repo_ctx.root,
+            publication,
+            repo_ctx.root,
         )
 
     # A managed worktree shares Git metadata with the agent. Publish from a
@@ -179,21 +188,19 @@ def _create_pr_from_context(
         return _open_or_update_pr(
             ctx,
             repo_ctx,
-            source_label=source_label,
-            fallback_title=fallback_title,
-            gh_cwd=isolated_dir,
+            publication,
+            isolated_dir,
         )
 
 
 def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed managed PR checks need exact diagnostics.
     ctx: _WorktreeContext,
     repo_ctx: RepoContext,
-    *,
-    source_label: str,
-    fallback_title: str,
+    publication: PrPublication,
     gh_cwd: Path,
 ) -> dict[str, Any]:
     """Open or update the PR for its safely published branch."""
+    branch_name = publication.branch_name or ctx.branch_name
     token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
     isolated_git_dir: Path | None = None
     if ctx.head_sha is not None:
@@ -234,8 +241,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             return {
                 "success": True,
                 "message": (
-                    f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. "
-                    f"PR updated: {existing_pr_url}"
+                    f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {existing_pr_url}"
                 ),
             }
     else:
@@ -245,7 +251,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 "gh",
                 "pr",
                 "view",
-                ctx.branch_name,
+                branch_name,
                 "--repo",
                 repo_ctx.slug,
                 "--json",
@@ -264,9 +270,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             pr_url = pr_check.stdout.strip()
             return {
                 "success": True,
-                "message": (
-                    f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. PR updated: {pr_url}"
-                ),
+                "message": (f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {pr_url}"),
             }
 
     title_args: tuple[str, ...] = ("log", "-1", "--format=%s")
@@ -306,8 +310,10 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             cwd=log_cwd,
             env=managed_env,
         )
-        pr_title = (
-            worktree_title.stdout.strip() if worktree_title.returncode == 0 else fallback_title
+        generated_title = (
+            worktree_title.stdout.strip()
+            if worktree_title.returncode == 0
+            else publication.fallback_title
         )
     else:
         managed_title = run_git_bounded_stdout(
@@ -317,11 +323,12 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             cwd=log_cwd,
             env=managed_env,
         )
-        pr_title = (
+        generated_title = (
             managed_title.stdout.strip()
             if managed_title.returncode == 0 and not managed_title.exceeded_limit
-            else fallback_title
+            else publication.fallback_title
         )
+    final_title = publication.title or generated_title
 
     if ctx.head_sha is not None:
         # Revalidate immediately before each isolated Git read.
@@ -356,7 +363,9 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             if managed_body.returncode == 0 and not managed_body.exceeded_limit
             else "Commit summaries omitted because they exceed host publication limits."
         )
-    pr_body = f"Automated PR from {source_label}.\n\n### Commits\n{commit_summaries}"
+    final_body = publication.body or (
+        f"Automated PR from {publication.source_label}.\n\n### Commits\n{commit_summaries}"
+    )
 
     if ctx.head_sha is not None:
         if isolated_git_dir is None:
@@ -380,11 +389,11 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             "--base",
             ctx.main_branch,
             "--head",
-            ctx.branch_name,
+            branch_name,
             "--title",
-            pr_title,
+            final_title,
             "--body",
-            pr_body,
+            final_body,
         ],
         cwd=str(gh_cwd),
         capture_output=True,

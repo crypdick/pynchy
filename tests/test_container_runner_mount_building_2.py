@@ -90,7 +90,7 @@ class TestMountBuilding:
                 return_value=[
                     {
                         "hostPath": "/host/data",
-                        "containerPath": "/workspace/extra/data",
+                        "containerPath": "/home/agent/mnt/data",
                         "readonly": True,
                     }
                 ],
@@ -100,7 +100,7 @@ class TestMountBuilding:
 
         validate.assert_called_once()
         assert mounts[-1].host_path == "/host/data"
-        assert mounts[-1].container_path == "/workspace/extra/data"
+        assert mounts[-1].container_path == "/home/agent/mnt/data"
         assert mounts[-1].readonly is True
 
     def test_repo_mounts_support_multiple_repos(self, tmp_path: Path):
@@ -131,8 +131,8 @@ class TestMountBuilding:
             )
 
         by_container = {m.container_path: m.host_path for m in mounts}
-        assert by_container["/workspace/repos/owner/pynchy"] == str(wt_a)
-        assert by_container["/workspace/repos/owner/tools"] == str(wt_b)
+        assert by_container["/home/agent/src/owner/pynchy"] == str(wt_a)
+        assert by_container["/home/agent/src/owner/tools"] == str(wt_b)
 
     def test_nonadmin_does_not_get_raw_host_repo_mount(self, tmp_path: Path):
         """Non-admin groups never get the raw host repo mount."""
@@ -171,7 +171,7 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=True)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/repos/owner/pynchy/config.toml" not in paths
+            assert "/home/agent/src/owner/pynchy/config.toml" not in paths
 
 
 class TestReadGhToken:

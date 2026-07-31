@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
+
+import discord
 
 from pynchy.config.api import DiscordConnectionConfig
 from pynchy.host.audio import AudioTranscriptionResult, process_inbound_audio_attachments
@@ -31,6 +34,50 @@ if TYPE_CHECKING:
 
 BOT_ID = "999"
 DISCORD_BOT_ENV = "X"
+
+
+@dataclass
+class _ApplicationRole:
+    id: str
+
+
+@dataclass
+class _ApplicationUser:
+    id: str
+    bot: bool
+    display_name: str
+    global_name: str
+    name: str
+    roles: list[_ApplicationRole]
+
+
+@dataclass
+class _ApplicationGuild:
+    id: str
+    name: str
+
+
+@dataclass
+class _ApplicationChannel:
+    id: str
+    name: str
+    parent: object | None
+    parent_id: str | None
+
+
+@dataclass
+class _ApplicationResponse:
+    send_message: AsyncMock
+
+
+@dataclass
+class _ApplicationInteraction:
+    id: int
+    user: _ApplicationUser
+    guild: _ApplicationGuild
+    channel: _ApplicationChannel
+    created_at: datetime | None
+    response: _ApplicationResponse
 
 
 def _user(
@@ -240,6 +287,110 @@ async def test_thread_created_system_message_is_not_delivered_to_parent_channel_
 
     assert delivered == []
     assert metadata == []
+
+
+async def test_application_command_becomes_an_intent_message_without_phrase_matching():
+    delivered: list[tuple[str, NewMessage]] = []
+    responses: list[tuple[str, bool]] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        "token",
+        lambda jid, new_message: delivered.append((jid, new_message)),
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.bot_user_id = BOT_ID
+    interaction = _ApplicationInteraction(
+        id=42,
+        user=_ApplicationUser(
+            id="5",
+            bot=False,
+            display_name="Alice",
+            global_name="Alice",
+            name="alice",
+            roles=[],
+        ),
+        guild=_ApplicationGuild(id="g1", name="Pynchy"),
+        channel=_ApplicationChannel(id="c1", name="general", parent=None, parent_id=None),
+        created_at=None,
+        response=_ApplicationResponse(send_message=AsyncMock()),
+    )
+
+    def record_response(content: str, *, ephemeral: bool) -> None:
+        responses.append((content, ephemeral))
+
+    interaction.response.send_message.side_effect = record_response
+
+    await channel.events.handle_application_command(interaction, "reset")
+
+    assert len(delivered) == 1
+    jid, message = delivered[0]
+    assert jid == "discord:channel:c1"
+    assert message.content == "/reset"
+    assert message.metadata == {
+        "discord_interaction_id": "42",
+        "discord_channel_name": "general",
+        "application_commands": True,
+        "application_command": {"name": "reset", "options": {}},
+    }
+    assert responses == [("✅ /reset received", True)]
+
+    queue_interaction = _ApplicationInteraction(
+        id=43,
+        user=interaction.user,
+        guild=interaction.guild,
+        channel=interaction.channel,
+        created_at=None,
+        response=_ApplicationResponse(send_message=AsyncMock()),
+    )
+    queue_interaction.response.send_message.side_effect = record_response
+
+    await channel.events.handle_application_command(
+        queue_interaction, "q", {"message": "include the logs"}
+    )
+
+    assert delivered[1][1].content == "btw include the logs"
+    assert delivered[1][1].metadata["application_command"] == {
+        "name": "q",
+        "options": {"message": "include the logs"},
+    }
+    assert responses[-1] == ("✅ /q queued", True)
+
+
+def test_discord_registers_native_application_commands():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    client = discord.Client(intents=discord.Intents.none())
+    channel.client = client
+
+    channel.events.register()
+
+    tree = client._connection._command_tree
+    assert tree is not None
+    commands = {command.name: command.to_dict(tree) for command in tree.get_commands()}
+    assert set(commands) == {
+        "approve",
+        "btw",
+        "deny",
+        "end-session",
+        "pause",
+        "pending",
+        "q",
+        "queue",
+        "redeploy",
+        "reset",
+    }
+    assert commands["approve"]["options"][0]["name"] == "short_id"
+    for name in ("btw", "q", "queue"):
+        assert commands[name]["options"][0]["name"] == "message"
+        assert commands[name]["options"][0]["required"] is True
 
 
 async def test_reply_context_is_preserved_in_message_metadata():

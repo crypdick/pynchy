@@ -7,7 +7,7 @@ register_ipc_tool(
     description=(
         "Capture the macOS host desktop using the host's screencapture command. "
         "Returns host_path and container_path; the image is readable inside this "
-        "container under /workspace/ipc/screenshots."
+        "container under /run/pynchy/screenshots."
     ),
     input_schema={
         "type": "object",
@@ -44,7 +44,7 @@ register_ipc_tool(
     description=(
         "Analyze a PNG captured by take_screenshot using the host LLM gateway. "
         "Pass image_path from take_screenshot's container_path, or omit image_path "
-        "to analyze the newest screenshot in /workspace/ipc/screenshots."
+        "to analyze the newest screenshot in /run/pynchy/screenshots."
     ),
     input_schema={
         "type": "object",
@@ -53,7 +53,7 @@ register_ipc_tool(
                 "type": "string",
                 "description": (
                     "Screenshot path returned by take_screenshot, usually "
-                    "/workspace/ipc/screenshots/<filename>.png. If omitted, analyzes "
+                    "/run/pynchy/screenshots/<filename>.png. If omitted, analyzes "
                     "the latest screenshot for this workspace."
                 ),
             },

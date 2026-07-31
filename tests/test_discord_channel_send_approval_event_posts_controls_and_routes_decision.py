@@ -145,6 +145,16 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 
 
 @pytest.mark.asyncio
+async def test_approval_button_rejects_an_unattached_view():
+    _channel_instance, view = await _approval_view(callback=MagicMock())
+    button = view.children[0]
+    view.remove_item(button)
+
+    with pytest.raises(RuntimeError, match="before the view was attached"):
+        await button.callback(_interaction())
+
+
+@pytest.mark.asyncio
 async def test_empty_approval_event_does_not_send_an_empty_message():
     ch = _channel()
     ch.client = object()
@@ -365,6 +375,17 @@ async def test_fetch_inbound_since_filters_bot_and_self():
     ids = [m.id for m in result.messages]
     assert ids == ["discord-1"]  # bot + own filtered out
     assert result.high_water_mark
+
+
+@pytest.mark.asyncio
+async def test_fetch_inbound_since_skips_forum_root_without_message_history():
+    ch = _channel()
+    ch.client = object()
+    ch.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+
+    result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
+
+    assert result.messages == []
 
 
 def test_plugin_returns_none_without_context():

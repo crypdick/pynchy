@@ -1,4 +1,4 @@
-"""Bounded structured scheduled-work status for agent clients."""
+"""Structured scheduled-work status for agent clients."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ import re
 from typing import Any
 
 TASK_STATUS_SCHEMA_VERSION = "pynchy.scheduled_work_status.v1"
-MAX_TASK_ROWS = 64
-MAX_HOST_JOB_ROWS = 32
 MAX_EVIDENCE_CHARS = 120
 
 _IDENTIFIER_CHARS = 128
@@ -106,19 +104,17 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
             "type": "object",
             "required": ["tasks", "host_jobs"],
             "properties": {
-                "tasks": {"type": "integer", "minimum": 0, "maximum": MAX_TASK_ROWS},
-                "host_jobs": {"type": "integer", "minimum": 0, "maximum": MAX_HOST_JOB_ROWS},
+                "tasks": {"type": "integer", "minimum": 0},
+                "host_jobs": {"type": "integer", "minimum": 0},
             },
             "additionalProperties": False,
         },
         "tasks": {
             "type": "array",
-            "maxItems": MAX_TASK_ROWS,
             "items": {"$ref": "#/$defs/task"},
         },
         "host_jobs": {
             "type": "array",
-            "maxItems": MAX_HOST_JOB_ROWS,
             "items": {"$ref": "#/$defs/host_job"},
         },
         "coverage": {"type": "object"},
@@ -285,7 +281,7 @@ def _compact_host_job(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def compact_live_task_status(text: str) -> dict[str, Any]:
-    """Parse the host projection into the declared bounded JSON payload."""
+    """Parse the host projection into the declared structured JSON payload."""
     try:
         status = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -298,10 +294,6 @@ def compact_live_task_status(text: str) -> dict[str, Any]:
         raise TaskStatusFormatError("tasks must be an array of objects")
     if not isinstance(host_jobs, list) or not all(isinstance(job, dict) for job in host_jobs):
         raise TaskStatusFormatError("host_jobs must be an array of objects")
-    if len(tasks) > MAX_TASK_ROWS:
-        raise TaskStatusFormatError(f"task count exceeds the {MAX_TASK_ROWS}-row contract")
-    if len(host_jobs) > MAX_HOST_JOB_ROWS:
-        raise TaskStatusFormatError(f"host job count exceeds the {MAX_HOST_JOB_ROWS}-row contract")
 
     return {
         "schema": TASK_STATUS_SCHEMA_VERSION,
@@ -325,7 +317,5 @@ def compact_live_task_status(text: str) -> dict[str, Any]:
             "host_commands_included": False,
             "last_result_max_chars": MAX_EVIDENCE_CHARS,
             "all_rows_in_scope_included": True,
-            "max_task_rows": MAX_TASK_ROWS,
-            "max_host_job_rows": MAX_HOST_JOB_ROWS,
         },
     }

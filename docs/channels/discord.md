@@ -1,14 +1,14 @@
 # Discord
 
-Connect Pynchy as a Discord bot for guild channels, threads, and DMs. A thread
-becomes an isolated conversation that inherits its parent channel's workspace
-configuration.
+Connect Pynchy as a Discord bot for guild channels, forum posts, threads, and
+DMs. A child conversation becomes an isolated conversation that inherits its
+parent channel's workspace configuration.
 
 ## Set up Discord
 
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
    Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**.
-2. Invite it with the `bot` scope and *View Channels*, *Send Messages*, *Send
+2. Invite it with the `bot` and `applications.commands` scopes and *View Channels*, *Send Messages*, *Send
    Messages in Threads*, *Read Message History*, *Add Reactions*, *Connect*, and
    *Speak*. Do not grant Administrator.
 3. Store the token in the host environment, then reference its name from
@@ -39,9 +39,21 @@ configuration.
    name = "General"
    kind = "voice"
 
+   [connections.mybot.chat.pynchy.channels.project]
+   name = "Project"
+   kind = "forum"
+   category = "Systems"
+
    [workspaces.discord-general]
    profiles = ["pynchy-dev"]
    chat = "connection.discord.mybot.chat.pynchy.channels.general"
+
+   [workspaces.project]
+   profiles = ["project-worker"]
+   chat = "connection.discord.mybot.chat.pynchy.channels.project"
+   threads = [
+     { name = "project plan", kind = "planning" },
+   ]
 
    [workspaces.discord-admin]
    profiles = ["pynchy-dev"]
@@ -67,13 +79,46 @@ configuration.
    `registered_groups` should contain JIDs such as
    `discord:channel:<channel-id>` or `discord:direct:<user-id>`.
 
+## Forum Workspaces
+
+Set a configured channel's `kind` to `forum` to use one forum as a workspace
+root. Pynchy creates the forum and its `category` when either does not exist.
+At each startup, it also adds any missing `issue`, `automation`, `planning`,
+`testing`, and `topic` tags without removing other tags.
+
+Each managed forum post receives exactly one of those kind tags. Routed Linear
+issues use `issue`, and scheduled tasks use `automation`. Persistent workspace
+threads accept `automation`, `planning`, `testing`, or `topic`; `topic` provides
+the default.
+
 ## Capabilities
 
-- Guild channels, threads, and DMs
+- Guild channels, forum posts, threads, and DMs
 - Inbound and outbound reactions
 - Streaming responses with safe 2,000-character splitting
+- Interactive `ask_user` prompts with buttons, selects, multi-question modals, and file uploads
+- File-upload answers preserve Discord attachment metadata and ephemeral URLs for the waiting agent
 - Safe mention defaults that never ping `@everyone` unless asked
 - History catch-up after reconnect
+
+## Application commands
+
+Discord exposes Pynchy's host controls as native application commands, so these
+controls do not depend on message text or the Message Content Intent:
+
+- `/pause`
+- `/reset`
+- `/end-session`
+- `/redeploy`
+- `/pending`
+- `/approve short_id` and `/deny short_id`
+- `/q message`, `/queue message`, and `/btw message` to queue a follow-up without
+  interrupting the current turn
+
+Commands are registered globally when the bot connects. Discord can take time to
+propagate global command updates. Configured Discord magic-phrase controls are
+not interpreted from message text; explicit `!` direct commands remain available.
+Other channels retain their configured text controls.
 
 For the optional voice workspace and inbound audio transcription, see [Voice and
 speech](voice-and-speech.md).

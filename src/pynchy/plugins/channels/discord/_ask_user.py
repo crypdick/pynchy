@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
 from pynchy.logger import logger
+
+from ._ask_user_file_upload import (
+    AskUserFileButton,
+    _attachment_metadata,
+    _file_upload_settings,
+)
 
 if TYPE_CHECKING:
     from ._channel import DiscordChannel
@@ -19,6 +24,7 @@ _MAX_BUTTONS_PER_ROW = 5
 _MAX_BUTTONS_TOTAL = 25
 _TEXT_MODAL_CUSTOM_ID = f"{_ASK_USER_PREFIX}:text"
 _SELECT_CUSTOM_ID = f"{_ASK_USER_PREFIX}:select"
+_FORM_MODAL_CUSTOM_ID = f"{_ASK_USER_PREFIX}:form"
 _ASK_USER_VIEW_MISSING = "Discord ask_user callback called before the view was attached"
 
 
@@ -42,14 +48,25 @@ def build_ask_user_text(questions: list[dict[str, Any]]) -> str:
         for idx, option in enumerate(options, 1):
             label = option.get("label", str(option)) if isinstance(option, dict) else str(option)
             lines.append(f"  {idx}. {label}")
+        if (upload := _file_upload_settings(question)) is not None:
+            _, max_files = upload
+            noun = "file" if max_files == 1 else "files"
+            lines.append(f"  Attach up to {max_files} {noun} with Answer.")
     return "\n".join(lines)
 
 
 def supports_interactive_ask_user(questions: list[dict[str, Any]]) -> bool:
-    """Return True when this prompt shape fits the current Discord widget slice."""
-    if len(questions) != 1:
+    """Return True when this prompt shape fits Discord's message or modal limits."""
+    if not questions or len(questions) > 4:
         return False
+    if len(questions) > 1:
+        return all(
+            _file_upload_settings(question) is not None or len(question.get("options", [])) <= 25
+            for question in questions
+        )
     question = questions[0]
+    if _file_upload_settings(question) is not None:
+        return True
     options = question.get("options", [])
     return not options or len(options) <= _MAX_BUTTONS_TOTAL
 
@@ -92,26 +109,6 @@ async def send_ask_user_prompt(
 def encode_button_custom_id(request_id: str, option_index: int) -> str:
     """Build a compact button custom ID."""
     return f"{_ASK_USER_PREFIX}:{request_id}:{option_index}"
-
-
-@dataclass(frozen=True)
-class DecodedButtonId:
-    request_id: str
-    option_index: int
-
-
-def decode_button_custom_id(custom_id: str) -> DecodedButtonId | None:
-    """Parse a button custom ID back into its routing payload."""
-    prefix, sep, remainder = custom_id.partition(":")
-    if prefix != _ASK_USER_PREFIX or not sep:
-        return None
-    request_id, sep, raw_index = remainder.rpartition(":")
-    if not request_id or not sep:
-        return None
-    try:
-        return DecodedButtonId(request_id=request_id, option_index=int(raw_index))
-    except ValueError:
-        return None
 
 
 class AskUserButton(discord.ui.Button["DiscordAskUserView"]):
@@ -200,6 +197,28 @@ class AskUserTextButton(discord.ui.Button["DiscordAskUserView"]):
         await interaction_api.response.send_modal(AskUserTextModal(view))
 
 
+class AskUserFormButton(discord.ui.Button["DiscordAskUserView"]):
+    """Launch a modal for a multi-question ask_user prompt."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            label="Answer",
+            style=discord.ButtonStyle.primary,
+            custom_id=_FORM_MODAL_CUSTOM_ID,
+        )
+
+    async def callback(self, interaction: object) -> None:
+        interaction_api = cast("Any", interaction)
+        view = _require_ask_user_view(self.view)
+        if not view.is_interaction_allowed(interaction_api):
+            await interaction_api.response.send_message(
+                "You are not allowed to answer this prompt.",
+                ephemeral=True,
+            )
+            return
+        await interaction_api.response.send_modal(AskUserFormModal(view))
+
+
 class AskUserTextModal(discord.ui.Modal):
     """Modal prompt for free-text ask_user answers."""
 
@@ -212,21 +231,95 @@ class AskUserTextModal(discord.ui.Modal):
         raw_prompt = question.get("question", "")
         prompt = raw_prompt if isinstance(raw_prompt, str) else str(raw_prompt)
         self.answer_input: Any = discord.ui.TextInput(
-            label=(prompt[:45] or "Answer"),
             custom_id=f"{_TEXT_MODAL_CUSTOM_ID}:input",
             placeholder="Type your answer...",
             required=True,
             style=discord.TextStyle.paragraph,
             max_length=4000,
         )
-        self.add_item(self.answer_input)
+        self.add_item(discord.ui.Label(text=(prompt[:45] or "Answer"), component=self.answer_input))
 
     async def on_submit(self, interaction: object) -> None:
         await self._view.finalize_answer(cast("Any", interaction), self.answer_input.value or "")
 
 
+class AskUserFormModal(discord.ui.Modal):
+    """Modal containing one select or text input for each ask_user question."""
+
+    def __init__(self, view: DiscordAskUserView) -> None:
+        super().__init__(title="Answer questions", custom_id=_FORM_MODAL_CUSTOM_ID)
+        self._view = view
+        self._fields: list[tuple[str, Any]] = []
+        for index, question in enumerate(view.questions):
+            key = f"question_{index + 1}"
+            prompt = str(question.get("question", "Question"))[:45] or key
+            options = question.get("options", [])
+            component: discord.ui.Item[Any]
+            upload_settings = _file_upload_settings(question)
+            if upload_settings is not None:
+                required, max_files = upload_settings
+                component = discord.ui.FileUpload(
+                    custom_id=f"{_FORM_MODAL_CUSTOM_ID}:{index}",
+                    required=required,
+                    min_values=1 if required else 0,
+                    max_values=max_files,
+                )
+            elif options:
+                component = discord.ui.Select(
+                    custom_id=f"{_FORM_MODAL_CUSTOM_ID}:{index}",
+                    placeholder="Select an answer",
+                    min_values=1,
+                    max_values=len(options) if question.get("multiSelect") else 1,
+                    options=[
+                        discord.SelectOption(
+                            label=(
+                                option.get("label", str(option))
+                                if isinstance(option, dict)
+                                else str(option)
+                            )[:100],
+                            value=(
+                                option.get("label", str(option))
+                                if isinstance(option, dict)
+                                else str(option)
+                            )[:100],
+                            description=(
+                                option.get("description", "")[:100]
+                                if isinstance(option, dict)
+                                and isinstance(option.get("description"), str)
+                                else None
+                            ),
+                        )
+                        for option in options
+                    ],
+                )
+            else:
+                component = discord.ui.TextInput(
+                    custom_id=f"{_FORM_MODAL_CUSTOM_ID}:{index}",
+                    placeholder="Type your answer...",
+                    required=True,
+                    style=discord.TextStyle.paragraph,
+                    max_length=4000,
+                )
+            self._fields.append((key, component))
+            self.add_item(discord.ui.Label(text=prompt, component=component))
+
+    @staticmethod
+    def _value(component: object) -> str | list[str] | dict[str, list[dict[str, object]]]:
+        if isinstance(component, discord.ui.TextInput):
+            return component.value or ""
+        if isinstance(component, discord.ui.FileUpload):
+            return {"attachments": [_attachment_metadata(item) for item in component.values]}
+        select = cast("discord.ui.Select[discord.ui.View]", component)
+        values = list(select.values)
+        return values if select.max_values > 1 else (values[0] if values else "")
+
+    async def on_submit(self, interaction: object) -> None:
+        answers = {key: self._value(component) for key, component in self._fields}
+        await self._view.finalize_answer(cast("Any", interaction), answers)
+
+
 class DiscordAskUserView(discord.ui.View):
-    """Transient Discord view for a single-question ask_user prompt."""
+    """Transient Discord view for an ask_user prompt."""
 
     def __init__(
         self,
@@ -246,7 +339,14 @@ class DiscordAskUserView(discord.ui.View):
         self._completed = False
         self._selected_answers: list[str] = []
 
+        if len(questions) > 1:
+            self.add_item(AskUserFormButton())
+            return
+
         question = questions[0]
+        if _file_upload_settings(question) is not None:
+            self.add_item(AskUserFileButton())
+            return
         options = question.get("options", [])
         if not options:
             self.add_item(AskUserTextButton())
@@ -275,6 +375,10 @@ class DiscordAskUserView(discord.ui.View):
     def primary_question(self) -> dict[str, Any]:
         return self._questions[0]
 
+    @property
+    def questions(self) -> list[dict[str, Any]]:
+        return self._questions
+
     def record_selected_answers(self, answers: list[str]) -> None:
         self._selected_answers = list(answers)
 
@@ -299,7 +403,7 @@ class DiscordAskUserView(discord.ui.View):
             return
         await self.finalize_answer(interaction_api, selected_answers)
 
-    async def finalize_answer(self, interaction: object, answer_value: str | list[str]) -> None:
+    async def finalize_answer(self, interaction: object, answer_value: object) -> None:
         interaction_api = cast("Any", interaction)
         if not self.is_interaction_allowed(interaction_api):
             await interaction_api.response.send_message(
@@ -328,7 +432,12 @@ class DiscordAskUserView(discord.ui.View):
             self._channel.on_ask_user_answer(self._request_id, answer)
 
         prompt = self._question_prompt()
-        answer_text = ", ".join(answer_value) if isinstance(answer_value, list) else answer_value
+        if isinstance(answer_value, list):
+            answer_text = ", ".join(answer_value)
+        elif isinstance(answer_value, dict):
+            answer_text = "; ".join(f"{key}: {value}" for key, value in answer_value.items())
+        else:
+            answer_text = str(answer_value)
         await interaction_api.response.edit_message(
             content=f"**Question:** {prompt}\n**Answer:** {answer_text}",
             view=None,

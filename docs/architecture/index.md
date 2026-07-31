@@ -8,7 +8,7 @@ How Pynchy works under the hood. Read this to troubleshoot issues, reason about 
 graph TB
     subgraph plugins ["Plugins"]
         CH["Channels"] ~~~ AC["Agent Cores"] ~~~ INT["Integrations"] ~~~ OBS["Observers"]
-        MEM["Memory"] ~~~ TUN["Tunnels"] ~~~ RT["Runtimes"]
+        TUN["Tunnels"] ~~~ RT["Runtimes"]
     end
 
     subgraph host ["Host"]
@@ -48,6 +48,7 @@ graph TB
 | [Security](security.md) | Trust model, security boundaries, credential handling |
 | [MCP management](mcp-management.md) | McpManager internals, instance deduplication, LiteLLM integration |
 | [Action coverage](action-coverage.md) | Semantic action catalog, hermetic test gate, and real-service canary contract |
+| [Memory and sessions](memory-and-sessions.md) | Obsidian memory, automatic learning, automation memory, and session management |
 
 ## Pluggable Subsystems
 
@@ -55,10 +56,11 @@ Each subsystem below is backed by a pluggy hook and can be extended or replaced 
 
 | Topic | Hook | What it covers |
 |-------|------|---------------|
-| [Memory and sessions](memory-and-sessions.md) | `pynchy_memory` | Memory backend contract, session management |
 | [Observers](observers.md) | `pynchy_observer` | Event bus, event types, persistence |
 | [Tunnels](tunnels.md) | `pynchy_tunnel` | Connectivity detection, startup checks |
 | [Workspaces](workspaces.md) | `pynchy_workspace_spec` | Managed workspace definitions, config merging |
 | [MCP service tools](mcp-service-tools.md) | `pynchy_service_handler` | Host-side tool handlers, security policy |
 
-For user-facing documentation on pluggable subsystems (channels, memory, agent cores), see [Usage](../usage/index.md). For the full list of plugin hooks, see [Hook Reference](../plugins/hooks/index.md).
+For user-facing documentation on pluggable subsystems (channels, agent cores,
+and host services), see [Usage](../usage/index.md). For the full list of plugin
+hooks, see [Hook Reference](../plugins/hooks/index.md).

@@ -2,7 +2,7 @@
 
 The todo list is a JSON file stored in the group's IPC directory
 (``data/ipc/{group_folder}/todos.json``).  This path is mounted into
-the container at ``/workspace/ipc/todos.json``, so the agent can
+the container at ``/run/pynchy/todos.json``, so the agent can
 read/manage it via the ``list_todos`` and ``complete_todo`` MCP tools.
 
 Architecture note: the Claude SDK does not expose an API to invoke MCP

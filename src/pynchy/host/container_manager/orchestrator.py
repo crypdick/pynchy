@@ -22,7 +22,11 @@ from pynchy.agent_protocol.api import (
 from pynchy.host.container_manager.contracts import RepoMount, RepoMountResolution
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
-from pynchy.host.paths import PERSONALIZATION_SKILLS_CONTAINER_PATH
+from pynchy.host.paths import (
+    AGENT_AUTOMATION_MEMORY_CONTAINER_PATH,
+    PERSONALIZATION_SKILLS_CONTAINER_PATH,
+    PYNCHY_IPC_CONTAINER_PATH,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_configs
 from pynchy.process_environment import filtered_process_environment
@@ -108,10 +112,11 @@ def _container_agent_environment(
             "PYNCHY_GROUP_FOLDER": group.folder,
             "PYNCHY_IS_ADMIN": "1" if input_data.is_admin else "0",
             "PYNCHY_SKILLS_ROOT": PERSONALIZATION_SKILLS_CONTAINER_PATH,
+            "PYNCHY_IPC_DIR": PYNCHY_IPC_CONTAINER_PATH,
         }
     )
     if input_data.automation_memory_dir is not None:
-        environment["PYNCHY_AUTOMATION_MEMORY_DIR"] = "/workspace/automation-memory"
+        environment["PYNCHY_AUTOMATION_MEMORY_DIR"] = AGENT_AUTOMATION_MEMORY_CONTAINER_PATH
     return environment
 
 

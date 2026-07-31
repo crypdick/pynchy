@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, cast, runtime_checkable
 
+import aiohttp
 from temporalio.client import Client
 
 from pynchy.host.orchestrator.capability_status import (
@@ -66,6 +67,7 @@ class GitStatusOperations:
     run_git: Callable[..., subprocess.CompletedProcess[str]]
 
 
+@runtime_checkable
 class RepoStatusContext(Protocol):
     """Repository paths required by the status projection."""
 
@@ -427,12 +429,6 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
 
 
 async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
-    try:
-        import aiohttp  # noqa: PLC0415 - gateway readiness is optional best-effort status collection.
-    except Exception as exc:  # noqa: BLE001 - gateway health is best-effort status collection.
-        logger.debug("Gateway health check failed", err=str(exc))
-        return {"ready": None}
-
     try:
         async with aiohttp.ClientSession() as session:
             resp = await session.get(

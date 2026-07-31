@@ -177,6 +177,49 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
     assert "private-command" not in response_text
 
 
+async def test_admin_status_includes_rows_beyond_former_agent_caps(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
+        AsyncMock(side_effect=_orchestration_states),
+    )
+    task_ids = [f"task-{index}" for index in range(65)]
+    host_job_ids = [f"host-{index}" for index in range(33)]
+
+    for task_id in task_ids:
+        await create_task(
+            ScheduledTask(
+                id=task_id,
+                group_folder="bulk",
+                chat_jid="bulk@example.test",
+                prompt="Check scheduled work.",
+                schedule_type="cron",
+                schedule_value="0 * * * *",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
+            )
+        )
+    for index, host_job_id in enumerate(host_job_ids):
+        await create_host_job(
+            {
+                "id": host_job_id,
+                "name": f"host job {index}",
+                "command": "scripts/check.sh",
+                "schedule_type": "cron",
+                "schedule_value": "0 * * * *",
+                "status": "active",
+                "created_at": f"2026-07-22T01:{index:02d}:00+00:00",
+                "created_by": "admin",
+            }
+        )
+
+    response_text = await _request_status(tmp_path, source_group="admin", is_admin=True)
+    result = json.loads(response_text)["result"]
+
+    assert {task["id"] for task in result["tasks"]} == set(task_ids)
+    assert {job["id"] for job in result["host_jobs"]} == set(host_job_ids)
+
+
 async def test_task_status_without_request_id_produces_no_response(monkeypatch, tmp_path) -> None:
     await init_test_database()
     monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))

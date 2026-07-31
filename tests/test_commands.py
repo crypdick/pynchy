@@ -227,3 +227,49 @@ class TestIsRedeploy:
     def test_not_triggered_by_unrelated(self):
         assert not is_redeploy("hello")
         assert not is_redeploy("")
+
+
+class TestApplicationCommands:
+    def test_lifecycle_commands_use_intent_metadata(self):
+        def metadata(name: str) -> dict[str, object]:
+            return {
+                "application_commands": True,
+                "application_command": {"name": name},
+            }
+
+        assert is_pause("/pause", metadata("pause"))
+        assert is_context_reset("/reset", metadata("reset"))
+        assert is_end_session("/end-session", metadata("end_session"))
+        assert is_redeploy("/redeploy", metadata("redeploy"))
+
+    def test_approval_commands_read_the_short_id_option(self):
+        approve = {
+            "application_commands": True,
+            "application_command": {"name": "approve", "options": {"short_id": "abc123"}},
+        }
+        deny = {
+            "application_commands": True,
+            "application_command": {"name": "deny", "options": {"short_id": "abc123"}},
+        }
+
+        assert commands.is_approval_command(_MATCHER, "/approve abc123", approve) == (
+            "approve",
+            "abc123",
+        )
+        assert commands.is_approval_command(_MATCHER, "/deny abc123", deny) == (
+            "deny",
+            "abc123",
+        )
+        assert commands.is_pending_query(
+            _MATCHER,
+            "/pending",
+            {"application_commands": True, "application_command": {"name": "pending"}},
+        )
+
+    def test_discord_message_text_does_not_trigger_controls(self):
+        metadata = {"application_commands": True}
+
+        assert not is_context_reset("reset", metadata)
+        assert not is_pause("pause", metadata)
+        assert not is_end_session("done", metadata)
+        assert not is_redeploy("redeploy", metadata)

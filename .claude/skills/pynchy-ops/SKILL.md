@@ -68,19 +68,6 @@ and merge it into `main`. Do not leave the production checkout dirty or deploy
 an uncommitted implementation. Deployment-specific ignored configuration may
 change separately when needed, but source changes always go through a commit.
 
-For an admin host agent that needs the full Obsidian vault on macOS, prepare
-the data-owned mirror from an authorized interactive or SSH shell; the launchd
-service itself must not scan a TCC-protected Documents path:
-
-```bash
-VAULT_ROOT="${OBSIDIAN_VAULT_ROOT:?set the source vault path}"
-PROFILE="${PYNCHY_LEARNING_PROFILE:?set the workspace profile}"
-mkdir -p "$PYNCHY_REMOTE_ROOT/data/learning/host-vault-mirrors/$PROFILE"
-rsync -a "$VAULT_ROOT/" "$PYNCHY_REMOTE_ROOT/data/learning/host-vault-mirrors/$PROFILE/"
-```
-
-Pynchy consumes this prepared mirror for host execution and leaves it unchanged.
-
 ```bash
 # Trigger a deploy through the live host's Unix socket. From containers, use
 # mcp__pynchy__deploy_changes instead.
@@ -143,7 +130,7 @@ ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy status"
 
 ## Runtime DB Backups
 
-macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
+macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
 
 Live service:
 
@@ -273,7 +260,6 @@ All databases live in `data/`:
 |------|---------|
 | `data/messages.db` | Main DB — messages, groups, sessions, tasks, events, outbound ledger |
 | `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
-| `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
 
 Quick inspection (run on the live host or prefix with `ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && ..."`):
 

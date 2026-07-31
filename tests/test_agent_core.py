@@ -33,7 +33,7 @@ class TestAgentCoreProtocol:
     def test_agent_core_config_creation(self):
         """Test creating AgentCoreConfig with all fields."""
         config = AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id="test-session-123",
             group_folder="admin-1",
             chat_jid="test@g.us",
@@ -45,7 +45,7 @@ class TestAgentCoreProtocol:
             extra={"model": "claude-3-5-sonnet-20241022"},
         )
 
-        assert config.cwd == "/workspace/repos/owner/project"
+        assert config.cwd == "/home/agent/src/owner/project"
         assert config.session_id == "test-session-123"
         assert config.is_admin is True
         assert config.extra["model"] == "claude-3-5-sonnet-20241022"
@@ -53,7 +53,7 @@ class TestAgentCoreProtocol:
     def test_agent_core_config_defaults(self):
         """Test AgentCoreConfig with default values."""
         config = AgentCoreConfig(
-            cwd="/workspace/group",
+            cwd="/home/agent/workspace",
             session_id=None,
             group_folder="test-group",
             chat_jid="test@g.us",
@@ -96,7 +96,7 @@ class TestAgentCoreRegistry:
     def test_create_claude_core(self):
         """Test creating Claude core instance via direct import."""
         config = AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",
@@ -114,7 +114,7 @@ class TestAgentCoreRegistry:
     def test_create_unknown_module_raises_error(self):
         """Test that importing unknown module raises ImportError."""
         config = AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",
@@ -128,7 +128,7 @@ class TestAgentCoreRegistry:
     def test_create_unknown_class_raises_error(self):
         """Test that accessing unknown class raises AttributeError."""
         config = AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",

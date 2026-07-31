@@ -18,7 +18,7 @@ The notebook server is a first-party plugin running as a Docker container, sandb
 - **JupyterLab** for humans — web frontend on port 8888 for viewing and interacting with notebooks
 - **IPython kernels** managed directly via `jupyter_client` — no `jupyter_server` overhead
 
-Agents work with notebooks only through MCP tools, which handle kernel lifecycle, cell execution, output collection, and auto-saving. They can also read and edit `.qmd` files directly from the workspace, since notebooks live in `groups/<workspace>/notebooks/` (mounted at `/workspace/group/notebooks/` inside the container).
+Agents work with notebooks only through MCP tools, which handle kernel lifecycle, cell execution, output collection, and auto-saving. They can also read and edit `.qmd` files directly from the workspace, since notebooks live in `groups/<workspace>/notebooks/` (mounted at `/home/agent/workspace/notebooks/` inside the agent container).
 
 ## Enabling notebooks
 
@@ -135,13 +135,13 @@ At startup, the kernel auto-configures libraries for text-friendly output:
 `execute_cell` returns image paths relative to the notebook directory. From the container filesystem, images are at:
 
 ```
-/workspace/group/notebooks/<notebook>_files/cell_N.png
+/home/agent/workspace/notebooks/<notebook>_files/cell_N.png
 ```
 
 For example, a notebook named `q4-sales-analysis` that produces a plot in cell 3:
 
 - **Relative path** (returned by tool): `q4-sales-analysis_files/cell_3.png`
-- **Container path**: `/workspace/group/notebooks/q4-sales-analysis_files/cell_3.png`
+- **Container path**: `/home/agent/workspace/notebooks/q4-sales-analysis_files/cell_3.png`
 
 If a single cell produces multiple images, they get suffixed: `cell_3_1.png`, `cell_3_2.png`, etc.
 
@@ -158,7 +158,7 @@ Use `--system` because the container runs without a virtual environment. Install
 
 ## Direct file access
 
-Notebooks live inside the workspace folder (`/workspace/group/notebooks/`), so agents can also:
+Notebooks live inside the workspace folder (`/home/agent/workspace/notebooks/`), so agents can also:
 
 - Read `.qmd` files from previous sessions directly with filesystem tools
 - Edit earlier cells by modifying the `.qmd` file, then re-executing with `start_kernel(name=...)`

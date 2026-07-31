@@ -220,6 +220,8 @@ class DiscordChannel:
             return None
         if target.kind == "direct":
             return await self._resolve_direct_chat_jid(target.target_id)
+        if configured_channel_kind(self._config, target) == "forum":
+            return await self.create_group(chat_name)
         return await resolve_configured_channel_jid(self, target)
 
     async def _resolve_direct_chat_jid(self, user_key: str) -> str | None:
@@ -298,6 +300,17 @@ class DiscordChannel:
         create_thread = getattr(parent, "create_thread", None)
         if not callable(create_thread):
             raise TypeError("Discord target does not support child threads")
+        if getattr(parent, "available_tags", None) is not None:
+            created = await create_thread(
+                name=name,
+                content="Pynchy conversation initialized.",
+            )
+            thread = getattr(created, "thread", created)
+            await self._add_thread_participants(
+                thread,
+                (*self.config.default_thread_participants, *participant_ids),
+            )
+            return channel_jid(str(thread.id))
         # discord.py defaults TextChannel.create_thread() to a private thread.
         # Child conversations belong to the configured channel's participants,
         # so opt into the public type explicitly.
@@ -319,6 +332,47 @@ class DiscordChannel:
                     error=str(exc),
                 )
         return channel_jid(str(thread.id))
+
+    async def set_thread_kind(self, child_jid: str, kind: str) -> None:
+        """Apply exactly one canonical kind tag when the child belongs to a forum."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        parent = getattr(thread, "parent", None)
+        if parent is None and self.client is not None:
+            parent_id = getattr(thread, "parent_id", None)
+            if parent_id is not None:
+                parent = cast("Any", self.client).get_channel(parent_id)
+        available_tags = getattr(parent, "available_tags", None)
+        if available_tags is None:
+            return
+        tag = next(
+            (
+                candidate
+                for candidate in available_tags
+                if same_name(getattr(candidate, "name", None), kind)
+            ),
+            None,
+        )
+        if tag is None:
+            raise RuntimeError(f"Discord forum lacks required post tag: {kind}")
+        applied_tags = list(getattr(thread, "applied_tags", ()) or ())
+        if len(applied_tags) == 1 and getattr(applied_tags[0], "id", None) == getattr(
+            tag, "id", None
+        ):
+            return
+        edit = getattr(thread, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord target does not support forum post tags")
+        await edit(applied_tags=[tag])
+
+    async def set_thread_title(self, child_jid: str, title: str) -> None:
+        """Update a child thread's visible title."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        if getattr(thread, "name", None) == title:
+            return
+        edit = getattr(thread, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord target does not support thread titles")
+        await edit(name=title)
 
     async def find_thread(self, parent_jid: str, name: str) -> str | None:
         """Find a child thread with *name* below the given parent.
@@ -342,9 +396,12 @@ class DiscordChannel:
         if not matching_threads:
             archived_threads = getattr(parent, "archived_threads", None)
             if callable(archived_threads):
+                archived_kwargs: dict[str, object] = {"limit": 100}
+                if not hasattr(parent, "available_tags"):
+                    archived_kwargs["private"] = False
                 matching_threads = [
                     thread
-                    async for thread in archived_threads(private=False, limit=100)
+                    async for thread in archived_threads(**archived_kwargs)
                     if getattr(thread, "parent_id", None) == parent_id
                     and getattr(thread, "name", None) == name
                 ]
@@ -379,7 +436,12 @@ class DiscordChannel:
 
     async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None:
         """Map conversation closed state to Discord's thread archive flag."""
-        thread = cast("Any", await self.resolve_channel(child_jid))
+        try:
+            thread = cast("Any", await self.resolve_channel(child_jid))
+        except discord.NotFound:
+            if closed:
+                return
+            raise
         if bool(getattr(thread, "archived", False)) == closed:
             return
         edit = getattr(thread, "edit", None)
@@ -426,11 +488,13 @@ class DiscordChannel:
             if existing is not None:
                 return cast("object", existing)
         channel_name = self.configured_channel_name(target)
-        channel_collection = (
-            getattr(guild, "voice_channels", [])
-            if configured_channel_kind(self.config, target) == "voice"
-            else getattr(guild, "text_channels", [])
-        )
+        kind = configured_channel_kind(self.config, target)
+        if kind == "voice":
+            channel_collection = getattr(guild, "voice_channels", [])
+        elif kind == "forum":
+            channel_collection = getattr(guild, "forums", [])
+        else:
+            channel_collection = getattr(guild, "text_channels", [])
         for channel in channel_collection:
             if channel_key.isdecimal() and str(channel.id) == channel_key:
                 return cast("object", channel)
@@ -666,11 +730,14 @@ class DiscordChannel:
             channel = await self.resolve_channel(channel_jid)
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
+        history = getattr(channel, "history", None)
+        if not callable(history):
+            return InboundFetchResult(messages=[])
 
         after = history_after(since)
         messages: list[NewMessage] = []
         high_water_mark = ""
-        async for message in channel.history(after=after, limit=1000, oldest_first=True):
+        async for message in history(after=after, limit=1000, oldest_first=True):
             high_water_mark = history_high_water_mark(message, high_water_mark)
             inbound = history_message(
                 channel_jid=channel_jid,

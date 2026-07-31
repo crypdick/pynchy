@@ -47,6 +47,46 @@ async def test_create_group_reuses_an_existing_configured_channel():
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_provisions_and_reuses_a_configured_forum():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "channels": {
+                        "systems": {
+                            "name": "Systems",
+                            "kind": "forum",
+                            "category": "Systems",
+                        }
+                    }
+                }
+            },
+        )
+    )
+    guild = _FakeDiscordGuild(123, "synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    first = await ch.resolve_chat_jid("synapse.channels.systems")
+    guild.forums[0].available_tags = guild.forums[0].available_tags[:1]
+    guild.forums[0].category_id = None
+    second = await ch.resolve_chat_jid("synapse.channels.systems")
+
+    assert first == second == "discord:channel:891"
+    assert [category.name for category in guild.categories] == ["Systems"]
+    assert [forum.name for forum in guild.forums] == ["systems"]
+    assert [tag.name for tag in guild.forums[0].available_tags] == [
+        "issue",
+        "automation",
+        "planning",
+        "testing",
+        "topic",
+    ]
+    assert guild.forums[0].category_id == guild.categories[0].id
+
+
+@pytest.mark.asyncio
 async def test_create_group_rejects_an_unconfigured_channel_ref():
     ch = _channel(
         config=DiscordConnectionConfig(

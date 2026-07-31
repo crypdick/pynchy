@@ -215,7 +215,7 @@ class GatewayConfig(_StrictModel):
 
 class ObsidianLearningConfig(_StrictModel):
     vault_root: str | None = None
-    mount_path: str = "/workspace/vault"
+    mount_path: str = "/home/agent/memory"
     default_profile_root: str = "systems/pynchy/profiles/{profile}"
     memory_dir_name: str = "memory"
 
@@ -314,7 +314,8 @@ class DiscordChannelConfig(_StrictModel):
     """Per-channel configuration for a Discord guild channel."""
 
     name: str | None = None
-    kind: Literal["text", "voice"] = "text"
+    kind: Literal["text", "voice", "forum"] = "text"
+    category: str | None = None
     enabled: bool = True
     require_mention: bool | None = None
     users: list[str] = []
@@ -388,6 +389,7 @@ class DiscordConnectionConfig(_StrictModel):
                         channel_name: DiscordChannelSettings(
                             name=channel.name,
                             kind=channel.kind,
+                            category=channel.category,
                             enabled=channel.enabled,
                             require_mention=channel.require_mention,
                             users=list(channel.users),

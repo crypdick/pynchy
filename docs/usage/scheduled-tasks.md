@@ -18,7 +18,7 @@ directory at
 `wiki/systems/pynchy/automation-memory/<task-id>/` in the configured vault.
 Pynchy exposes that directory as `PYNCHY_AUTOMATION_MEMORY_DIR` to agent tasks,
 pre-run gates, deterministic workspace commands, and host commands. Container
-agents see `/workspace/automation-memory`; host processes receive an absolute
+agents see `/home/agent/automation-memory`; host processes receive an absolute
 host path.
 
 Memory defaults on. Set `memory = false` in an automation's `[job]` table to
@@ -30,10 +30,8 @@ This memory belongs to the task ID, not its thread or provider session, so both
 its directory intact. Renaming a config-backed job creates a new task ID and
 therefore a new memory directory.
 
-On the Apple container runtime, Pynchy runs against a data-owned mirror and
-syncs it back to the vault before recording success. An interrupted dirty
-mirror is recovered on the next occurrence. A sync failure fails the
-occurrence so Temporal can retry it.
+All execution shapes use the canonical Obsidian directory directly. Pynchy
+doesn't create or synchronize a runtime-owned mirror.
 
 ## Agent Tasks
 
@@ -200,6 +198,8 @@ The command runs on the host. Non-empty output goes to the derived thread under
 the workspace's physical Discord root, and Pynchy registers that thread with
 the logical owner's profile for future replies. Successful output ending in
 `{"wakeAgent": false}` skips delivery but retains the job's thread binding.
+Pynchy creates or repairs active and paused task bindings at startup, before
+their first run. Discord forum workspaces tag these posts as `automation`.
 
 ## Plugin-Sourced Jobs
 
@@ -310,7 +310,16 @@ To back up runtime databases with SQLite-safe snapshots, run:
 scripts/backup_runtime_dbs.sh
 ```
 
-The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default and prunes backups older than 30 days. Set `PYNCHY_BACKUP_KEEP_COUNT` to a positive integer to also cap the number of retained generations; `0` leaves the count uncapped. The launchd template keeps the newest seven generations. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers.
+The script backs up `messages.db`, `neonize.db`, and `temporal.db` into
+`data/backups` by default and prunes backups older than 30 days. Set
+`PYNCHY_BACKUP_KEEP_COUNT` to a positive integer to also cap the number of
+retained generations; `0` leaves the count uncapped. The launchd template
+keeps the newest seven generations. It briefly unloads the
+`com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads
+it again. This prevents the online SQLite backup from blocking Temporal writes
+and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and
+`PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd
+identifiers.
 
 For host-loss protection, set both `PYNCHY_BACKUP_REMOTE_HOST` and `PYNCHY_BACKUP_REMOTE_DIR`. The script creates SQLite snapshots in `PYNCHY_BACKUP_STAGING_DIR`, transfers them with `rsync`, verifies `SHA256SUMS` on the remote host, and only then renames the hidden partial directory to its final timestamp. Set `PYNCHY_BACKUP_SSH_KEY` when the scheduled job needs a dedicated noninteractive key. Remote hosts must provide `bash`, `rsync`, and `sha256sum`:
 

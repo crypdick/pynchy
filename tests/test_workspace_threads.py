@@ -9,6 +9,7 @@ import pytest
 from conftest import init_test_database, make_settings
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
+import pynchy.host.orchestrator.workspace_threads as workspace_threads
 from pynchy.config.api import (
     ProfileConfig,
     WorkspaceConfig,
@@ -47,6 +48,7 @@ class _ThreadChannel:
     def __init__(self, existing: dict[str, str] | None = None) -> None:
         self.existing = existing or {}
         self.created: list[tuple[str, str]] = []
+        self.kinds: list[tuple[str, str]] = []
 
     async def connect(self) -> None: ...
 
@@ -78,6 +80,9 @@ class _ThreadChannel:
         assert participant_ids == ()
         self.created.append((parent_jid, name))
         return f"discord:channel:new-{name}"
+
+    async def set_thread_kind(self, child_jid: str, kind: str) -> None:
+        self.kinds.append((child_jid, kind))
 
 
 class _CreationOnlyChannel(_ThreadChannel):
@@ -142,7 +147,7 @@ async def test_reconciles_declared_threads_by_reusing_or_creating_them() -> None
             "relationships": WorkspaceConfig(
                 threads=[
                     WorkspaceThreadConfig(name="family"),
-                    WorkspaceThreadConfig(name="family-gardening"),
+                    WorkspaceThreadConfig(name="family-gardening", kind="automation"),
                 ]
             )
         },
@@ -152,6 +157,10 @@ async def test_reconciles_declared_threads_by_reusing_or_creating_them() -> None
 
     assert channel.created == [
         ("discord:channel:relationships", "family-gardening"),
+    ]
+    assert channel.kinds == [
+        ("discord:channel:family", "topic"),
+        ("discord:channel:new-family-gardening", "automation"),
     ]
     assert [action.operation for action in actions] == [
         "reuse",
@@ -184,6 +193,112 @@ async def test_dry_run_reports_creation_without_mutating_threads_or_workspaces()
     assert channel.created == []
     register.assert_not_awaited()
     assert workspaces == {parent.jid: parent}
+
+
+@pytest.mark.asyncio
+async def test_missing_parent_waits_before_looking_up_or_creating_a_thread() -> None:
+    actions = await reconcile_workspace_threads(
+        {},
+        {"relationships": WorkspaceConfig(threads=[WorkspaceThreadConfig(name="family")])},
+        [],
+        AsyncMock(),
+    )
+
+    assert actions == [WorkspaceThreadAction("await_parent", "relationships", "family")]
+
+
+@pytest.mark.asyncio
+async def test_declared_child_workspace_uses_its_resolved_policy(monkeypatch) -> None:
+    settings = make_settings(
+        profiles={"child": ProfileConfig(is_admin=True)},
+        workspaces={"family-space": WorkspaceConfig(profiles=["child"])},
+    )
+    monkeypatch.setattr(workspace_threads, "get_settings", lambda: settings)
+    parent = _parent()
+    child_jid = "discord:channel:family"
+    channel = _ThreadChannel({"family": child_jid})
+    workspaces = {parent.jid: parent}
+    register = AsyncMock(side_effect=lambda profile: workspaces.update({profile.jid: profile}))
+
+    actions = await reconcile_workspace_threads(
+        workspaces,
+        {
+            "relationships": WorkspaceConfig(
+                threads=[
+                    WorkspaceThreadConfig(
+                        name="family", workspace="family-space", profiles=["child"]
+                    )
+                ]
+            )
+        },
+        [channel],
+        register,
+    )
+
+    assert actions == [
+        WorkspaceThreadAction("reuse", "relationships", "family", child_jid),
+        WorkspaceThreadAction("register", "relationships", "family", child_jid),
+    ]
+    child = workspaces[child_jid]
+    assert child.folder == "family-space"
+    assert child.name == "Family Space"
+    assert child.is_admin is True
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_registration_for_existing_stale_child() -> None:
+    parent = _parent()
+    child_jid = "discord:channel:family"
+    stale = WorkspaceProfile(
+        jid=child_jid,
+        name="Old Family",
+        folder="old-family",
+        trigger=parent.trigger,
+        added_at="2024-01-01T00:00:00+00:00",
+    )
+    channel = _ThreadChannel({"family": child_jid})
+    register = AsyncMock()
+
+    actions = await reconcile_workspace_threads(
+        {parent.jid: parent, child_jid: stale},
+        {"relationships": WorkspaceConfig(threads=[WorkspaceThreadConfig(name="family")])},
+        [channel],
+        register,
+        dry_run=True,
+    )
+
+    assert actions == [
+        WorkspaceThreadAction("reuse", "relationships", "family", child_jid),
+        WorkspaceThreadAction("register", "relationships", "family", child_jid),
+    ]
+    register.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_existing_matching_child_is_reused_without_registration() -> None:
+    parent = _parent()
+    child_jid = "discord:channel:family"
+    existing = WorkspaceProfile(
+        jid=child_jid,
+        name="Relationships/family",
+        folder=dynamic_thread_folder(parent.folder, child_jid),
+        trigger=parent.trigger,
+        security=parent.security,
+        is_admin=parent.is_admin,
+        added_at="2024-01-01T00:00:00+00:00",
+    )
+    channel = _ThreadChannel({"family": child_jid})
+    register = AsyncMock()
+
+    actions = await reconcile_workspace_threads(
+        {parent.jid: parent, child_jid: existing},
+        {"relationships": WorkspaceConfig(threads=[WorkspaceThreadConfig(name="family")])},
+        [channel],
+        register,
+    )
+
+    assert actions == [WorkspaceThreadAction("reuse", "relationships", "family", child_jid)]
+    register.assert_not_awaited()
 
 
 @pytest.mark.asyncio

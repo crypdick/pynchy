@@ -211,7 +211,8 @@ async def prepare_webhook_message(
     if not isinstance(public_source, bool):
         raise TypeError("Routed webhook delivery lost its source trust")
 
-    for attempt in range(2):
+    attempt = 0
+    while True:
         conversation = await deps.get_conversation(delivery.conversation_id)
         if conversation is None:
             raise RuntimeError("Routed webhook delivery references a missing conversation")
@@ -246,6 +247,7 @@ async def prepare_webhook_message(
         except ConversationControlWorkspaceChangedError:
             if attempt == 1:
                 raise
+            attempt = 1
             continue
         register_runtime_workspace_policy(
             conversation.id,
@@ -272,7 +274,6 @@ async def prepare_webhook_message(
                 "conversation_claim_id": claim_id,
             },
         )
-    raise RuntimeError("Routed webhook conversation workspace did not stabilize")
 
 
 async def restore_runtime_workspace(

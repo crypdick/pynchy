@@ -519,7 +519,7 @@ def _patch_probe_call() -> dict[str, Any]:
         "call_id": _PATCH_PROBE_CALL_ID,
         "operation": {
             "type": "create_file",
-            "path": "/workspace/group/runtime-patch-proof.txt",
+            "path": "/home/agent/workspace/runtime-patch-proof.txt",
             "diff": "+PYNCHY_RUNTIME_PATCH_OK",
         },
     }
@@ -533,7 +533,7 @@ def _patch_update_probe_call() -> dict[str, Any]:
         "call_id": _PATCH_UPDATE_PROBE_CALL_ID,
         "operation": {
             "type": "update_file",
-            "path": "/workspace/group/runtime-patch-update.txt",
+            "path": "/home/agent/workspace/runtime-patch-update.txt",
             "diff": "@@\n-seed\n+PYNCHY_RUNTIME_PATCH_UPDATE_OK",
         },
     }
@@ -547,7 +547,7 @@ def _patch_delete_probe_call() -> dict[str, Any]:
         "call_id": _PATCH_DELETE_PROBE_CALL_ID,
         "operation": {
             "type": "delete_file",
-            "path": "/workspace/group/runtime-patch-delete.txt",
+            "path": "/home/agent/workspace/runtime-patch-delete.txt",
         },
     }
 
@@ -560,7 +560,7 @@ def _shell_probe_call() -> dict[str, Any]:
         "call_id": _SHELL_PROBE_CALL_ID,
         "action": {
             "commands": [
-                "printf PYNCHY_RUNTIME_SHELL_OK > /workspace/group/runtime-shell-proof.txt"
+                "printf PYNCHY_RUNTIME_SHELL_OK > /home/agent/workspace/runtime-shell-proof.txt"
             ],
             "timeout_ms": 5_000,
         },

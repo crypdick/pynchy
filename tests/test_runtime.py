@@ -514,6 +514,25 @@ class TestAppleRuntime:
         assert len(result) == 1
         assert result[0].created_at is None
 
+    def test_list_containers_treats_nonmapping_labels_as_empty(self):
+        rt = AppleContainerRuntime()
+        output = json.dumps(
+            [
+                {
+                    "configuration": {
+                        "id": "pynchy-malformed-labels",
+                        "labels": "not-a-label-map",
+                    }
+                }
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = output
+
+            result = rt.list_containers()
+
+        assert result[0].labels == {}
+
     def test_cleanup_builder_stops_and_removes_buildkit(self):
         rt = AppleContainerRuntime()
         with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
@@ -535,6 +554,15 @@ class TestAppleRuntime:
             assert rt.remove_container("pynchy-stale") is True
 
         assert mock_run.call_args.kwargs["timeout"] == 15
+
+    def test_remove_container_can_omit_force(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 1
+
+            assert rt.remove_container("pynchy-stale", force=False) is False
+
+        assert mock_run.call_args.args[0] == ["container", "rm", "pynchy-stale"]
 
     def test_prune_images_prunes_dangling_images(self):
         rt = AppleContainerRuntime()

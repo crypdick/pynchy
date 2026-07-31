@@ -55,7 +55,6 @@ from pynchy.scheduling.api import (  # beartype resolves Temporal reconciler ann
     agent_task_occurrence_workflow_id,
 )
 
-_TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED = "Temporal scheduler runtime has not been started"
 _ONE_SHOT_WORKFLOW_PREFIX_BY_TYPE = {
     ScheduledAgentTaskWorkflow.__name__: "pynchy-agent-task-",
     DatabaseHostJobWorkflow.__name__: "pynchy-host-job-",
@@ -70,7 +69,8 @@ async def reconcile_temporal_schedules(
     get_host_jobs: Callable[[], Awaitable[list[HostJob]]],
 ) -> None:
     """Reconcile Pynchy's desired scheduled work into Temporal schedules."""
-    client = cast("Any", _require_client(runtime))
+    runtime_any = cast("Any", runtime)
+    client = cast("Any", runtime_any.client)
     desired_schedule_ids: set[str] = set()
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
@@ -213,14 +213,6 @@ async def _reconcile_config_cron_schedules(
             schedule_id,
             schedule_for_config_host_cron(job_name, job.schedule, scheduler_runtime),
         )
-
-
-def _require_client(runtime: object) -> object:
-    runtime_any = cast("Any", runtime)
-    client = runtime_any.client
-    if client is None:
-        raise RuntimeError(_TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED)
-    return client
 
 
 async def _start_once_agent_task(runtime: object, task: ScheduledTask) -> None:

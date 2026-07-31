@@ -23,7 +23,10 @@ from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+import discord
+from discord import app_commands
 
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
@@ -34,7 +37,7 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     is_supported_audio_filename,
 )
 
-from ._access import InboundContext
+from ._access import InboundContext, interaction_context
 from ._ids import channel_jid, dm_jid
 from ._models import (
     DiscordAttachment,
@@ -53,6 +56,9 @@ else:
     # real runtime import would be circular — bind a permissive substitute so
     # the forward ref resolves (mypy uses the real type from the branch above).
     DiscordChannel = object
+
+
+_QUEUE_APPLICATION_COMMANDS = ("q", "queue", "btw")
 
 
 def _author_names(message: DiscordInboundMessage) -> frozenset[str]:
@@ -177,7 +183,10 @@ def build_message_metadata(
     message: DiscordInboundMessage, ctx: InboundContext | None = None
 ) -> dict[str, Any]:
     """Extract Discord-native structure that would otherwise be lost in text."""
-    metadata: dict[str, Any] = {"discord_message_id": message.id}
+    metadata: dict[str, Any] = {
+        "discord_message_id": message.id,
+        "application_commands": True,
+    }
     if ctx is not None:
         metadata["discord_channel_name"] = ctx.channel_name or ""
         if ctx.parent_channel_id is not None:
@@ -298,6 +307,8 @@ class DiscordEvents:
         self._process_inbound_audio = process_inbound_audio
         self._seen: dict[str, float] = {}
         self._seen_max = 500
+        self._command_tree: app_commands.CommandTree | None = None
+        self._commands_synced = False
 
     def _dedup(self, message_id: str) -> bool:
         """Return True if ``message_id`` was already seen (gateway redelivery)."""
@@ -313,6 +324,10 @@ class DiscordEvents:
     def register(self) -> None:
         client = self._channel.client
 
+        if hasattr(client, "http") and hasattr(client, "_connection"):
+            self._command_tree = app_commands.CommandTree(cast("discord.Client", client))
+            self._register_application_commands()
+
         # discord.py's event decorator is untyped to mypy (discord is
         # ignore_missing_imports), hence the per-handler untyped-decorator ignores.
         @client.event  # type: ignore[untyped-decorator]
@@ -322,6 +337,164 @@ class DiscordEvents:
         @client.event  # type: ignore[untyped-decorator]
         async def on_raw_reaction_add(payload: object) -> None:
             await self.handle_reaction(payload)
+
+    def _register_application_commands(self) -> None:
+        tree = self._command_tree
+        if tree is None:
+            return
+
+        simple_commands = (
+            ("pause", "Pause the current agent turn", "pause"),
+            ("reset", "Clear the current agent context", "reset"),
+            ("end-session", "End the current agent session", "end_session"),
+            ("redeploy", "Redeploy the current Pynchy revision", "redeploy"),
+            ("pending", "List pending approval requests", "pending"),
+        )
+
+        def simple_callback(command_name: str) -> Callable[[discord.Interaction], Any]:
+            async def callback(interaction: discord.Interaction) -> None:
+                await self.handle_application_command(interaction, command_name)
+
+            return callback
+
+        for name, description, command_name in simple_commands:
+            tree.add_command(
+                app_commands.Command(
+                    name=name,
+                    description=description,
+                    callback=simple_callback(command_name),
+                )
+            )
+
+        def queue_callback(command_name: str) -> Callable[[discord.Interaction, str], Any]:
+            async def handler(interaction: discord.Interaction, message: str) -> None:
+                await self.handle_application_command(
+                    interaction, command_name, {"message": message}
+                )
+
+            return handler
+
+        for name in _QUEUE_APPLICATION_COMMANDS:
+            command_callback = app_commands.describe(message="Queue follow-up")(
+                queue_callback(name)
+            )
+            tree.add_command(
+                app_commands.Command(
+                    name=name,
+                    description="Queue a follow-up without interrupting the current turn",
+                    callback=command_callback,
+                )
+            )
+
+        def approval_callback(
+            selected_command: str,
+        ) -> Callable[[discord.Interaction, str], Any]:
+            async def handler(interaction: discord.Interaction, short_id: str) -> None:
+                await self.handle_application_command(
+                    interaction, selected_command, {"short_id": short_id}
+                )
+
+            return handler
+
+        for name, description, command_name in (
+            ("approve", "Approve a pending request", "approve"),
+            ("deny", "Deny a pending request", "deny"),
+        ):
+            command_callback = app_commands.describe(short_id="Approval request ID")(
+                approval_callback(command_name)
+            )
+            tree.add_command(
+                app_commands.Command(
+                    name=name,
+                    description=description,
+                    callback=command_callback,
+                )
+            )
+
+    async def sync_application_commands(self) -> None:
+        """Publish the registered commands once for this Discord client."""
+        tree = self._command_tree
+        if tree is None or self._commands_synced:
+            return
+        try:
+            commands = await tree.sync()
+        except discord.DiscordException as exc:
+            logger.warning("Discord application command sync failed", error=str(exc))
+            return
+        self._commands_synced = True
+        logger.info("Synced Discord application commands", count=len(commands))
+
+    async def handle_application_command(
+        self,
+        interaction: discord.Interaction,
+        command_name: str,
+        options: dict[str, str] | None = None,
+    ) -> None:
+        """Turn an allowed Discord application command into a host control message."""
+        ch = self._channel
+        ctx = interaction_context(interaction)
+        if not ctx.channel_id or ctx.author_is_bot:
+            return
+        interaction_id = str(interaction.id)
+        if self._dedup(f"interaction-{interaction_id}"):
+            return
+
+        jid = jid_for(ctx)
+        if ch.access.decide(ctx) != "allow":
+            registered_destination = ch.allows_registered_workspace_jid(jid, is_dm=ctx.is_dm)
+            if not registered_destination or ch.access.decide_registered_workspace(ctx) != "allow":
+                await self._respond_to_application_command(interaction, "❌ Not allowed")
+                return
+
+        command_options = dict(options or {})
+        if command_name in _QUEUE_APPLICATION_COMMANDS:
+            queued_message = command_options.get("message", "").strip()
+            if not queued_message:
+                await self._respond_to_application_command(interaction, "❌ Message required")
+                return
+            content = f"btw {queued_message}"
+            acknowledgement = f"✅ /{command_name} queued"
+        else:
+            content = f"/{command_name.replace('_', '-')}"
+            if short_id := command_options.get("short_id"):
+                content = f"{content} {short_id}"
+            acknowledgement = f"✅ {content} received"
+        sender_name = getattr(interaction.user, "display_name", None) or str(interaction.user)
+        created = getattr(interaction, "created_at", None)
+        timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
+        metadata: dict[str, Any] = {
+            "discord_interaction_id": interaction_id,
+            "discord_channel_name": ctx.channel_name or "",
+            "application_commands": True,
+            "application_command": {"name": command_name, "options": command_options},
+        }
+        if ctx.parent_channel_id is not None:
+            metadata["discord_parent_chat_jid"] = channel_jid(ctx.parent_channel_id)
+            metadata["discord_parent_channel_name"] = ctx.parent_channel_name or ""
+
+        ch.on_chat_metadata(jid, timestamp, ctx.channel_name or sender_name)
+        ch.on_message(
+            jid,
+            NewMessage(
+                id=f"discord-interaction-{interaction_id}",
+                chat_jid=jid,
+                sender=ctx.author_id,
+                sender_name=sender_name,
+                content=content,
+                timestamp=timestamp,
+                is_from_me=False,
+                metadata=metadata,
+            ),
+        )
+        await self._respond_to_application_command(interaction, acknowledgement)
+
+    async def _respond_to_application_command(
+        self, interaction: discord.Interaction, content: str
+    ) -> None:
+        try:
+            await interaction.response.send_message(content, ephemeral=True)
+        except discord.DiscordException as exc:
+            logger.warning("Discord application command response failed", error=str(exc))
 
     async def handle_message(self, message: object) -> None:
         """Parse a discord.py message and dispatch its typed Pynchy representation."""
