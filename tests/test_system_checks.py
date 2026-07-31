@@ -142,6 +142,19 @@ class TestEnsureContainerSystemRunning:
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
         run.assert_not_called()
 
+    def test_runtime_without_orphan_reaping_capability_still_starts(self, monkeypatch):
+        runtime = MagicMock(spec=["ensure_running", "prune_images"])
+        runtime.prune_images.return_value = True
+        monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+
+        with patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=runtime):
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )
+
+        runtime.ensure_running.assert_called_once()
+        runtime.prune_images.assert_called_once_with(all_images=False)
+
     def test_image_missing_no_dockerfile_raises(self, mock_runtime, tmp_path):
         """Image not found and no Dockerfile — should raise RuntimeError."""
         inspect_fail = MagicMock(returncode=1)
