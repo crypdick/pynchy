@@ -188,6 +188,33 @@ async def test_audio_read_failure_keeps_the_message_deliverable():
     )
 
 
+async def test_handle_message_parses_and_dispatches_the_typed_message():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    dispatch = AsyncMock()
+
+    with patch.object(channel.events, "handle_inbound_message", new=dispatch):
+        await channel.events.handle_message(
+            _message(
+                author=_user("5"),
+                guild_id="g1",
+                channel_id="c1",
+                content="hello",
+                mentions=(BOT_ID,),
+            )
+        )
+
+    typed_message = dispatch.await_args.args[0]
+    assert typed_message.id == "m1"
+    assert typed_message.content == "hello"
+
+
 async def test_audio_read_with_a_non_bytes_result_keeps_the_message_deliverable():
     audio = DiscordAttachment(
         id="a1",

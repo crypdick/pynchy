@@ -169,6 +169,33 @@ def test_publishing_scheduler_config_requires_an_active_runtime() -> None:
 
 
 @pytest.mark.asyncio
+async def test_publishing_scheduler_config_updates_the_active_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime()
+    config = _scheduler_runtime()
+    monkeypatch.setattr(
+        temporal_scheduler.Client,
+        "connect",
+        AsyncMock(return_value=Mock()),
+    )
+
+    class _WorkerContext:
+        async def __aenter__(self) -> _WorkerContext:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setattr(temporal_scheduler, "Worker", lambda *_args, **_kwargs: _WorkerContext())
+
+    async with runtime:
+        temporal_scheduler.publish_scheduler_config(config)
+
+    assert runtime.scheduler_config is config
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cleared", [False, True])
 async def test_terminal_scheduled_turn_reports_cleanup_result(
     monkeypatch: pytest.MonkeyPatch,
