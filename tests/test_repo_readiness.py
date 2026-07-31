@@ -209,6 +209,39 @@ def test_failed_staged_publish_cleans_verified_checkout(tmp_path: Path):
     assert not staged_roots[0].exists()
 
 
+def test_failed_publish_restores_displaced_checkout(tmp_path: Path):
+    """A failed replacement leaves the invalid checkout available for recovery."""
+    repos_root = tmp_path / "repos"
+    repo_root = repos_root / "project"
+    repo_root.mkdir(parents=True)
+    marker = repo_root / "operator-data.txt"
+    marker.write_text("preserve me\n")
+    repo_ctx = RepoContext(SLUG, repo_root, tmp_path / "worktrees")
+    settings = make_settings(repos=ReposConfig(root=repos_root))
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        return True
+
+    real_rename = Path.rename
+
+    def fail_staged_publish(source: Path, target: Path) -> Path:
+        if source.name.startswith(".project.pynchy-clone-"):
+            raise OSError("replacement unavailable")
+        return real_rename(source, target)
+
+    with (
+        patch("pynchy.config.api.get_settings", return_value=settings),
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pathlib.Path.rename", new=fail_staged_publish),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert marker.read_text() == "preserve me\n"
+    assert repo_root.is_dir()
+    assert not list(repos_root.glob(".project.pynchy-clone-*"))
+
+
 def test_empty_workspace_resolution_returns_no_repositories():
     with patch("pynchy.host.git_ops.repo.load_resolved_config", return_value=None):
         assert resolve_repos_for_group("group") == []
