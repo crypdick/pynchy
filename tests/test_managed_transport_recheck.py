@@ -179,3 +179,32 @@ def test_recovers_when_pr_creation_races_with_existing_pr(git_env: dict) -> None
         "success": True,
         "message": f"Pushed 1 commit(s) to {feature}. PR updated: https://github.com/owner/repo/pull/1",
     }
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
+    """An approved open PR is updated after its inspected head is pushed."""
+    feature = "existing-approved-pr"
+    worktree = create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    base_sha = git(git_env["origin"], "rev-parse", "main").stdout.strip()
+    head_sha = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    existing_pr = managed_pr_result([], base_sha=base_sha, head_sha=head_sha, branch_name=feature)
+    gh_calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "gh":
+            gh_calls.append(args)
+            return existing_pr
+        raise AssertionError(f"unexpected subprocess: {args}")
+
+    with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=fake_run):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": True,
+        "message": f"Pushed 1 commit(s) to {feature}. PR updated: https://github.com/owner/repo/pull/1",
+    }
+    assert len(gh_calls) == 2
+    assert gh_calls[0][1:3] == ["pr", "list"]
+    assert gh_calls[1][1:3] == ["pr", "list"]
