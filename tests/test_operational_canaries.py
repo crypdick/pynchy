@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 
 import pytest
-from conftest import make_settings
+from conftest import init_test_database, make_settings
 
 import pynchy.plugins.integrations.operational_canaries as operational_canaries
 from pynchy.canaries.api import (
@@ -20,6 +20,7 @@ from pynchy.host.container_manager.mcp.google_canaries import (
     GoogleDriveRoundTripCanary,
     GoogleMcpCanaryError,
 )
+from pynchy.host.container_manager.security.artifact_canaries import FileSecretTaintCanary
 from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
 from pynchy.plugins.integrations.linear import WorkspaceContext
 from pynchy.plugins.integrations.operational_canaries import (
@@ -99,6 +100,30 @@ async def test_linear_canary_requires_a_configured_account():
 def test_proton_canary_requires_mcp_tool_configuration():
     with pytest.raises(operational_canaries.CanaryServiceError, match="requires an MCP"):
         proton_client_factory(None)()
+
+
+@pytest.mark.asyncio
+async def test_file_secret_taint_canary_exercises_and_verifies_artifact_security():
+    await init_test_database()
+    scenario = FileSecretTaintCanary()
+
+    exercise = await scenario.exercise(_context("security.file-secret-taint"))
+    evidence = await scenario.verify(_context("security.file-secret-taint"), exercise)
+
+    assert evidence == (
+        "security:artifact-ipc:allow",
+        "security:taint:credential:sticky",
+    )
+    assert await scenario.cleanup(_context("security.file-secret-taint"), exercise) == ()
+
+
+@pytest.mark.asyncio
+async def test_file_secret_taint_canary_rejects_unexpected_artifacts():
+    with pytest.raises(RuntimeError, match="sticky credential taint"):
+        await FileSecretTaintCanary().verify(
+            _context("security.file-secret-taint"),
+            CanaryExercise(artifact=object()),
+        )
 
 
 class _FakeLinearClient:
