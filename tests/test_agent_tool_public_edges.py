@@ -43,6 +43,12 @@ def _admin_runtime(tmp_path: Path) -> AgentToolRuntime:
     )
 
 
+def _publication_response(tmp_path: Path, result: dict[str, object]) -> None:
+    response_file = tmp_path / "merge_results" / "1700000000000-fixed.json"
+    response_file.parent.mkdir(parents=True, exist_ok=True)
+    response_file.write_text(json.dumps(result), encoding="utf-8")
+
+
 class _Observer:
     def __init__(self) -> None:
         self.daemon = False
@@ -216,3 +222,78 @@ async def test_host_service_request_reports_a_timeout(
         result = await request_host_service("calendar", {}, guarded_action_id="request-3")
 
     assert result[0].text == "Error: Request timed out waiting for host response"
+
+
+async def test_sync_worktree_tool_reports_a_successful_pull_request_publication(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _publication_response(tmp_path, {"success": True, "message": "https://github/pr/1"})
+    write_request = Mock()
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: 1700000000.0)
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", write_request)
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("sync_worktree_to_main", {})
+
+    assert result[0].text == "https://github/pr/1"
+    write_request.assert_called_once_with(
+        "sync_worktree_to_main",
+        {"groupFolder": "group", "publication": "pull-request"},
+        request_id="1700000000000-fixed",
+        reply_to="merge_results",
+    )
+
+
+async def test_sync_worktree_tool_reports_per_repository_publication_failure(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _publication_response(
+        tmp_path,
+        {
+            "success": False,
+            "message": "aggregate failure",
+            "repos": {"pynchy": {"message": "branch is dirty"}},
+        },
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle.time.time", lambda: 1700000000.0)
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_lifecycle.secrets.token_hex",
+        lambda _: "fixed",
+    )
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("sync_worktree_to_main", {})
+
+    assert result.isError is True
+    assert result.content[0].text == "pynchy: branch is dirty"
+
+
+async def test_reset_context_writes_a_handoff_request_before_exit(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_request = Mock()
+    exit_container = Mock()
+    write_request_path = "agent_runner.agent_tools._tools_lifecycle._ipc.write_request_file"
+    monkeypatch.setattr(
+        write_request_path,
+        write_request,
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_lifecycle._exit_container", exit_container)
+
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        result = await call_tool("reset_context", {"message": "continue from here"})
+
+    assert result is None
+    write_request.assert_called_once_with(
+        "reset_context",
+        {"chatJid": "slack:group", "groupFolder": "group", "message": "continue from here"},
+        reply_to=None,
+    )
+    exit_container.assert_called_once_with()
