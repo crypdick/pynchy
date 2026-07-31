@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
+from pynchy.plugins.integrations.linear_work_items import handle_list_work_items
+from pynchy.work_items.api import WorkItemTransitionStatus
 from tests.linear_work_items_support import (
     Lifecycle,
     _begin_turn,
@@ -168,3 +172,78 @@ async def test_reconcile_requires_an_execution_and_unresolved_transition(
         issue_id="issue-1",
     )
     assert unresolved == {"error": "No uncertain work-item transition needs reconciliation"}
+
+
+async def test_work_item_listing_requires_configured_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_items._runtime.runtime", None)
+
+    with pytest.raises(RuntimeError, match="Linear work-items runtime has not been configured"):
+        await handle_list_work_items({"source_group": "pynchy"})
+
+
+async def test_linked_move_converts_provider_errors_to_action_errors(
+    lifecycle: Lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_items.transition_linked_work_item",
+        AsyncMock(side_effect=ValueError("provider rejected move")),
+    )
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-1",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Implementation is ready."},
+    )
+
+    assert result == {"error": "provider rejected move"}
+
+
+async def test_reconcile_converts_provider_errors_to_action_errors(
+    lifecycle: Lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn()
+    lifecycle.state.fail_after_update = True
+    uncertain = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-uncertain",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "The provider response was lost."},
+    )
+    assert uncertain["result"]["work_item"]["status"] == WorkItemTransitionStatus.UNKNOWN.value
+    lifecycle.state.fail_after_update = False
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_items.reconcile_work_item",
+        AsyncMock(side_effect=ValueError("reconciliation failed")),
+    )
+
+    result = await _call(
+        lifecycle,
+        "linear_reconcile_work_item",
+        "reconcile-uncertain",
+        issue_id="issue-1",
+    )
+
+    assert result == {"error": "reconciliation failed"}
+
+
+async def test_work_item_actions_require_source_group(lifecycle: Lifecycle) -> None:
+    with pytest.raises(ValueError, match="source_group is required"):
+        await lifecycle.handlers["linear_move_todo"](
+            {
+                "request_id": "move-1",
+                "issue_id": "issue-1",
+                "status": "done",
+            }
+        )
