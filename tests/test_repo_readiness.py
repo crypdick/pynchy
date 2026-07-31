@@ -189,6 +189,22 @@ def test_clone_readiness_failure_cleans_staged_checkout(tmp_path: Path):
     assert not list(tmp_path.glob(".repo.pynchy-clone-*"))
 
 
+def test_failed_clone_removes_non_directory_staged_artifact(tmp_path: Path):
+    repo_ctx = _repo_context(tmp_path)
+
+    def clone_leaves_file(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.write_text("partial clone\n", encoding="utf-8")
+        return False
+
+    with patch(
+        "pynchy.host.git_ops.repo._clone_repo_to",
+        side_effect=clone_leaves_file,
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert not list(tmp_path.glob(".repo.pynchy-clone-*"))
+
+
 def test_failed_staged_publish_cleans_verified_checkout(tmp_path: Path):
     """A verified clone is removed if publishing it into place fails."""
     repo_ctx = _repo_context(tmp_path)
