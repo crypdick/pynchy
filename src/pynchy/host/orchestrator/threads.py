@@ -64,6 +64,13 @@ class ThreadKindChannel(Protocol):
     async def set_thread_kind(self, child_jid: str, kind: str) -> None: ...
 
 
+@runtime_checkable
+class ThreadTitleChannel(Protocol):
+    """Optional channel capability for updating a child-conversation title."""
+
+    async def set_thread_title(self, child_jid: str, title: str) -> None: ...
+
+
 @dataclass(frozen=True)
 class EnsuredThread:
     """Result of idempotently resolving one named child conversation."""
@@ -200,6 +207,24 @@ async def set_thread_kind(
     )
     if channel is not None:
         await channel.set_thread_kind(child_jid, kind)
+
+
+async def set_thread_title(
+    channels: list[Channel],
+    child_jid: str,
+    title: str,
+) -> None:
+    """Update a child title when the owning channel supports it."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(child_jid) and isinstance(candidate, ThreadTitleChannel)
+        ),
+        None,
+    )
+    if channel is not None:
+        await channel.set_thread_title(child_jid, title)
 
 
 async def ensure_thread(  # noqa: PLR0913 - one entry point owns all thread creation options.

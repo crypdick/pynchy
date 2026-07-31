@@ -263,9 +263,9 @@ class TestJobReconcile:
 
         tasks = {task.group_folder: task for task in await get_all_tasks()}
         assert tasks["fam"].chat_jid == "discord:channel:relationships"
-        assert tasks["fam"].derived_thread_name == "fam | fam-check"
+        assert tasks["fam"].derived_thread_name == "⚙️ fam-check"
         assert tasks["pynchy-dev"].chat_jid == "discord:channel:admin"
-        assert tasks["pynchy-dev"].derived_thread_name == "pynchy-dev | pynchy-check"
+        assert tasks["pynchy-dev"].derived_thread_name == "⚙️ pynchy-check"
 
     async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
         run_at = "2026-07-08T18:30:00-07:00"

@@ -21,7 +21,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
-from pynchy.host.orchestrator.threads import EnsuredThread, set_thread_kind
+from pynchy.host.orchestrator.threads import EnsuredThread, set_thread_kind, set_thread_title
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.identifiers import (
@@ -101,7 +101,7 @@ def _is_linear_task(task: ScheduledTask) -> bool:
 def _existing_named_task_binding(
     task: ScheduledTask,
     deps: ScheduledBindingDeps,
-) -> WorkspaceProfile | None:
+) -> tuple[WorkspaceProfile, WorkspaceProfile] | None:
     """Return a task's already-registered child runtime for its current owner."""
     if task.bound_chat_jid is None or task.bound_group_folder is None:
         return None
@@ -115,7 +115,7 @@ def _existing_named_task_binding(
         )
     if parent_workspace_name(profile.folder) != placement.owner.folder:
         return None
-    return profile
+    return profile, placement.owner
 
 
 def resolve_scheduled_group(
@@ -285,7 +285,14 @@ async def _bind_task_runtime(
         )
     existing = _existing_named_task_binding(task, deps)
     if existing is not None:
-        return existing, _task_thread_name(task)
+        profile, owner = existing
+        title = _task_thread_name(task)
+        await set_thread_title(deps.channels, profile.jid, title)
+        desired_name = f"{owner.name}/{title}"
+        if profile.name != desired_name:
+            profile = replace(profile, name=desired_name)
+            await deps.register_workspace(profile)
+        return profile, title
     return await _bind_named_thread(task, deps)
 
 
