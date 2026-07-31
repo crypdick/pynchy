@@ -77,6 +77,16 @@ async def test_api_request_returns_none_on_connection_failure(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_api_request_suppresses_unlogged_connection_failure(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path, port=1)
+
+    async with aiohttp.ClientSession() as session:
+        result = await litellm.api_request(session, gateway, "GET", "/v1/mcp/server")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_api_request_logs_and_returns_none_for_rejected_response(tmp_path: Path) -> None:
     async def rejected(_request: web.Request) -> web.Response:
         await asyncio.sleep(0)
@@ -185,8 +195,9 @@ async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
                     "server_id": "keep",
                 },
                 {"server_name": "browser", "url": "stale", "server_id": ""},
+                {"server_name": "browser", "url": "stale", "server_id": "stale"},
             ]
-        return True
+        return method != "DELETE"
 
     with (
         patch(
@@ -199,6 +210,7 @@ async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
 
     assert ("POST", "/v1/mcp/server") not in calls
     assert ("DELETE", "/v1/mcp/server/") not in calls
+    assert ("DELETE", "/v1/mcp/server/stale") in calls
 
 
 @pytest.mark.asyncio

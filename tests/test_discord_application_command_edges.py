@@ -17,10 +17,10 @@ from tests.test_discord_events import (
 )
 
 
-def _channel(delivered: list[Any]) -> DiscordChannel:
+def _channel(delivered: list[Any], *, group_policy: str = "open") -> DiscordChannel:
     return DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy=group_policy),
         "token",
         lambda _jid, message: delivered.append(message),
         lambda _jid, _timestamp, _chat_name: None,
@@ -65,3 +65,28 @@ async def test_duplicate_application_command_and_response_failure_are_safe():
 
     assert len(delivered) == 1
     interaction.response.send_message.assert_awaited_once_with("✅ /reset received", ephemeral=True)
+
+
+@pytest.mark.asyncio
+async def test_application_command_ignores_bot_interactions() -> None:
+    delivered: list[Any] = []
+    channel = _channel(delivered)
+    interaction = _application_interaction()
+    interaction.user.bot = True
+
+    await channel.events.handle_application_command(interaction, "reset")
+
+    assert delivered == []
+    interaction.response.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_application_command_allows_a_registered_workspace_destination() -> None:
+    delivered: list[Any] = []
+    channel = _channel(delivered, group_policy="allowlist")
+    channel.workspaces = lambda: {"discord:channel:c1": object()}
+
+    await channel.events.handle_application_command(_application_interaction(), "reset")
+
+    assert delivered[0].content == "/reset"
+    assert delivered[0].chat_jid == "discord:channel:c1"

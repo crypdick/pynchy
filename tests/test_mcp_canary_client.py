@@ -144,6 +144,11 @@ async def test_mcp_canary_client_reports_transport_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mcp_canary_client_allows_cleanup_before_entering() -> None:
+    await McpCanaryClient("http://unused/mcp").__aexit__()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("body", "status", "message"),
     [

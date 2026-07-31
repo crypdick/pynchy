@@ -279,6 +279,29 @@ async def test_google_calendar_canary_uses_real_mcp_tool_contract_and_removes_ev
     assert all(ref.startswith("google-calendar:") for ref in (*verified, *cleaned))
 
 
+@pytest.mark.action(
+    "calendar.google.calendar.list",
+    "calendar.google.event.list",
+    "calendar.google.event.create",
+    "calendar.google.event.read",
+    "calendar.google.event.delete",
+)
+@pytest.mark.asyncio
+async def test_google_calendar_canary_rejects_an_incomplete_mcp_tool_catalog():
+    client = _FakeGoogleMcpClient({"list-calendars", "list-events", "create-event", "get-event"})
+
+    @asynccontextmanager
+    async def client_context(_server_name: str):
+        yield client
+
+    scenario = GoogleCalendarRoundTripCanary(
+        "gcal.canary", "pynchy-canary", client_context=client_context
+    )
+
+    with pytest.raises(GoogleMcpCanaryError, match="missing required operational tools"):
+        await scenario.exercise(_context("calendar.google.round.trip"))
+
+
 @pytest.mark.action("drive.google.file.search", "drive.google.file.read")
 @pytest.mark.asyncio
 async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monkeypatch):

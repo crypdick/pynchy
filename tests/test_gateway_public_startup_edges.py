@@ -60,6 +60,7 @@ def test_configure_gateway_runtime_publishes_composed_settings() -> None:
     settings = object()
 
     configure_gateway_runtime(is_apple_container=False, get_settings=lambda: settings)  # type: ignore[arg-type]
+    configure_gateway_runtime(is_apple_container=True)
 
     assert get_settings() is settings
 
