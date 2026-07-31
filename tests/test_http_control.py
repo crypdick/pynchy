@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import stat
 from dataclasses import replace
 from pathlib import Path
@@ -375,6 +376,31 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
             assert response.status == 200
         assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
         audit.assert_not_awaited()
+    finally:
+        await runner.cleanup()
+
+    assert not socket_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_start_replaces_a_stale_unix_socket(short_unix_socket_root: Path) -> None:
+    runtime = _runtime(
+        ServerConfig(unix_socket=Path("control.sock")),
+        project_root=short_unix_socket_root,
+    )
+    socket_path = runtime.unix_socket
+    assert socket_path is not None
+    socket_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_socket = socket.socket(socket.AF_UNIX)
+    stale_socket.bind(str(socket_path))
+    stale_socket.close()
+    assert stat.S_ISSOCK(socket_path.stat().st_mode)
+
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        await start_control_plane_sites(runner, runtime)
+        assert stat.S_ISSOCK(socket_path.stat().st_mode)
     finally:
         await runner.cleanup()
 
