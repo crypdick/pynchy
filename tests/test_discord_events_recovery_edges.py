@@ -161,3 +161,28 @@ async def test_unresolved_reply_does_not_add_empty_reply_metadata():
 
     assert msg.metadata is not None
     assert not any(key.startswith("reply_to_") for key in msg.metadata)
+
+
+def test_registers_gateway_handlers_without_native_command_support():
+    class EventClient:
+        def __init__(self) -> None:
+            self.handlers: dict[str, object] = {}
+
+        def event(self, handler: object) -> object:
+            self.handlers[handler.__name__] = handler
+            return handler
+
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    client = EventClient()
+    channel.client = client
+
+    channel.events.register()
+
+    assert set(client.handlers) == {"on_message", "on_raw_reaction_add"}
