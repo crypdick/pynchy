@@ -187,6 +187,27 @@ async def test_get_direct_server_configs_omits_routes_before_proxy_starts(tmp_pa
     assert configs == []
 
 
+@pytest.mark.asyncio
+async def test_get_direct_server_configs_uses_explicit_instance_ids(tmp_path, monkeypatch):
+    manager = await _synced_manager(
+        tmp_path,
+        monkeypatch,
+        {"browser": McpServerConfig(type="url", url="https://mcp.test/mcp")},
+        ("browser",),
+    )
+    manager.get_workspace_instance_ids = MagicMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("explicit instance IDs must bypass policy lookup")
+    )
+    configure_mcp_manager_runtime(
+        static_workspace_folder=lambda folder: folder,
+        load_resolved_workspace_config=lambda _folder, _settings: None,
+    )
+
+    configs = manager.get_direct_server_configs("workspace", instance_ids=())
+
+    assert configs == []
+
+
 def test_routed_workspace_without_resolved_policy_has_no_instances(tmp_path, monkeypatch):
     configure_mcp_resolution_runtime(
         apply_tool_access=lambda tools, resolved: (resolved, object()),
