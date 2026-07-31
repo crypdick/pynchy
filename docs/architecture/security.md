@@ -569,8 +569,8 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 
 | Capability | Admin Group | Non-Admin Group |
 |------------|------------|----------------|
-| Repo access | `/workspace/repos/<owner>/<repo>` (rw) | Via profile `repo` (worktree, rw) |
-| Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
+| Repo access | `/home/agent/src/<owner>/<repo>` (rw) | Via profile `repo` (worktree, rw) |
+| Group folder | `/home/agent/workspace` (rw) | `/home/agent/workspace` (rw) |
 | System prompts | Scoped via config | Scoped via config |
 | Personalization files through the project mount | Read-write | Not mounted |
 | Canonical personalization skills | Read-write | Read-write |

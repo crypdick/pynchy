@@ -28,7 +28,7 @@ def pynchy_agent_core_info(self) -> AgentCoreSpec:
 | `module` | `str` | Module importable inside the container. |
 | `class_name` | `str` | Core class to instantiate. |
 | `packages` | `tuple[str, ...]` | Packages to install in the container. |
-| `host_source_path` | `Path \| None` | Host source mounted at `/workspace/plugins/{name}/`. |
+| `host_source_path` | `Path \| None` | Host source mounted at `/opt/pynchy/plugin-hooks/{name}/`. |
 
 For selecting built-in cores, see [Agent cores](../../usage/agent-cores.md).
 

@@ -7,7 +7,7 @@ and the claude-cli core wires it as a ``PreCompact`` command hook that runs
 logic here is the single source of truth so the two cores can't drift.
 
 Given a session's JSONL transcript path, this parses the user/assistant turns,
-writes a markdown copy to ``/workspace/group/conversations``.
+writes a markdown copy to the agent workspace's ``conversations`` directory.
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
-CONVERSATIONS_DIR = Path("/workspace/group/conversations")
+from agent_runner.paths import AGENT_WORKSPACE
+
+CONVERSATIONS_DIR = AGENT_WORKSPACE / "conversations"
 
 
 class TranscriptMessage(TypedDict):

@@ -26,6 +26,7 @@ from agent_runner.events import (
     ToolResultEvent,
     ToolUseEvent,
 )
+from agent_runner.paths import AGENT_WORKSPACE
 
 from ._codex_config import (
     DEFAULT_CODEX_SANDBOX_MODE,
@@ -172,10 +173,10 @@ class CodexCLIAgentCore:
             "--dangerously-bypass-hook-trust",
         ]
 
-        # Real Pynchy containers always create /workspace/group. Host-side wet
+        # Real Pynchy containers always create the agent workspace. Host-side wet
         # runs do not, so only add it when the runtime has actually mounted it.
-        if self.config.cwd != "/workspace/group" and Path("/workspace/group").exists():
-            args += ["--add-dir", "/workspace/group"]
+        if self.config.cwd != str(AGENT_WORKSPACE) and AGENT_WORKSPACE.exists():
+            args += ["--add-dir", str(AGENT_WORKSPACE)]
 
         args.append("exec")
         if thread_id:

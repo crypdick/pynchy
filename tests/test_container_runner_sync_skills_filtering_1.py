@@ -251,7 +251,7 @@ class TestWriteSettingsJson:
                             {
                                 "matcher": "command",
                                 "pattern": "git push",
-                                "hook": "/workspace/scripts/guard_git.sh",
+                                "hook": "/opt/pynchy/scripts/guard_git.sh",
                             }
                         ]
                     }

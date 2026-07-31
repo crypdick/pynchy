@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
+from pynchy.host.paths import AGENT_MEMORY_CONTAINER_PATH
+
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
 _DYNAMIC_THREAD_DELIMITER = "__thread_"
 _AUTOMATION_MEMORY_ROOT = Path("wiki/systems/pynchy/automation-memory")
@@ -60,7 +62,7 @@ class LearningConfigError(ValueError):
 _runtime = LearningPathsRuntime(
     enabled=False,
     vault_root=None,
-    vault_mount_path="/workspace/vault",
+    vault_mount_path=AGENT_MEMORY_CONTAINER_PATH,
     default_profile_root="systems/pynchy/profiles/{profile}",
     memory_dir_name="memory",
     profile_for_workspace=lambda _folder: None,

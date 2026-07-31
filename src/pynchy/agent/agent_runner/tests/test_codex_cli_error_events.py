@@ -14,7 +14,7 @@ from agent_runner.events import ResultEvent
 def _core() -> CodexCLIAgentCore:
     return CodexCLIAgentCore(
         AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=None,
             group_folder="g",
             chat_jid="j",

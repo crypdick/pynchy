@@ -45,11 +45,11 @@ def _paths(tmp_path: Path) -> LearningPaths:
         profile="Deep Work",
         profile_slug="deep-work",
         vault_root=vault_root,
-        vault_mount_path="/workspace/vault",
+        vault_mount_path="/home/agent/memory",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
-        mounted_profile_root="/workspace/vault/systems/pynchy/profiles/deep-work",
-        mounted_memory_root="/workspace/vault/systems/pynchy/profiles/deep-work/memory",
+        mounted_profile_root="/home/agent/memory/systems/pynchy/profiles/deep-work",
+        mounted_memory_root="/home/agent/memory/systems/pynchy/profiles/deep-work/memory",
     )
 
 
@@ -62,7 +62,7 @@ def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> No
     normalized = " ".join(prompt.split())
 
     for snippet in (
-        "/workspace/vault",
+        "/home/agent/memory",
         "The mounted vault root is the global memory namespace.",
         "Use existing folder organization first.",
         (
@@ -76,8 +76,8 @@ def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> No
             "than adding new ones."
         ),
         "If nothing durable was learned, make no filesystem changes.",
-        "Profile fallback memory path: /workspace/vault/systems/pynchy/profiles/deep-work/memory",
-        "Personalization skill registry: /workspace/personalization/skills",
+        "Profile fallback memory path: /home/agent/memory/systems/pynchy/profiles/deep-work/memory",
+        "Personalization skill registry: /home/agent/skills",
         "Never author skills in a session `.claude/skills` or `.codex/skills` directory.",
         "folder-governed",
         "Pynchy's existing `SKILL.md` skill format",

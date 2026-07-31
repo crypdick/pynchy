@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
+from pynchy.host.paths import AGENT_SOURCE_CONTAINER_ROOT
 from pynchy.logger import logger
 
 # Warn when a token expires within this many days
@@ -147,7 +148,7 @@ def repo_host_root(settings: RepoSettings, slug: str) -> Path | None:
 def repo_container_path(slug: str) -> str:
     """Return the stable in-container mount point for a repo slug."""
     owner, repo_name = _slug_to_parts(slug)
-    return f"/workspace/repos/{owner}/{repo_name}"
+    return f"{AGENT_SOURCE_CONTAINER_ROOT}/{owner}/{repo_name}"
 
 
 def get_repo_token(slug: str) -> str | None:

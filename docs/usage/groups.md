@@ -26,4 +26,4 @@ The admin channel is the admin/control group (typically your WhatsApp self-chat)
 | Create and improve canonical personalization skills | Yes | Yes |
 | MCP service tools (calendar, etc.) | Auto-approved | Policy-gated |
 
-Non-admin groups can inherit profile `repo` entries, giving them read-write worktree mounts at `/workspace/repos/<owner>/<repo>`. Shared agent instructions are delivered via [prompts](prompts.md) rather than filesystem mounts. The host restricts IPC commands from non-admin groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).
+Non-admin groups can inherit profile `repo` entries, giving them read-write worktree mounts at `/home/agent/src/<owner>/<repo>`. Shared agent instructions are delivered via [prompts](prompts.md) rather than filesystem mounts. The host restricts IPC commands from non-admin groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).

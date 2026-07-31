@@ -6,7 +6,7 @@ Pynchy exposes desktop screenshot tools for macOS hosts.
 the PNG under the requesting workspace's IPC directory:
 
 - Host path: `data/ipc/<workspace>/screenshots/<timestamp>-<label>.png`
-- Container path: `/workspace/ipc/screenshots/<timestamp>-<label>.png`
+- Container path: `/run/pynchy/screenshots/<timestamp>-<label>.png`
 
 The container path is returned in the tool result so the agent can inspect or
 refer to the captured image without needing direct access to arbitrary host

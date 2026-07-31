@@ -37,6 +37,7 @@ from .ipc import (
     write_output,
 )
 from .models import ContainerInput, ContainerOutput
+from .paths import AGENT_SOURCE_ROOT, AGENT_WORKSPACE
 from .registry import create_agent_core
 
 # ---------------------------------------------------------------------------
@@ -157,8 +158,8 @@ def _agent_cwd(container_input: ContainerInput) -> str:
     primary_repo = (container_input.repo_accesses or [container_input.repo_access or ""])[0]
     if primary_repo:
         owner, repo_name = primary_repo.split("/", 1)
-        return f"/workspace/repos/{owner}/{repo_name}"
-    return "/workspace/group"
+        return str(AGENT_SOURCE_ROOT / owner / repo_name)
+    return str(AGENT_WORKSPACE)
 
 
 def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:

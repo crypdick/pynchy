@@ -71,7 +71,7 @@ _REASON = (
 )
 _WORKTREE_REASON = (
     "Do not work in the raw host checkout mount. Use the isolated worktree at "
-    "/workspace/repos/<owner>/<repo> instead; Pynchy coordinates publication through "
+    "/home/agent/src/<owner>/<repo> instead; Pynchy coordinates publication through "
     "sync_worktree_to_main."
 )
 _PERSONALIZATION_REASON = (

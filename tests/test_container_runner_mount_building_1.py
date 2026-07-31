@@ -90,7 +90,7 @@ class TestMountBuilding:
         with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
-        assert all(m.container_path != "/workspace/env-dir" for m in mounts)
+        assert all(m.container_path != "/etc/pynchy/env" for m in mounts)
         assert not (tmp_path / "data/env").exists()
 
     def test_ipc_mount_prepares_host_owned_response_directory(self, tmp_path: Path):
@@ -110,14 +110,14 @@ class TestMountBuilding:
 
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
-        assert all(m.container_path != "/workspace/vault" for m in mounts)
+        assert all(m.container_path != "/home/agent/memory" for m in mounts)
 
     def test_all_agents_mount_personalization_skills_readwrite(self, tmp_path: Path):
         with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         skill_mount = next(
-            mount for mount in mounts if mount.container_path == "/workspace/personalization/skills"
+            mount for mount in mounts if mount.container_path == "/home/agent/skills"
         )
         assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
         assert skill_mount.readonly is False
@@ -133,7 +133,7 @@ class TestMountBuilding:
             )
 
         memory_mount = next(
-            mount for mount in mounts if mount.container_path == "/workspace/automation-memory"
+            mount for mount in mounts if mount.container_path == "/home/agent/automation-memory"
         )
         assert memory_mount.host_path == str(memory_dir)
         assert memory_mount.readonly is False
@@ -489,12 +489,12 @@ class TestMountBuilding:
             )
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/repos/owner/pynchy" in paths
-            assert "/workspace/group" in paths
-            assert "/workspace/global" not in paths
+            assert "/home/agent/src/owner/pynchy" in paths
+            assert "/home/agent/workspace" in paths
+            assert "/home/agent/global" not in paths
 
     def test_nonadmin_group_has_no_global_mount(self, tmp_path: Path):
-        """Non-admin groups no longer get a /workspace/global mount.
+        """Non-admin groups no longer get a global mount.
 
         Directives replaced the old global CLAUDE.md overlay — content is now
         resolved host-side and passed via system_prompt_append.
@@ -514,12 +514,12 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/repos/owner/pynchy" not in paths
-            assert "/workspace/group" in paths
-            assert "/workspace/global" not in paths
+            assert "/home/agent/src/owner/pynchy" not in paths
+            assert "/home/agent/workspace" in paths
+            assert "/home/agent/global" not in paths
 
     def test_nonadmin_repo_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-admin group with repo access mounts the worktree under /workspace/repos."""
+        """Non-admin group with repo access mounts the worktree under /home/agent/src."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
@@ -542,7 +542,7 @@ class TestMountBuilding:
             )
 
             repo_mount = next(
-                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+                m for m in mounts if m.container_path == "/home/agent/src/owner/pynchy"
             )
             assert repo_mount.host_path == str(worktree_path)
             assert repo_mount.readonly is False
@@ -574,7 +574,7 @@ class TestMountBuilding:
             )
 
             repo_mount = next(
-                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+                m for m in mounts if m.container_path == "/home/agent/src/owner/pynchy"
             )
             assert repo_mount.host_path == str(worktree_path)
             assert repo_mount.readonly is False

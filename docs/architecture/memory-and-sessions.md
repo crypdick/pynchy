@@ -8,7 +8,7 @@ short-term conversation context. For user-facing guidance, see
 
 Pynchy mounts the configured Obsidian vault root directly into agent
 containers. The existing container-runtime mount mechanism provides the
-read-write mount at `/workspace/vault`; Pynchy doesn't copy or synchronize a
+read-write mount at `/home/agent/memory`; Pynchy doesn't copy or synchronize a
 second vault tree.
 
 Agents recall knowledge explicitly with the selected Obsidian skill. Pynchy
@@ -19,7 +19,7 @@ when and how to search, then reads the relevant canonical notes.
 
 Automatic learning can mount an Obsidian vault root into agent containers and
 run a hidden reviewer after successful turns. The configured vault root mounts
-read-write at `/workspace/vault` by default and acts as the global memory
+read-write at `/home/agent/memory` by default and acts as the global memory
 namespace. It is not a skill source.
 
 The reviewer receives a bounded packet from the completed turn, not the full transcript. It writes immediately when the packet contains durable learning, and it should use the vault's existing folder organization before falling back to profile-scoped paths. Memory notes rely on folder placement, not semantic frontmatter.
@@ -58,7 +58,7 @@ and receive it through `PYNCHY_AUTOMATION_MEMORY_DIR` by default. A task with
 doesn't delete previously written memory.
 
 Container executions mount only that task directory at
-`/workspace/automation-memory`. Direct-host and shell executions receive the
+`/home/agent/automation-memory`. Direct-host and shell executions receive the
 resolved absolute path. Both paths refer directly to the canonical Obsidian
 directory; there is no mirror or synchronization step.
 

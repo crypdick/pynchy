@@ -1,13 +1,13 @@
 """IPC protocol — file-based input/output for host↔container communication.
 
 Input protocol:
-  Initial: ContainerInput JSON read from /workspace/ipc/input/initial.json
+  Initial: ContainerInput JSON read from /run/pynchy/input/initial.json
            (written by host before container start, deleted after read)
-  IPC:     Follow-up messages written as JSON files to /workspace/ipc/input/
-           Sentinel: /workspace/ipc/input/_close — signals session end
+  IPC:     Follow-up messages written as JSON files to /run/pynchy/input/
+           Sentinel: /run/pynchy/input/_close — signals session end
 
 Output protocol:
-  Each event is written as a JSON file to /workspace/ipc/output/.
+  Each event is written as a JSON file to /run/pynchy/output/.
   Filenames are monotonic nanosecond timestamps ({ns}.json) for guaranteed
   ordering. Files are written atomically (write .json.tmp, then rename).
 """
@@ -29,11 +29,12 @@ from watchdog.observers import Observer
 
 from .models import ContainerInput, ContainerOutput
 
-IPC_INPUT_DIR = Path("/workspace/ipc/input")
+IPC_ROOT = Path(os.environ.get("PYNCHY_IPC_DIR", "/run/pynchy"))
+IPC_INPUT_DIR = IPC_ROOT / "input"
 IPC_INPUT_CLOSE_SENTINEL = IPC_INPUT_DIR / "_close"
 INITIAL_INPUT_FILE = IPC_INPUT_DIR / "initial.json"
 
-IPC_OUTPUT_DIR = Path("/workspace/ipc/output")
+IPC_OUTPUT_DIR = IPC_ROOT / "output"
 
 
 @dataclass(frozen=True)

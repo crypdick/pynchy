@@ -26,7 +26,7 @@ BAD_CONFIG_VALUE_MESSAGE = "bad config value"
 
 def _make_config(**overrides: object) -> AgentCoreConfig:
     defaults = {
-        "cwd": "/workspace/repos/owner/project",
+        "cwd": "/home/agent/src/owner/project",
         "session_id": None,
         "group_folder": "test",
         "chat_jid": "test@g.us",

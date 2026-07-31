@@ -22,7 +22,7 @@ def _core(
 ) -> CodexCLIAgentCore:
     return CodexCLIAgentCore(
         AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
+            cwd="/home/agent/src/owner/project",
             session_id=session_id,
             group_folder="g",
             chat_jid="j",
@@ -294,7 +294,7 @@ def test_new_session_query_spawns_expected_codex_command(tmp_path, monkeypatch):
     args = _command_args(spawn)
     assert str(args[0]).endswith("codex")
     assert args[1] == "--cd"
-    assert "/workspace/repos/owner/project" in args
+    assert "/home/agent/src/owner/project" in args
     assert "--ask-for-approval" in args
     assert "never" in args
     assert "--sandbox" in args
@@ -309,7 +309,7 @@ def test_query_skips_missing_group_workspace(tmp_path, monkeypatch):
 
     _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert "/workspace/group" not in _command_args(spawn)
+    assert "/home/agent/workspace" not in _command_args(spawn)
 
 
 def test_query_adds_mounted_group_workspace(tmp_path, monkeypatch):
@@ -320,7 +320,7 @@ def test_query_adds_mounted_group_workspace(tmp_path, monkeypatch):
 
     args = _command_args(spawn)
     add_dir = args.index("--add-dir")
-    assert args[add_dir : add_dir + 2] == ("--add-dir", "/workspace/group")
+    assert args[add_dir : add_dir + 2] == ("--add-dir", "/home/agent/workspace")
 
 
 @pytest.mark.parametrize(

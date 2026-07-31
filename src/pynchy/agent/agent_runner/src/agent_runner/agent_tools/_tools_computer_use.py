@@ -40,7 +40,7 @@ register_ipc_tool(
         "Inspect and operate the host desktop through a configured provider plugin. "
         "Capture first, preserve returned snapshot and element IDs exactly, then act "
         "through the same policy-enforced host tool. Screenshot artifacts appear under "
-        "/workspace/ipc/computer-use."
+        "/run/pynchy/computer-use."
     ),
     input_schema={
         "type": "object",

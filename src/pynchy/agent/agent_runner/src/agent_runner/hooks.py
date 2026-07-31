@@ -136,7 +136,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
     Args:
         plugin_hooks: List of hook specifications with 'name' and 'module_path' keys
                      Example: [{"name": "my-hook",
-                               "module_path": "/workspace/plugins/my-hook/hook.py"}]
+                               "module_path": "/opt/pynchy/plugin-hooks/my-hook.py"}]
 
     Returns:
         Dict mapping HookEvent to list of callable hook functions

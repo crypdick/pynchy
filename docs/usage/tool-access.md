@@ -57,7 +57,7 @@ Pynchy passes selected names to Docker with value-free `-e NAME` flags and
 supplies values through the Docker CLI process environment. Script, stdio, and
 direct-host processes receive a small operational environment plus their
 explicitly selected variables. Pynchy does not write generated workspace
-environment files or mount an `/workspace/env-dir`.
+environment files or mount an environment directory.
 
 ## Handle Missing Access
 

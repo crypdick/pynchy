@@ -7,7 +7,6 @@ import json
 import os
 import secrets
 import time
-from pathlib import Path
 from typing import Any, NoReturn
 
 from mcp.types import CallToolResult, TextContent
@@ -129,7 +128,7 @@ async def _publish_managed_feature_handle(
 
 def _exit_container() -> NoReturn:
     """Write the close sentinel and terminate after an explicit context reset."""
-    close_sentinel = Path("/workspace/ipc/input/_close")
+    close_sentinel = _ipc.get_agent_tool_runtime().ipc_dir / "input" / "_close"
     close_sentinel.parent.mkdir(parents=True, exist_ok=True)
     close_sentinel.write_text("", encoding="utf-8")
     os._exit(0)

@@ -284,12 +284,12 @@ class TestGuardGitHook:
             {"command": "cd /danger/raw-host-repos/owner/project && git status"},
         )
         assert not d.allowed
-        assert "/workspace/repos/<owner>/<repo>" in d.reason
+        assert "/home/agent/src/<owner>/<repo>" in d.reason
 
     @pytest.mark.asyncio
     async def test_worktree_checkout_allowed(self):
         d = await guard_git_hook(
-            "Bash", {"command": "cd /workspace/repos/owner/project && git status"}
+            "Bash", {"command": "cd /home/agent/src/owner/project && git status"}
         )
         assert d.allowed
 

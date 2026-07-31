@@ -18,8 +18,13 @@ from pynchy.agent_protocol.api import VolumeMount
 from pynchy.host.container_manager.contracts import AgentHomeMounts, RepoMount
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.paths import (
+    AGENT_AUTOMATION_MEMORY_CONTAINER_PATH,
+    AGENT_WORKSPACE_CONTAINER_PATH,
     PERSONALIZATION_RELATIVE_DIR,
     PERSONALIZATION_SKILLS_CONTAINER_PATH,
+    PYNCHY_AGENT_RUNNER_CONTAINER_PATH,
+    PYNCHY_IPC_CONTAINER_PATH,
+    PYNCHY_SCRIPTS_CONTAINER_PATH,
     SKILLS_DIRNAME,
 )
 from pynchy.plugins.api import agent_hook_mounts
@@ -102,7 +107,7 @@ def build_volume_mounts(  # noqa: PLR0913 - orchestration entry point with expli
         mounts.append(
             VolumeMount(
                 str(automation_memory_dir),
-                "/workspace/automation-memory",
+                AGENT_AUTOMATION_MEMORY_CONTAINER_PATH,
                 readonly=False,
             )
         )
@@ -125,11 +130,13 @@ def build_volume_mounts(  # noqa: PLR0913 - orchestration entry point with expli
     # Guard scripts (read-only: hook script + settings overlay)
     scripts_dir = project_root / "src" / "pynchy" / "agent" / "scripts"
     if scripts_dir.exists():
-        mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
+        mounts.append(VolumeMount(str(scripts_dir), PYNCHY_SCRIPTS_CONTAINER_PATH, readonly=True))
 
     # Agent-runner source (read-only, Python source for container)
     agent_runner_src = project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
-    mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
+    mounts.append(
+        VolumeMount(str(agent_runner_src), PYNCHY_AGENT_RUNNER_CONTAINER_PATH, readonly=True)
+    )
 
     _add_raw_repo_mount(
         mounts,
@@ -184,7 +191,7 @@ def _add_workspace_mounts(
         # Mount it at the same host path so git resolves the reference inside the container.
         git_dir = repo_mount.root / ".git"
         mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
-    mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
+    mounts.append(VolumeMount(str(group_dir), AGENT_WORKSPACE_CONTAINER_PATH, readonly=False))
 
 
 def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str) -> None:
@@ -194,7 +201,7 @@ def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str)
     # root-running deterministic runtime container.
     for sub in ("messages", "requests", "responses", "input", "output", "merge_results"):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
-    mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
+    mounts.append(VolumeMount(str(group_ipc_dir), PYNCHY_IPC_CONTAINER_PATH, readonly=False))
 
 
 def _add_raw_repo_mount(

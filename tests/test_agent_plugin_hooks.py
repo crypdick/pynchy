@@ -52,7 +52,7 @@ def test_agent_hook_specs_become_host_and_container_runner_configs(tmp_path: Pat
     assert container_agent_hook_configs(specs) == [
         {
             "name": "audit hook",
-            "module_path": "/workspace/plugin-hooks/000-audit-hook.py",
+            "module_path": "/opt/pynchy/plugin-hooks/000-audit-hook.py",
         }
     ]
 
@@ -65,7 +65,7 @@ def test_agent_hook_modules_are_mounted_read_only(tmp_path: Path) -> None:
     [mount] = agent_hook_mounts(specs)
 
     assert mount.host_path == str(hook_module)
-    assert mount.container_path == "/workspace/plugin-hooks/000-audit.py"
+    assert mount.container_path == "/opt/pynchy/plugin-hooks/000-audit.py"
     assert mount.readonly is True
 
 

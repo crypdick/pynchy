@@ -215,7 +215,7 @@ class GatewayConfig(_StrictModel):
 
 class ObsidianLearningConfig(_StrictModel):
     vault_root: str | None = None
-    mount_path: str = "/workspace/vault"
+    mount_path: str = "/home/agent/memory"
     default_profile_root: str = "systems/pynchy/profiles/{profile}"
     memory_dir_name: str = "memory"
 
