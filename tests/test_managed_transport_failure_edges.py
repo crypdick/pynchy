@@ -46,6 +46,10 @@ pytest_plugins = ("tests.git_policy_support",)
             "invalid-remote",
             "Publication blocked: managed feature remote branch returned invalid data.",
         ),
+        (
+            "ambiguous-remote",
+            "Publication blocked: managed feature remote branch returned invalid data.",
+        ),
         ("push", "Push failed: permission denied"),
     ],
 )
@@ -86,6 +90,13 @@ def test_isolated_transport_failures_block_publication(
         elif failure == "invalid-remote" and args[-1] == remote_ref and "ls-remote" in args:
             failure_result = subprocess.CompletedProcess(
                 args=args, returncode=0, stdout=f"not-a-sha\t{remote_ref}\n", stderr=""
+            )
+        elif failure == "ambiguous-remote" and args[-1] == remote_ref and "ls-remote" in args:
+            failure_result = subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=f"{'a' * 40}\t{remote_ref}\n{'b' * 40}\t{remote_ref}\n",
+                stderr="",
             )
         elif failure == "push" and "push" in args:
             failure_result = subprocess.CompletedProcess(

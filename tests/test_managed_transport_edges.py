@@ -55,10 +55,11 @@ def test_managed_object_store_accepts_regular_nested_objects(tmp_path: Path) -> 
 
 def test_managed_object_store_rejects_nested_symlink(tmp_path: Path) -> None:
     object_dir = tmp_path / "objects"
-    object_dir.mkdir()
+    nested_dir = object_dir / "aa"
+    nested_dir.mkdir(parents=True)
     target = tmp_path / "outside"
     target.write_text("outside\n")
-    (object_dir / "object").symlink_to(target)
+    (nested_dir / "object").symlink_to(target)
 
     assert managed_object_store_is_safe(object_dir) is False
 
