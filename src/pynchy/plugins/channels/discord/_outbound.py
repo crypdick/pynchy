@@ -35,8 +35,6 @@ async def send_approval(
 ) -> None:
     """Send an approval prompt with controls on the first Discord chunk."""
     chunks = chunk_discord_text(text)
-    if not chunks:
-        return
     view = DiscordApprovalView(
         channel=owner,
         jid=jid,
