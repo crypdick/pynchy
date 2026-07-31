@@ -83,3 +83,14 @@ async def test_agent_forwards_repo_resolution_notices_without_mcp_routes(
         (tmp_path / "data" / "ipc" / "test-group" / "input" / "initial.json").read_text()
     )
     assert initial_input["system_notices"] == ["repository recovered with local changes"]
+
+
+async def test_app_skips_optional_mcp_start_when_manager_is_unconfigured(
+    app: PynchyApp, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
+        lambda: None,
+    )
+
+    assert await app.container_agent_operations.ensure_workspace_mcp("test-group") == ()
