@@ -334,6 +334,8 @@ def test_startup_skips_rebase_when_worktree_divergence_cannot_be_read(tmp_path: 
     repo_context, runtime = _repo_context(tmp_path)
     repo_context.worktrees_dir.mkdir(parents=True)
     (repo_context.worktrees_dir / "group").mkdir()
+    unrelated_file = repo_context.worktrees_dir / "not-a-worktree"
+    unrelated_file.write_text("operator data\n")
 
     with (
         patch("pynchy.host.git_ops.worktree._branch_exists", return_value=True),
@@ -343,3 +345,4 @@ def test_startup_skips_rebase_when_worktree_divergence_cannot_be_read(tmp_path: 
         _reconcile(repo_context, runtime)
 
     rebase.assert_not_called()
+    assert unrelated_file.read_text() == "operator data\n"
