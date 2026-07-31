@@ -10,6 +10,7 @@ import pynchy.host.orchestrator.app as app_module
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder
 from pynchy.learning_packets import LearningPacket
+from pynchy.plugins.contracts import NewMessage
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -205,6 +206,38 @@ async def test_application_routes_message_and_reaction_adapters(
     interrupted.assert_awaited_once_with("turn", "group")
     reaction.assert_awaited_once_with(app, "chat", {"discord": "message"}, "thumbsup")
     clear_confirmation.assert_awaited_once_with(app, "chat")
+
+
+async def test_application_routes_inbound_messages_and_interaction_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    message = NewMessage(
+        id="message-1",
+        chat_jid="chat",
+        sender="user",
+        sender_name="User",
+        content="hello",
+        timestamp="2026-07-31T00:00:00Z",
+    )
+    ingest = AsyncMock()
+    inbound = AsyncMock()
+    reaction = AsyncMock()
+    update_offer = AsyncMock(return_value=True)
+    monkeypatch.setattr(app_module.session_handler, "ingest_user_message", ingest)
+    monkeypatch.setattr(app_module.session_handler, "on_inbound", inbound)
+    monkeypatch.setattr(app_module.reaction_handler, "handle_reaction", reaction)
+    monkeypatch.setattr(app_module.update_offer, "handle_update_offer_answer", update_offer)
+
+    await app.ingest_user_message(message, source_channel="slack")
+    await app.on_inbound("chat", message)
+    await app.on_reaction("chat", "message-1", "user", "thumbsup")
+    await app.on_ask_user_answer("request-1", {"answer": "yes"})
+
+    ingest.assert_any_await(app, message, source_channel="slack")
+    inbound.assert_awaited_once_with(app, "chat", message)
+    reaction.assert_awaited_once_with(app, "chat", "message-1", "user", "thumbsup")
+    update_offer.assert_awaited_once_with("request-1", {"answer": "yes"}, app)
 
 
 def test_application_delegates_filtering_and_idle_callback_registration(
