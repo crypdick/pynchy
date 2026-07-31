@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -118,3 +119,21 @@ async def test_wait_for_ipc_message_combines_pending_messages_and_stops_observer
     assert await ipc.wait_for_ipc_message() == "first\nsecond"
     observer.stop.assert_called_once()
     observer.join.assert_called_once_with(timeout=2)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_ipc_message_polls_after_a_missed_watchdog_event(
+    tmp_path: Path, monkeypatch
+) -> None:
+    observer = Mock()
+    monkeypatch.setattr(ipc, "IPC_INPUT_DIR", tmp_path)
+    monkeypatch.setattr(ipc, "IPC_INPUT_CLOSE_SENTINEL", tmp_path / "_close")
+    monkeypatch.setattr(ipc, "Observer", lambda: observer)
+
+    async def write_after_timeout() -> None:
+        await asyncio.sleep(0.25)
+        (tmp_path / "001.json").write_text(json.dumps({"type": "message", "text": "polled"}))
+
+    writer = asyncio.create_task(write_after_timeout())
+    assert await asyncio.wait_for(ipc.wait_for_ipc_message(), timeout=2) == "polled"
+    await writer
