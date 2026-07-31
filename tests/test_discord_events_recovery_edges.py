@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -274,6 +275,38 @@ async def test_duplicate_and_self_messages_are_not_delivered():
     )
 
     assert [item.content for item in delivered] == ["hello"]
+
+
+async def test_recent_redelivery_stays_deduplicated_after_cache_pruning():
+    delivered: list[Any] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        "token",
+        lambda _jid, message: delivered.append(message),
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.bot_user_id = BOT_ID
+    messages = [
+        replace(
+            _message(
+                author=_user("5"),
+                guild_id="g1",
+                channel_id="c1",
+                content=f"message-{index}",
+                mentions=(BOT_ID,),
+            ),
+            id=f"message-{index}",
+        )
+        for index in range(501)
+    ]
+
+    for message in messages:
+        await channel.events.handle_inbound_message(message)
+    await channel.events.handle_inbound_message(messages[-1])
+
+    assert len(delivered) == 501
 
 
 async def test_empty_discord_message_has_empty_content_without_fallbacks():
