@@ -101,7 +101,7 @@ def test_uncommitted_repository_without_head_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_repository_without_origin_is_rejected(tmp_path: Path):
@@ -114,7 +114,7 @@ def test_repository_without_origin_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_origin_without_owner_and_repo_is_rejected(tmp_path: Path):
@@ -127,7 +127,7 @@ def test_origin_without_owner_and_repo_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 @pytest.mark.parametrize(
@@ -151,7 +151,7 @@ def test_unsafe_github_origins_are_rejected(tmp_path: Path, origin: str):
     )
 
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_clone_remote_normalization_failure_cleans_staged_checkout(tmp_path: Path):
