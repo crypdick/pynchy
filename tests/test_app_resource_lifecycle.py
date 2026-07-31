@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder
+from pynchy.learning_packets import LearningPacket
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from pathlib import Path
 
     import pytest
@@ -272,3 +275,74 @@ async def test_application_defers_channel_catch_up_when_temporal_startup_is_unav
     )
 
     await app.catch_up_channels()
+
+
+async def test_application_runs_learning_review_through_the_workspace_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    packet = LearningPacket(
+        job_id="job-1",
+        chat_jid="chat",
+        group_folder="chat",
+        profile="default",
+        created_at="2026-07-31T00:00:00Z",
+        messages=[],
+        final_answer=None,
+        tool_counts={},
+        error_snippets=[],
+        loaded_skills=[],
+        provenance={},
+    )
+    run_agent = AsyncMock(return_value="success")
+    tasks: list[asyncio.Task[None]] = []
+
+    def enqueue_task(
+        _target: object,
+        _task_id: str,
+        callback: Callable[[], Awaitable[None]],
+    ) -> bool:
+        tasks.append(asyncio.create_task(callback()))
+        return True
+
+    async def review(
+        _packet: LearningPacket,
+        run_agent_via_queue: Callable[..., Awaitable[str]],
+        _prompt: str,
+    ) -> str:
+        await run_agent_via_queue(group, "chat", [])
+        return "completed"
+
+    app.run_agent = run_agent
+    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
+    monkeypatch.setattr(app_module, "run_host_learning_review", review)
+    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
+
+    assert await app.run_learning_review(packet) == "completed"
+    run_agent.assert_awaited_once()
+
+    start_review = AsyncMock()
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "start_learning_review_workflow",
+        start_review,
+    )
+    await app.start_learning_review_workflow(packet)
+    start_review.assert_awaited_once_with(packet)
+
+
+async def test_application_runs_declared_canaries_through_the_canary_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    run_canaries = AsyncMock(return_value=[])
+    monkeypatch.setattr(app_module, "run_declared_canaries", run_canaries)
+
+    assert await app.run_declared_canaries("default", ("scenario",)) == []
+
+    run_canaries.assert_awaited_once_with(
+        target_profile="default",
+        scenario_ids=("scenario",),
+        scheduler_deps=app,
+    )
