@@ -370,6 +370,48 @@ class TestRunAgent:
 
         assert result == "error"
 
+    async def test_scheduled_agent_receives_automation_memory_environment(
+        self, app: PynchyApp, tmp_path: Path
+    ):
+        fake_proc = FakeProcess(
+            output={
+                "status": "success",
+                "result": "scheduled",
+                "new_session_id": "s-scheduled",
+            }
+        )
+        driver = asyncio.create_task(fake_proc.schedule_output())
+        captured: dict[str, Any] = {}
+
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            captured.update(kwargs)
+            return _completed_awaitable(fake_proc)
+
+        group = app.workspaces["group@g.us"]
+        memory_dir = tmp_path / "automation-memory" / "job-security"
+        memory_dir.mkdir(parents=True)
+
+        with (
+            patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
+            _patch_test_settings(tmp_path),
+        ):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            result = await app.queue.run_serialized_task(
+                RuntimeTarget.from_workspace(group),
+                "test-run-scheduled-memory",
+                lambda: app.run_agent(
+                    group,
+                    "group@g.us",
+                    [{"message_type": "user", "content": "scheduled prompt"}],
+                    is_scheduled_task=True,
+                    automation_memory_dir=memory_dir,
+                ),
+            )
+
+        await driver
+        assert result == "success"
+        assert captured["env"]["PYNCHY_AUTOMATION_MEMORY_DIR"] == "/home/agent/automation-memory"
+
 
 class TestRecoverPendingMessages:
     """Test startup crash recovery."""
