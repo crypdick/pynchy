@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+from pynchy.config.api import CanaryConfig
 from pynchy.deployments import DeployChangeKind, DeployClaim, DeployClaimStatus
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.workflow_control import (
@@ -195,6 +196,29 @@ async def test_disabled_canary_activity_does_not_invoke_external_checks() -> Non
         temporal_scheduler.bind_scheduler_deps(None)
 
     assert result == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_successful_canary_run_without_transitions_stays_quiet() -> None:
+    deps = NullSchedulerDeps()
+    deps.scheduler_runtime = _scheduler_runtime(
+        canary=CanaryConfig(
+            enabled=True,
+            target_profile="external-canary",
+            scenario_ids=["calendar.round.trip"],
+        )
+    )
+    deps.run_declared_canaries = AsyncMock(return_value=[])
+    deps.broadcast_host_message = AsyncMock()
+    temporal_scheduler.bind_scheduler_deps(deps)
+    try:
+        result = await temporal_scheduler.run_scheduled_canaries()
+    finally:
+        temporal_scheduler.bind_scheduler_deps(None)
+
+    assert result == "completed:0"
+    deps.run_declared_canaries.assert_awaited_once_with("external-canary", ("calendar.round.trip",))
+    deps.broadcast_host_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
