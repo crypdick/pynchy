@@ -206,6 +206,15 @@ async def test_linear_resource_loading_rejects_incomplete_pagination(
 
 
 @pytest.mark.asyncio
+async def test_linear_resource_loading_propagates_a_malformed_projects_connection() -> None:
+    client = MagicMock()
+    client.query = AsyncMock(return_value={"team": {"projects": [], "states": {"nodes": []}}})
+
+    with pytest.raises(LinearBoardPayloadError, match="did not include projects"):
+        await load_team_resources(client, "team-1")
+
+
+@pytest.mark.asyncio
 async def test_linear_resource_loading_returns_projects_and_states_without_next_page() -> None:
     client = MagicMock()
     client.query = AsyncMock(
