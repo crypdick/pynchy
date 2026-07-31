@@ -164,6 +164,26 @@ def test_clone_readiness_failure_cleans_staged_checkout(tmp_path: Path):
     assert not list(tmp_path.glob(".repo.pynchy-clone-*"))
 
 
+def test_failed_staged_publish_cleans_verified_checkout(tmp_path: Path):
+    """A verified clone is removed if publishing it into place fails."""
+    repo_ctx = _repo_context(tmp_path)
+    staged_roots: list[Path] = []
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        staged_roots.append(target)
+        return True
+
+    with (
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pynchy.host.git_ops.repo._publish_staged_checkout", return_value=False),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert len(staged_roots) == 1
+    assert not staged_roots[0].exists()
+
+
 def test_empty_workspace_resolution_returns_no_repositories():
     with patch("pynchy.host.git_ops.repo.load_resolved_config", return_value=None):
         assert resolve_repos_for_group("group") == []
