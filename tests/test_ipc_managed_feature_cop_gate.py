@@ -42,6 +42,63 @@ def _managed_publication(tmp_path, *, slug: str = "safe-feature") -> ManagedFeat
 class TestManagedFeatureCopGate:
     """Managed publication must bind Cop to one host-derived feature identity."""
 
+    async def test_publication_rejects_a_group_without_a_repository(self, deps, tmp_path):
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch("pynchy.host.git_ops.repo.resolve_repos_for_group", return_value=[]),
+        ):
+            await dispatch(
+                {
+                    "type": "publish_managed_feature",
+                    "request_id": "managed-no-repo",
+                    "publication": "pull-request",
+                    "feature_slug": "safe-feature",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        result_dir = tmp_path / "data" / "ipc" / "admin-1" / "merge_results"
+        response = result_dir / "managed-no-repo.json"
+        assert "No repo configured for this group." in response.read_text()
+
+    async def test_publication_reports_unresolved_feature(self, deps, tmp_path):
+        publication = _managed_publication(tmp_path)
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[publication.repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.resolve_managed_feature_publication",
+                return_value=ManagedFeatureResolution(None, "feature is not manifest-bound"),
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "publish_managed_feature",
+                    "request_id": "managed-unresolved",
+                    "publication": "pull-request",
+                    "feature_slug": publication.feature_slug,
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        response = (
+            tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "managed-unresolved.json"
+        )
+        assert "feature is not manifest-bound" in response.read_text()
+
     async def test_cop_receives_bound_feature_and_publisher_revalidates(self, deps, tmp_path):
         publication = _managed_publication(tmp_path)
         result_dir = tmp_path / "data" / "ipc" / "admin-1" / "merge_results"

@@ -77,6 +77,14 @@ def test_default_runtime_binds_loopback_and_enables_unix_socket(
     assert runtime.unix_socket_bind is not None
 
 
+def test_runtime_rejects_an_overlong_unix_socket_path(tmp_path: Path) -> None:
+    with pytest.raises(ControlPlaneConfigurationError, match="portable length limit"):
+        _runtime(
+            ServerConfig(unix_socket=Path("socket-" + "x" * 101)),
+            project_root=tmp_path,
+        )
+
+
 def test_non_loopback_bind_requires_explicit_public_opt_in(tmp_path: Path) -> None:
     server = ServerConfig(host=PUBLIC_BIND_TEST_HOST)
 
@@ -396,5 +404,51 @@ async def test_deep_project_root_binds_unix_socket_through_short_relative_path(
     try:
         assert runtime.unix_socket.exists()
         assert stat.S_IMODE(runtime.unix_socket.stat().st_mode) == 0o600
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_control_plane_rejects_replacing_a_regular_file(tmp_path: Path) -> None:
+    socket_path = tmp_path / "control.sock"
+    socket_path.write_text("not a socket")
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=0,
+        unix_socket=socket_path,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        with pytest.raises(ControlPlaneConfigurationError, match="non-socket"):
+            await start_control_plane_sites(runner, runtime)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_control_plane_supports_tcp_without_unix_socket() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=0,
+        unix_socket=None,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        await start_control_plane_sites(runner, runtime)
+        assert runner.addresses
     finally:
         await runner.cleanup()
