@@ -306,6 +306,7 @@ async def test_voice_reply_tolerates_playback_completion_failure(
 
     def play_with_error(_audio: object, *, after) -> None:
         after(RuntimeError("playback failed"))
+        after(RuntimeError("duplicate callback"))
 
     with patch.object(voice_client, "play", side_effect=play_with_error):
         await channel.voice.speak("discord:voice:2", "hello")
