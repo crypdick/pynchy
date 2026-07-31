@@ -8,6 +8,12 @@ import discord
 
 from pynchy.logger import logger
 
+from ._ask_user_file_upload import (
+    AskUserFileButton,
+    _attachment_metadata,
+    _file_upload_settings,
+)
+
 if TYPE_CHECKING:
     from ._channel import DiscordChannel
 else:
@@ -42,6 +48,10 @@ def build_ask_user_text(questions: list[dict[str, Any]]) -> str:
         for idx, option in enumerate(options, 1):
             label = option.get("label", str(option)) if isinstance(option, dict) else str(option)
             lines.append(f"  {idx}. {label}")
+        if (upload := _file_upload_settings(question)) is not None:
+            _, max_files = upload
+            noun = "file" if max_files == 1 else "files"
+            lines.append(f"  Attach up to {max_files} {noun} with Answer.")
     return "\n".join(lines)
 
 
@@ -50,8 +60,13 @@ def supports_interactive_ask_user(questions: list[dict[str, Any]]) -> bool:
     if not questions or len(questions) > 4:
         return False
     if len(questions) > 1:
-        return all(len(question.get("options", [])) <= 25 for question in questions)
+        return all(
+            _file_upload_settings(question) is not None or len(question.get("options", [])) <= 25
+            for question in questions
+        )
     question = questions[0]
+    if _file_upload_settings(question) is not None:
+        return True
     options = question.get("options", [])
     return not options or len(options) <= _MAX_BUTTONS_TOTAL
 
@@ -240,7 +255,16 @@ class AskUserFormModal(discord.ui.Modal):
             prompt = str(question.get("question", "Question"))[:45] or key
             options = question.get("options", [])
             component: discord.ui.Item[Any]
-            if options:
+            upload_settings = _file_upload_settings(question)
+            if upload_settings is not None:
+                required, max_files = upload_settings
+                component = discord.ui.FileUpload(
+                    custom_id=f"{_FORM_MODAL_CUSTOM_ID}:{index}",
+                    required=required,
+                    min_values=1 if required else 0,
+                    max_values=max_files,
+                )
+            elif options:
                 component = discord.ui.Select(
                     custom_id=f"{_FORM_MODAL_CUSTOM_ID}:{index}",
                     placeholder="Select an answer",
@@ -280,9 +304,11 @@ class AskUserFormModal(discord.ui.Modal):
             self.add_item(discord.ui.Label(text=prompt, component=component))
 
     @staticmethod
-    def _value(component: object) -> str | list[str]:
+    def _value(component: object) -> str | list[str] | dict[str, list[dict[str, object]]]:
         if isinstance(component, discord.ui.TextInput):
             return component.value or ""
+        if isinstance(component, discord.ui.FileUpload):
+            return {"attachments": [_attachment_metadata(item) for item in component.values]}
         select = cast("discord.ui.Select[discord.ui.View]", component)
         values = list(select.values)
         return values if select.max_values > 1 else (values[0] if values else "")
@@ -318,6 +344,9 @@ class DiscordAskUserView(discord.ui.View):
             return
 
         question = questions[0]
+        if _file_upload_settings(question) is not None:
+            self.add_item(AskUserFileButton())
+            return
         options = question.get("options", [])
         if not options:
             self.add_item(AskUserTextButton())

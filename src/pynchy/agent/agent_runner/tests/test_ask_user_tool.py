@@ -149,6 +149,23 @@ class TestAskUserIPCRequest:
 
         assert request["payload"]["questions"] == questions
 
+    @pytest.mark.asyncio
+    async def test_questions_with_file_upload(self, ipc_dirs: dict[str, Path]) -> None:
+        questions = [
+            {
+                "question": "Upload evidence",
+                "fileUpload": {"required": False, "maxFiles": 3},
+            }
+        ]
+        responder = asyncio.create_task(
+            _respond_to_request(ipc_dirs, result={"answers": {"attachments": []}})
+        )
+
+        await asyncio.wait_for(call_tool("ask_user", {"questions": questions}), timeout=10.0)
+        request = await responder
+
+        assert request["payload"]["questions"] == questions
+
 
 class TestAskUserHandler:
     """The public handler validates before sending an IPC request."""
