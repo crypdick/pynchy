@@ -84,6 +84,7 @@ from pynchy.state import (
     get_conversation_control_binding,
     get_conversation_for_subject_key,
     get_in_flight_turn_for_group,
+    get_latest_reconcilable_work_item_transition,
     get_latest_unresolved_work_item_transition,
     get_task_by_id,
     get_task_run_logs,
@@ -223,7 +224,7 @@ def configure_linear_accounts_for(
             get_execution_for_issue=get_work_item_execution_for_issue,
             get_in_flight_turn=get_in_flight_turn_for_group,
             bind_execution_to_turn=bind_work_item_execution_to_turn,
-            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
+            get_latest_reconcilable_transition=get_latest_reconcilable_work_item_transition,
         )
     )
     configure_linear_work_item_runtime(

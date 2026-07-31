@@ -92,7 +92,7 @@ register_ipc_tool(
 register_ipc_tool(
     name="linear_reconcile_work_item",
     description=(
-        "Resolve a work item whose previous Linear transition has an unknown provider outcome. "
+        "Resolve an uncertain transition or a reviewed conflict already at its intended state. "
         "This checks Linear rather than retrying the write blindly."
     ),
     input_schema=_issue_schema(),

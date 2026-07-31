@@ -37,6 +37,9 @@ async def test_linear_tools_preserve_planning_gate_and_generic_execution_actions
     assert outcome["properties"]["evidence_refs"]["items"]["minLength"] == 1
     assert "Follow-ups" in (move.description or "")
     assert "typed outcome" in (move.description or "")
+    reconcile = tools["linear_reconcile_work_item"]
+    assert "reviewed conflict" in (reconcile.description or "")
+    assert "rather than retrying" in (reconcile.description or "")
     assert set(submit_plan.inputSchema["required"]) == {"issue_id", "plan"}
     assert "Awaiting Plan Approval" in (submit_plan.description or "")
     assert "revise" in (submit_plan.description or "")

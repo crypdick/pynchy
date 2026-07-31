@@ -66,7 +66,10 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_reconcile_work_item",
             "linear.workitem.reconcile",
-            "Reconcile an uncertain Linear work-item transition from provider state.",
+            (
+                "Reconcile an uncertain or reviewed conflicted Linear work-item transition "
+                "from provider state."
+            ),
             HostActionAccess.WRITE,
             handle_reconcile_work_item,
         ),

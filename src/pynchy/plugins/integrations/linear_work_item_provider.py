@@ -460,6 +460,8 @@ async def _apply_transition(
     current = await client.get_issue(attempt.execution.linear_issue_id)
     if current is None:
         raise ValueError("Linear issue no longer exists")
+    if state_id(current) == state_id(attempt.board.states[attempt.target_status]):
+        return current
     expected_state_ids = {state_id(attempt.board.states[key]) for key in attempt.expected_statuses}
     if state_id(current) not in expected_state_ids:
         return await _configured_runtime().resolve_transition(
