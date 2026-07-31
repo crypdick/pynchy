@@ -269,6 +269,24 @@ class TestDockerRuntime:
             "pynchy-legacy",
         ]
 
+    def test_list_containers_discards_invalid_timestamp_and_malformed_label(self):
+        rt = DockerContainerRuntime()
+        record = json.dumps(
+            {
+                "Names": "pynchy-malformed",
+                "State": "created",
+                "CreatedAt": "not-a-docker-timestamp",
+                "Labels": "malformed-label",
+            }
+        )
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as run:
+            run.return_value.stdout = record
+
+            [container] = rt.list_containers()
+
+        assert container.created_at is None
+        assert container.labels == {}
+
     def test_ensure_running_calls_docker_info(self):
         rt = DockerContainerRuntime()
         with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
