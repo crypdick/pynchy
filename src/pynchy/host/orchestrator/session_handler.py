@@ -228,7 +228,14 @@ async def _send_command_confirmation(
     emoji: str,
 ) -> None:
     """React to a channel command or retain a visible confirmation for local UIs."""
-    if source_message is not None and any(ch.owns_jid(chat_jid) for ch in deps.channels):
+    is_application_command = source_message is not None and isinstance(
+        (source_message.metadata or {}).get("application_command"), dict
+    )
+    if (
+        source_message is not None
+        and not is_application_command
+        and any(ch.owns_jid(chat_jid) for ch in deps.channels)
+    ):
         await send_reaction_to_channels(
             deps, chat_jid, source_message.id, source_message.sender, emoji
         )
@@ -244,7 +251,7 @@ async def trigger_manual_redeploy(
 ) -> None:
     """Handle a manual redeploy command through Temporal."""
     sha, config_hash = deps.current_deploy_revision()
-    logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
+    logger.info("Manual redeploy triggered via command", chat_jid=chat_jid)
     await _send_command_confirmation(deps, chat_jid, source_message, "🔄")
 
     await start_deploy_workflow(

@@ -8,7 +8,7 @@ configuration.
 
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
    Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**.
-2. Invite it with the `bot` scope and *View Channels*, *Send Messages*, *Send
+2. Invite it with the `bot` and `applications.commands` scopes and *View Channels*, *Send Messages*, *Send
    Messages in Threads*, *Read Message History*, *Add Reactions*, *Connect*, and
    *Speak*. Do not grant Administrator.
 3. Store the token in the host environment, then reference its name from
@@ -74,6 +74,22 @@ configuration.
 - Streaming responses with safe 2,000-character splitting
 - Safe mention defaults that never ping `@everyone` unless asked
 - History catch-up after reconnect
+
+## Application commands
+
+Discord exposes Pynchy's host controls as native application commands, so these
+controls do not depend on message text or the Message Content Intent:
+
+- `/pause`
+- `/reset`
+- `/end-session`
+- `/redeploy`
+- `/pending`
+- `/approve short_id` and `/deny short_id`
+
+Commands are registered globally when the bot connects. Discord can take time to
+propagate global command updates. Discord message text is not interpreted as a
+host control; other channels retain their configured text controls.
 
 For the optional voice workspace and inbound audio transcription, see [Voice and
 speech](voice-and-speech.md).
