@@ -8,6 +8,9 @@ from datetime import UTC, datetime, timedelta
 
 from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.plugins.runtimes.cleanup import (
+    ReapedContainer,
+    cleanup_runtime_build_state,
+    cleanup_runtime_builder,
     cleanup_runtime_images,
     reap_orphaned_agent_containers,
 )
@@ -175,3 +178,108 @@ def test_cleanup_runtime_images_prunes_dangling_images_only() -> None:
     assert cleanup_runtime_images(runtime) is True
 
     assert runtime.pruned_images == [False]
+
+
+def test_cleanup_runtime_builder_is_optional_and_reports_failures() -> None:
+    class NoBuilder:
+        pass
+
+    class SuccessfulBuilder:
+        def cleanup_builder(self) -> bool:
+            return True
+
+    class FailedBuilder:
+        def cleanup_builder(self) -> bool:
+            return False
+
+    class BrokenBuilder:
+        def cleanup_builder(self) -> bool:
+            raise OSError("builder unavailable")
+
+    assert cleanup_runtime_builder(NoBuilder()) is True
+    assert cleanup_runtime_builder(SuccessfulBuilder()) is True
+    assert cleanup_runtime_builder(FailedBuilder()) is False
+    assert cleanup_runtime_builder(BrokenBuilder()) is False
+
+
+def test_cleanup_runtime_images_requires_a_successful_prune_operation() -> None:
+    class NoPruner:
+        pass
+
+    class FailedPruner:
+        def prune_images(self, *, all_images: bool = False) -> bool:
+            assert all_images is False
+            return False
+
+    class BrokenPruner:
+        def prune_images(self, *, all_images: bool = False) -> bool:
+            raise subprocess.SubprocessError("prune failed")
+
+    assert cleanup_runtime_images(NoPruner()) is False
+    assert cleanup_runtime_build_state(FailedPruner()) is False
+    assert cleanup_runtime_images(BrokenPruner()) is False
+
+
+def test_reaper_skips_unknown_age_and_unrecognized_container_states() -> None:
+    runtime = FakeRuntime(
+        [
+            FakeRuntimeContainer("pynchy-no-age", "running"),
+            FakeRuntimeContainer(
+                "pynchy-weird",
+                "migrating",
+                created_at=datetime.now(UTC) - timedelta(days=30),
+            ),
+            FakeRuntimeContainer(
+                "pynchy-naive",
+                "running",
+                created_at=datetime(2020, 1, 1),  # noqa: DTZ001 - exercise naive timestamp normalization.
+            ),
+        ]
+    )
+
+    result = reap_orphaned_agent_containers(
+        runtime=runtime,
+        active_names=set(),
+        orphan_age_ms=_SEVEN_DAYS,
+    )
+
+    assert result == [
+        ReapedContainer("pynchy-naive", "running", "unowned-running"),
+    ]
+
+
+def test_reaper_continues_when_container_removal_fails() -> None:
+    class RemovalRuntime(FakeRuntime):
+        def __init__(self, *, error: bool) -> None:
+            super().__init__(
+                [
+                    FakeRuntimeContainer(
+                        "pynchy-stale",
+                        "stopped",
+                        created_at=datetime.now(UTC),
+                    )
+                ]
+            )
+            self.error = error
+
+        def remove_container(self, name: str, *, force: bool = True) -> bool:
+            if self.error:
+                raise subprocess.SubprocessError("remove failed")
+            return False
+
+    assert (
+        reap_orphaned_agent_containers(
+            runtime=RemovalRuntime(error=False),
+            active_names=set(),
+            orphan_age_ms=_SEVEN_DAYS,
+        )
+        == []
+    )
+    assert (
+        reap_orphaned_agent_containers(
+            runtime=RemovalRuntime(error=True),
+            active_names=set(),
+            orphan_age_ms=_SEVEN_DAYS,
+        )
+        == []
+    )

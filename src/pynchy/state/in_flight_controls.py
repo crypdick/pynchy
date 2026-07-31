@@ -13,7 +13,7 @@ from pynchy.agent_protocol.api import (
     CheckpointControlState,
     InFlightTurn,
 )
-from pynchy.state.connection import _get_db, atomic_write
+from pynchy.state.connection import atomic_write
 from pynchy.state.in_flight_turns import (
     _get_in_flight_turn_in_transaction,
     _timestamp,
@@ -123,21 +123,20 @@ async def _request_in_flight_turn_control_in_transaction(
 
 async def finalize_in_flight_pause(turn_id: str) -> bool:
     """Finish a pause request and release its execution claim."""
-    db = _get_db()
-    cursor = await db.execute(
-        """
-        UPDATE in_flight_turns
-        SET control_state = ?, claimed_at = NULL
-        WHERE turn_id = ? AND control_state IN (?, ?)
-        """,
-        (
-            CheckpointControlState.PAUSED.value,
-            turn_id,
-            CheckpointControlState.PAUSE_REQUESTED.value,
-            CheckpointControlState.PAUSED.value,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
+            UPDATE in_flight_turns
+            SET control_state = ?, claimed_at = NULL
+            WHERE turn_id = ? AND control_state IN (?, ?)
+            """,
+            (
+                CheckpointControlState.PAUSED.value,
+                turn_id,
+                CheckpointControlState.PAUSE_REQUESTED.value,
+                CheckpointControlState.PAUSED.value,
+            ),
+        )
     return cursor.rowcount == 1
 
 

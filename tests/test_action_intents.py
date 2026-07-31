@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -52,6 +51,7 @@ from tests.action_intents_support import (
     _transactional_action,
     _write_matrix_approval,
 )
+from tests.approval_support import write_encrypted_pending_approval
 
 pytest_plugins = ("tests.action_intents_support",)
 
@@ -203,20 +203,29 @@ async def test_tampered_matrix_approval_evidence_never_reaches_provider(
         request_id=request_id,
     )
     pending_path = decision.parents[1] / "pending_approvals" / decision.name
+    raw_pending = json.loads(pending_path.read_text(encoding="utf-8"))
     if tampering == "payload_hash":
-        pending["action_payload_sha256"] = "0" * 64
+        raw_pending["action_payload_sha256"] = "0" * 64
     elif tampering == "durable_intent":
         altered = dict(pending["action_payload"])
         altered["body"] = "replacement payload"
-        pending["action_payload"] = altered
-        pending["action_payload_sha256"] = hashlib.sha256(
-            json.dumps(altered, sort_keys=True).encode()
-        ).hexdigest()
+        write_encrypted_pending_approval(
+            tmp_path / "approvals",
+            request_id=request_id,
+            tool_name="matrix_route_send",
+            source_group=_MATRIX_FOLDER,
+            approval_chat_jid=str(_MATRIX_CONTROL),
+            request_data=pending["request_data"],
+            expires_after_seconds=300,
+            origin_conversation_id=str(_MATRIX_CONVERSATION),
+            action_payload=altered,
+        )
+        raw_pending = json.loads(pending_path.read_text(encoding="utf-8"))
     elif tampering == "pending_conversation":
-        pending["origin_conversation_id"] = "different-conversation"
+        raw_pending["origin_conversation_id"] = "different-conversation"
     else:
-        pending["approval_chat_jid"] = "discord:channel:different-thread"
-    pending_path.write_text(json.dumps(pending), encoding="utf-8")
+        raw_pending["approval_chat_jid"] = "discord:channel:different-thread"
+    pending_path.write_text(json.dumps(raw_pending), encoding="utf-8")
 
     response = await _process_matrix_approval(tmp_path, action, decision)
 

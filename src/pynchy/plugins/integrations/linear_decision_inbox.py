@@ -8,7 +8,6 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
     Iterable,
     Mapping,
 )
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,7 +15,10 @@ from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this a
     LinearPlanReviewAdmission,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
+from pynchy.plugins.integrations.linear_accounts import (
+    configured_linear_accounts,
+    linear_account_for_workspace,
+)
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves inbox annotations at runtime.
     LinearWorkspaceBoard,
     WorkspaceLike,
@@ -25,18 +27,18 @@ from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001 -
     LinearPlanReviewer,
 )
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    UnavailableExecutionProbe,
+    reconcile_provider_work_item_state,
+    retire_globally_unavailable_work_item,
+)
 from pynchy.plugins.integrations.linear_statuses import (
-    AWAITING_REVIEW_STATUS,
     FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
     READY_FOR_PLANNING_STATUS,
 )
-from pynchy.plugins.integrations.linear_work_item_completion import (
-    complete_reviewed_work_item,
-)
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
-    state_id,
     workspace_issue,
 )
 from pynchy.plugins.integrations.linear_work_item_tasks import (
@@ -50,10 +52,6 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
 from pynchy.scheduling.api import (
     ScheduledTask,  # noqa: TC001 - beartype resolves controller annotations.
 )
-from pynchy.work_items.api import (
-    WorkItemExecution,
-    WorkItemExecutionStatus,
-)
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.
 _PAGE_SIZE = 50
@@ -63,53 +61,6 @@ _DECISION_STATUSES = (
     "in_progress",
     FOLLOW_UPS_STATUS,
 )
-_RECONCILABLE_EXECUTION_STATUSES = frozenset(
-    {
-        WorkItemExecutionStatus.CLAIMING,
-        WorkItemExecutionStatus.IN_PROGRESS,
-        WorkItemExecutionStatus.AWAITING_REVIEW,
-        WorkItemExecutionStatus.FOLLOW_UPS,
-        WorkItemExecutionStatus.BLOCKED,
-        WorkItemExecutionStatus.UNKNOWN,
-    }
-)
-_EXECUTION_PROVIDER_STATUS = {
-    WorkItemExecutionStatus.CLAIMING: "in_progress",
-    WorkItemExecutionStatus.IN_PROGRESS: "in_progress",
-    WorkItemExecutionStatus.AWAITING_REVIEW: AWAITING_REVIEW_STATUS,
-    WorkItemExecutionStatus.FOLLOW_UPS: FOLLOW_UPS_STATUS,
-    WorkItemExecutionStatus.BLOCKED: "blocked",
-    WorkItemExecutionStatus.UNKNOWN: "in_progress",
-}
-_PROVIDER_DRIFT_BLOCKER = "Linear state no longer authorizes this execution"
-
-
-@dataclass(frozen=True)
-class LinearDecisionInboxRuntime:
-    """Durable cleanup operations used by provider-state reconciliation."""
-
-    list_executions: Callable[..., Awaitable[list[WorkItemExecution]]]
-    cancel_execution: Callable[..., Awaitable[WorkItemExecution]]
-    retire_execution: Callable[[WorkItemExecution], Awaitable[None]]
-
-
-@dataclass
-class _RuntimeState:
-    runtime: LinearDecisionInboxRuntime | None = None
-
-
-_runtime = _RuntimeState()
-
-
-def configure_linear_decision_inbox_runtime(runtime: LinearDecisionInboxRuntime) -> None:
-    """Set durable cleanup operations for missed Linear callbacks."""
-    _runtime.runtime = runtime
-
-
-def _configured_runtime() -> LinearDecisionInboxRuntime:
-    if _runtime.runtime is None:
-        raise RuntimeError("Linear decision inbox runtime has not been configured")
-    return _runtime.runtime
 
 
 async def _list_state_issues(
@@ -251,93 +202,6 @@ async def reconcile_linear_decision_inbox(  # noqa: PLR0913 - explicit controlle
     return created
 
 
-async def reconcile_provider_work_item_state(
-    client: LinearDecisionClient,
-    boards: Mapping[str, LinearWorkspaceBoard],
-) -> int:
-    """Retire local work whose provider state changed while callbacks were offline."""
-    runtime = _configured_runtime()
-    retired = 0
-    for workspace, board in boards.items():
-        executions = await runtime.list_executions(workspace=workspace)
-        latest_by_issue: dict[str, WorkItemExecution] = {}
-        for execution in executions:
-            current = latest_by_issue.get(execution.linear_issue_id)
-            if current is None or execution.attempt > current.attempt:
-                latest_by_issue[execution.linear_issue_id] = execution
-        for execution in latest_by_issue.values():
-            if execution.status not in _RECONCILABLE_EXECUTION_STATUSES:
-                continue
-            try:
-                retired += await _reconcile_provider_execution(
-                    client,
-                    workspace,
-                    board,
-                    execution,
-                )
-            except Exception:  # noqa: BLE001 - one provider item must not strand the account.
-                logger.exception(
-                    "Linear provider-state reconciliation failed",
-                    issue=execution.linear_issue_identifier,
-                    workspace=workspace,
-                )
-    return retired
-
-
-async def _reconcile_provider_execution(
-    client: LinearDecisionClient,
-    workspace: str,
-    board: LinearWorkspaceBoard,
-    execution: WorkItemExecution,
-) -> bool:
-    runtime = _configured_runtime()
-    issue = await client.get_issue(execution.linear_issue_id)
-    if issue is None:
-        cancelled = await runtime.cancel_execution(
-            execution.id,
-            blocker=f"{_PROVIDER_DRIFT_BLOCKER}: issue is unavailable",
-        )
-        await runtime.retire_execution(cancelled)
-        return True
-    current_state = state_id(issue)
-    expected_status = _EXECUTION_PROVIDER_STATUS[execution.status]
-    if current_state == decision_state_id(board, expected_status):
-        return False
-    if current_state == decision_state_id(board, "done"):
-        updated_at = issue.get("updatedAt")
-        delivery_id = (
-            f"reconcile:{execution.id}:"
-            f"{updated_at if isinstance(updated_at, str) else current_state}"
-        )
-        completed = await complete_reviewed_work_item(
-            workspace,
-            execution.linear_issue_id,
-            delivery_id,
-        )
-        if completed is None:
-            logger.warning(
-                "Linear Done reconciliation could not settle execution",
-                issue=execution.linear_issue_identifier,
-                execution_id=execution.id,
-            )
-            return False
-        await runtime.retire_execution(completed)
-        return True
-    authorized_states = {
-        decision_state_id(board, status) for status in set(_EXECUTION_PROVIDER_STATUS.values())
-    }
-    if current_state in authorized_states:
-        return False
-    state = issue.get("state")
-    state_name = state.get("name") if isinstance(state, dict) else current_state
-    cancelled = await runtime.cancel_execution(
-        execution.id,
-        blocker=f"{_PROVIDER_DRIFT_BLOCKER}: {state_name}",
-    )
-    await runtime.retire_execution(cancelled)
-    return True
-
-
 async def reconcile_all_linear_work_items(
     workspaces: Mapping[str, WorkspaceLike],
     boards: Mapping[str, LinearWorkspaceBoard],
@@ -348,37 +212,60 @@ async def reconcile_all_linear_work_items(
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
-    for account_name, account_boards in _boards_by_account(boards).items():
+    boards_by_account = _boards_by_account(boards)
+    accounts = {account.name: account for account in configured_linear_accounts()}
+    for account_boards in boards_by_account.values():
         workspace = next(iter(account_boards))
         account = linear_account_for_workspace(workspace)
-        if account is None or account.config.public_source == "forbidden":
-            continue
-        try:
-            async with linear_client(workspace=workspace) as client:
-                retired = await reconcile_provider_work_item_state(client, account_boards)
+        if account is not None:
+            accounts.setdefault(account.name, account)
+    eligible_accounts = {
+        name: account
+        for name, account in accounts.items()
+        if account.config.public_source != "forbidden"
+    }
+    reconciled_accounts: set[str] = set()
+    unavailable_probes: dict[str, UnavailableExecutionProbe] = {}
+    for account_name, account in eligible_accounts.items():
+        account_boards = boards_by_account.get(account_name, {})
+        workspace = next(iter(account_boards), account_name)
+        try:  # noqa: PLW0717 - one account client owns recovery and admission.
+            async with linear_client(account_name=account_name) as client:
+                retired = await reconcile_provider_work_item_state(
+                    client,
+                    account_boards,
+                    account_name=account_name,
+                    unavailable_probes=unavailable_probes,
+                )
+                reconciled_accounts.add(account_name)
                 if retired:
                     logger.warning(
                         "Retired Linear work after provider-state reconciliation",
                         account=account_name,
                         count=retired,
                     )
-                admitted.extend(
-                    await reconcile_linear_decision_inbox(
-                        client,
-                        workspaces.values(),
-                        account_boards,
-                        public_source=account.config.public_source is not False,
-                        review_plan=review_plan,
-                        broadcast_host_message=broadcast_host_message,
-                        defer_plan_review=defer_plan_review,
+                if account_boards:
+                    admitted.extend(
+                        await reconcile_linear_decision_inbox(
+                            client,
+                            workspaces.values(),
+                            account_boards,
+                            public_source=account.config.public_source is not False,
+                            review_plan=review_plan,
+                            broadcast_host_message=broadcast_host_message,
+                            defer_plan_review=defer_plan_review,
+                        )
                     )
-                )
         except Exception:  # noqa: BLE001 - one optional account must not stop other accounts.
             logger.exception(
                 "Linear work item reconciliation failed",
                 account=account_name,
                 workspace=workspace,
             )
+    if reconciled_accounts == set(eligible_accounts):
+        for probe in unavailable_probes.values():
+            if probe.account_names == reconciled_accounts:
+                await retire_globally_unavailable_work_item(probe.execution)
     if admitted:
         logger.info("Linear work item tasks admitted", count=len(admitted))
     return admitted

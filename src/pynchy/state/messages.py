@@ -264,12 +264,11 @@ async def prune_messages_by_sender(sender: str, before_timestamp: str) -> int:
     Only deletes rows matching the given sender — other messages are untouched.
     Returns the number of rows deleted.
     """
-    db = _get_db()
-    cursor = await db.execute(
-        "DELETE FROM messages WHERE sender = ? AND timestamp < ?",
-        (sender, before_timestamp),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            "DELETE FROM messages WHERE sender = ? AND timestamp < ?",
+            (sender, before_timestamp),
+        )
     return cursor.rowcount
 
 

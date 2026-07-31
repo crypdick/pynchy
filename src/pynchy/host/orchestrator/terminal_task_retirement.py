@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves adapter annotations at runtime.
+from functools import partial
+
+from pynchy.conversation.api import (
     Conversation,
     ConversationId,
+    ConversationSubjectKey,
 )
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
+from pynchy.host.orchestrator.webhook_terminal_retirement import (
+    TerminalConversationRetirementDeps,
+    retire_terminal_runtime,
+)
+from pynchy.identifiers import GroupFolder
 from pynchy.scheduling.api import (
     ScheduledTask,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
 )
@@ -15,10 +23,13 @@ from pynchy.state.api import (
     cancel_task_and_checkpoint,
     clear_in_flight_turn,
     get_conversation,
+    get_conversation_for_subject_key,
     get_task_by_id,
     get_tasks_for_conversation,
     get_unfinished_work_item_execution,
     get_work_item_execution_for_task,
+    retire_latest_terminal_work_item_conversation,
+    retire_terminal_execution_resources_if_unowned,
 )
 from pynchy.work_items.api import (
     WorkItemExecution,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
@@ -54,19 +65,64 @@ async def retire_conversation_tasks(conversation_id: ConversationId) -> None:
 
 async def retire_work_item_execution(execution: WorkItemExecution) -> None:
     """Stop exact durable work while preserving its conversation and session."""
-    workflow_ids = (
-        {execution.temporal_workflow_id} if execution.temporal_workflow_id is not None else set()
-    )
-    if execution.task_id is not None:
-        task = await get_task_by_id(execution.task_id)
-        if task is not None and task.schedule_type == "once":
-            workflow_ids.add(agent_task_workflow_id(task))
-    for workflow_id in sorted(workflow_ids):
-        await cancel_scheduled_agent_workflow(workflow_id)
+    task = await get_task_by_id(execution.task_id) if execution.task_id is not None else None
+    await _cancel_execution_workflows(execution, task)
     if execution.task_id is not None:
         await cancel_task_and_checkpoint(execution.task_id)
     if execution.turn_id is not None:
         await clear_in_flight_turn(execution.turn_id)
+
+
+async def retire_terminal_work_item_execution_if_unowned(
+    execution: WorkItemExecution,
+) -> bool:
+    """Atomically retire exact terminal resources with an ownership fence."""
+    task = await get_task_by_id(execution.task_id) if execution.task_id is not None else None
+    return await retire_terminal_execution_resources_if_unowned(
+        execution,
+        partial(_cancel_execution_workflows, execution, task),
+    )
+
+
+async def _cancel_execution_workflows(
+    execution: WorkItemExecution,
+    task: ScheduledTask | None,
+) -> None:
+    """Cancel Temporal workflows associated with one exact execution."""
+    workflow_ids = (
+        {execution.temporal_workflow_id} if execution.temporal_workflow_id is not None else set()
+    )
+    if task is not None and task.schedule_type == "once":
+        workflow_ids.add(agent_task_workflow_id(task))
+    for workflow_id in sorted(workflow_ids):
+        await cancel_scheduled_agent_workflow(workflow_id)
+
+
+async def retire_provider_work_item_execution(
+    deps: TerminalConversationRetirementDeps,
+    execution: WorkItemExecution,
+    control_state_revision: str | None,
+) -> None:
+    """Apply a provider terminal snapshot through the shared conversation lifecycle."""
+    conversation = await get_conversation_for_subject_key(
+        ConversationSubjectKey(execution.linear_issue_id),
+        workspace=GroupFolder(execution.workspace),
+        namespace_suffix=":issue",
+    )
+    if conversation is None:
+        await retire_terminal_work_item_execution_if_unowned(execution)
+        return
+    retirement = await retire_latest_terminal_work_item_conversation(
+        conversation.id,
+        execution,
+        control_state_revision=control_state_revision,
+    )
+    # Shared conversation retirement finds bound active tasks; exact cleanup
+    # also catches task and turn projections detached before binding.
+    await retire_terminal_work_item_execution_if_unowned(execution)
+    if retirement is None:
+        return
+    await retire_terminal_runtime(deps, conversation.id, retirement, set())
 
 
 async def _unfinished_linear_execution_for_conversation(

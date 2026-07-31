@@ -476,8 +476,8 @@ def _redacted_container_log_tail(result: subprocess.CompletedProcess[str]) -> st
     if not combined:
         return "(no container log output)"
     redacted = re.sub(
-        r"(?i)\\b(token|secret|password|api[_-]?key|authorization)\\b\\s*[:=]\\s*\\S+",
-        r"\\1=<redacted>",
+        r"(?i)\b(token|secret|password|api[_-]?key|authorization)\b\s*[:=]\s*\S+",
+        r"\1=<redacted>",
         combined,
     )
     return redacted[-4000:]

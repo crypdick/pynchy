@@ -31,15 +31,14 @@ async def set_channel_cursor(
     channel_name: ChannelName, chat_jid: ChatJid, direction: str, value: str
 ) -> None:
     """Upsert a single cursor value."""
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute(
-        "INSERT OR REPLACE INTO channel_cursors"
-        " (channel_name, chat_jid, direction, cursor_value, updated_at)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (channel_name, chat_jid, direction, value, now),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO channel_cursors"
+            " (channel_name, chat_jid, direction, cursor_value, updated_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (channel_name, chat_jid, direction, value, now),
+        )
 
 
 async def advance_cursors_atomic(

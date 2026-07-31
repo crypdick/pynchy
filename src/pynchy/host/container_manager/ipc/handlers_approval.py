@@ -164,8 +164,8 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         return
 
     try:
-        raw_pending = await asyncio.to_thread(_read_json_file, pending_file)
-    except (json.JSONDecodeError, OSError) as exc:
+        raw_pending = await asyncio.to_thread(security_approval.read_pending_approval, pending_file)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         logger.error("Failed to read pending file", path=str(pending_file), err=str(exc))
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
@@ -173,7 +173,7 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
         logger.error("Rejected invalid pending approval", path=str(pending_file))
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
-    pending = cast("dict[str, Any]", raw_pending)
+    pending = raw_pending
     if (
         pending.get("request_id") != decision.request_id
         or pending.get("source_group") != source_group
@@ -364,14 +364,8 @@ async def _dispatch_approved_request(
             context.tool_name,
             deps,
         )
-    elif deps is None:
-        await asyncio.to_thread(
-            write_ipc_response,
-            ipc_response_path(context.source_group, context.request_id),
-            {"error": "Approval replay dependencies are unavailable."},
-        )
-        return
     else:
+        deps = cast("IpcDeps", deps)
         if context.gate is None:
             raise RuntimeError("Approval replay policy disappeared after validation")
         if context.action is not None and context.action.action_intent is not None:

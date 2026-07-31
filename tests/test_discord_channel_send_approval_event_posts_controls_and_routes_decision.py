@@ -145,6 +145,25 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 
 
 @pytest.mark.asyncio
+async def test_empty_approval_event_does_not_send_an_empty_message():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_event(
+        "discord:channel:1",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="",
+            metadata={"short_id": "js"},
+        ),
+    )
+
+    assert fake.sends == []
+
+
+@pytest.mark.asyncio
 async def test_approval_controls_reject_unauthorized_and_duplicate_decisions():
     callback = MagicMock()
     ch, view = await _approval_view(callback=callback)

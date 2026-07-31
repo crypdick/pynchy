@@ -208,9 +208,8 @@ async def _upsert_workspace_profile(
 
 async def delete_workspace_profile(jid: str) -> None:
     """Delete a workspace profile by JID."""
-    db = _get_db()
-    await db.execute("DELETE FROM registered_groups WHERE jid = ?", (jid,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute("DELETE FROM registered_groups WHERE jid = ?", (jid,))
 
 
 async def get_all_workspace_profiles() -> dict[str, WorkspaceProfile]:

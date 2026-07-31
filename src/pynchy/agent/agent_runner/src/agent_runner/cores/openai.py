@@ -212,11 +212,11 @@ def _handle_tool_call_item(item: object) -> AgentEvent:
 
 
 def _handle_tool_call_output_item(item: object) -> AgentEvent:
-    tool_result_id, output = extract_tool_result(item)
+    tool_result_id, output, is_error = extract_tool_result(item)
     return ToolResultEvent(
         tool_result_id=tool_result_id,
         tool_result_content=output,
-        tool_result_is_error=False,
+        tool_result_is_error=is_error,
     )
 
 

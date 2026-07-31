@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
 from pynchy.deployments import (
@@ -25,15 +27,15 @@ from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRa
 from pynchy.host.orchestrator.http_server import (
     ControlPlaneReadiness,
     HttpDeployOperations,
+    PreparedHttpServer,
     activate_http_server,
     create_http_app,
     prepare_http_server,
     publish_http_server,
+    start_http_server,
 )
 
 if TYPE_CHECKING:
-    from aiohttp import web
-
     from pynchy.scheduling.api import ScheduledTask
     from pynchy.workspace.api import WorkspaceProfile
 
@@ -460,3 +462,251 @@ async def test_runtime_harness_ingress_calls_real_ingestion_dependency(
         assert deps.runtime_messages == [("runtime:pynchy", "hello")]
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/work-items?limit=0",
+        "/actions?limit=201",
+        "/webhook-effects?limit=not-a-number",
+        "/canaries/report?limit=0",
+        "/canaries/runs?limit=201",
+    ],
+)
+async def test_diagnostic_endpoints_reject_invalid_limits(path: str) -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.get(path)
+        assert response.status == 400
+        assert await response.json() == {"error": "limit must be an integer from 1 to 200"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_webhook_effects_accept_all_status_filter() -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.list_webhook_effects",
+            new=AsyncMock(return_value=[]),
+        ) as list_effects:
+            response = await client.get("/webhook-effects?status=all")
+        assert response.status == 200
+        assert await response.json() == {"status": "all", "effects": []}
+        list_effects.assert_awaited_once_with(status=None, limit=100)
+
+        response = await client.get("/webhook-effects?status=unknown")
+        assert response.status == 400
+        assert await response.json() == {"error": "unknown webhook effect status"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_webhook_effect_absence_validates_json_and_conflicts() -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/webhook-effects/effect-1/reconcile-absent",
+            data=b"not-json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "verified_absent must be exactly true"}
+
+        with patch(
+            "pynchy.host.orchestrator.http_server.reconcile_webhook_effect_absent",
+            new=AsyncMock(side_effect=ValueError("effect already resolved")),
+        ):
+            response = await client.post(
+                "/webhook-effects/effect-1/reconcile-absent",
+                json={"verified_absent": True},
+            )
+        assert response.status == 409
+        assert await response.json() == {"error": "effect already resolved"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_harness_ingress_rejects_invalid_bodies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json=["not", "an", "object"],
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "request body must be an object"}
+
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json={"jid": "runtime:pynchy"},
+        )
+        assert response.status == 400
+        assert await response.json() == {"error": "jid and content are required strings"}
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_prepare_http_server_cleans_runner_when_setup_fails() -> None:
+    runner = web.AppRunner(web.Application())
+    setup = AsyncMock(side_effect=RuntimeError("runner setup failed"))
+    cleanup = AsyncMock()
+    with (
+        patch(
+            "pynchy.host.orchestrator.http_server.collect_webhook_routes",
+            return_value=(),
+        ),
+        patch("pynchy.host.orchestrator.http_server.web.AppRunner", return_value=runner),
+        patch("aiohttp.web_runner.AppRunner.setup", new=setup),
+        patch("aiohttp.web_runner.AppRunner.cleanup", new=cleanup),
+        pytest.raises(RuntimeError, match="runner setup failed"),
+    ):
+        await prepare_http_server(MockHttpDeps(), runtime=_runtime())
+    cleanup.assert_awaited_once_with()
+
+
+def _prepared_http_server(runner: web.AppRunner) -> PreparedHttpServer:
+    return PreparedHttpServer(
+        runner=runner,
+        runtime=_runtime(),
+        app=web.Application(),
+        readiness=ControlPlaneReadiness(),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["activate", "recover"])
+async def test_start_http_server_cleans_runner_after_lifecycle_failure(
+    failure_stage: str,
+) -> None:
+    runner = web.AppRunner(web.Application())
+    cleanup = AsyncMock()
+    prepared = _prepared_http_server(runner)
+    activate = AsyncMock(return_value=runner)
+    recover = AsyncMock()
+    if failure_stage == "activate":
+        activate.side_effect = RuntimeError("activation failed")
+    else:
+        recover.side_effect = RuntimeError("route recovery failed")
+    with (
+        patch(
+            "pynchy.host.orchestrator.http_server.prepare_http_server",
+            new=AsyncMock(return_value=prepared),
+        ),
+        patch("pynchy.host.orchestrator.http_server.activate_http_server", new=activate),
+        patch("pynchy.host.orchestrator.http_server.recover_http_routes", new=recover),
+        patch("aiohttp.web_runner.AppRunner.cleanup", new=cleanup),
+        pytest.raises(RuntimeError),
+    ):
+        await start_http_server(MockHttpDeps(), runtime=_runtime())
+    cleanup.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_start_http_server_publishes_after_recovery() -> None:
+    runner = web.AppRunner(web.Application())
+    prepared = _prepared_http_server(runner)
+    activate = AsyncMock(return_value=runner)
+    recover = AsyncMock()
+    with (
+        patch(
+            "pynchy.host.orchestrator.http_server.prepare_http_server",
+            new=AsyncMock(return_value=prepared),
+        ),
+        patch("pynchy.host.orchestrator.http_server.activate_http_server", new=activate),
+        patch("pynchy.host.orchestrator.http_server.recover_http_routes", new=recover),
+        patch("pynchy.host.orchestrator.http_server.publish_http_server") as publish,
+    ):
+        actual_runner = await start_http_server(MockHttpDeps(), runtime=_runtime())
+    assert actual_runner is runner
+    publish.assert_called_once_with(prepared)
+
+
+@pytest.mark.asyncio
+async def test_deploy_continues_when_pre_deploy_push_fails() -> None:
+    deps = MockHttpDeps()
+    deps.deploy_operations.push_local_commits.return_value = False
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        response = await client.post("/deploy")
+        assert response.status == 200
+        assert (await response.json())["status"] == "restarting"
+    finally:
+        await client.close()
+
+    deps.deploy_operations.push_local_commits.assert_called_once_with(skip_fetch=True)
+
+
+@pytest.mark.asyncio
+async def test_deploy_restores_dirty_stash_before_returning() -> None:
+    deps = MockHttpDeps()
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),  # fetch
+        _cp(stdout=" M local.txt\n"),  # stash
+        _cp(),  # rebase
+        _cp(),  # stash pop
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        response = await client.post("/deploy")
+        assert response.status == 200
+    finally:
+        await client.close()
+
+    assert deps.deploy_operations.run_git.call_args_list[-1].args == ("stash", "pop")
+
+
+@pytest.mark.asyncio
+async def test_deploy_rolls_back_when_import_validation_fails(tmp_path: Path) -> None:
+    deps = MockHttpDeps()
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),  # fetch
+        _cp(stdout="No local changes"),  # stash
+        _cp(),  # rebase
+        _cp(),  # reset --hard
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.subprocess.run",
+            return_value=_cp(returncode=1, stderr="import failed"),
+        ):
+            response = await client.post("/deploy")
+        assert response.status == 422
+        assert await response.json() == {
+            "error": "import validation failed",
+            "rolled_back_to": "old-sha",
+        }
+    finally:
+        await client.close()
+
+    assert deps.deploy_operations.run_git.call_args_list[-1].args == (
+        "reset",
+        "--hard",
+        "old-sha",
+    )
+    assert deps.broadcasts == [
+        ("admin-1@g.us", "Deploy failed — import validation error, rolled back to old-sha.")
+    ]

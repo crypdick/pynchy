@@ -14,7 +14,7 @@ from typing import Any
 from pynchy.conversation.api import (
     ConversationEvent,  # noqa: TC001 - beartype resolves annotations.
 )
-from pynchy.state.connection import _get_db
+from pynchy.state.connection import _get_db, atomic_write
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,30 +39,29 @@ async def store_conversation_event_pointer(
             f"Conversation ref event_id {ref.event_id!r} does not match event {event.event_id!r}"
         )
 
-    db = _get_db()
-    await db.execute(
-        """
-        INSERT OR IGNORE INTO conversation_events (
-            event_id, turn_id, chat_jid, timestamp, kind, sender, sender_name,
-            message_type, source_message_id, content_preview, trace_ref, metadata
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            event.event_id,
-            event.turn_id,
-            event.chat_jid,
-            event.timestamp,
-            event.kind.value,
-            event.sender,
-            event.sender_name,
-            event.message_type,
-            event.source_message_id,
-            event.preview,
-            ref.trace_ref,
-            _metadata_json(event),
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO conversation_events (
+                event_id, turn_id, chat_jid, timestamp, kind, sender, sender_name,
+                message_type, source_message_id, content_preview, trace_ref, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event.event_id,
+                event.turn_id,
+                event.chat_jid,
+                event.timestamp,
+                event.kind.value,
+                event.sender,
+                event.sender_name,
+                event.message_type,
+                event.source_message_id,
+                event.preview,
+                ref.trace_ref,
+                _metadata_json(event),
+            ),
+        )
 
 
 def _decode_metadata(value: str | None) -> dict[str, Any]:

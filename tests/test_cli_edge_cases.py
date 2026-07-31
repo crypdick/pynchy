@@ -70,9 +70,13 @@ def test_default_cli_reports_personalization_failure(
         Mock(side_effect=ValueError("bad mapping")),
     )
 
-    with pytest.raises(SystemExit) as exited:
+    with (
+        patch("dotenv.load_dotenv") as load_dotenv,
+        pytest.raises(SystemExit) as exited,
+    ):
         cli.main()
 
+    load_dotenv.assert_called_once_with()
     assert exited.value.code == 2
     assert capsys.readouterr().err == "Personalization validation failed: bad mapping\n"
 

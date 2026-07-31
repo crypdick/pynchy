@@ -11,7 +11,7 @@ else:
     Row = Any
 
 from pynchy.scheduling.api import HostJob
-from pynchy.state.connection import _get_db, _update_by_id
+from pynchy.state.connection import _get_db, _update_by_id, atomic_write
 
 
 def _row_to_host_job(row: Row) -> HostJob:
@@ -35,48 +35,46 @@ def _row_to_host_job(row: Row) -> HostJob:
 
 async def create_host_job(job: dict[str, Any]) -> None:
     """Create a host job."""
-    db = _get_db()
-    await db.execute(
-        """
-        INSERT INTO host_jobs
-            (id, name, command, schedule_type, schedule_value,
-             next_run, status, created_at, created_by, cwd,
-             timeout_seconds, enabled, memory_enabled)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            job["id"],
-            job["name"],
-            job["command"],
-            job["schedule_type"],
-            job["schedule_value"],
-            None,
-            job["status"],
-            job["created_at"],
-            job["created_by"],
-            job.get("cwd"),
-            job.get("timeout_seconds", 600),
-            1 if job.get("enabled", True) else 0,
-            1 if job.get("memory_enabled", True) else 0,
-        ),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            INSERT INTO host_jobs
+                (id, name, command, schedule_type, schedule_value,
+                 next_run, status, created_at, created_by, cwd,
+                 timeout_seconds, enabled, memory_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job["id"],
+                job["name"],
+                job["command"],
+                job["schedule_type"],
+                job["schedule_value"],
+                None,
+                job["status"],
+                job["created_at"],
+                job["created_by"],
+                job.get("cwd"),
+                job.get("timeout_seconds", 600),
+                1 if job.get("enabled", True) else 0,
+                1 if job.get("memory_enabled", True) else 0,
+            ),
+        )
 
 
 async def record_host_job_completion(job_id: str, *, completed: bool) -> None:
     """Record job execution evidence without maintaining Temporal-owned timing."""
-    db = _get_db()
     now = datetime.now(UTC).isoformat()
-    await db.execute(
-        """
-        UPDATE host_jobs
-        SET last_run = ?,
-            status = CASE WHEN ? THEN 'completed' ELSE status END
-        WHERE id = ?
-        """,
-        (now, completed, job_id),
-    )
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute(
+            """
+            UPDATE host_jobs
+            SET last_run = ?,
+                status = CASE WHEN ? THEN 'completed' ELSE status END
+            WHERE id = ?
+            """,
+            (now, completed, job_id),
+        )
 
 
 async def get_host_job_by_id(job_id: str) -> HostJob | None:
@@ -117,6 +115,5 @@ async def update_host_job(job_id: str, updates: dict[str, Any]) -> None:
 
 async def delete_host_job(job_id: str) -> None:
     """Delete a host job."""
-    db = _get_db()
-    await db.execute("DELETE FROM host_jobs WHERE id = ?", (job_id,))
-    await db.commit()
+    async with atomic_write() as db:
+        await db.execute("DELETE FROM host_jobs WHERE id = ?", (job_id,))

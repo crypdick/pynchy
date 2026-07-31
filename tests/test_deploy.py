@@ -23,14 +23,30 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.deployments import DeployChangeKind
 from pynchy.host.orchestrator.deploy import (
+    BuildResult,
     DeployGitRuntime,
+    RollbackResult,
     build_container_image,
     configure_deploy_git_runtime,
+    current_deploy_revision,
     finalize_deploy,
     rollback_deploy_checkout,
 )
 
 _CONFIG_HASH = "config-hash-001"
+
+
+def test_current_deploy_revision_requires_configured_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.deploy._runtime.runtime",
+        None,
+    )
+
+    with pytest.raises(RuntimeError, match="Deploy Git runtime has not been configured"):
+        current_deploy_revision()
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -118,6 +134,58 @@ class TestRollbackDeployCheckout:
 
         assert result.success is False
         assert "could not verify" in result.error
+
+    def test_empty_previous_sha_is_rejected(self):
+        result = rollback_deploy_checkout("")
+
+        assert result == RollbackResult(
+            success=False,
+            error="no previous deploy SHA was recorded",
+        )
+
+    def test_reports_when_git_reset_cannot_run(self):
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=MagicMock(side_effect=OSError("git unavailable")),
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result.success is False
+        assert result.error == "git reset could not run: git unavailable"
+
+    def test_reports_a_failed_git_reset(self):
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=lambda *_args: subprocess.CompletedProcess(
+                    args=["git"], returncode=1, stdout="", stderr="permission denied"
+                ),
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result.success is False
+        assert result.error == "permission denied"
+
+    def test_captures_the_configured_deploy_revision(self):
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "current-sha",
+                get_deploy_config_hash=lambda: "current-config",
+                run_git=MagicMock(),
+            )
+        )
+
+        revision = current_deploy_revision()
+
+        assert revision.commit_sha == "current-sha"
+        assert revision.config_hash == "current-config"
 
     @pytest.mark.parametrize(
         ("change_kind", "reason"),
@@ -341,3 +409,21 @@ class TestBuildContainerImage:
 
         assert result.success is True
         assert run.call_args.kwargs["timeout"] == 180
+
+    def test_skips_when_the_build_script_is_missing(self, tmp_path: Path) -> None:
+        result = build_container_image(tmp_path)
+
+        assert result == BuildResult(success=True, skipped=True)
+
+    def test_returns_build_stderr_when_the_script_fails(self, tmp_path: Path) -> None:
+        build_script = tmp_path / "src" / "pynchy" / "agent" / "build.sh"
+        build_script.parent.mkdir(parents=True)
+        build_script.touch()
+        completed = subprocess.CompletedProcess(
+            args=[str(build_script)], returncode=1, stdout="", stderr="image failed\n"
+        )
+
+        with patch("pynchy.host.orchestrator.deploy.subprocess.run", return_value=completed):
+            result = build_container_image(tmp_path)
+
+        assert result == BuildResult(success=False, stderr="image failed\n")

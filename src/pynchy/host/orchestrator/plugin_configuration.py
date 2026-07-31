@@ -56,7 +56,10 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )
-from pynchy.host.orchestrator.terminal_task_retirement import retire_work_item_execution
+from pynchy.host.orchestrator.terminal_task_retirement import (
+    retire_terminal_work_item_execution_if_unowned,
+    retire_work_item_execution,
+)
 from pynchy.identifiers import (
     ChatJid,  # beartype resolves composition callback annotations at runtime.
     GroupFolder,
@@ -101,10 +104,6 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
     LinearConversationRuntime,
     configure_linear_conversation_runtime,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import (
-    LinearDecisionInboxRuntime,
-    configure_linear_decision_inbox_runtime,
-)
 from pynchy.plugins.integrations.linear_legacy_work_items import (
     LinearLegacyWorkItemRuntime,
     configure_linear_legacy_work_item_runtime,
@@ -112,6 +111,10 @@ from pynchy.plugins.integrations.linear_legacy_work_items import (
 from pynchy.plugins.integrations.linear_planning_tasks import (
     LinearPlanningTaskRuntime,
     configure_linear_planning_task_runtime,
+)
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    LinearDecisionInboxRuntime,
+    configure_linear_decision_inbox_runtime,
 )
 from pynchy.plugins.integrations.linear_self_echoes import (
     LinearSelfEchoRuntime,
@@ -217,6 +220,7 @@ from pynchy.state.api import (
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     list_pending_conversation_ids,
+    list_terminal_work_item_executions_needing_repair,
     list_work_item_executions,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
@@ -228,6 +232,9 @@ from pynchy.state.api import (
     set_external_provider_cursor,
     store_event,
     update_task,
+)
+from pynchy.work_items.api import (
+    WorkItemExecution,  # noqa: TC001 - beartype resolves composition callback annotations.
 )
 from pynchy.workspace.api import (
     CapabilityRule,
@@ -349,9 +356,21 @@ def configure_linear_plugin(
     plugin_manager: pluggy.PluginManager,
     settings: Settings,
     start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: (
+        Callable[[WorkItemExecution, str | None], Awaitable[None]] | None
+    ) = None,
 ) -> None:
     """Inject the named Linear accounts resolved at application composition."""
     plugin = settings.plugins.get("linear")
+
+    async def retire_terminal_execution(
+        execution: WorkItemExecution,
+        control_state_revision: str | None,
+    ) -> None:
+        if retire_provider_execution is None:
+            await retire_work_item_execution(execution)
+            return
+        await retire_provider_execution(execution, control_state_revision)
 
     def workspace_tools(workspace: str) -> tuple[str, ...] | None:
         resolved = settings.resolved_workspace_config(workspace)
@@ -422,8 +441,12 @@ def configure_linear_plugin(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=list_work_item_executions,
+            list_terminal_repair_candidates=(list_terminal_work_item_executions_needing_repair),
+            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_work_item_execution,
+            retire_terminal_execution_if_unowned=(retire_terminal_work_item_execution_if_unowned),
+            retire_terminal_execution=retire_terminal_execution,
         )
     )
     configure_linear_work_items_runtime(
@@ -771,3 +794,27 @@ def configure_builtin_canaries(settings: Settings) -> None:
         ),
     )
     register_security_canary_scenarios(register_security)
+
+
+def configure_startup_plugins(
+    plugin_manager: pluggy.PluginManager,
+    settings: Settings,
+    start_work_item_reconciliation: Callable[[], Awaitable[None]],
+    retire_provider_execution: Callable[[WorkItemExecution, str | None], Awaitable[None]],
+) -> None:
+    """Configure every plugin runtime owned by core startup."""
+    configure_computer_use_plugins(plugin_manager, settings)
+    configure_caldav_plugin(settings)
+    configure_gog_plugin(settings)
+    configure_desktop_screenshot_plugin(plugin_manager, settings)
+    configure_linear_plugin(
+        plugin_manager,
+        settings,
+        start_work_item_reconciliation,
+        retire_provider_execution,
+    )
+    configure_observer_plugins(plugin_manager)
+    configure_marketplace_health_plugin(plugin_manager, settings)
+    configure_matrix_gateway_plugin(settings)
+    configure_google_setup_plugin(plugin_manager, settings)
+    configure_builtin_canaries(settings)

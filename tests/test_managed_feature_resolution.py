@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404 - tests model fixed Git subprocess results.
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -278,3 +279,135 @@ class TestManagedFeatureResolution:
         assert diagnostic == (
             "Publication blocked: configured repository 'owner/repo' object store is unavailable."
         )
+
+    def test_rejects_noncanonical_and_inactive_features(self, git_env: dict) -> None:
+        invalid = resolve_managed_feature_publication("Not a slug", [git_env["repo_ctx"]])
+        assert invalid.publication is None
+        assert invalid.error == (
+            "Publication blocked: feature_slug must be a canonical managed-feature slug."
+        )
+
+        inactive = resolve_managed_feature_publication("missing-feature", [git_env["repo_ctx"]])
+        assert inactive.publication is None
+        assert inactive.error == (
+            "Publication blocked: managed feature 'missing-feature' is not active in a "
+            "configured repository."
+        )
+
+    def test_rejects_unverifiable_head_and_object_format(self, git_env: dict) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "invalid-git-feature")
+        write_managed_manifest(project, [managed_record("invalid-git-feature")])
+
+        with patch(
+            "pynchy.host.git_ops.managed_feature.run_git",
+            return_value=subprocess.CompletedProcess(
+                args=["git", "rev-parse"], returncode=1, stdout="", stderr="broken head"
+            ),
+        ):
+            invalid_head = resolve_managed_feature_publication(
+                "invalid-git-feature", [git_env["repo_ctx"]]
+            )
+        assert invalid_head.publication is None
+        assert invalid_head.error == (
+            "Publication blocked: could not verify HEAD for managed feature 'invalid-git-feature'."
+        )
+
+        with patch(
+            "pynchy.host.git_ops.managed_feature.run_git",
+            side_effect=[
+                subprocess.CompletedProcess(
+                    args=["git", "rev-parse"],
+                    returncode=0,
+                    stdout="a" * 40,
+                    stderr="",
+                ),
+                subprocess.CompletedProcess(
+                    args=["git", "rev-parse"], returncode=1, stdout="", stderr="unknown format"
+                ),
+            ],
+        ):
+            invalid_format = resolve_managed_feature_publication(
+                "invalid-git-feature", [git_env["repo_ctx"]]
+            )
+        assert invalid_format.publication is None
+        assert invalid_format.error == (
+            "Publication blocked: could not verify Git object format for 'invalid-git-feature'."
+        )
+
+    def test_rejects_remote_metadata_and_commit_count_failures(self, git_env: dict) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "remote-metadata-feature")
+        write_managed_manifest(project, [managed_record("remote-metadata-feature")])
+
+        with patch("pynchy.host.git_ops.managed_feature._remote_default_branch", return_value=None):
+            missing_default = resolve_managed_feature_publication(
+                "remote-metadata-feature", [git_env["repo_ctx"]]
+            )
+        assert missing_default.publication is None
+        assert missing_default.error == (
+            "Publication blocked: managed feature 'remote-metadata-feature' targets 'main', "
+            "not the configured remote default branch."
+        )
+
+        with patch("pynchy.host.git_ops.managed_feature._fetch_remote_ref", return_value=None):
+            missing_base = resolve_managed_feature_publication(
+                "remote-metadata-feature", [git_env["repo_ctx"]]
+            )
+        assert missing_base.publication is None
+        assert missing_base.error == (
+            "Publication blocked: could not verify base for managed feature "
+            "'remote-metadata-feature'."
+        )
+
+        with patch("pynchy.host.git_ops.managed_feature._count_raw_commits", return_value=None):
+            missing_count = resolve_managed_feature_publication(
+                "remote-metadata-feature", [git_env["repo_ctx"]]
+            )
+        assert missing_count.publication is None
+        assert missing_count.error == (
+            "Publication blocked: could not verify commits for managed feature "
+            "'remote-metadata-feature'."
+        )
+
+    def test_revalidates_remote_base_and_redacts_patch_failure(self, git_env: dict) -> None:
+        project = git_env["project"]
+        create_managed_feature(git_env, "patch-revalidation-feature")
+        write_managed_manifest(project, [managed_record("patch-revalidation-feature")])
+        resolution = resolve_managed_feature_publication(
+            "patch-revalidation-feature", [git_env["repo_ctx"]]
+        )
+        publication = resolution.publication
+        assert publication is not None, resolution.error
+
+        redacted_url = "https://user:secret@example.com"  # pragma: allowlist secret
+        with patch(
+            "pynchy.host.git_ops.managed_feature.run_git_bounded_stdout",
+            return_value=Mock(
+                returncode=1,
+                stdout="",
+                stderr=f"fatal: {redacted_url} rejected",
+                exceeded_limit=False,
+            ),
+        ):
+            patch_text, diagnostic = read_managed_feature_patch(publication)
+        assert patch_text is None
+        assert diagnostic is not None
+        assert "secret" not in diagnostic
+        assert "https://***@example.com" in diagnostic
+
+        with patch(
+            "pynchy.host.git_ops.managed_feature.run_git_bounded_stdout",
+            return_value=Mock(returncode=0, stdout="partial", stderr="", exceeded_limit=True),
+        ):
+            patch_text, diagnostic = read_managed_feature_patch(publication)
+        assert patch_text is None
+        assert diagnostic == "Committed patch exceeds the Cop inspection context limit"
+
+        (project / "remote-change.txt").write_text("remote change\n", encoding="utf-8")
+        git(project, "add", "remote-change.txt")
+        git(project, "commit", "-m", "advance remote target")
+        git(project, "push", "origin", "main")
+        patch_text, diagnostic = read_managed_feature_patch(publication)
+        assert patch_text is None
+        assert diagnostic == "managed feature target changed after inspection"

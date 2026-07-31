@@ -26,6 +26,7 @@ from pynchy.conversation.models import (
 from pynchy.host.orchestrator import plugin_configuration
 from pynchy.identifiers import ChatJid, GroupFolder
 from pynchy.plugins.api import ConnectionRuntimeContext
+from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -81,6 +82,18 @@ def _delivery() -> ConversationDelivery:
         received_at="2026-07-29T00:00:00Z",
         payload={"body": "hello"},
     )
+
+
+def test_matrix_plugin_hook_requires_configured_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.matrix_gateway._runtime.runtime",
+        None,
+    )
+
+    with pytest.raises(RuntimeError, match="runtime has not been configured"):
+        matrix_gateway.MatrixGatewayPlugin().pynchy_connection_runtime()
 
 
 @pytest.mark.asyncio

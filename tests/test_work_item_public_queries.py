@@ -43,6 +43,21 @@ async def test_work_item_listing_scopes_workspace_without_hiding_other_workspace
     assert {execution.id for execution in await list_work_item_executions()} == {alpha.id, beta.id}
 
 
+async def test_work_item_listing_can_return_every_execution_for_reconciliation() -> None:
+    for index in range(101):
+        await create_work_item_claim(_claim(workspace="alpha", issue=_issue(f"all-{index}")))
+
+    assert len(await list_work_item_executions()) == 100
+    assert len(await list_work_item_executions(limit=None)) == 101
+
+
+async def test_workspace_listing_can_be_unbounded_for_reconciliation() -> None:
+    for index in range(3):
+        await create_work_item_claim(_claim(workspace="alpha", issue=_issue(f"alpha-{index}")))
+
+    assert len(await list_work_item_executions(workspace="alpha", limit=None)) == 3
+
+
 @pytest.mark.parametrize(
     ("issue", "error", "message"),
     [

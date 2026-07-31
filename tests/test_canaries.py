@@ -139,6 +139,23 @@ async def test_runner_executes_only_the_configured_scenarios():
 
 
 @pytest.mark.asyncio
+async def test_runner_records_unknown_config_revision_when_config_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    await init_test_database()
+    monkeypatch.chdir(tmp_path)
+
+    results = await run_declared_canaries(
+        target_profile="canary-profile",
+        scenario_ids=[_SCENARIO_ID],
+        executors={_SCENARIO_ID: PassingScenario()},
+        code_revision="code-a",
+    )
+
+    assert results[0].config_revision == "unknown"
+
+
+@pytest.mark.asyncio
 async def test_runner_records_exercise_failure_without_provider_details():
     await init_test_database()
 

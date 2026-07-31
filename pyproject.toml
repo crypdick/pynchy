@@ -10,6 +10,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "beartype>=0.22.9",
     "croniter>=6.0.0",
+    "cryptography>=48.0.1",
     "detect-secrets>=1.5.0",
     "mcp>=1.28.1",
     "pluggy>=1.6.0",
@@ -123,7 +124,7 @@ pythonpath = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
-addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0 --failed-first"
+addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0"
 timeout = 30
 markers = [
     "action(*ids): semantic action IDs covered by this behavioral test",
@@ -333,7 +334,7 @@ source = ["pynchy"]
 omit = ["*/tests/*", "*/test_*.py", "*/__pycache__/*", "*/conftest.py"]
 
 [tool.coverage.report]
-fail_under = 93
+fail_under = 95
 skip_empty = true
 exclude_also = [
     "def __repr__",

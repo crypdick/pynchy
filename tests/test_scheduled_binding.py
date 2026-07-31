@@ -39,6 +39,8 @@ from pynchy.host.orchestrator.scheduled_binding import (
     ScheduledTaskOwnershipError,
     ScheduledTaskTerminalError,
     ensure_scheduled_task_binding,
+    ensure_scheduled_task_conversation_open,
+    resolve_scheduled_group,
 )
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
@@ -116,7 +118,7 @@ def _task() -> ScheduledTask:
 class _BindingDeps:
     workspaces: dict[str, WorkspaceProfile]
     channels: list = field(default_factory=list)
-    ensured_jid: str = "discord:channel:scheduled-task"
+    ensured_jid: str | None = "discord:channel:scheduled-task"
     ensured: list[tuple[str, str]] = field(default_factory=list)
     scheduled_task_updates: list[tuple[str, dict[str, object]]] = field(default_factory=list)
 
@@ -504,3 +506,74 @@ async def test_linear_task_without_conversation_fails_before_execution() -> None
         match="no durable issue conversation",
     ):
         await ensure_scheduled_task_binding(task, _BindingDeps({owner.jid: owner}))
+
+
+def test_resolve_scheduled_group_finds_exact_owner_and_rejects_unknown_folder() -> None:
+    owner = _profile()
+
+    assert resolve_scheduled_group({owner.jid: owner}, owner.folder) == owner
+    assert resolve_scheduled_group({owner.jid: owner}, "missing") is None
+
+
+async def test_existing_bound_child_without_owner_cannot_be_reused() -> None:
+    bound = _profile(
+        jid="discord:channel:scheduled-task",
+        folder="owner__thread_discord-channel-scheduled-task",
+    )
+    task = replace(
+        _task(),
+        derived_thread_name="Owner | durable task",
+        bound_chat_jid=bound.jid,
+        bound_group_folder=bound.folder,
+    )
+    await create_task(task)
+
+    with pytest.raises(ScheduledTaskOwnershipError, match="owner workspace is unavailable"):
+        await ensure_scheduled_task_binding(task, _BindingDeps({bound.jid: bound}))
+
+
+async def test_named_binding_rebinds_a_stale_profile_with_the_same_folder() -> None:
+    owner = _profile()
+    stale = _profile(
+        jid="discord:channel:stale",
+        folder="owner__thread_discord-channel-scheduled-task",
+    )
+    task = replace(_task(), derived_thread_name="Owner | durable task")
+    await create_task(task)
+    deps = _BindingDeps({owner.jid: owner, stale.jid: stale})
+
+    bound = await ensure_scheduled_task_binding(task, deps)
+
+    assert bound.bound_chat_jid == deps.ensured_jid
+    assert stale.jid not in deps.workspaces
+    assert bound.bound_chat_jid is not None
+    assert deps.workspaces[bound.bound_chat_jid].folder == bound.bound_group_folder
+
+
+async def test_named_binding_rejects_thread_creation_without_a_chat_jid() -> None:
+    owner = _profile()
+    task = replace(_task(), derived_thread_name="Owner | durable task")
+    await create_task(task)
+
+    with pytest.raises(ScheduledTaskOwnershipError, match="no chat JID"):
+        await ensure_scheduled_task_binding(
+            task,
+            _BindingDeps({owner.jid: owner}, ensured_jid=None),
+        )
+
+
+async def test_routed_binding_rejects_a_missing_conversation() -> None:
+    owner = _profile()
+    task = replace(
+        _task(),
+        conversation_id="conversation-missing",
+        derived_thread_name="Owner | durable task",
+    )
+    await create_task(task)
+
+    with pytest.raises(ScheduledTaskOwnershipError, match="missing conversation"):
+        await ensure_scheduled_task_binding(task, _BindingDeps({owner.jid: owner}))
+
+
+async def test_conversation_open_check_is_a_no_op_for_named_tasks() -> None:
+    await ensure_scheduled_task_conversation_open(_task(), _BindingDeps({}))

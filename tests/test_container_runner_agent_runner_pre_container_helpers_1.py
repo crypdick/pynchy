@@ -84,6 +84,44 @@ _test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=Non
 
 class TestAgentRunnerPreContainerHelpers:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "output",
+        [
+            ContainerOutput(status="error", type="result", query_id="query-1"),
+            ContainerOutput(
+                status="success",
+                type="tool_result",
+                query_id="query-1",
+                tool_result_id="tool-1",
+                tool_result_is_error=True,
+            ),
+        ],
+    )
+    async def test_session_tracking_output_handler_logs_failures(
+        self,
+        output: ContainerOutput,
+    ) -> None:
+        deps = _AgentRunnerDeps()
+
+        with patch("pynchy.host.orchestrator._agent_runner_preflight.logger.error") as log_error:
+            handler = session_tracking_output_handler(
+                deps,
+                "test-group",
+                "test@g.us",
+                None,
+            )
+            await handler(output)
+
+        log_error.assert_called_once_with(
+            "Agent output failed",
+            group="test-group",
+            chat_jid="test@g.us",
+            query_id="query-1",
+            output_type=output.type,
+            tool_result_id=output.tool_result_id,
+        )
+
+    @pytest.mark.asyncio
     async def test_external_matrix_input_marks_security_taint(self):
         deps = _AgentRunnerDeps()
         taint = SessionSecurityTaint(corruption_tainted=True, secret_tainted=True)

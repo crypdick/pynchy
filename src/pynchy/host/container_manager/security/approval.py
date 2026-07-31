@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import secrets
 import string
 from collections.abc import (  # noqa: TC003 - beartype resolves expiry callback annotations at runtime.
@@ -30,7 +31,9 @@ from collections.abc import (  # noqa: TC003 - beartype resolves expiry callback
 )
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves approval file paths at runtime.
-from typing import Any, cast
+from typing import Any
+
+from cryptography.fernet import Fernet, InvalidToken
 
 from pynchy.host.container_manager.ipc.write import (
     ipc_response_path,
@@ -63,6 +66,11 @@ _SHORT_ID_ALPHABET = string.ascii_lowercase + string.digits
 # resolves it when the human responds.
 _mcp_proxy_futures: dict[str, asyncio.Future[bool]] = {}
 _approval_root: Path | None = None
+_PAYLOAD_KEY_FILE = "approval-payload.key"
+_ENCRYPTED_PAYLOAD_FIELD = "encrypted_payload"
+_REDACTION_REQUIRED_FIELD = "redaction_required"
+_REDACTION_REQUIRED = "required"
+_REDACTION_NOT_REQUIRED = "not_required"
 
 
 def configure_approval_state_root(path: Path) -> None:
@@ -134,6 +142,65 @@ def _path_exists(path: Path) -> bool:
 
 def _read_json_file(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _payload_cipher(root: Path) -> Fernet:
+    """Load or atomically create the host-only key for approval payloads."""
+    key_path = root / _PAYLOAD_KEY_FILE
+    try:
+        key = key_path.read_bytes()
+    except FileNotFoundError:
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        key = Fernet.generate_key()
+        try:
+            fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            key = key_path.read_bytes()
+        else:
+            with os.fdopen(fd, "wb") as key_file:
+                key_file.write(key)
+    return Fernet(key)
+
+
+def _decrypt_pending_payload(data: dict[str, Any], *, root: Path) -> dict[str, Any]:
+    encrypted_payload = data.pop(_ENCRYPTED_PAYLOAD_FIELD, None)
+    if encrypted_payload is None:
+        raise ValueError("Pending approval encrypted payload is missing")
+    if not isinstance(encrypted_payload, str):
+        raise TypeError("Pending approval encrypted payload is invalid")
+    try:
+        payload = json.loads(_payload_cipher(root).decrypt(encrypted_payload.encode()))
+    except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Pending approval encrypted payload cannot be read") from exc
+    if not isinstance(payload, dict):
+        raise TypeError("Pending approval encrypted payload is invalid")
+    data.update(payload)
+    return data
+
+
+def _redaction_marker(*, secret_tainted: bool) -> str:
+    """Encode security policy state without persisting a secret value."""
+    if secret_tainted:
+        return _REDACTION_REQUIRED
+    return _REDACTION_NOT_REQUIRED
+
+
+def _restore_secret_taint(data: dict[str, Any]) -> dict[str, Any]:
+    """Populate replay-facing secret taint from durable redaction state."""
+    marker = data.get(_REDACTION_REQUIRED_FIELD)
+    if marker == _REDACTION_REQUIRED:
+        data["secret_tainted"] = True
+    elif marker == _REDACTION_NOT_REQUIRED:
+        data["secret_tainted"] = False
+    return data
+
+
+def read_pending_approval(path: Path) -> dict[str, Any]:
+    """Read a pending approval, decrypting its replay payload when present."""
+    data = _read_json_file(path)
+    if not isinstance(data, dict):
+        raise TypeError("Pending approval is not an object")
+    return _restore_secret_taint(_decrypt_pending_payload(data, root=path.parent.parent.parent))
 
 
 def _pending_approval_files(pending_dir: Path) -> list[Path]:
@@ -210,6 +277,10 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
     pending_dir = _pending_approvals_dir(source_group)
     short_id = generate_short_id(source_group)
 
+    payload = {
+        "request_data": request_data,
+        "action_payload": action_payload,
+    }
     data = {
         "request_id": request_id,
         "guarded_action_id": str(guarded_action_id(request_id)),
@@ -219,8 +290,9 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
         "source_group": source_group,
         "approval_chat_jid": approval_chat_jid,
         "origin_conversation_id": origin_conversation_id,
-        "request_data": request_data,
-        "action_payload": action_payload,
+        _ENCRYPTED_PAYLOAD_FIELD: _payload_cipher(approval_state_root())
+        .encrypt(json.dumps(payload, sort_keys=True).encode())
+        .decode(),
         "action_payload_sha256": (
             hashlib.sha256(json.dumps(action_payload, sort_keys=True).encode()).hexdigest()
             if action_payload is not None
@@ -233,7 +305,7 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
         # Persist request-time taint because the in-memory SecurityGate can be
         # gone when a host-owned approval decision is replayed after restart.
         "corruption_tainted": corruption_tainted,
-        "secret_tainted": secret_tainted,
+        _REDACTION_REQUIRED_FIELD: _redaction_marker(secret_tainted=secret_tainted),
     }
 
     write_json_atomic(pending_dir / f"{request_id}.json", data, indent=2)
@@ -273,9 +345,9 @@ def list_pending_approvals(group: str | None = None) -> list[dict[str, Any]]:
             continue
         for filepath in pending_dir.glob("*.json"):
             try:
-                data = json.loads(filepath.read_text(encoding="utf-8"))
+                data = read_pending_approval(filepath)
                 results.append(data)
-            except (json.JSONDecodeError, OSError) as exc:
+            except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
                 logger.warning(
                     "Failed to read pending approval",
                     path=str(filepath),
@@ -304,10 +376,10 @@ def find_pending_by_short_id(short_id: str) -> dict[str, Any] | None:
             continue
         for filepath in pending_dir.glob("*.json"):
             try:
-                data = json.loads(filepath.read_text(encoding="utf-8"))
+                data = read_pending_approval(filepath)
                 if data.get("short_id") == short_id:
-                    return cast("dict[str, Any]", data)
-            except (json.JSONDecodeError, OSError):
+                    return data
+            except (json.JSONDecodeError, OSError, TypeError, ValueError):
                 continue
     return None
 
@@ -368,10 +440,10 @@ async def _expired_pending_approval(
     expire_action_intent: Callable[..., Awaitable[object]],
 ) -> dict[str, Any] | None:
     try:
-        data = cast("dict[str, Any]", await asyncio.to_thread(_read_json_file, filepath))
+        data = await asyncio.to_thread(read_pending_approval, filepath)
         timestamp = datetime.fromisoformat(data["timestamp"])
         age_seconds = (now - timestamp).total_seconds()
-    except (json.JSONDecodeError, OSError, KeyError) as exc:
+    except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError) as exc:
         logger.warning(
             "Failed to process pending approval",
             path=str(filepath),

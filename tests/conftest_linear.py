@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from asyncio import sleep
 from typing import TYPE_CHECKING
 
 from pynchy.host.orchestrator.api import static_workspace_folder
@@ -20,10 +21,6 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
     LinearConversationRuntime,
     configure_linear_conversation_runtime,
 )
-from pynchy.plugins.integrations.linear_decision_inbox import (
-    LinearDecisionInboxRuntime,
-    configure_linear_decision_inbox_runtime,
-)
 from pynchy.plugins.integrations.linear_legacy_work_items import (
     LinearLegacyWorkItemRuntime,
     configure_linear_legacy_work_item_runtime,
@@ -31,6 +28,10 @@ from pynchy.plugins.integrations.linear_legacy_work_items import (
 from pynchy.plugins.integrations.linear_planning_tasks import (
     LinearPlanningTaskRuntime,
     configure_linear_planning_task_runtime,
+)
+from pynchy.plugins.integrations.linear_provider_reconciliation import (
+    LinearDecisionInboxRuntime,
+    configure_linear_decision_inbox_runtime,
 )
 from pynchy.plugins.integrations.linear_self_echoes import (
     LinearSelfEchoRuntime,
@@ -90,6 +91,7 @@ from pynchy.state import (
     get_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
+    list_terminal_work_item_executions_needing_repair,
     list_work_item_executions,
     mark_webhook_effect_executing,
     mark_webhook_effect_outcome_unknown,
@@ -112,11 +114,21 @@ async def _noop_execution_retirement(_execution) -> None:
     pass
 
 
+async def _noop_superseded_execution_retirement(_execution) -> bool:
+    await sleep(0)
+    return False
+
+
+async def _noop_terminal_execution_retirement(_execution, _revision) -> None:
+    pass
+
+
 def configure_linear_accounts_for(
     settings: Settings,
     *,
     start_work_item_reconciliation=_noop_linear_reconciliation,
     retire_execution=_noop_execution_retirement,
+    retire_terminal_execution=_noop_terminal_execution_retirement,
 ) -> None:
     """Wire Linear account lookups to one test's resolved settings."""
 
@@ -196,8 +208,12 @@ def configure_linear_accounts_for(
     configure_linear_decision_inbox_runtime(
         LinearDecisionInboxRuntime(
             list_executions=list_work_item_executions,
+            list_terminal_repair_candidates=(list_terminal_work_item_executions_needing_repair),
+            get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
             cancel_execution=cancel_work_item_execution,
             retire_execution=retire_execution,
+            retire_terminal_execution_if_unowned=_noop_superseded_execution_retirement,
+            retire_terminal_execution=retire_terminal_execution,
         )
     )
     configure_linear_work_items_runtime(

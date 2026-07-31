@@ -20,7 +20,12 @@ from pynchy.config.api import (
 from pynchy.conversation.models import ConversationId
 from pynchy.identifiers import ChatJid
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.api import ApprovalTrigger, HostActionAccess
+from pynchy.plugins.api import (
+    ApprovalTrigger,
+    CapabilityProbeContext,
+    HostActionAccess,
+    ProbeStatus,
+)
 from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_connection import MatrixConnectionOperations
 from pynchy.plugins.integrations.matrix_gateway_client import (
@@ -201,7 +206,13 @@ def test_route_resolution_rejects_unknown_connection() -> None:
         resolve_matrix_routes((route,), {}, lambda _workspace: None)
 
 
-def _configure_matrix_gateway_runtime(settings) -> None:
+def _configure_matrix_gateway_runtime(
+    settings,
+    *,
+    control_thread_jid: ChatJid | None = None,
+) -> None:
+    if control_thread_jid is None:
+        control_thread_jid = ChatJid(_CONTROL)
     routes = _resolve_matrix_routes(settings)
     matrix_gateway.configure_matrix_gateway_runtime(
         matrix_gateway.MatrixGatewayRuntime(
@@ -215,7 +226,7 @@ def _configure_matrix_gateway_runtime(settings) -> None:
                 for name, connection in settings.connections.items()
                 if isinstance(connection, MatrixConnectionConfig)
             ),
-            get_control_thread_jid=AsyncMock(return_value=ChatJid(_CONTROL)),
+            get_control_thread_jid=AsyncMock(return_value=control_thread_jid),
             connection_operations=_connection_operations(),
         )
     )
@@ -473,6 +484,128 @@ async def test_route_send_returns_only_agent_safe_event_receipt(tmp_path: Path) 
     receipt = action.action_intent.receipt_from_response(result)
     assert receipt.provider_request_id == "$sent"
     assert receipt.receipt == {"event_id": "$sent"}
+
+
+@pytest.mark.action("chat.matrix.route.read")
+@pytest.mark.parametrize(
+    ("request_data", "error"),
+    [
+        ({}, "active conversation workspace"),
+        ({"source_group": "unbound"}, "not bound"),
+    ],
+)
+async def test_route_read_rejects_missing_workspace_bindings(
+    request_data: dict[str, object],
+    error: str,
+) -> None:
+    result = await _handlers()["matrix_route_read"](request_data)
+
+    assert error in result["error"]
+
+
+@pytest.mark.action("chat.matrix.route.send")
+async def test_route_send_rejects_blank_body_before_gateway_access(tmp_path: Path) -> None:
+    _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
+
+    result = await _handlers()["matrix_route_send"]({"source_group": _FOLDER, "body": " \t"})
+
+    assert "body must not be empty" in result["error"]
+
+
+@pytest.mark.action("chat.matrix.route.send")
+async def test_route_send_rejects_provider_destination_changes(tmp_path: Path) -> None:
+    _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
+    stub = StubMatrixGatewayClient(_portal())
+
+    with (
+        patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+        patch.object(
+            stub,
+            "send_message",
+            return_value=MatrixSendResult(room_id="!other:matrix.example.com", event_id="$sent"),
+        ),
+    ):
+        result = await _handlers()["matrix_route_send"](
+            {"source_group": _FOLDER, "body": "Private reply"}
+        )
+
+    assert "unexpected destination" in result["error"]
+
+
+@pytest.mark.action("chat.matrix.route.read")
+async def test_route_read_rejects_control_thread_changes(tmp_path: Path) -> None:
+    _bind_route()
+    _configure_matrix_gateway_runtime(
+        make_settings(data_dir=tmp_path), control_thread_jid=ChatJid("discord:thread:changed")
+    )
+
+    result = await _handlers()["matrix_route_read"]({"source_group": _FOLDER})
+
+    assert "control binding changed" in result["error"]
+
+
+@pytest.mark.action("chat.matrix.route.send")
+async def test_read_only_route_rejects_send_at_handler_boundary(tmp_path: Path) -> None:
+    _bind_route(outbound="read_only")
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
+
+    result = await _handlers()["matrix_route_send"](
+        {"source_group": _FOLDER, "body": "Private reply"}
+    )
+
+    assert result == {"error": "Matrix route is read-only"}
+
+
+@pytest.mark.action("chat.matrix.route.read")
+async def test_route_read_rejects_changed_live_portal_metadata(tmp_path: Path) -> None:
+    _bind_route()
+    _configure_matrix_gateway_runtime(make_settings(data_dir=tmp_path))
+    stub = StubMatrixGatewayClient(
+        MatrixPortalAssertion(
+            room_id=_ROOM,
+            owner_user_id="@me:matrix.example.com",
+            joined=True,
+            bridge="changed",
+        )
+    )
+
+    with patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub):
+        result = await _handlers()["matrix_route_read"]({"source_group": _FOLDER})
+
+    assert "portal changed" in result["error"]
+
+
+def test_receipt_requires_a_serialized_provider_result() -> None:
+    action = matrix_gateway.MATRIX_HOST_ACTIONS.action_for("matrix_route_send")
+    assert action is not None
+    assert action.action_intent is not None
+
+    with pytest.raises(TypeError, match="omitted"):
+        action.action_intent.receipt_from_response({})
+
+
+async def test_matrix_gateway_probe_reports_binding_and_binary_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    action = matrix_gateway.MATRIX_HOST_ACTIONS.action_for("matrix_route_read")
+    assert action is not None
+    assert action.capability is not None
+
+    degraded = await action.capability.probe(CapabilityProbeContext(_FOLDER))
+    assert degraded.status is ProbeStatus.DEGRADED
+
+    _bind_route()
+    command_env = _route().connection.gateway_command_env
+    monkeypatch.setenv(command_env, str(tmp_path / "missing-matrix-gateway"))
+    unavailable = await action.capability.probe(CapabilityProbeContext(_FOLDER))
+    assert unavailable.status is ProbeStatus.UNAVAILABLE
+
+    monkeypatch.setenv(command_env, "true")
+    ready = await action.capability.probe(CapabilityProbeContext(_FOLDER))
+    assert ready.status is ProbeStatus.READY
 
 
 def test_read_only_route_rejects_draft_before_approval() -> None:

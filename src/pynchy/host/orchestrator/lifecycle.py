@@ -182,23 +182,18 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
     settings = get_settings()
+
     service_installer.install_service(settings.project_root)
 
     app.plugin_manager = get_plugin_manager(
         {name: plugin.enabled for name, plugin in settings.plugins.items()}
     )
-    plugin_configuration.configure_computer_use_plugins(app.plugin_manager, settings)
-    plugin_configuration.configure_caldav_plugin(settings)
-    plugin_configuration.configure_gog_plugin(settings)
-    plugin_configuration.configure_desktop_screenshot_plugin(app.plugin_manager, settings)
-    plugin_configuration.configure_linear_plugin(
-        app.plugin_manager, settings, app.start_linear_work_item_reconciliation
+    plugin_configuration.configure_startup_plugins(
+        app.plugin_manager,
+        settings,
+        app.start_linear_work_item_reconciliation,
+        dep_factory.make_provider_execution_retirement(app),
     )
-    plugin_configuration.configure_observer_plugins(app.plugin_manager)
-    plugin_configuration.configure_marketplace_health_plugin(app.plugin_manager, settings)
-    plugin_configuration.configure_matrix_gateway_plugin(settings)
-    plugin_configuration.configure_google_setup_plugin(app.plugin_manager, settings)
-    plugin_configuration.configure_builtin_canaries(settings)
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
@@ -451,6 +446,7 @@ async def _activate_runtime_owners(
 ) -> None:
     """Restore durable routes and start critical pollers behind their gates."""
     await _start_temporal_scheduler(app)
+    await app.start_linear_work_item_reconciliation()
     await http_server.recover_http_routes(prepared_http)
     await start_connection_runtimes(app)
 

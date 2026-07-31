@@ -184,6 +184,8 @@ async def _resolve_work_item_transition(
     issue = resolution.issue
     error = resolution.error
     now = _timestamp()
+    if transition_status is WorkItemTransitionStatus.PENDING:
+        raise ValueError("A work item transition cannot resolve to pending")
     clears_blocked_outcome = (
         transition_status is WorkItemTransitionStatus.SUCCEEDED
         and execution_status
@@ -204,19 +206,47 @@ async def _resolve_work_item_transition(
         }
         else None
     )
-    receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
     async with atomic_write() as db:
         if lifecycle_fence is not None and not await lifecycle_fence_matches(db, lifecycle_fence):
             return None
-        await db.execute(
+        # Provider reconciliation may retry an unresolved intent, but its first
+        # settled receipt owns the resulting execution projection.
+        cursor = await db.execute(
             """
             UPDATE work_item_transitions
-            SET status = ?, receipt = ?, error = ?, resolved_at = ?
+            SET status = ?, resolved_at = ?
             WHERE id = ?
+              AND status IN (?, ?)
             """,
-            (transition_status.value, receipt, error, now, transition.id),
+            (
+                transition_status.value,
+                now,
+                transition.id,
+                WorkItemTransitionStatus.PENDING.value,
+                WorkItemTransitionStatus.UNKNOWN.value,
+            ),
         )
-        if issue is None:
+        if cursor.rowcount == 1:
+            receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
+            issue_projection: tuple[str, str, str, str, str | None] | None = None
+            if issue is not None:
+                state = _issue_state(issue)
+                issue_projection = (
+                    _issue_str(issue, "identifier"),
+                    _issue_str(issue, "url"),
+                    _issue_str(state, "id"),
+                    _issue_str(state, "name"),
+                    _optional_str(issue, "updatedAt"),
+                )
+            await db.execute(
+                """
+                UPDATE work_item_transitions
+                SET receipt = ?, error = ?
+                WHERE id = ?
+                """,
+                (receipt, error, transition.id),
+            )
+        if cursor.rowcount == 1 and issue is None:
             await db.execute(
                 """
                 UPDATE work_item_executions
@@ -224,7 +254,14 @@ async def _resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ? AND status != ?
+                WHERE id = ?
+                  AND status NOT IN (?, ?, ?, ?)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM work_item_transitions AS newer
+                      WHERE newer.execution_id = work_item_executions.id
+                        AND newer.id > ?
+                  )
                 """,
                 (
                     execution_status.value,
@@ -233,11 +270,14 @@ async def _resolve_work_item_transition(
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.COMPLETED.value,
                     WorkItemExecutionStatus.CANCELLED.value,
+                    WorkItemExecutionStatus.HANDED_OFF.value,
+                    WorkItemExecutionStatus.FAILED.value,
+                    transition.id,
                 ),
             )
-        else:
-            state = _issue_state(issue)
+        elif cursor.rowcount == 1 and issue_projection is not None:
             await db.execute(
                 """
                 UPDATE work_item_executions
@@ -247,21 +287,28 @@ async def _resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ? AND status != ?
+                WHERE id = ?
+                  AND status NOT IN (?, ?, ?, ?)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM work_item_transitions AS newer
+                      WHERE newer.execution_id = work_item_executions.id
+                        AND newer.id > ?
+                  )
                 """,
                 (
-                    _issue_str(issue, "identifier"),
-                    _issue_str(issue, "url"),
-                    _issue_str(state, "id"),
-                    _issue_str(state, "name"),
-                    _optional_str(issue, "updatedAt"),
+                    *issue_projection,
                     execution_status.value,
                     clears_blocked_outcome,
                     clears_blocked_outcome,
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.COMPLETED.value,
                     WorkItemExecutionStatus.CANCELLED.value,
+                    WorkItemExecutionStatus.HANDED_OFF.value,
+                    WorkItemExecutionStatus.FAILED.value,
+                    transition.id,
                 ),
             )
     execution = await get_work_item_execution(transition.execution_id)
