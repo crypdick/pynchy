@@ -229,6 +229,27 @@ async def test_scheduled_task_start_fails_closed_without_a_temporal_client() -> 
 
 
 @pytest.mark.asyncio
+async def test_scheduled_task_rejects_binding_that_loses_its_queue_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = _scheduled_task()
+    monkeypatch.setattr(temporal_scheduler, "get_task_by_id", AsyncMock(return_value=task))
+    monkeypatch.setattr(
+        temporal_scheduler,
+        "ensure_scheduled_task_binding",
+        AsyncMock(return_value=task),
+    )
+    temporal_scheduler.reset_temporal_scheduler_status()
+    temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+    try:
+        with pytest.raises(RuntimeError, match="binding disappeared"):
+            await temporal_scheduler.run_scheduled_agent_task(task.id)
+    finally:
+        temporal_scheduler.bind_scheduler_deps(None)
+
+
+@pytest.mark.asyncio
 async def test_channel_reconciliation_starts_when_temporal_is_ready() -> None:
     runtime = _runtime()
     client = Mock()
