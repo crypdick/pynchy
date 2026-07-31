@@ -71,6 +71,53 @@ async def test_proxies_authenticated_anthropic_request_to_provider(
 
 
 @pytest.mark.asyncio
+async def test_proxies_authenticated_openai_request_to_provider(
+    monkeypatch: pytest.MonkeyPatch, unused_tcp_port: int
+) -> None:
+    received: dict[str, str | bytes] = {}
+
+    async def upstream(request: web.Request) -> web.Response:
+        received["authorization"] = request.headers["Authorization"]
+        received["x_api_key"] = request.headers.get("x-api-key", "")
+        received["body"] = await request.read()
+        return web.Response(status=202, body=b"proxied")
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", upstream)
+    upstream_runner, upstream_url = await _start_http_server(app)
+    monkeypatch.setattr("pynchy.host.container_manager.gateway_builtin._OPENAI_BASE", upstream_url)
+    gateway = BuiltinGateway(
+        port=unused_tcp_port,
+        host="127.0.0.1",
+        container_host="gateway.test",
+        credentials=BuiltinGatewayCredentials(openai_api_key="openai-secret"),
+    )
+    body = b'{"model":"gpt","messages":[]}'
+
+    try:
+        await gateway.start()
+        async with (
+            ClientSession() as client,
+            client.post(
+                f"http://127.0.0.1:{unused_tcp_port}/v1/chat/completions",
+                headers={"X-Api-Key": gateway.key},
+                data=body,
+            ) as response,
+        ):
+            assert response.status == 202
+            assert await response.read() == b"proxied"
+    finally:
+        await gateway.stop()
+        await upstream_runner.cleanup()
+
+    assert received == {
+        "authorization": "Bearer openai-secret",
+        "x_api_key": "",
+        "body": body,
+    }
+
+
+@pytest.mark.asyncio
 async def test_rejects_unauthorized_unknown_and_unconfigured_requests(unused_tcp_port: int) -> None:
     gateway = BuiltinGateway(
         port=unused_tcp_port,
