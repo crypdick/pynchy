@@ -497,6 +497,43 @@ async def test_external_git_sync_update_failure_fails_temporal_and_status(
     assert status["tracked_results"][task_id]["error"] == status["last_error"]
 
 
+async def test_external_git_sync_notifies_after_a_successful_update(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    slug = "owner/synced"
+    repo_ctx = RepoContext(
+        slug=slug,
+        root=tmp_path / "repo",
+        worktrees_dir=tmp_path / "worktrees",
+    )
+    deps = _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock())
+    notify = AsyncMock()
+    monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
+    monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
+    monkeypatch.setattr(git_sync, "_load_external_origin", AsyncMock(return_value="old-origin"))
+    monkeypatch.setattr(
+        git_sync,
+        "probe_origin_main_sha",
+        lambda _root, _env: sync_poll.GitOriginProbe(sha="new-origin"),
+    )
+    monkeypatch.setattr(
+        git_sync,
+        "host_update_main_result",
+        lambda _root, _env: sync_poll.GitUpdateResult(succeeded=True),
+    )
+    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-head")
+    monkeypatch.setattr(git_sync, "host_notify_worktree_updates", notify)
+    monkeypatch.setattr(git_sync, "last_notified_sha", {})
+
+    assert await git_sync.run_external_git_sync(slug) == "synced"
+    notify.assert_awaited_once()
+    assert notify.await_args.args[0] is None
+    assert notify.await_args.args[2] == repo_ctx
+
+
 async def test_origin_drift_offers_update_without_changing_checkout_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
