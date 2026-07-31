@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -155,6 +156,18 @@ async def test_search_skills_reports_invalid_queries_and_missing_catalog(
 
 @pytest.mark.asyncio
 @pytest.mark.action("skill.catalog.search")
+async def test_search_skills_reports_unset_catalog_and_punctuation_query(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("PYNCHY_SKILLS_ROOT", raising=False)
+
+    result = await call_tool("search_skills", {"query": "!!!"})
+
+    assert result[0].text == "The Pynchy skill catalog is unavailable in this session."
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
 async def test_search_skills_reports_no_match_and_uses_heading_fallback(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -167,9 +180,27 @@ async def test_search_skills_reports_no_match_and_uses_heading_fallback(
 
     match = await call_tool("search_skills", {"query": "heading"})
     no_match = await call_tool("search_skills", {"query": "unrelated"})
+    punctuation = await call_tool("search_skills", {"query": "!!!"})
 
     assert "heading-only: Heading fallback" in match[0].text
     assert no_match[0].text == "No Pynchy skills matched 'unrelated'."
+    assert punctuation[0].text == "No Pynchy skills matched '!!!'."
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
+async def test_search_skills_uses_directory_name_without_description_or_heading(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "skills"
+    skill_dir = root / "plain-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("plain capability\n", encoding="utf-8")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+
+    result = await call_tool("search_skills", {"query": "plain-skill"})
+
+    assert "plain-skill: plain-skill" in result[0].text
 
 
 @pytest.mark.asyncio
@@ -362,6 +393,53 @@ async def test_request_skill_access_handles_malformed_question_response(
     )
 
     assert result.content[0].text == "The skill-access question did not return a valid choice."
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+async def test_request_skill_access_handles_an_empty_policy_response(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+    request = AsyncMock(
+        side_effect=[
+            [],
+            _response({"answers": {"answer": "Deny once"}}),
+        ]
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    result = await call_tool(
+        "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+    )
+
+    assert result[0].text == "Access to 'known-skill' was denied for now."
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+async def test_request_skill_access_reports_a_skill_removed_after_policy_grant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    skill_file = root / "known-skill" / "SKILL.md"
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+
+    async def request(*_args: object, **_kwargs: object) -> list[TextContent]:
+        await asyncio.sleep(0)
+        skill_file.unlink()
+        return _response({"status": "granted"})
+
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    result = await call_tool(
+        "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+    )
+
+    assert result[0].text == "Skill 'known-skill' is no longer available."
 
 
 @pytest.mark.asyncio
