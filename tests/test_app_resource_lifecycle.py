@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.identifiers import GroupFolder
+from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -166,6 +168,74 @@ async def test_application_routes_manual_redeploy_and_temporal_reconciliation(
     linear_reconciliation.assert_awaited_once_with()
 
 
+async def test_application_routes_message_and_reaction_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    process = AsyncMock(return_value=TurnOutcome.COMPLETED)
+    interactive = AsyncMock()
+    interrupted = AsyncMock()
+    reaction = AsyncMock()
+    clear_confirmation = AsyncMock()
+    monkeypatch.setattr(app_module.message_handler, "run_queued_message_turn", process)
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "start_interactive_message_workflow",
+        interactive,
+    )
+    monkeypatch.setattr(
+        app_module.temporal_scheduler,
+        "start_interrupted_turn_workflow",
+        interrupted,
+    )
+    monkeypatch.setattr(app_module.channel_handler, "send_reaction_to_outbound", reaction)
+    monkeypatch.setattr(app_module.session_handler, "send_clear_confirmation", clear_confirmation)
+
+    assert await app.process_group_messages("chat") is TurnOutcome.COMPLETED
+    await app.start_interactive_turn("chat")
+    await app.start_interrupted_turn("turn", "group")
+    await app.send_reaction_to_outbound("chat", {"discord": "message"}, "thumbsup")
+    await app.send_clear_confirmation("chat")
+
+    process.assert_awaited_once_with(app, "chat")
+    interactive.assert_awaited_once_with("chat")
+    interrupted.assert_awaited_once_with("turn", "group")
+    reaction.assert_awaited_once_with(app, "chat", {"discord": "message"}, "thumbsup")
+    clear_confirmation.assert_awaited_once_with(app, "chat")
+
+
+def test_application_delegates_filtering_and_idle_callback_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+
+    def callback() -> None:
+        return None
+
+    class _Session:
+        callback: object | None = None
+
+        def set_idle_callback(self, value: object) -> None:
+            self.callback = value
+
+    calls: list[tuple[object, ...]] = []
+    session = _Session()
+
+    def filter_messages(*args: object) -> list[object]:
+        calls.append(args)
+        return []
+
+    monkeypatch.setattr(app_module.access, "filter_allowed_messages", filter_messages)
+    monkeypatch.setattr(app_module, "get_session", lambda _: session)
+
+    assert app.filter_allowed_messages([], group, None) == []
+    app.register_idle_callback(GroupFolder("chat"), callback)
+
+    assert calls == [([], group, None)]
+    assert session.callback is callback
+
+
 def test_application_delegates_host_and_workspace_policy_queries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -180,3 +250,25 @@ def test_application_delegates_host_and_workspace_policy_queries(
     assert app.has_api_credentials() is False
     assert app.has_active_host_process("chat") is True
     assert app.linear_workspace_enabled(group) is False
+
+
+async def test_application_defers_channel_catch_up_when_temporal_startup_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+
+    def temporal_active() -> bool:
+        return True
+
+    monkeypatch.setattr(
+        app_module.temporal_scheduler, "temporal_scheduler_runtime_active", temporal_active
+    )
+    monkeypatch.setattr(
+        app,
+        "start_channel_reconciliation",
+        AsyncMock(
+            side_effect=app_module.temporal_scheduler.TemporalRuntimeUnavailableError("late")
+        ),
+    )
+
+    await app.catch_up_channels()
