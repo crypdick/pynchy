@@ -3,20 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, patch
 
 import discord
 import pytest
 
-from pynchy.plugins.api import OutboundEvent, OutboundEventType
+from pynchy.config.api import DiscordConnectionConfig
+from pynchy.plugins.api import AudioTranscriptionResult, OutboundEvent, OutboundEventType
+from pynchy.plugins.channels.discord import DiscordChannel
 from pynchy.plugins.speech.api import SpeechSynthesisResult
 from tests.discord_channel_support import (
+    DISCORD_BOT_ENV,
+    DISCORD_BOT_VALUE,
     _activate_voice_session,
     _configured_voice_channel,
     _FakeDiscordUser,
     _FakeVoiceChannel,
     _VoiceState,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.mark.asyncio
@@ -142,3 +153,66 @@ async def test_voice_reply_tolerates_playback_start_failure(
         )
 
     assert voice_client.played_audio == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("transcription", "expected_messages"),
+    [
+        (AudioTranscriptionResult(success=False, error="transcription unavailable"), []),
+        (AudioTranscriptionResult(success=True, transcript="hello", provider="test"), ["hello"]),
+    ],
+)
+async def test_voice_input_transcription_is_forwarded_only_when_successful(
+    monkeypatch: pytest.MonkeyPatch,
+    transcription: AudioTranscriptionResult,
+    expected_messages: list[str],
+) -> None:
+    messages = []
+    observed_headers: list[bytes] = []
+    transcription_finished = asyncio.Event()
+
+    async def transcribe(path: Path) -> AudioTranscriptionResult:
+        observed_headers.append((await asyncio.to_thread(path.read_bytes))[:4])
+        transcription_finished.set()
+        return transcription
+
+    channel = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            chat={"1": {"name": "Pynchy", "channels": {"2": {"kind": "voice"}}}},
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, message: messages.append(message),
+        on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        workspaces=lambda: {"discord:voice:2": cast("WorkspaceProfile", object())},
+        transcribe_audio=transcribe,
+    )
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.release.set()
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    class Decoder:
+        calls = 0
+
+        def decode(self, _packet: bytes, **_kwargs: bool) -> bytes:
+            self.calls += 1
+            return b"\x00\x01" * 100 if self.calls == 1 else b"\x00\x00" * 100
+
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._new_opus_decoder", Decoder)
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    listener = cast("Callable[[str, bytes], None]", voice_channel.voice_client.received_listener)
+    listener("42", b"speech")
+
+    for _ in range(30):
+        listener("42", b"silence")
+    await asyncio.wait_for(transcription_finished.wait(), timeout=1)
+
+    assert [message.content for message in messages] == expected_messages
+    assert observed_headers == [b"RIFF"]
