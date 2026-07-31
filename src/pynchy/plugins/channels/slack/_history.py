@@ -107,8 +107,6 @@ class SlackHistory:
     ) -> tuple[list[NewMessage], str]:
         if not self._channel.slack_app:
             return [], ""
-        if not self._channel.is_allowed_channel(channel_id):
-            return [], ""
 
         max_pages = 10
         current_oldest = oldest
