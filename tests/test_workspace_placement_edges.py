@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from pynchy.host.orchestrator.api import resolve_workspace_placement
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.workspace.api import WorkspaceProfile
 
 
@@ -86,3 +87,9 @@ def test_placement_uses_existing_owner_profile() -> None:
     assert placement is not None
     assert placement.owner is owner
     assert placement.control_parent.folder == "root"
+
+
+def test_application_composition_fails_closed_for_unknown_workspace_profile() -> None:
+    PynchyApp()
+
+    assert resolve_workspace_placement([_workspace("root")], "missing") is None
