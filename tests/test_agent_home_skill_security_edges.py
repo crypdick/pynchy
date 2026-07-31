@@ -24,6 +24,14 @@ def test_parse_skill_tier_defaults_when_metadata_cannot_be_read(tmp_path: Path) 
     assert parse_skill_tier(skill) == ("unreadable", "community")
 
 
+def test_parse_skill_tier_defaults_for_empty_frontmatter(tmp_path: Path) -> None:
+    skill = tmp_path / "empty-frontmatter"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("---\n---\n")
+
+    assert parse_skill_tier(skill) == ("empty-frontmatter", "community")
+
+
 class _FakePluginManager(pluggy.PluginManager):
     def __init__(self, hook: MagicMock) -> None:
         self.hook = hook

@@ -10,6 +10,12 @@ import pytest
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import McpTool, McpToolConfig
+from pynchy.conversation.models import Conversation, ConversationSubject
+from pynchy.conversation_primitives import (
+    ConversationId,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
@@ -582,6 +588,37 @@ async def test_application_adapts_scheduled_execution_lifecycle(
     assert await app.scheduled_execution_lifecycle("task-2") is None
     assert get_execution.await_args_list[0].args == ("task-1",)
     assert get_execution.await_args_list[1].args == ("task-2",)
+
+
+async def test_application_adapts_scheduled_task_storage_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    conversation = Conversation(
+        id=ConversationId("conversation-1"),
+        workspace=GroupFolder("chat"),
+        subject=ConversationSubject(
+            namespace=ConversationSubjectNamespace("test"),
+            key=ConversationSubjectKey("conversation-1"),
+        ),
+        session_id=None,
+        created_at="2026-07-31T00:00:00Z",
+        updated_at="2026-07-31T00:00:00Z",
+    )
+    get_conversation = AsyncMock(return_value=conversation)
+    update_task = AsyncMock()
+    cancel_task = AsyncMock()
+    monkeypatch.setattr(app_module, "get_conversation", get_conversation)
+    monkeypatch.setattr(app_module, "update_task", update_task)
+    monkeypatch.setattr(app_module, "cancel_task_and_checkpoint", cancel_task)
+
+    assert await app.get_scheduled_conversation("conversation-1") is conversation
+    await app.persist_scheduled_task_updates("task-1", {"status": "paused"})
+    await app.cancel_scheduled_task("task-2")
+
+    get_conversation.assert_awaited_once_with("conversation-1")
+    update_task.assert_awaited_once_with("task-1", {"status": "paused"})
+    cancel_task.assert_awaited_once_with("task-2")
 
 
 async def test_application_unregisters_workspace_from_memory_and_state(
