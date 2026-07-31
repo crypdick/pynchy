@@ -268,6 +268,38 @@ class TestContainerInput:
 
         assert config.extra == {"metadata": {"existing": "value"}}
 
+    @pytest.mark.parametrize(
+        ("server", "message"),
+        [
+            ({"name": "remote", "url": "http://remote", "transport": 1}, "transport"),
+            ({"name": "remote", "url": None}, "URL"),
+        ],
+    )
+    def test_direct_mcp_servers_require_string_transport_and_url(self, server, message):
+        input_data = ContainerInput(
+            messages=[],
+            group_folder="review",
+            chat_jid="chat:review",
+            is_admin=False,
+            mcp_direct_servers=[server],
+        )
+
+        with pytest.raises(TypeError, match=message):
+            build_core_config(input_data)
+
+    def test_direct_mcp_server_preserves_unknown_transport(self):
+        input_data = ContainerInput(
+            messages=[],
+            group_folder="review",
+            chat_jid="chat:review",
+            is_admin=False,
+            mcp_direct_servers=[{"name": "remote", "url": "http://remote", "transport": "custom"}],
+        )
+
+        config = build_core_config(input_data)
+
+        assert config.mcp_servers["remote"] == {"type": "custom", "url": "http://remote"}
+
     def test_defaults_agent_core(self):
         data = {
             "messages": [],
@@ -480,6 +512,23 @@ class TestCoreStartupErrors:
 
         assert outputs[0].query_id == "query-startup"
         assert outputs[0].error == "Failed to start agent core: startup failed"
+
+    @pytest.mark.asyncio
+    async def test_initial_input_failure_is_reported_to_host(self, monkeypatch):
+        outputs: list[ContainerOutput] = []
+
+        def fail_to_read_input():
+            raise RuntimeError("invalid input")
+
+        monkeypatch.setattr("agent_runner.main.read_initial_input", fail_to_read_input)
+        monkeypatch.setattr("agent_runner.main.write_output", outputs.append)
+
+        with pytest.raises(SystemExit):
+            await run_agent_main()
+
+        assert outputs == [
+            ContainerOutput(status="error", error="Failed to read initial input: invalid input")
+        ]
 
 
 class TestScheduledReportFollowupContext:
