@@ -187,7 +187,7 @@ async def test_send_ask_user_splits_more_than_five_buttons_across_rows():
 
 
 @pytest.mark.asyncio
-async def test_send_ask_user_falls_back_to_text_for_multiple_questions():
+async def test_send_ask_user_uses_a_modal_for_multiple_questions():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
@@ -204,8 +204,46 @@ async def test_send_ask_user_falls_back_to_text_for_multiple_questions():
 
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, questions)
 
-    assert fake.sends[0][1]["view"] is None
+    view = fake.sends[0][1]["view"]
+    assert [item.label for item in view.children] == ["Answer"]
     assert "What should we call it?" in fake.sends[0][0]
+
+
+@pytest.mark.asyncio
+async def test_multiple_question_modal_uses_selects_and_text_inputs():
+    callback = MagicMock()
+    ch = _make_channel(on_ask_user_answer=callback)
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    questions = [
+        *_single_question(),
+        {
+            "header": "Name",
+            "question": "What should we call it?",
+            "options": [],
+        },
+    ]
+
+    await ch.send_ask_user("discord:direct:42", REQUEST_ID, questions)
+    view = fake.sends[0][1]["view"]
+    launch_interaction = _interaction()
+    await view.children[0].callback(launch_interaction)
+
+    modal = launch_interaction.response.send_modal.call_args.args[0]
+    assert [type(child).__name__ for child in modal.children] == ["Label", "Label"]
+    select = modal.children[0].component
+    text_input = modal.children[1].component
+    select._values = ["Option 2"]
+    text_input._value = "Project Synapse"
+
+    await modal.on_submit(_interaction())
+
+    answer = callback.call_args[0][1]
+    assert answer["answer"] == {
+        "question_1": "Option 2",
+        "question_2": "Project Synapse",
+    }
 
 
 @pytest.mark.asyncio
