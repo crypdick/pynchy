@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from conftest import configure_linear_accounts_for, make_settings
+from linear_webhook_test_support import (
+    SIGNING_KEY as _SIGNING_KEY,
+)
 from linear_webhook_test_support import (
     payload as _payload,
 )
@@ -19,7 +22,9 @@ from linear_webhook_test_support import (
 )
 
 from pynchy.conversation.models import (
+    ConversationClaimId,
     ConversationId,
+    ConversationLifecycleFence,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -38,14 +43,23 @@ from pynchy.plugins.api import (
 )
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_webhook_effects import (
+    LinearWebhookEffectsRuntime,
+    configure_linear_webhook_effects_runtime,
     process_linear_webhook_event,
     process_linear_webhook_lifecycle,
 )
 from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
+from pynchy.state import resolve_conversation
 from pynchy.work_items.api import WorkItemExecutionStatus
 from tests.linear_webhooks_support import _LeaseResult, _linear_client_context
 
 pytest_plugins = ("tests.linear_webhooks_support",)
+
+
+@dataclass(frozen=True)
+class _Execution:
+    id: str
+    status: WorkItemExecutionStatus
 
 
 def _conversation(*, workspace: str | None = "project", closed: bool | None = None):
@@ -104,6 +118,13 @@ async def test_actionable_event_requires_a_resolved_workspace():
         await process_linear_webhook_event(event)
 
 
+async def test_closed_control_reopen_requires_a_provider_revision():
+    event = _event(conversation=_conversation(closed=False))
+
+    with pytest.raises(WebhookProcessingError, match="lacks updatedAt"):
+        await process_linear_webhook_event(event)
+
+
 @pytest.mark.parametrize(
     "context",
     [
@@ -145,9 +166,7 @@ def _provider_event(*, state_id: str, state_name: str, updated_from: dict[str, o
             updated_from=updated_from,
         )
     )
-    event = parse_linear_webhook(
-        raw_body, headers, "linear-webhook-test-signing-key-long-enough", now, config=_config()
-    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     assert event.conversation is not None
     return replace(event, conversation=replace(event.conversation, workspace="project"))
 
@@ -220,3 +239,146 @@ async def test_reconciliation_failure_does_not_break_human_approved_admission(
 
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     reconcile.assert_awaited_once_with()
+
+
+async def test_provider_error_is_reported_as_webhook_processing_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    event = _provider_event(
+        state_id="state-approved",
+        state_name="Human Approved",
+        updated_from={"stateId": "state-awaiting-plan"},
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(side_effect=ValueError("malformed provider state")),
+    )
+
+    with pytest.raises(WebhookProcessingError, match="malformed provider state"):
+        await process_linear_webhook_event(event)
+
+
+async def test_stale_control_state_suppresses_controller_processing():
+    event = _event(
+        conversation=replace(
+            _conversation(),
+            control_closed=False,
+            control_state_revision="2026-07-31T00:00:02+00:00",
+        )
+    )
+    control_matches = AsyncMock(return_value=False)
+    configure_linear_webhook_effects_runtime(
+        LinearWebhookEffectsRuntime(
+            resolve_conversation=resolve_conversation,
+            control_state_matches=control_matches,
+            apply_control_state=AsyncMock(return_value=True),
+            get_execution_for_issue=AsyncMock(),
+            cancel_execution=AsyncMock(),
+            cancel_execution_if_lifecycle_current=AsyncMock(),
+            get_active_execution=AsyncMock(),
+            start_work_item_reconciliation=AsyncMock(),
+        )
+    )
+
+    processed = await process_linear_webhook_event(event)
+
+    assert processed.ignored_reason == "stale_linear_control_state"
+    assert processed.conversation is None
+    control_matches.assert_awaited_once()
+
+
+async def test_terminal_lifecycle_with_fence_cancels_current_execution():
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("linear"),
+        route=ExternalRoute("project"),
+        delivery_id=ExternalDeliveryId("delivery-1"),
+    )
+    fence = ConversationLifecycleFence(
+        conversation_id=ConversationId("conversation-1"),
+        identity=identity,
+        claim_id=ConversationClaimId("claim-1"),
+        control_state_revision="2026-07-31T00:00:01+00:00",
+    )
+    cancel = AsyncMock()
+    configure_linear_webhook_effects_runtime(
+        LinearWebhookEffectsRuntime(
+            resolve_conversation=AsyncMock(),
+            control_state_matches=AsyncMock(),
+            apply_control_state=AsyncMock(),
+            get_execution_for_issue=AsyncMock(
+                return_value=_Execution("execution-1", WorkItemExecutionStatus.IN_PROGRESS)
+            ),
+            cancel_execution=AsyncMock(),
+            cancel_execution_if_lifecycle_current=cancel,
+            get_active_execution=AsyncMock(),
+            start_work_item_reconciliation=AsyncMock(),
+        )
+    )
+
+    await process_linear_webhook_lifecycle(
+        WebhookLifecycleDelivery(
+            identity=identity,
+            conversation_id=ConversationId("conversation-1"),
+            subject_id="issue-1",
+            workspace=GroupFolder("project"),
+            context={
+                "linear_state_id": "state-cancelled",
+                "linear_managed_done_state_id": "state-done",
+            },
+            lifecycle_fence=fence,
+        )
+    )
+
+    cancel.assert_awaited_once()
+    assert cancel.await_args.kwargs["lifecycle_fence"] == fence
+
+
+async def test_cancelled_execution_keeps_blocked_issue_controller_owned(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    event = _provider_event(
+        state_id="state-blocked",
+        state_name="Blocked",
+        updated_from={"stateId": "state-approved"},
+    )
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting-plan"},
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+            "blocked": {"id": "state-blocked"},
+        },
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"state": {"id": "state-blocked"}}, board)),
+    )
+    configure_linear_webhook_effects_runtime(
+        LinearWebhookEffectsRuntime(
+            resolve_conversation=resolve_conversation,
+            control_state_matches=AsyncMock(return_value=True),
+            apply_control_state=AsyncMock(return_value=True),
+            get_execution_for_issue=AsyncMock(
+                return_value=_Execution("execution-1", WorkItemExecutionStatus.CANCELLED)
+            ),
+            cancel_execution=AsyncMock(),
+            cancel_execution_if_lifecycle_current=AsyncMock(),
+            get_active_execution=AsyncMock(return_value=None),
+            start_work_item_reconciliation=AsyncMock(),
+        )
+    )
+
+    processed = await process_linear_webhook_event(event)
+
+    assert processed.ignored_reason == "work_item_execution_owned_by_controller"
