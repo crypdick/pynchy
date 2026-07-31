@@ -224,6 +224,26 @@ async def test_recent_group_sync_skips_provider_fetch(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_group_sync_fetches_provider_groups_without_prior_sync(tmp_path) -> None:
+    client = _FakeWhatsAppClient()
+    client.get_joined_groups = AsyncMock(return_value=[])
+    channel = WhatsAppChannel(
+        connection_name="connection.whatsapp.edges",
+        auth_db_path=str(tmp_path / "neonize.db"),
+        assistant_name="pynchy",
+        on_message=MagicMock(),
+        on_chat_metadata=MagicMock(),
+        workspaces=lambda: {CHAT_JID: WORKSPACE},
+        client_factory=lambda _auth_db: client,
+        get_last_group_sync=AsyncMock(return_value=None),
+    )
+
+    await channel.sync_group_metadata()
+
+    client.get_joined_groups.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_group_sync_ignores_unnamed_groups(tmp_path) -> None:
     client = _FakeWhatsAppClient()
     client.get_joined_groups = AsyncMock(
