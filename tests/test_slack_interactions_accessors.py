@@ -225,6 +225,22 @@ def test_ask_user_update_failure_does_not_hide_answer() -> None:
     ch.slack_app.client.chat_update.assert_awaited_once()
 
 
+def test_ask_user_submit_without_callback_or_source_message_is_safe() -> None:
+    ch = _make_channel()
+    body = {
+        "channel": {"id": "C12345"},
+        "message": {},
+        "user": {"id": "U999"},
+        "state": {"values": {}},
+    }
+
+    asyncio.run(
+        ch.interactions.on_ask_user_interaction(body, {"action_id": "ask_user_submit_req-1"})
+    )
+
+    ch.slack_app.client.chat_update.assert_not_awaited()
+
+
 def test_approval_interaction_ignores_malformed_action_id() -> None:
     callback = MagicMock()
     ch = _make_channel(on_approval_decision=callback)
