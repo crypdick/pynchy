@@ -643,6 +643,11 @@ async def test_message_loop_does_not_start_agent_for_host_only_messages():
     with (
         patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([host_message], "poll-ts")),
         patch(_PR_MSGS_SINCE, new_callable=AsyncMock, return_value=[host_message]),
+        patch(
+            "pynchy.host.orchestrator.messaging.inbound.intercept_immediate_checkpoint_controls",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
     ):
         await _run_loop_once(deps)
