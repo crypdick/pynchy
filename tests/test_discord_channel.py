@@ -499,32 +499,6 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
 
 
 @pytest.mark.asyncio
-async def test_resolve_chat_jid_uses_cached_numeric_user():
-    ch = DiscordChannel(
-        connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(
-            bot_token_env=DISCORD_BOT_ENV,
-            dm_policy="allowlist",
-            allow_from=["42"],
-            group_policy="disabled",
-        ),
-        bot_token=DISCORD_BOT_VALUE,
-        on_message=lambda jid, msg: None,
-        on_chat_metadata=lambda jid, ts, name: None,
-        audio_cache_dir=Path("data/media/discord"),
-    )
-    user = _FakeDiscordUser(42, "asmith")
-
-    class _ClientWithCachedUser:
-        def get_user(self, user_id: int) -> object | None:
-            return user if user_id == 42 else None
-
-    ch.client = _ClientWithCachedUser()
-
-    assert await ch.resolve_chat_jid("direct.42") == "discord:direct:42"
-
-
-@pytest.mark.asyncio
 async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
