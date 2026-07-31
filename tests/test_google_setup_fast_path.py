@@ -266,6 +266,11 @@ async def test_interactive_setup_reads_project_id_from_existing_client_credentia
             frozenset({"gdrive"}),
             id="unknown-and-malformed-tool-names",
         ),
+        pytest.param(
+            ("foreign.other",),
+            frozenset({"foreign.other"}),
+            id="unconfigured-profile",
+        ),
     ],
 )
 async def test_setup_action_denies_unresolved_workspace_tool_configuration(

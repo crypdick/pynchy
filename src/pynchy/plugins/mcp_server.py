@@ -145,7 +145,7 @@ class McpServerConfig(BaseModel):
                 raise ValueError(_SCRIPT_COMMAND_REQUIRED)
             if self.port is None:
                 raise ValueError(_SCRIPT_PORT_REQUIRED)
-        elif self.type == "stdio":
+        else:
             if not self.command:
                 raise ValueError(_STDIO_COMMAND_REQUIRED)
             if self.port is None:
