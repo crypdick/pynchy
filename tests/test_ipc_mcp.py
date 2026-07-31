@@ -145,6 +145,45 @@ class TestSendMessage:
         assert data["sender"] == "Researcher"
 
 
+@pytest.mark.action("message.source.health")
+class TestMessagingSourceHealth:
+    """Test the source-health tool's request contract."""
+
+    @pytest.mark.asyncio
+    async def test_uses_personal_sources_by_default(self, monkeypatch):
+        request = AsyncMock(return_value=[TextContent(type="text", text='{"sources": []}')])
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_messaging.ipc_service_request", request
+        )
+
+        result = await call_tool("messaging_source_health", {})
+
+        assert isinstance(result, list)
+        assert result[0].text == '{"sources": []}'
+        request.assert_awaited_once_with(
+            "messaging_source_health",
+            {"sources": ["whatsapp", "signal", "google_messages"]},
+            type_override="messaging_source_health",
+        )
+
+    @pytest.mark.asyncio
+    async def test_passes_explicit_sources_to_host(self, monkeypatch):
+        request = AsyncMock(
+            return_value=[TextContent(type="text", text='{"sources": ["discord"]}')]
+        )
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_messaging.ipc_service_request", request
+        )
+
+        await call_tool("messaging_source_health", {"sources": ["discord"]})
+
+        request.assert_awaited_once_with(
+            "messaging_source_health",
+            {"sources": ["discord"]},
+            type_override="messaging_source_health",
+        )
+
+
 @pytest.mark.action("task.list")
 class TestListTasks:
     """Test list_tasks tool behavior."""
