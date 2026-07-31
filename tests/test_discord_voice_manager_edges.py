@@ -144,6 +144,37 @@ async def test_unconfigured_voice_room_is_ignored() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_room_from_a_different_guild_is_ignored() -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.guild.name = "Unconfigured guild"
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_text_only_configuration_does_not_activate_a_voice_room() -> None:
+    channel = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            chat={"1": {"channels": {"2": {"name": "General", "kind": "text"}}}},
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _message: None,
+        on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_voice_connection_failure_does_not_activate_session() -> None:
     channel = _configured_voice_channel()
     voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
