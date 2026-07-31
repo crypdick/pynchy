@@ -520,6 +520,33 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_finds_direct_name_in_guild_members_without_bulk_helper():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    user = _FakeDiscordUser(42, "asmith", display_name="Alice")
+
+    class _ClientWithoutBulkMemberHelper:
+        def __init__(self) -> None:
+            self.guilds = [_FakeDiscordGuild(1, "Guild", [], members=[user])]
+            self.users: list[object] = []
+
+    ch.client = _ClientWithoutBulkMemberHelper()
+
+    assert await ch.resolve_chat_jid("direct.alice") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata():
     await init_test_database()
     await store_chat_metadata("discord:direct:42", "2026-07-08T00:00:00+00:00", "Alice")
