@@ -1,5 +1,6 @@
 # allow: file-length - facade re-exports are state package's enforced public surface.
 """Public API for the built-in SQLite state package.
+# allow: file-length - curated state facade preserves one explicit cross-package surface.
 
 All functions are async using aiosqlite.
 Module-level connection, initialized by init_database().
@@ -265,6 +266,7 @@ from pynchy.state.work_items import (
     get_work_item_execution,
     get_work_item_execution_for_issue,
     get_work_item_execution_for_task,
+    get_work_item_execution_for_turn,
     list_terminal_work_item_executions_needing_repair,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
@@ -463,6 +465,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_work_item_execution",
     "get_work_item_execution_for_issue",
     "get_work_item_execution_for_task",
+    "get_work_item_execution_for_turn",
     "get_unfinished_work_item_execution",
     "get_work_item_transition_by_request",
     "list_terminal_work_item_executions_needing_repair",

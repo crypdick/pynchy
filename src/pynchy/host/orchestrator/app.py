@@ -348,6 +348,7 @@ from pynchy.state.api import (
     get_router_state,
     get_unresolved_canary_regressions,
     get_work_item_execution_for_task,
+    get_work_item_execution_for_turn,
     prune_messages_by_sender,
     record_canary_run,
     save_router_state_batch,
@@ -624,6 +625,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
         LifecycleRuntime(
             settings=cast("Callable[[], LifecycleSettings]", get_settings),
             resolve_publication_repos=resolve_publication_repos,
+            get_work_item_execution_for_turn=get_work_item_execution_for_turn,
             detect_main_branch=detect_main_branch,
             host_create_pr_from_worktree=host_create_pr_from_worktree,
             redact_git_diagnostic=redact_git_diagnostic,

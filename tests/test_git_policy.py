@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
+from pynchy.host.container_manager.ipc.handlers_lifecycle import (
+    PublicationRepositoryError,
+    publication_metadata,
+)
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import (
@@ -23,6 +27,12 @@ from pynchy.host.git_ops.api import (
 from tests.git_policy_support import GitPolicyDeps, git
 
 pytest_plugins = ("tests.git_policy_support",)
+
+
+@dataclass(frozen=True)
+class LinearExecutionFixture:
+    linear_issue_identifier: str
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -131,6 +141,43 @@ class TestHostCreatePrFromWorktree:
         assert "PR updated" in result["message"]
         assert "pull/42" in result["message"]
 
+    def test_push_uses_linear_branch_and_agent_pr_text(self, git_env: dict):
+        """Publication can expose a stable branch without renaming its worktree."""
+        worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
+        commit_feature(worktree)
+        real_run = subprocess.run
+        calls: list[list[str]] = []
+
+        def mock_run(args, **kwargs):
+            if args[0] == "gh":
+                calls.append(args)
+                return mock_run.results.pop(0)
+            return real_run(args, **kwargs)
+
+        mock_run.results = [
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="https://github.com/owner/repo/pull/1\n"
+            ),
+        ]
+        with (
+            patch("pynchy.host.git_ops.sync.git_env_with_token", return_value=None),
+            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=mock_run),
+        ):
+            result = host_create_pr_from_worktree(
+                "agent-1",
+                git_env["repo_ctx"],
+                publication_branch="syn/247/fix-login",
+                pr_title="Fix login",
+                pr_body="## Summary\nFix the login flow.",
+            )
+
+        assert result["success"] is True
+        assert "syn/247/fix-login" in git(git_env["origin"], "branch").stdout
+        assert calls[1][calls[1].index("--head") + 1] == "syn/247/fix-login"
+        assert calls[1][calls[1].index("--title") + 1] == "Fix login"
+        assert calls[1][calls[1].index("--body") + 1] == "## Summary\nFix the login flow."
+
     def test_push_failure(self, git_env: dict):
         """Push failure returns an error."""
         worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
@@ -206,6 +253,23 @@ class TestHostCreatePrFromWorktree:
 
 class TestIpcPolicyRouting:
     """Tests that IPC handler publishes generic workspace worktrees."""
+
+    async def test_linear_publication_metadata_derives_branch_name(self) -> None:
+        """Linear publication hides the transient workspace branch from reviewers."""
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
+            new=AsyncMock(return_value=LinearExecutionFixture(linear_issue_identifier="SYN-247")),
+        ):
+            metadata = await publication_metadata(
+                {"title": "Fix login", "body": "## Summary\nFix the login flow."},
+                "turn-syn-247",
+            )
+
+        assert metadata == (
+            "Fix login",
+            "## Summary\nFix the login flow.",
+            "syn/247/fix-login",
+        )
 
     async def test_cop_receives_the_committed_worktree_patch(
         self,

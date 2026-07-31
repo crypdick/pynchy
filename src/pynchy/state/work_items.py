@@ -110,6 +110,22 @@ async def get_work_item_execution_for_task(task_id: str) -> WorkItemExecution | 
     return row_to_execution(row) if row else None
 
 
+async def get_work_item_execution_for_turn(turn_id: str) -> WorkItemExecution | None:
+    """Return the most recent Linear execution bound to one agent turn."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM work_item_executions
+        WHERE turn_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (turn_id,),
+    )
+    row = await cursor.fetchone()
+    return row_to_execution(row) if row else None
+
+
 async def list_work_item_executions(
     *,
     workspace: str | None = None,

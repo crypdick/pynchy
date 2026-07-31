@@ -67,6 +67,7 @@ class GitStatusOperations:
     run_git: Callable[..., subprocess.CompletedProcess[str]]
 
 
+@runtime_checkable
 class RepoStatusContext(Protocol):
     """Repository paths required by the status projection."""
 
