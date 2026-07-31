@@ -15,6 +15,7 @@ from pydantic import ValidationError
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config.api import (
     BuiltinTool,
+    JobConfig,
     PipelineConfig,
     PipelineStageConfig,
     ProfileConfig,
@@ -25,6 +26,7 @@ from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
+    add_job_to_toml,
     add_workspace_to_toml,
     configure_plugin_workspaces,
     get_repo_access,
@@ -301,6 +303,11 @@ class TestWorkspaceConfigModel:
 
 
 class TestAddWorkspaceToToml:
+    @pytest.mark.parametrize("name", ["", ".hidden", "nested/name"])
+    def test_rejects_invalid_workspace_names(self, name):
+        with pytest.raises(ValueError, match="Invalid workspace name"):
+            add_workspace_to_toml(name, WorkspaceConfig())
+
     def test_rejects_workspace_that_does_not_round_trip_through_settings(
         self, tmp_path, monkeypatch
     ):
@@ -382,6 +389,12 @@ profiles = ["pynchy-dev"]
     profile = data["profiles"]["pynchy-dev"]
     assert profile["skills"] == ["core", "obsidian-knowledge", "blocked-skill"]
     assert profile["denied_skills"] == ["pynchy-operations"]
+
+
+@pytest.mark.parametrize("name", ["", ".hidden", "nested/name"])
+def test_add_job_rejects_invalid_names(name):
+    with pytest.raises(ValueError, match="Invalid automation name"):
+        add_job_to_toml(name, JobConfig(schedule="0 * * * *", workspace="host", command="true"))
 
 
 class TestGetRepoAccess:
