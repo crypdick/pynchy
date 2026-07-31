@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pynchy.plugins.api import (
     Channel,  # noqa: TC001 - beartype resolves this runtime annotation.
 )
+
+type ThreadKind = Literal["issue", "automation", "planning", "testing", "topic"]
 
 
 @runtime_checkable
@@ -53,6 +55,13 @@ class ThreadLifecycleChannel(Protocol):
     """Optional channel capability for opening or closing a child conversation."""
 
     async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None: ...
+
+
+@runtime_checkable
+class ThreadKindChannel(Protocol):
+    """Optional channel capability for assigning a child-conversation kind."""
+
+    async def set_thread_kind(self, child_jid: str, kind: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -175,12 +184,31 @@ async def set_thread_closed(
     await channel.set_thread_closed(child_jid, closed=closed)
 
 
-async def ensure_thread(
+async def set_thread_kind(
+    channels: list[Channel],
+    child_jid: str,
+    kind: ThreadKind,
+) -> None:
+    """Apply a semantic child kind when the owning channel supports it."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(child_jid) and isinstance(candidate, ThreadKindChannel)
+        ),
+        None,
+    )
+    if channel is not None:
+        await channel.set_thread_kind(child_jid, kind)
+
+
+async def ensure_thread(  # noqa: PLR0913 - one entry point owns all thread creation options.
     channels: list[Channel],
     parent_jid: str,
     name: str,
     *,
     participant_ids: tuple[str, ...] = (),
+    kind: ThreadKind = "topic",
     dry_run: bool = False,
 ) -> EnsuredThread:
     """Find or create one named child conversation without duplicating it."""
@@ -190,15 +218,15 @@ async def ensure_thread(
     child_jid = await find_thread(channels, parent_jid, name)
     if child_jid is not None:
         await add_thread_participants(channels, child_jid, participant_ids)
+        await set_thread_kind(channels, child_jid, kind)
         return EnsuredThread(jid=child_jid, created=False)
     if dry_run:
         return EnsuredThread(jid=None, created=True)
-    return EnsuredThread(
-        jid=await create_thread(
-            channels,
-            parent_jid,
-            name,
-            participant_ids=participant_ids,
-        ),
-        created=True,
+    child_jid = await create_thread(
+        channels,
+        parent_jid,
+        name,
+        participant_ids=participant_ids,
     )
+    await set_thread_kind(channels, child_jid, kind)
+    return EnsuredThread(jid=child_jid, created=True)

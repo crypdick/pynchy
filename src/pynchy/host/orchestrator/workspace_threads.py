@@ -151,6 +151,7 @@ async def reconcile_workspace_threads(
                     channels,
                     parent_jid,
                     declared_thread.name,
+                    kind=declared_thread.kind,
                     dry_run=dry_run,
                 )
             except Exception as exc:  # noqa: BLE001 - allow: exception-handling; one remote thread must not block startup.

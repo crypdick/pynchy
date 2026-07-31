@@ -9,7 +9,7 @@ cover WhatsApp, Slack, and Discord; plugins can add more.
 |---------|-------------------------|
 | [WhatsApp](whatsapp.md) | Talk through a linked personal device. |
 | [Slack](slack.md) | Work in Slack channels or DMs. |
-| [Discord](discord.md) | Use guild channels, threads, DMs, or a voice workspace. |
+| [Discord](discord.md) | Use guild channels, forums, threads, DMs, or a voice workspace. |
 
 For spoken Discord replies and inbound audio transcription, see [Voice and
 speech](voice-and-speech.md).

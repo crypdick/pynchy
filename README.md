@@ -44,7 +44,7 @@ Built-in plugins provide integrations with external services, and they're all pl
 |-------------|-------------|
 | **WhatsApp** | Messaging channel via linked device |
 | **Slack** | Messaging channel with browser-based token extraction |
-| **Discord** | Bot channel for guilds, threads, DMs, and an optional voice workspace |
+| **Discord** | Bot channel for guilds, forums, threads, DMs, and an optional voice workspace |
 | **X (Twitter)** | Post, like, reply, retweet, and quote via browser automation |
 | **CalDAV** | Calendar access (Nextcloud, etc.) — list, create, delete events |
 | **Jupyter Notebooks** | Per-workspace notebook server with MCP tools |

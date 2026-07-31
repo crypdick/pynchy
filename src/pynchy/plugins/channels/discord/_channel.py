@@ -220,6 +220,8 @@ class DiscordChannel:
             return None
         if target.kind == "direct":
             return await self._resolve_direct_chat_jid(target.target_id)
+        if configured_channel_kind(self._config, target) == "forum":
+            return await self.create_group(chat_name)
         return await resolve_configured_channel_jid(self, target)
 
     async def _resolve_direct_chat_jid(self, user_key: str) -> str | None:
@@ -298,6 +300,17 @@ class DiscordChannel:
         create_thread = getattr(parent, "create_thread", None)
         if not callable(create_thread):
             raise TypeError("Discord target does not support child threads")
+        if getattr(parent, "available_tags", None) is not None:
+            created = await create_thread(
+                name=name,
+                content="Pynchy conversation initialized.",
+            )
+            thread = getattr(created, "thread", created)
+            await self._add_thread_participants(
+                thread,
+                (*self.config.default_thread_participants, *participant_ids),
+            )
+            return channel_jid(str(thread.id))
         # discord.py defaults TextChannel.create_thread() to a private thread.
         # Child conversations belong to the configured channel's participants,
         # so opt into the public type explicitly.
@@ -319,6 +332,37 @@ class DiscordChannel:
                     error=str(exc),
                 )
         return channel_jid(str(thread.id))
+
+    async def set_thread_kind(self, child_jid: str, kind: str) -> None:
+        """Apply exactly one canonical kind tag when the child belongs to a forum."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        parent = getattr(thread, "parent", None)
+        if parent is None and self.client is not None:
+            parent_id = getattr(thread, "parent_id", None)
+            if parent_id is not None:
+                parent = cast("Any", self.client).get_channel(parent_id)
+        available_tags = getattr(parent, "available_tags", None)
+        if available_tags is None:
+            return
+        tag = next(
+            (
+                candidate
+                for candidate in available_tags
+                if same_name(getattr(candidate, "name", None), kind)
+            ),
+            None,
+        )
+        if tag is None:
+            raise RuntimeError(f"Discord forum lacks required post tag: {kind}")
+        applied_tags = list(getattr(thread, "applied_tags", ()) or ())
+        if len(applied_tags) == 1 and getattr(applied_tags[0], "id", None) == getattr(
+            tag, "id", None
+        ):
+            return
+        edit = getattr(thread, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord target does not support forum post tags")
+        await edit(applied_tags=[tag])
 
     async def find_thread(self, parent_jid: str, name: str) -> str | None:
         """Find a child thread with *name* below the given parent.
@@ -426,11 +470,13 @@ class DiscordChannel:
             if existing is not None:
                 return cast("object", existing)
         channel_name = self.configured_channel_name(target)
-        channel_collection = (
-            getattr(guild, "voice_channels", [])
-            if configured_channel_kind(self.config, target) == "voice"
-            else getattr(guild, "text_channels", [])
-        )
+        kind = configured_channel_kind(self.config, target)
+        if kind == "voice":
+            channel_collection = getattr(guild, "voice_channels", [])
+        elif kind == "forum":
+            channel_collection = getattr(guild, "forums", [])
+        else:
+            channel_collection = getattr(guild, "text_channels", [])
         for channel in channel_collection:
             if channel_key.isdecimal() and str(channel.id) == channel_key:
                 return cast("object", channel)
