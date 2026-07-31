@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
-from pynchy.host.git_ops.api import RepoContext
+from pynchy.host.git_ops.api import RepoContext, RoutedHostWorktreeError
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.app import PynchyApp
 
@@ -50,6 +50,34 @@ class TestPublicationRepositorySelection:
             )
 
         get_repo_context.assert_called_once_with("pynchy")
+
+    def test_routed_host_worktree_failure_blocks_execution(self, tmp_path: Path) -> None:
+        folder = "host__thread_conversation-conv_worktree-failure"
+        repo = RepoContext(
+            slug="owner/repo",
+            root=tmp_path / "repo",
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        with patch("pynchy.host.orchestrator.app.configure_lifecycle_runtime"):
+            app = PynchyApp()
+
+        with (
+            patch("pynchy.host.orchestrator.app.get_repo_context", return_value=repo),
+            patch(
+                "pynchy.host.orchestrator.app.resolve_routed_host_worktree_cwd",
+                side_effect=RoutedHostWorktreeError("repository worktree is unavailable"),
+            ),
+            pytest.raises(
+                host_execution.HostExecutionCwdError,
+                match="repository worktree is unavailable",
+            ),
+        ):
+            app.host_runtime_operations.resolve_routed_host_cwd(
+                folder,
+                tmp_path,
+                [repo.slug],
+                recovered=False,
+            )
 
     def test_routed_host_uses_active_scheduled_repository_override(self, tmp_path: Path) -> None:
         folder = "host__thread_conversation-conv_override"

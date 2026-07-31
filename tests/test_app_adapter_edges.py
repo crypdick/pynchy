@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 import pynchy.host.orchestrator.app as app_module
+from pynchy.host.container_manager.security.approval import configure_approval_state_root
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import (
@@ -78,13 +79,14 @@ async def test_application_persists_and_replays_approval_decision(
     deps = object()
     write_decision = Mock()
     process_decision = AsyncMock()
-    monkeypatch.setattr(app_module, "_approval_decisions_dir", lambda _group: tmp_path)
+    configure_approval_state_root(tmp_path)
     monkeypatch.setattr(app_module, "write_json_atomic", write_decision)
     monkeypatch.setattr(app_module, "process_approval_decision", process_decision)
 
     await app.approval_runtime_operations.persist_and_process("chat", decision, deps)
 
-    decision_path = tmp_path / "request-1.json"
+    decision_path = tmp_path / "chat" / "approval_decisions" / "request-1.json"
+    assert (tmp_path / "chat" / "approval_decisions").is_dir()
     write_decision.assert_called_once_with(decision_path, decision, indent=2)
     process_decision.assert_awaited_once_with(
         decision_path,
