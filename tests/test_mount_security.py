@@ -197,8 +197,12 @@ allow_read_write = true
             bad = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="../escape"), is_admin=True
             )
+            absolute = validate_mount(
+                AdditionalMount(host_path=str(target), container_path="/escape"), is_admin=True
+            )
         assert ok.allowed is True
         assert bad.allowed is False
+        assert absolute.allowed is False
         assert "container path" in bad.reason.lower()
 
 
@@ -246,6 +250,7 @@ description = "Dev"
             create=True,
         ):
             assert load_mount_allowlist() is None
+            assert load_mount_allowlist() is None
 
     def test_invalid_allowed_root_entry_returns_none(self, tmp_path: Path):
         allowlist = tmp_path / "mount-allowlist.toml"
@@ -274,6 +279,26 @@ path = 123
 non_admin_read_only = true
 blocked_patterns = []
 allowed_roots = ["not-a-table"]
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+            create=True,
+        ):
+            assert load_mount_allowlist() is None
+
+    def test_invalid_optional_root_boolean_returns_none(self, tmp_path: Path):
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            """
+non_admin_read_only = true
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "~/projects"
+allow_read_write = "not-a-bool"
 """.strip(),
         )
         with patch(
@@ -329,6 +354,95 @@ allowed_roots = []
 
 
 class TestValidateMount:
+    def test_missing_allowlist_rejects_mount(self, tmp_path: Path):
+        result = mount_security.validate_mount(
+            AdditionalMount(host_path=str(tmp_path), container_path="data"),
+            is_admin=True,
+            allowlist_path=tmp_path / "missing.toml",
+            default_blocked_patterns=(),
+        )
+
+        assert result.allowed is False
+        assert result.reason == f"No mount allowlist configured at {tmp_path / 'missing.toml'}"
+
+    def test_blocked_pattern_can_match_a_path_substring(self, tmp_path: Path):
+        target = tmp_path / "allowed" / "repo"
+        target.mkdir(parents=True)
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = ["allowed/repo"]
+
+[[allowed_roots]]
+path = "{tmp_path / "allowed"}"
+allow_read_write = true
+""".strip(),
+        )
+
+        result = mount_security.validate_mount(
+            AdditionalMount(host_path=str(target), container_path="repo"),
+            is_admin=True,
+            allowlist_path=allowlist,
+            default_blocked_patterns=(),
+        )
+
+        assert result.allowed is False
+        assert 'blocked pattern "allowed/repo"' in result.reason
+
+    def test_missing_allowed_root_rejects_existing_mount(self, tmp_path: Path):
+        target = tmp_path / "target"
+        target.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "{tmp_path / "missing-root"}"
+allow_read_write = true
+""".strip(),
+        )
+
+        result = mount_security.validate_mount(
+            AdditionalMount(host_path=str(target), container_path="target"),
+            is_admin=True,
+            allowlist_path=allowlist,
+            default_blocked_patterns=(),
+        )
+
+        assert result.allowed is False
+        assert "not under any allowed root" in result.reason
+
+    def test_read_write_mount_is_forced_readonly_by_root_policy(self, tmp_path: Path):
+        target = tmp_path / "target"
+        target.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = false
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "{tmp_path}"
+allow_read_write = false
+""".strip(),
+        )
+
+        result = mount_security.validate_mount(
+            AdditionalMount(host_path=str(target), container_path="target", readonly=False),
+            is_admin=True,
+            allowlist_path=allowlist,
+            default_blocked_patterns=(),
+        )
+
+        assert result.allowed is True
+        assert result.effective_readonly is True
+
     def test_allows_mount_under_root(self, tmp_path: Path):
         allowed = tmp_path / "allowed"
         allowed.mkdir()
@@ -410,6 +524,32 @@ allow_read_write = true
             )
         assert result.allowed is True
         assert result.effective_readonly is True
+
+    def test_admin_read_write_mount_remains_writable_when_root_allows_it(self, tmp_path: Path):
+        data = tmp_path / "data"
+        data.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = false
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "{tmp_path}"
+allow_read_write = true
+""".strip(),
+        )
+
+        result = mount_security.validate_mount(
+            AdditionalMount(host_path=str(data), container_path="data", readonly=False),
+            is_admin=True,
+            allowlist_path=allowlist,
+            default_blocked_patterns=(),
+        )
+
+        assert result.allowed is True
+        assert result.effective_readonly is False
 
 
 class TestBatchValidation:
