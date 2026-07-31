@@ -421,6 +421,55 @@ def test_rechecks_object_store_after_each_commit_metadata_read(
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")
+def test_closes_created_pr_when_final_ref_check_drifts(git_env: dict) -> None:
+    """A post-creation ref race is reported and compensated with PR closure."""
+    feature = "created-pr-ref-drift"
+    worktree = create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+    base_sha = git(git_env["origin"], "rev-parse", "main").stdout.strip()
+    head_sha = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    lookup_results = iter(
+        (
+            no_pr_result([]),
+            no_pr_result([]),
+            managed_pr_result([], base_sha=base_sha, head_sha=head_sha, branch_name=feature),
+        )
+    )
+    real_subprocess_run = subprocess.run
+    gh_calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[0] == "gh":
+            gh_calls.append(args)
+            if args[1:3] == ["pr", "create"]:
+                return subprocess.CompletedProcess(
+                    args, 0, "https://github.com/owner/repo/pull/1\n", ""
+                )
+            if args[1:3] == ["pr", "close"]:
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return next(lookup_results)
+        return real_subprocess_run(args, check=kwargs.pop("check", False), **kwargs)
+
+    with (
+        patch(
+            "pynchy.host.git_ops.sync._managed_refs_match",
+            side_effect=[True, True, False],
+        ),
+        patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=fake_run),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": (
+            "Publication blocked: managed feature refs changed after inspection. "
+            "The host closed the newly created PR."
+        ),
+    }
+    assert [call[1:3] for call in gh_calls].count(["pr", "close"]) == 1
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
 def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) -> None:
     """An approved open PR is updated after its inspected head is pushed."""
     feature = "existing-approved-pr"
