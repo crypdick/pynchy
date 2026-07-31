@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pluggy
@@ -14,9 +14,6 @@ from pynchy.agent_home import (
     refresh_personalized_skills,
     sync_skills,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_parse_skill_tier_defaults_when_metadata_cannot_be_read(tmp_path: Path) -> None:
@@ -195,3 +192,58 @@ def test_sync_skills_rejects_malformed_plugin_destination(
             plugin_manager=_FakePluginManager(hook),
             workspace_skills=["*"],
         )
+
+
+def test_sync_skills_treats_unreadable_plugin_marker_as_collision(
+    tmp_path: Path, monkeypatch
+) -> None:
+    plugin_skill = tmp_path / "plugin/skill"
+    plugin_skill.mkdir(parents=True)
+    (plugin_skill / "SKILL.md").write_text("---\nname: skill\ntier: community\n---\n")
+
+    marker = tmp_path / "session/skills/skill/.pynchy-plugin-skill"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("/old/source\n")
+
+    original_read_text = Path.read_text
+
+    def fail_marker_read(path: Path, *args, **kwargs):
+        if path == marker:
+            raise OSError("marker unavailable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_marker_read)
+    hook = MagicMock()
+    hook.pynchy_skill_paths.return_value = [[str(plugin_skill)]]
+
+    with pytest.raises(ValueError, match="Skill name collision"):
+        sync_skills(
+            tmp_path / "session",
+            project_root=tmp_path / "project",
+            plugin_manager=_FakePluginManager(hook),
+            workspace_skills=["*"],
+        )
+
+
+def test_refresh_personalized_skills_keeps_stale_copy_when_cleanup_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    stale = tmp_path / "session/skills/old"
+    stale.mkdir(parents=True)
+    (stale / ".pynchy-personalized-skill").write_text("managed by pynchy\n")
+
+    def fail_rmtree(path: Path) -> None:
+        if path == stale:
+            raise OSError("copy busy")
+        raise AssertionError(f"unexpected removal: {path}")
+
+    monkeypatch.setattr("pynchy.agent_home.shutil.rmtree", fail_rmtree)
+
+    refresh_personalized_skills(
+        tmp_path / "session",
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+    )
+
+    assert stale.is_dir()
