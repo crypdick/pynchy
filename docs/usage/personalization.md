@@ -128,7 +128,7 @@ required by the changed fields:
 | Profile `skills` or `denied_skills`; learning review limits; container query timeout | Refresh before the next turn |
 | Selected souls, pipelines, prompt files, profile model, repositories, execution mode, working directory, or security policy | Pause affected workspace queues, replace their sessions, then resume queued work |
 | Global reasoning effort, learning vault mounts, blocked mount patterns, or container image, memory, and idle timeout | Replace every registered workspace session |
-| Tools, admin status, profile composition or identity, [workspace topology](../superpowers/future-work/workspace-topology-hot-reconciliation.md), connections, plugins, repositories, queue policy, secrets, and other host infrastructure | Restart the host |
+| Tools, admin status, profile composition or identity, workspace topology, connections, plugins, repositories, queue policy, secrets, and other host infrastructure | Restart the host |
 
 A mixed edit uses the strongest class and never partially publishes weaker
 changes. Session replacement preserves messages, conversation-control state,
