@@ -90,6 +90,19 @@ class _Interaction:
     response: _InteractionResponse
 
 
+@dataclass
+class _UploadedAttachment:
+    id: str = "attachment-1"
+    filename: str = "screenshot.png"
+    url: str = "https://cdn.discord.test/screenshot.png"
+    proxy_url: str = "https://media.discord.test/screenshot.png"
+    content_type: str = "image/png"
+    size: int = 1234
+    description: str | None = "Bug screenshot"
+    spoiler: bool = False
+    ephemeral: bool = True
+
+
 def _interaction() -> _Interaction:
     return _Interaction(
         user=_InteractionUser(id="42", bot=False, roles=[]),
@@ -150,6 +163,16 @@ def _free_text_question() -> list[dict]:
             "question": "What should we call it?",
             "options": [],
             "multiSelect": False,
+        }
+    ]
+
+
+def _file_upload_question() -> list[dict]:
+    return [
+        {
+            "header": "Evidence",
+            "question": "Upload a screenshot of the failure.",
+            "fileUpload": {"required": False, "maxFiles": 2},
         }
     ]
 
@@ -332,6 +355,77 @@ async def test_free_text_modal_submit_delivers_answer():
 
     answer = callback.call_args[0][1]
     assert answer["answer"] == "Project Synapse"
+
+
+@pytest.mark.asyncio
+async def test_file_upload_modal_submit_delivers_attachment_metadata():
+    callback = MagicMock()
+    ch = _make_channel(on_ask_user_answer=callback)
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_ask_user("discord:direct:42", REQUEST_ID, _file_upload_question())
+
+    view = fake.sends[0][1]["view"]
+    button = next(item for item in view.children if item.label == "Attach files")
+    launch_interaction = _interaction()
+    await button.callback(launch_interaction)
+
+    modal = launch_interaction.response.send_modal.call_args.args[0]
+    assert isinstance(modal.file_input, discord.ui.FileUpload)
+    assert modal.file_input.required is False
+    assert modal.file_input.max_values == 2
+    modal.file_input._values = [_UploadedAttachment()]
+
+    await modal.on_submit(_interaction())
+
+    answer = callback.call_args[0][1]
+    assert answer["answer"] == {
+        "attachments": [
+            {
+                "id": "attachment-1",
+                "filename": "screenshot.png",
+                "url": "https://cdn.discord.test/screenshot.png",
+                "proxy_url": "https://media.discord.test/screenshot.png",
+                "content_type": "image/png",
+                "size": 1234,
+                "description": "Bug screenshot",
+                "spoiler": False,
+                "ephemeral": True,
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_multi_question_modal_supports_file_uploads():
+    callback = MagicMock()
+    ch = _make_channel(on_ask_user_answer=callback)
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    questions = [
+        *_file_upload_question(),
+        {"question": "What should we call it?"},
+    ]
+
+    await ch.send_ask_user("discord:direct:42", REQUEST_ID, questions)
+    view = fake.sends[0][1]["view"]
+    launch_interaction = _interaction()
+    await view.children[0].callback(launch_interaction)
+
+    modal = launch_interaction.response.send_modal.call_args.args[0]
+    file_input = modal.children[0].component
+    text_input = modal.children[1].component
+    file_input._values = [_UploadedAttachment()]
+    text_input._value = "Project Synapse"
+
+    await modal.on_submit(_interaction())
+
+    answer = callback.call_args[0][1]
+    assert answer["answer"]["question_1"]["attachments"][0]["filename"] == "screenshot.png"
+    assert answer["answer"]["question_2"] == "Project Synapse"
 
 
 @pytest.mark.asyncio
