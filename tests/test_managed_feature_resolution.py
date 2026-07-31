@@ -644,3 +644,21 @@ class TestManagedFeatureResolution:
         patch_text, diagnostic = read_managed_feature_patch(publication)
         assert patch_text is None
         assert diagnostic == "managed feature target changed after inspection"
+
+    def test_bounded_patch_reader_stops_on_oversized_committed_diff(self, git_env: dict) -> None:
+        worktree = create_managed_feature(git_env, "oversized-real-patch-feature")
+        (worktree / "large.txt").write_text("x" * 70_000, encoding="utf-8")
+        git(worktree, "add", "large.txt")
+        git(worktree, "commit", "-m", "add large patch")
+        write_managed_manifest(git_env["project"], [managed_record("oversized-real-patch-feature")])
+
+        resolution = resolve_managed_feature_publication(
+            "oversized-real-patch-feature", [git_env["repo_ctx"]]
+        )
+        publication = resolution.publication
+        assert publication is not None, resolution.error
+
+        patch_text, diagnostic = read_managed_feature_patch(publication)
+
+        assert patch_text is None
+        assert diagnostic == "Committed patch exceeds the Cop inspection context limit"

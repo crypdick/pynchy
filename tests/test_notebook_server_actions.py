@@ -8,7 +8,7 @@ import sys
 import types
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
@@ -201,6 +201,56 @@ async def test_start_kernel_rehydrates_code_and_reports_replay_errors(
     assert result["cells_total"] == 2
     assert result["code_cells_executed"] == 1
     assert result["replay_errors"] == ["Cell 1: ZeroDivisionError: division by zero"]
+
+
+@pytest.mark.asyncio
+async def test_start_kernel_rehydrates_without_replay_errors(
+    notebook_server: dict[str, Any],
+) -> None:
+    notebook_server["save_notebook"](
+        new_notebook(cells=[new_code_cell(source="2 + 2")]),
+        notebook_server["NOTEBOOK_DIR"] / "clean-restore.qmd",
+    )
+    notebook_server["execute_code"] = AsyncMock(return_value=[])
+
+    result = await notebook_server["start_kernel"]("clean-restore.qmd")
+
+    assert result["status"] == "rehydrated"
+    assert "replay_errors" not in result
+
+
+def test_default_workspace_uses_project_root_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    notebook_server: dict[str, Any],
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("PYNCHY_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr(sys, "argv", ["notebook-server", "--workspace", "research"])
+    monkeypatch.delitem(
+        sys.modules,
+        "pynchy.plugins.integrations.notebook_server.__main__",
+        raising=False,
+    )
+
+    server = vars(importlib.import_module("pynchy.plugins.integrations.notebook_server.__main__"))
+
+    assert server["WORKSPACE_DIR"] == (tmp_path / "groups" / "research").resolve()
+    assert server["NOTEBOOK_DIR"].is_dir()
+    server["_sessions"].clear()
+
+
+def test_start_jupyterlab_launches_fixed_viewer_process(
+    notebook_server: dict[str, Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    process = Mock()
+    with patch.object(notebook_server["subprocess"], "Popen", return_value=process) as popen:
+        notebook_server["_start_jupyterlab"]()
+
+    assert notebook_server["_state"].lab_process is process
+    argv = popen.call_args.args[0]
+    assert argv[:3] == [sys.executable, "-m", "jupyterlab"]
+    assert f"--notebook-dir={notebook_server['NOTEBOOK_DIR']}" in argv
+    assert "JupyterLab started on port 8888" in capsys.readouterr().out
 
 
 @pytest.mark.action("notebook.file.save")
