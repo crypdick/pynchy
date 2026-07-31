@@ -7,6 +7,7 @@ import base64
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import aiohttp
 import pytest
 from conftest import make_settings
 
@@ -26,6 +27,47 @@ class _FakeProcess:
 
     async def communicate(self) -> tuple[bytes, bytes]:
         return b"", self._stderr
+
+
+class _FakeVisionResponse:
+    def __init__(self, payload: dict[str, object], error: Exception | None = None) -> None:
+        self._payload = payload
+        self._error = error
+
+    async def __aenter__(self) -> _FakeVisionResponse:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        if self._error is not None:
+            raise self._error
+
+    async def json(self) -> dict[str, object]:
+        return self._payload
+
+
+class _FakeVisionSession:
+    def __init__(self, response: _FakeVisionResponse) -> None:
+        self.response = response
+        self.url: str | None = None
+        self.headers: dict[str, str] | None = None
+        self.body: dict[str, object] | None = None
+
+    async def __aenter__(self) -> _FakeVisionSession:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    def post(
+        self, url: str, *, headers: dict[str, str], json: dict[str, object]
+    ) -> _FakeVisionResponse:
+        self.url = url
+        self.headers = headers
+        self.body = json
+        return self.response
 
 
 def _runtime(settings: Settings) -> DesktopScreenshotRuntime:
@@ -163,6 +205,34 @@ async def test_take_screenshot_supports_window_selection_and_display_id(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_take_screenshot_supports_selection_mode(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings)
+    captured_args: tuple[str, ...] | None = None
+
+    async def fake_exec(*args: str, **_kwargs: object) -> _FakeProcess:
+        nonlocal captured_args
+        captured_args = args
+        await asyncio.to_thread(Path(args[-1]).write_bytes, b"png bytes")
+        return _FakeProcess()
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.platform.system", return_value="Darwin"
+        ),
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot.asyncio.create_subprocess_exec",
+            new=AsyncMock(side_effect=fake_exec),
+        ),
+    ):
+        result = await handler({"source_group": "admin", "mode": "selection"})
+
+    assert captured_args is not None
+    assert captured_args[4:6] == ("-i", "-s")
+    assert result["result"]["mode"] == "selection"
+
+
+@pytest.mark.asyncio
 async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
     settings = make_settings(data_dir=tmp_path)
     handler = _handler(settings)
@@ -275,6 +345,104 @@ async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Pat
             "model": "gpt-5.5",
         }
     }
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_requires_a_workspace_capture(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings, "analyze_screenshot")
+
+    assert await handler({"source_group": "admin"}) == {
+        "error": "No screenshots found for this workspace."
+    }
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_uses_requested_model(tmp_path: Path) -> None:
+    settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="default-model"))
+    handler = _handler(settings, "analyze_screenshot")
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+
+    with patch(
+        "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+        new=AsyncMock(return_value="Requested model used."),
+    ) as request_vision:
+        result = await handler(
+            {"source_group": "admin", "image_path": "screen.png", "model": "custom-model"}
+        )
+
+    assert result["result"]["model"] == "custom-model"
+    assert request_vision.await_args.args[0]["model"] == "custom-model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "expected_analysis"),
+    [
+        ({"output_text": "Direct response"}, "Direct response"),
+        (
+            {
+                "output": [
+                    "ignored",
+                    {"content": "ignored"},
+                    {"content": [{"text": "First"}, {"type": "image"}, {"text": "Second"}]},
+                ]
+            },
+            "First\nSecond",
+        ),
+    ],
+)
+async def test_analyze_screenshot_accepts_supported_gateway_response_shapes(
+    tmp_path: Path,
+    payload: dict[str, object],
+    expected_analysis: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="vision-model"))
+    handler = _handler(settings, "analyze_screenshot")
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    fake_session = _FakeVisionSession(_FakeVisionResponse(payload))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.desktop_screenshot.aiohttp.ClientSession",
+        lambda **_kwargs: fake_session,
+    )
+
+    result = await handler({"source_group": "admin", "image_path": "screen.png"})
+
+    assert result["result"]["analysis"] == expected_analysis
+    assert fake_session.url == "http://localhost:4000/v1/responses"
+    assert fake_session.headers == {
+        "Authorization": "Bearer test-key",
+        "Content-Type": "application/json",
+    }
+    assert fake_session.body is not None
+    assert fake_session.body["model"] == "vision-model"
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_reports_gateway_http_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings, "analyze_screenshot")
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    fake_session = _FakeVisionSession(
+        _FakeVisionResponse({}, aiohttp.ClientError("gateway rejected request"))
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.desktop_screenshot.aiohttp.ClientSession",
+        lambda **_kwargs: fake_session,
+    )
+
+    result = await handler({"source_group": "admin", "image_path": "screen.png"})
+
+    assert result == {"error": "Vision analysis failed: gateway rejected request"}
 
 
 @pytest.mark.asyncio
