@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import discord
 import pytest
@@ -13,6 +13,7 @@ from pynchy.plugins.speech.api import SpeechSynthesisResult
 from tests.discord_channel_support import (
     _activate_voice_session,
     _configured_voice_channel,
+    _FakeDiscordUser,
     _FakeVoiceChannel,
     _VoiceState,
 )
@@ -41,6 +42,42 @@ async def test_voice_connection_stays_receive_disabled_without_opus(
         await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
 
     assert voice_channel.voice_client.received_listener is None
+
+
+@pytest.mark.asyncio
+async def test_voice_room_with_only_bots_does_not_activate() -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    bot = _FakeDiscordUser(7, "bot")
+    bot.bot = True
+    voice_channel.members = [bot]
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_voice_room_disconnects_when_allowed_members_leave(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.release.set()
+    remaining_members = iter(({"42": "Alice"}, {}))
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _channel: next(remaining_members),
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    with patch.object(voice_channel.voice_client, "disconnect", new=AsyncMock()) as disconnect:
+        await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    assert voice_channel.connect_calls == 1
+    assert voice_channel.voice_client.received_listener is None
+    disconnect.assert_awaited_once()
 
 
 @pytest.mark.asyncio
