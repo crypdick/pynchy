@@ -2,14 +2,34 @@
 
 from __future__ import annotations
 
+import shutil
+import signal
+import subprocess  # noqa: S404 - test starts a controlled local Git process.
+from unittest.mock import patch
+
 import pytest
 
 from pynchy.host.git_ops import (
-    _bounded_git,  # noqa: PLC2701  # allow: private-test-imports - external-process: Git process safety
+    _bounded_git as bg,  # noqa: PLC2701  # allow: private-test-imports - external-process: Git process safety
 )
 from tests.git_policy_support import git
 
-run_git_bounded_stdout = _bounded_git.run_git_bounded_stdout
+run_git_bounded_stdout = bg.run_git_bounded_stdout
+terminate_unread_process_group = (
+    bg._terminate_unread_process_group  # allow: private-test-imports - external-process: kill
+)
+
+_GIT = shutil.which("git") or "/usr/bin/git"
+
+
+def _blocked_git_process() -> subprocess.Popen[bytes]:
+    return subprocess.Popen(  # noqa: S603 - fixed local Git command.
+        [_GIT, "hash-object", "--stdin"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def test_bounded_git_rejects_negative_output_limits(tmp_path) -> None:
@@ -47,3 +67,47 @@ def test_bounded_git_times_out_before_reading_output(tmp_path) -> None:
     assert result.returncode == 124
     assert not result.stdout
     assert result.stderr == "git command timed out after 0 seconds"
+
+
+def test_bounded_git_uses_direct_child_fallback_when_group_signal_fails() -> None:
+    process = _blocked_git_process()
+
+    try:
+        with patch(
+            "pynchy.host.git_ops._bounded_git.os.killpg",
+            side_effect=PermissionError("group unavailable"),
+        ) as killpg:
+            terminate_unread_process_group(process)
+
+        killpg.assert_called_once_with(process.pid, signal.SIGTERM)
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+    assert process.returncode is not None
+
+
+def test_bounded_git_kills_child_after_termination_timeout() -> None:
+    process = _blocked_git_process()
+
+    def killpg(_pid: int, sig: signal.Signals) -> None:
+        if sig == signal.SIGTERM:
+            raise ProcessLookupError("group unavailable")
+        raise PermissionError("group unavailable")
+
+    try:
+        with (
+            patch("pynchy.host.git_ops._bounded_git.os.killpg", side_effect=killpg),
+            patch.object(
+                process,
+                "wait",
+                side_effect=[subprocess.TimeoutExpired("git", 1), None],
+            ),
+        ):
+            terminate_unread_process_group(process)
+
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+    assert process.returncode is not None

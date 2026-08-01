@@ -150,6 +150,104 @@ async def test_reconcile_materializes_active_issue_controls(monkeypatch):
     )
 
 
+async def test_reconcile_skips_malformed_issue_and_keeps_valid_sibling(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    root = _workspace("health", "Health")
+    ensure_control = AsyncMock()
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.list_workspace_todos",
+            AsyncMock(
+                return_value=[
+                    {"identifier": "SYN-bad"},
+                    {
+                        "id": "issue-1",
+                        "identifier": "SYN-1",
+                        "title": "Keep this issue",
+                        "updatedAt": "2026-07-31T09:00:00Z",
+                    },
+                ]
+            ),
+        ),
+    ):
+        await reconcile_linear_workspace_boards([root], ensure_issue_control=ensure_control)
+
+    ensure_control.assert_awaited_once()
+    assert ensure_control.await_args.args[0].issue_id == "issue-1"
+
+
+async def test_reconcile_continues_after_issue_control_failure(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    root = _workspace("health", "Health")
+    ensure_control = AsyncMock(side_effect=[RuntimeError("control unavailable"), None])
+    issues = [
+        {
+            "id": f"issue-{index}",
+            "identifier": f"SYN-{index}",
+            "title": f"Issue {index}",
+            "updatedAt": "2026-07-31T09:00:00Z",
+        }
+        for index in (1, 2)
+    ]
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.list_workspace_todos",
+            AsyncMock(return_value=issues),
+        ),
+    ):
+        await reconcile_linear_workspace_boards([root], ensure_issue_control=ensure_control)
+
+    assert ensure_control.await_count == 2
+
+
+async def test_reconcile_continues_when_issue_discovery_fails(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    root = _workspace("health", "Health")
+    ensure_control = AsyncMock()
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.list_workspace_todos",
+            AsyncMock(side_effect=RuntimeError("Linear unavailable")),
+        ),
+    ):
+        await reconcile_linear_workspace_boards([root], ensure_issue_control=ensure_control)
+
+    ensure_control.assert_not_awaited()
+
+
 async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypatch):
     monkeypatch.setenv("LINEAR_PUBLIC_KEY", "lin_public")
     monkeypatch.setenv("LINEAR_PUBLIC_TEAM", "PUB")

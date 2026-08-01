@@ -28,6 +28,20 @@ async def test_thread_kind_resolves_parent_and_rejects_missing_forum_tag():
 
 
 @pytest.mark.asyncio
+async def test_thread_kind_ignores_a_non_forum_thread_without_parent():
+    ch = _channel()
+    thread = MagicMock()
+    thread.parent = None
+    thread.parent_id = None
+    ch.client = MagicMock()
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await ch.set_thread_kind("discord:channel:456", "automation")
+
+    ch.client.get_channel.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_thread_kind_keeps_matching_existing_tag():
     ch = _channel()
     tag = MagicMock()
