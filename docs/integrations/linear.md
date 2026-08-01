@@ -84,14 +84,14 @@ types, or reorder states it doesn't manage.
 
 | State | Meaning |
 |-------|---------|
-| `Agent Proposed` | The agent suggested work. No human authorized it. |
+| `Agent Proposed` | The agent suggested work and awaits human review. No human authorized it; the need for review does not make it blocked. |
 | `Ready for Planning` | A human requested a concrete plan. Execution remains unauthorized. |
 | `Awaiting Plan Approval` | The agent persisted a plan for human review. |
 | `Human Approved` | A human explicitly authorized execution. |
 | `In Progress` | The host owns an active execution lease. |
 | `Awaiting Review` | The delivered result awaits review. For code, every PR is attached to the issue. |
 | `Follow-ups` | The main result is ready; the agent is finishing operational loose ends. |
-| `Blocked` | The result needs intervention or another owner. |
+| `Blocked` | A concrete external dependency prevents authorized work from proceeding. |
 | `Done` | The agent judges the complete job, including follow-ups, finished. |
 | `Rejected` | A human declined the proposal. |
 

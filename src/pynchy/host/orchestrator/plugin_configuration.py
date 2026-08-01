@@ -24,6 +24,7 @@ from pynchy.config.api import (  # beartype resolves composition annotations at 
     CalDAVTool,
     McpTool,
     Settings,
+    read_prompt,
     tool_process_environment,
 )
 from pynchy.conversation.api import (
@@ -126,6 +127,7 @@ from pynchy.plugins.integrations.linear_webhook_effects import (
     LinearWebhookEffectsRuntime,
     configure_linear_webhook_effects_runtime,
 )
+from pynchy.plugins.integrations.linear_webhook_prompts import LinearWebhookPrompts
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRuntime,
     configure_linear_webhook_runtime,
@@ -408,6 +410,10 @@ def configure_linear_plugin(
         LinearWebhookRuntime(
             options=LinearPluginOptions.model_validate(
                 plugin.options if plugin is not None else {}
+            ),
+            prompts=LinearWebhookPrompts(
+                issue=read_prompt("webhooks/linear-issue", settings.project_root),
+                comment=read_prompt("webhooks/linear-comment", settings.project_root),
             ),
             account_for_name=lambda name: linear_account(name, settings.tools),
             workspace_tools=workspace_tools,

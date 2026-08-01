@@ -42,6 +42,7 @@ from pynchy.plugins.integrations.linear_webhook_effects import (
     LinearWebhookEffectsRuntime,
     configure_linear_webhook_effects_runtime,
 )
+from pynchy.plugins.integrations.linear_webhook_prompts import LinearWebhookPrompts
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRuntime,
     configure_linear_webhook_runtime,
@@ -157,6 +158,10 @@ def configure_linear_accounts_for(
         LinearWebhookRuntime(
             options=LinearPluginOptions.model_validate(
                 plugin.options if plugin is not None else {}
+            ),
+            prompts=LinearWebhookPrompts(
+                issue="test issue instructions",
+                comment="test comment instructions",
             ),
             account_for_name=lambda name: linear_account(name, settings.tools),
             workspace_tools=workspace_tool_names,

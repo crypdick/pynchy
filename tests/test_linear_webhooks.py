@@ -42,6 +42,7 @@ from pynchy.plugins.api import (
 from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
 )
+from pynchy.plugins.integrations.linear_webhook_prompts import LinearWebhookPrompts
 from pynchy.plugins.integrations.linear_webhooks import (
     parse_linear_webhook,
     prepare_linear_webhook_event,
@@ -87,18 +88,8 @@ def test_deferred_linear_webhook_preserves_controller_workspace() -> None:
     assert restored.conversation.controller_workspace == "pynchy-dev"
 
 
-@pytest.mark.parametrize(
-    ("action", "activity"),
-    [
-        ("create", "new comment was posted"),
-        ("update", "comment was edited"),
-        ("remove", "comment was removed"),
-    ],
-)
-def test_every_comment_change_maps_to_concise_issue_conversation(
-    action: str,
-    activity: str,
-) -> None:
+@pytest.mark.parametrize("action", ["create", "update", "remove"])
+def test_every_comment_change_maps_to_concise_issue_conversation(action: str) -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(_payload(now=now, action=action))
 
@@ -106,8 +97,6 @@ def test_every_comment_change_maps_to_concise_issue_conversation(
 
     assert event.subject_id == "issue-1"
     assert event.instructions is not None
-    assert activity in event.instructions
-    assert "current authorization" in event.instructions
     assert event.external_context is not None
     context_activity = {"create": "posted", "update": "edited", "remove": "removed"}[action]
     assert f"Event: comment {context_activity}" in event.external_context
@@ -149,7 +138,6 @@ def test_every_issue_change_targets_the_issue_conversation(
 
     assert event.instructions is not None
     assert event.external_context is not None
-    assert "current authorization" in event.instructions
     assert f"Event: issue {action}" in event.external_context
     assert "State: In Progress" in event.external_context
     assert (
@@ -162,6 +150,23 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
     assert event.conversation.control_closed is False
+
+
+def test_webhook_parser_uses_injected_synthetic_prompt_content() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(now=now))
+    prompts = LinearWebhookPrompts(issue="issue fixture", comment="comment fixture")
+
+    event = parse_linear_webhook(
+        raw_body,
+        headers,
+        _SIGNING_KEY,
+        now,
+        config=_config(),
+        prompts=prompts,
+    )
+
+    assert event.instructions == prompts.comment
 
 
 def test_agent_proposed_issue_creation_does_not_authorize_or_wake_work() -> None:
