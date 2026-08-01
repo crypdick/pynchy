@@ -185,7 +185,7 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
             ),
             patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.migrate_host_codex_thread",
+                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
                 return_value=True,
             ),
             patch(
@@ -396,7 +396,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=tmp_path / ".codex",
             ),
             patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.migrate_host_codex_thread",
+                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
                 return_value=False,
             ) as migrate_thread,
             patch(
@@ -433,7 +433,6 @@ class TestContainerInputAgentCoreConfig:
         migrate_thread.assert_called_once_with(
             "codex:gpt-5.5:missing-thread",
             codex_home=tmp_path / ".codex",
-            sessions_root=deps.host_runtime_operations.sessions_root,
         )
 
     @pytest.mark.asyncio

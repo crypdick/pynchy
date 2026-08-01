@@ -213,33 +213,6 @@ async def test_prepare_recovery_rejects_reset_for_deleted_workspace(tmp_path, mo
 
 
 @pytest.mark.asyncio
-async def test_prepare_recovery_continues_when_backup_pruning_fails(tmp_path, monkeypatch) -> None:
-    continuation_path = tmp_path / "deploy_continuation.json"
-    continuation_path.write_text(json.dumps({"commit_sha": "deploy-sha"}))
-    monkeypatch.setattr(
-        startup_handler,
-        "get_settings",
-        lambda: _Settings(tmp_path, _Notifications(None)),
-    )
-    monkeypatch.setattr(
-        startup_handler,
-        "prune_migration_backups",
-        Mock(side_effect=OSError("backup directory unavailable")),
-    )
-    monkeypatch.setattr(startup_handler, "get_in_flight_turns", AsyncMock(return_value=[]))
-    monkeypatch.setattr(startup_handler, "prepare_conversation_delivery_recovery", AsyncMock())
-    monkeypatch.setattr(
-        startup_handler, "prepare_in_flight_turn_recovery", AsyncMock(return_value=[])
-    )
-
-    recovery = await startup_handler.prepare_interrupted_turn_recovery(
-        continuation_path=continuation_path
-    )
-
-    assert recovery.commit_sha == "deploy-sha"
-    assert recovery.had_deploy_continuation is True
-
-
 @pytest.mark.asyncio
 async def test_dispatch_restarts_turn_when_workspace_was_deleted() -> None:
     deps = _deps({})

@@ -113,7 +113,6 @@ class GatewaySettings(Protocol):
     agent: _AgentConfig
     secrets: _SecretsConfig
     tools: Mapping[str, object]
-    mcp_server_instances: Mapping[str, object]
 
     def configured_agent_models(self) -> tuple[str, ...]: ...
 
@@ -336,11 +335,7 @@ async def start_gateway(
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with personalized settings.
     plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
-    has_servers = (
-        any(_is_mcp_tool(tool) for tool in s.tools.values())
-        or getattr(s, "mcp_server_instances", {})
-        or plugin_mcp_servers
-    )
+    has_servers = any(_is_mcp_tool(tool) for tool in s.tools.values()) or plugin_mcp_servers
     if isinstance(gateway, LiteLLMGateway) and has_servers:
         from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415 - defer MCP manager setup until LiteLLM gateway is ready
             McpManager,

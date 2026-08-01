@@ -68,15 +68,3 @@ If startup stalls on `git fetch` or a repo-backed workspace because the new host
 cannot reach GitHub yet, move `data/worktrees/` and `data/repos/` aside or
 temporarily remove the affected `repo` profile entries. Prioritize one healthy
 service over preserving every historical row.
-
-Pynchy prunes migration safety copies from `data/migration-backups/` after a
-successful deploy restart, retaining the newest three directories. Inspect or
-run cleanup explicitly with:
-
-```bash
-uv run pynchy prune-migration-backups
-uv run pynchy prune-migration-backups --keep 2 --apply
-```
-
-The command considers only direct child directories and ignores files and
-symlinks.

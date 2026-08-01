@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import pytest
-
 from pynchy.config.api import BuiltinTool, McpTool, McpToolConfig, validate_settings_mapping
 from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.host.container_manager.mcp.resolution import (
@@ -16,7 +14,6 @@ from pynchy.host.container_manager.mcp.resolution import (
     get_instance_id,
     merged_mcp_servers,
     resolve_all_instances,
-    resolve_kwargs,
     resolve_workspace_servers,
 )
 from pynchy.plugins.api import McpServerConfig
@@ -28,8 +25,6 @@ class FakeResolutionSettings:
     """Small settings contract for resolution tests without global config I/O."""
 
     tools: dict[str, object] = field(default_factory=dict)
-    mcp_server_instances: dict[str, dict[str, dict[str, object]]] = field(default_factory=dict)
-    mcp_groups: dict[str, list[str]] = field(default_factory=dict)
     project_root: Path = Path("/project")
     workspaces: dict[str, object] = field(default_factory=dict)
     workspace_config: object | None = None
@@ -63,35 +58,6 @@ def _instance(server_name: str) -> McpInstance:
         container_name=server_name,
         project_root=Path("/project"),
     )
-
-
-def test_merged_servers_expands_named_instances_with_profile_mounts() -> None:
-    settings = FakeResolutionSettings(
-        mcp_server_instances={
-            "browser": {
-                "research": {"chrome_profile": "research"},
-                "plain": {},
-            }
-        },
-    )
-    base = McpServerConfig(
-        type="docker",
-        image="browser:latest",
-        port=9100,
-        env={"MODE": "test"},
-        volumes=["cache:/cache"],
-    )
-
-    servers = merged_mcp_servers(settings, {"browser": base})
-
-    assert set(servers) == {"browser.plain", "browser.research"}
-    assert servers["browser.plain"].port == 9100
-    assert servers["browser.plain"].env == {"MODE": "test", "PORT": "9100"}
-    assert servers["browser.research"].port == 9101
-    assert servers["browser.research"].volumes == [
-        "cache:/cache",
-        "data/chrome-profiles/research:/home/chrome",
-    ]
 
 
 def test_merged_servers_keeps_unmatched_plugin_servers_when_no_tool_overrides() -> None:
@@ -175,13 +141,6 @@ def test_resolve_workspace_servers_returns_empty_without_workspace_config(monkey
     settings = FakeResolutionSettings()
 
     assert resolve_workspace_servers(settings, {}, "missing") == []
-
-
-def test_resolve_kwargs_rejects_empty_server_name_for_known_workspace() -> None:
-    settings = FakeResolutionSettings(workspaces={"workspace": object()})
-
-    with pytest.raises(ValueError, match="server_name must be a non-empty string"):
-        resolve_kwargs(settings, "workspace", "")
 
 
 def test_instance_id_is_stable_for_kwargs_order() -> None:

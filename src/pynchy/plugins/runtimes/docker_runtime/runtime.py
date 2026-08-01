@@ -41,9 +41,7 @@ class RuntimeContainer:
 
     @property
     def is_agent_container(self) -> bool:
-        if self.labels.get(AGENT_CONTAINER_LABEL) == AGENT_CONTAINER_LABEL_VALUE:
-            return True
-        return self.name.startswith("pynchy-") and self.image.startswith("pynchy-agent:")
+        return self.labels.get(AGENT_CONTAINER_LABEL) == AGENT_CONTAINER_LABEL_VALUE
 
 
 def _parse_created_at(value: object) -> datetime | None:

@@ -130,43 +130,6 @@ class TestRunScheduledAgent:
         assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
 
     @pytest.mark.asyncio
-    async def test_does_not_consider_legacy_numbered_threads(
-        self, mock_deps, sample_task, sample_group, tmp_path
-    ):
-        """A persisted binding, not a readable legacy name, owns the runtime."""
-        mock_deps.groups["test-jid"] = sample_group
-        existing_jid = "discord:channel:existing-1"
-        mock_deps.existing_threads["test-group-1"] = existing_jid
-        await begin_in_flight_turn(
-            InFlightTurn(
-                turn_id="human-turn",
-                chat_jid=sample_task.chat_jid,
-                group_folder=sample_task.group_folder,
-                work_kind=InFlightWorkKind.INTERACTIVE,
-                input_messages=[{"sender": "123456", "content": "Please investigate this."}],
-                input_start_cursor="",
-                input_end_cursor="",
-                started_at=datetime.now(UTC).isoformat(),
-            )
-        )
-
-        with (
-            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
-            patch(
-                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
-                new_callable=AsyncMock,
-            ),
-            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
-            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
-        ):
-            await _run_due_task_via_scheduler(mock_deps, sample_task)
-
-        assert mock_deps.thread_lookups == []
-        assert mock_deps.thread_creations == []
-        assert mock_deps.reused_thread_participants == []
-        assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
-
-    @pytest.mark.asyncio
     async def test_other_thread_checkpoints_do_not_retarget_the_bound_runtime(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):

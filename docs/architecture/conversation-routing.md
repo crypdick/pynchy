@@ -240,8 +240,7 @@ the conversation's existing agent session.
 Planning, execution, follow-ups, retries, recovery, and interactive questions
 all use that routed workspace, worktree, provider session, queue, and
 checkpoint ledger. A worker process can stop between turns without discarding
-the provider session. Startup consolidates legacy scheduled-thread session
-records into this routed owner.
+the provider session.
 
 Before admission, the host uses the API key from the route's named Linear account
 to fetch the current issue and rejects a delivery that does not belong to the

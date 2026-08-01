@@ -120,12 +120,13 @@ class TestHostSyncWorktree:
         repo_ctx = git_env["repo_ctx"]
         ensure_worktree("agent-1", repo_ctx)
 
-        success = subprocess.CompletedProcess(["git"], 0, "", "")
         failed = subprocess.CompletedProcess(["git"], 1, "", "network down")
 
         def run_git(command: str, *args: str, **_kwargs: object):
-            if command == "status":
-                return success
+            if command in {"branch", "status"}:
+                return subprocess.CompletedProcess(
+                    ["git"], 0, "worktree/agent-1\n" if command == "branch" else "", ""
+                )
             if failure == "fetch" and command == "fetch":
                 return failed
             if failure == "main-rebase" and command == "rebase" and args == ("origin/main",):
@@ -134,10 +135,11 @@ class TestHostSyncWorktree:
                 return failed
             if failure == "merge" and command == "merge":
                 return failed
-            return success
+            return subprocess.CompletedProcess(["git"], 0, "", "")
 
         with (
             patch("pynchy.host.git_ops.worktree_sync.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.worktree_sync._is_registered_worktree", return_value=True),
             patch(
                 "pynchy.host.git_ops.worktree_sync.count_commits",
                 return_value=None if failure == "count" else 1,

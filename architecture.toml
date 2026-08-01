@@ -456,12 +456,6 @@ role = "host_adapter"
 public_modules = ["pynchy.host.audio"]
 
 [[packages]]
-name = "host_migration_backups"
-root = "pynchy.host.migration_backups"
-role = "foundation"
-public_modules = ["pynchy.host.migration_backups"]
-
-[[packages]]
 name = "host_personal_messaging_health"
 root = "pynchy.host.personal_messaging_health"
 role = "host_adapter"
