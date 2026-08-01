@@ -178,15 +178,42 @@ class TestHostCreatePrFromWorktree:
         assert calls[1][calls[1].index("--title") + 1] == "Fix login"
         assert calls[1][calls[1].index("--body") + 1] == "## Summary\nFix the login flow."
 
-    def test_push_failure(self, git_env: dict):
-        """Push failure returns an error."""
+    def test_fetch_failure(self, git_env: dict):
+        """Remote availability is checked before the publication decision."""
         worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
         commit_feature(worktree)
         git(git_env["project"], "remote", "remove", "origin")
 
         result = host_create_pr_from_worktree("agent-1", git_env["repo_ctx"])
         assert result["success"] is False
-        assert "Push failed" in result["message"]
+        assert "git fetch failed" in result["message"]
+
+    def test_recovered_branch_publishes_against_origin_not_host_main(self, git_env: dict):
+        """A recovered worktree must not look empty when host main is ahead locally."""
+        worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
+        git(worktree, "branch", "-m", "recovered/agent-1")
+        commit_feature(worktree)
+        git(git_env["project"], "merge", "--ff-only", "recovered/agent-1")
+
+        real_run = subprocess.run
+
+        def mock_run(args, **kwargs):
+            if args[0] == "gh":
+                return mock_run.results.pop(0)
+            return real_run(args, **kwargs)
+
+        mock_run.results = [
+            subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="https://github.com/owner/repo/pull/1\n"
+            ),
+        ]
+        with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=mock_run):
+            result = host_create_pr_from_worktree("agent-1", git_env["repo_ctx"])
+
+        assert result["success"] is True
+        assert "recovered/agent-1" in result["message"]
+        assert "recovered/agent-1" in git(git_env["origin"], "branch").stdout
 
     def test_push_failure_redacts_standalone_configured_token(self, git_env: dict):
         """A raw token in Git stderr never reaches IPC diagnostics."""
@@ -248,7 +275,7 @@ class TestHostCreatePrFromWorktree:
         assert result["success"] is False
         assert "Pushed" in result["message"]
         assert "PR creation failed" in result["message"]
-        assert [call[1:3] for call in calls] == [["pr", "view"], ["pr", "create"]]
+        assert [call[1:3] for call in calls] == [["pr", "list"], ["pr", "create"]]
 
 
 class TestIpcPolicyRouting:
