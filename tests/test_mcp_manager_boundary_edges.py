@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -21,7 +22,9 @@ from pynchy.host.container_manager.mcp.resolution import (
 from pynchy.plugins.api import McpServerConfig
 
 
-async def _synced_manager(tmp_path, monkeypatch, servers, workspace_tools):
+async def _synced_manager(
+    tmp_path, monkeypatch, servers, workspace_tools, capture_background_tasks=None
+):
     settings = make_settings(
         data_dir=tmp_path,
         tools={
@@ -47,11 +50,15 @@ async def _synced_manager(tmp_path, monkeypatch, servers, workspace_tools):
     monkeypatch.setattr(manager_module, "sync_teams", AsyncMock())
     monkeypatch.setattr(manager_module, "load_teams_cache", lambda _path: {})
     monkeypatch.setattr(manager_module, "save_teams_cache", lambda *_args: None)
-    monkeypatch.setattr(
-        manager_module,
-        "create_background_task",
-        lambda coroutine, **_kwargs: coroutine.close() or MagicMock(),
-    )
+
+    def create_background_task(coroutine, **_kwargs):
+        if capture_background_tasks is None:
+            coroutine.close()
+        else:
+            capture_background_tasks.append(coroutine)
+        return MagicMock()
+
+    monkeypatch.setattr(manager_module, "create_background_task", create_background_task)
     await manager.sync()
     return manager
 
@@ -276,3 +283,35 @@ def test_routed_workspace_without_resolved_policy_has_no_instances(tmp_path, mon
         load_resolved_workspace_config=lambda _folder, _settings: None,
     )
     assert manager.get_workspace_instance_ids("thread") == []
+
+
+@pytest.mark.asyncio
+async def test_idle_checker_logs_stop_failure_and_keeps_running(tmp_path, monkeypatch) -> None:
+    idle_coroutines = []
+    manager = await _synced_manager(
+        tmp_path,
+        monkeypatch,
+        {"script": McpServerConfig(type="script", command="run", port=9000)},
+        ("script",),
+        idle_coroutines,
+    )
+    stop_idle = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+    monkeypatch.setattr(manager, "stop_idle", stop_idle)
+    sleeps = 0
+    real_sleep = asyncio.sleep
+
+    async def sleep(_seconds: int) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        await real_sleep(0)
+        if sleeps == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(manager_module.asyncio, "sleep", sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await idle_coroutines[0]
+
+    stop_idle.assert_awaited_once_with()
+    for coroutine in idle_coroutines[1:]:
+        coroutine.close()

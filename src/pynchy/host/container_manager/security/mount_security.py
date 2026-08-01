@@ -40,7 +40,6 @@ _ERR_REQUIRED_LIST = "{key} must be an array"
 _ERR_REQUIRED_BOOL = "{key} must be a boolean"
 _ERR_REQUIRED_STRING = "{field_name} must be a string"
 _ERR_ALLOWED_ROOT_TABLE = "allowed_roots[{index}] must be a table"
-_ERR_ALLOWLIST_TABLE = "Mount allowlist must decode to a TOML table"
 
 
 def reset_mount_allowlist_cache() -> None:
@@ -101,10 +100,7 @@ def _parse_allowed_root(raw_root: object, *, index: int) -> AllowedRoot:
     )
 
 
-def _parse_allowlist_table(raw_data: object) -> _ParsedAllowlist:
-    if not isinstance(raw_data, Mapping):
-        raise TypeError(_ERR_ALLOWLIST_TABLE)
-
+def _parse_allowlist_table(raw_data: Mapping[str, object]) -> _ParsedAllowlist:
     allowed_roots = [
         _parse_allowed_root(raw_root, index=index)
         for index, raw_root in enumerate(_required_list(raw_data, "allowed_roots"))
@@ -123,7 +119,7 @@ def _parse_allowlist_table(raw_data: object) -> _ParsedAllowlist:
 
 
 def _parsed_allowlist(
-    raw_data: object,
+    raw_data: Mapping[str, object],
     *,
     default_blocked_patterns: list[str],
 ) -> MountAllowlist:
@@ -165,7 +161,7 @@ def load_mount_allowlist(
         # NOTE: Update docs/architecture/security.md § 2 (Mount Security) if
         # the allowlist format or protection semantics change here.
         allowlist = _parsed_allowlist(
-            tomllib.loads(content),
+            cast("Mapping[str, object]", tomllib.loads(content)),
             default_blocked_patterns=list(default_blocked_patterns),
         )
     except (OSError, tomllib.TOMLDecodeError, TypeError, ValueError) as exc:

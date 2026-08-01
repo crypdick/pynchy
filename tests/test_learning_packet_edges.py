@@ -106,6 +106,25 @@ def test_build_skips_when_no_user_visible_messages_exist(tmp_path: Path) -> None
     assert packet is None
 
 
+def test_build_skips_packet_that_cannot_fit_fixed_payload_budget(tmp_path: Path) -> None:
+    settings = _settings(tmp_path=tmp_path)
+
+    with (
+        _configured(settings),
+        patch(
+            "pynchy.host.learning.packets._serialized_payload_chars",
+            return_value=999_999,
+        ),
+    ):
+        packet = _build(
+            settings,
+            messages=[_message("remember this")],
+            summary=LearningRunSummary(),
+        )
+
+    assert packet is None
+
+
 def test_build_skips_when_learning_path_resolution_returns_none(tmp_path: Path) -> None:
     settings = _settings(tmp_path=tmp_path)
 

@@ -46,6 +46,15 @@ async def test_list_action_intents_returns_records_without_workspace_filter() ->
     assert [intent.request_id for intent in intents] == ["request-list"]
 
 
+async def test_duplicate_action_intent_request_reuses_existing_draft() -> None:
+    first, created = await create_action_intent(_request("request-duplicate"))
+    second, duplicate_created = await create_action_intent(_request("request-duplicate"))
+
+    assert created is True
+    assert duplicate_created is False
+    assert second.id == first.id
+
+
 async def test_approving_missing_action_intent_fails_closed() -> None:
     with pytest.raises(RuntimeError, match="Action intent not found"):
         await approve_action_intent(

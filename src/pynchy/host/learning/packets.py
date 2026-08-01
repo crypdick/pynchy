@@ -9,7 +9,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pynchy.agent_protocol.api import (
@@ -39,8 +39,6 @@ _MAX_TIMESTAMP_CHARS = 40
 _MAX_TOOL_NAME_CHARS = 48
 _MAX_ERROR_SNIPPET_CHARS = 240
 _MAX_TOOL_COUNT_VALUE = 999
-_MISSING_LEARNING_RESULT_ERROR = "Successful learning output is missing result text"
-_MISSING_TOOL_ERROR_CONTENT_ERROR = "Recovered tool error output is missing tool_result_content"
 
 
 @dataclass
@@ -62,10 +60,7 @@ def packet_payload_char_limit(packet_max_chars: int) -> int:
 
 def observe_container_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
     if _is_successful_result(output):
-        result = output.result
-        if result is None:
-            raise RuntimeError(_MISSING_LEARNING_RESULT_ERROR)
-        summary.final_answer = _sanitize_text(result)
+        summary.final_answer = _sanitize_text(cast("str", output.result))
 
     if output.type == "tool_use" and output.tool_name:
         _record_tool_count(summary, output.tool_name)
@@ -78,10 +73,7 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
     # Cores must mark recovered tool failures with tool_result_is_error=True
     # or they are indistinguishable from successful tool output here.
     if _is_recovered_tool_error(output):
-        error_content = output.tool_result_content
-        if error_content is None:
-            raise RuntimeError(_MISSING_TOOL_ERROR_CONTENT_ERROR)
-        _append_error_snippet(summary, error_content)
+        _append_error_snippet(summary, cast("str", output.tool_result_content))
 
 
 def build_learning_packet(  # noqa: PLR0913 - packet construction receives values resolved at composition.

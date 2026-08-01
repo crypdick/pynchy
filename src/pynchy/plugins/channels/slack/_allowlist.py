@@ -61,14 +61,8 @@ class SlackAllowlist:
     def register_allowed_channel(self, name: str, channel_id: str) -> None:
         self._channel.register_allowed_channel(name, channel_id)
 
-    def _register_allowed_channel(self, name: str, channel_id: str) -> None:
-        self.register_allowed_channel(name, channel_id)
-
     def is_allowed_channel(self, channel_id: str) -> bool:
         return self._channel.is_allowed_channel(channel_id)
-
-    def _is_allowed_channel(self, channel_id: str) -> bool:
-        return self.is_allowed_channel(channel_id)
 
     async def _ensure_joined(self, channel_id: str, name: str) -> None:
         app = self._require_app()
@@ -110,9 +104,6 @@ class SlackAllowlist:
             connection=ch.connection_name,
             count=ch.allowed_channel_count(),
         )
-
-    async def _sync_allowed_channels(self) -> None:
-        await self.sync_allowed_channels()
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a configured chat name to a Slack JID."""
