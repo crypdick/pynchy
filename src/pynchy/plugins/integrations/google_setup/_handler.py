@@ -217,20 +217,21 @@ async def _run_interactive_setup_body(
         context.set_default_navigation_timeout(60_000)
         context.set_default_timeout(15_000)
         page = context.pages[0] if context.pages else await context.new_page()
+        console_page = cast("ConsolePage", page)
 
         # Navigate to GCP Console (triggers login if needed)
         await page.goto(GCP_CONSOLE, wait_until="domcontentloaded")
         await page.wait_for_timeout(5000)
-        await wait_for_login(page)
-        await dismiss_modals(page)
+        await wait_for_login(console_page)
+        await dismiss_modals(console_page)
 
         # 1. Ensure GCP project
-        await ensure_project(page, setup.project_id)
+        await ensure_project(console_page, setup.project_id)
         steps_done.append(f"GCP project '{setup.project_id}' ready")
 
         # 2. Enable required APIs
         for api_id in setup.api_ids:
-            await ensure_api(page, setup.project_id, api_id)
+            await ensure_api(console_page, setup.project_id, api_id)
             steps_done.append(f"API '{api_id}' enabled")
 
         # 3. Ensure OAuth consent + credentials
