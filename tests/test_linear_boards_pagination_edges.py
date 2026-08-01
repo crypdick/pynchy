@@ -29,6 +29,9 @@ class _Client:
     async def query(self, _query: str, **_variables: object) -> dict[str, Any]:
         return self.response
 
+    async def list_teams(self) -> list[dict[str, Any]]:
+        return []
+
 
 _BOARD = LinearWorkspaceBoard(
     team={"id": "team-1"},

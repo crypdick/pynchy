@@ -84,6 +84,8 @@ def test_bounded_git_uses_direct_child_fallback_when_group_signal_fails() -> Non
         if process.poll() is None:
             process.kill()
         process.wait()
+        if process.stdin is not None:
+            process.stdin.close()
     assert process.returncode is not None
 
 
@@ -110,4 +112,6 @@ def test_bounded_git_kills_child_after_termination_timeout() -> None:
         if process.poll() is None:
             process.kill()
         process.wait()
+        if process.stdin is not None:
+            process.stdin.close()
     assert process.returncode is not None
