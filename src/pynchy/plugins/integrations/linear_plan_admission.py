@@ -7,6 +7,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
+    LinearPlanReviewError,
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
@@ -50,6 +51,7 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
     description: str,
     updated_at: str,
     public_source: bool,
+    attempt: int = 1,
 ) -> dict[str, Any] | None:
     """Return the provider-confirmed plan revision admitted for execution."""
     if reviewer is None:
@@ -69,6 +71,7 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
                     description=description,
                     updated_at=updated_at,
                     public_source=public_source,
+                    attempt=attempt,
                 )
             )
         except Exception as exc:  # noqa: BLE001 - reviewer errors return to the approval boundary.
@@ -130,4 +133,4 @@ async def review_approved_plan(  # noqa: PLR0913 - the approval boundary needs e
         issue=identifier,
         error=result.reason,
     )
-    raise RuntimeError(f"Plan freshness review failed for {identifier}: {result.reason}")
+    raise LinearPlanReviewError(f"Plan freshness review failed for {identifier}: {result.reason}")

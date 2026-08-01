@@ -1667,6 +1667,9 @@ class PynchyApp(ThreadRouting):
     async def process_linear_plan_review_admission(
         self,
         admission: LinearPlanReviewAdmission,
+        *,
+        attempt: int = 1,
+        reset_context: Callable[[str], Awaitable[None]] | None = None,
     ) -> bool:
         """Review one exact issue revision and start admitted execution immediately."""
         task = await admit_linear_plan_review(
@@ -1674,11 +1677,36 @@ class PynchyApp(ThreadRouting):
             self.workspaces.values(),
             review_plan=self.review_linear_plan,
             broadcast_host_message=self.broadcast_host_message,
+            attempt=attempt,
+            reset_context=reset_context or self.reset_linear_plan_review_context,
         )
         if task is None:
             return False
         await temporal_scheduler.start_scheduled_agent_task_workflow(task)
         return True
+
+    async def reset_linear_plan_review_context(self, chat_jid: str) -> None:
+        """Run the normal context reset for a plan-review issue thread."""
+        group = self.workspaces.get(chat_jid)
+        if group is None:
+            logger.warning("Linear plan review reset workspace is unavailable", chat_jid=chat_jid)
+            return
+        timestamp = datetime.now(UTC).isoformat()
+        await self.handle_context_reset(
+            chat_jid,
+            group,
+            timestamp,
+            source_message=NewMessage(
+                id=f"linear-plan-review-reset-{uuid.uuid4().hex[:8]}",
+                chat_jid=chat_jid,
+                sender="system",
+                sender_name="System",
+                content="/reset",
+                timestamp=timestamp,
+                is_from_me=False,
+                message_type="host",
+            ),
+        )
 
     async def handle_streamed_output(
         self,

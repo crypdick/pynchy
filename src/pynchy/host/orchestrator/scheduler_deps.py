@@ -170,7 +170,12 @@ class SchedulerDependencies(ScheduledCompletionDeps, Protocol):
     async def process_linear_plan_review_admission(
         self,
         admission: LinearPlanReviewAdmission,
+        *,
+        attempt: int = 1,
+        reset_context: Callable[[str], Awaitable[None]] | None = None,
     ) -> bool: ...
+
+    async def reset_linear_plan_review_context(self, chat_jid: str) -> None: ...
 
     async def reset_scheduled_context(
         self,
