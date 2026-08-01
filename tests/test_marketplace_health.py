@@ -37,7 +37,7 @@ def _write_state(path: Path) -> None:
                     "private-buyer-id-1": {"status": "pending", "body": "private body"},
                     "private-buyer-id-2": {"status": "awaiting_reply", "email": "private"},
                     "private-buyer-id-3": {"status": "closed"},
-                    "private-buyer-id-4": {},
+                    "private-buyer-id-4": {"status": "pending"},
                 }
             }
         ),
@@ -176,6 +176,14 @@ def test_snapshot_rejects_invalid_state_entries(tmp_path: Path) -> None:
 def test_snapshot_rejects_invalid_state_status(tmp_path: Path) -> None:
     state_file = tmp_path / "pending_actions.json"
     state_file.write_text(json.dumps({"pending": {"buyer": {"status": 1}}}), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="invalid status"):
+        build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=state_file))
+
+
+def test_snapshot_rejects_missing_state_status(tmp_path: Path) -> None:
+    state_file = tmp_path / "pending_actions.json"
+    state_file.write_text(json.dumps({"pending": {"buyer": {}}}), encoding="utf-8")
 
     with pytest.raises(TypeError, match="invalid status"):
         build_marketplace_health_snapshot(MarketplaceHealthOptions(pending_actions_file=state_file))

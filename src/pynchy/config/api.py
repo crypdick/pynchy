@@ -31,7 +31,6 @@ from pynchy.config.models import (
     NotificationsConfig,
     ObsidianLearningConfig,
     OwnerConfig,
-    ProfileConfig,
     RepoConfig,
     ReposConfig,
     SecurityConfig,
@@ -50,7 +49,7 @@ from pynchy.config.personalization import (
     validate_litellm_model_names,
     validate_personalization_tree,
 )
-from pynchy.config.profiles import CapabilityTomlConfig
+from pynchy.config.profiles import CapabilityTomlConfig, ProfileConfig
 from pynchy.config.prompts import (
     PipelineConfig,
     PipelineStageConfig,

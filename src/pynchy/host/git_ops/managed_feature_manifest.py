@@ -165,10 +165,6 @@ def _validate_git_identity(
             "Publication blocked: managed feature "
             f"{feature_slug!r} is not checked out on its manifest branch."
         )
-    if repo_common_dir is None:
-        raise _ManifestValidationError(
-            f"Publication blocked: could not verify Git directory for {feature_slug!r}."
-        )
     return repo_common_dir
 
 

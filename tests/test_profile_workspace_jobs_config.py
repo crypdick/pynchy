@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from pynchy.config.api import (
     BuiltinTool,
     CanaryConfig,
+    CapabilityTomlConfig,
     ChannelOverrideConfig,
     DiscordConnectionConfig,
     JobConfig,
@@ -27,7 +28,6 @@ from pynchy.config.api import (
     reset_settings,
     validate_settings_mapping,
 )
-from pynchy.config.models import CapabilityTomlConfig
 
 DISCORD_BOT_ENV = "X"
 
