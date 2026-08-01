@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import secrets
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.conversation.api import (
     Conversation,
@@ -65,9 +65,9 @@ def _row_to_conversation(row: Row) -> Conversation:
 
 def _row_to_delivery(row: Row) -> ConversationDelivery:
     raw_payload = row["payload"]
-    payload = json.loads(raw_payload) if raw_payload is not None else None
-    if payload is not None and not isinstance(payload, dict):
-        raise TypeError("Conversation delivery payload has an invalid persisted shape")
+    payload = cast(
+        "dict[str, Any] | None", json.loads(raw_payload) if raw_payload is not None else None
+    )
     return ConversationDelivery(
         sequence=row["sequence"],
         identity=ExternalDeliveryIdentity(
@@ -127,9 +127,7 @@ async def _resolve_conversation(
             (workspace, now, existing.id),
         )
         moved = await _conversation_by_id(database, existing.id)
-        if moved is None:
-            raise RuntimeError("Conversation disappeared while updating its workspace")
-        return moved
+        return cast("Conversation", moved)
 
     now = _timestamp()
     conversation = Conversation(
@@ -200,9 +198,7 @@ async def rebind_conversation_workspace(
                 (workspace, _timestamp(), conversation_id),
             )
         rebound = await _conversation_by_id(database, conversation_id)
-        if rebound is None:
-            raise RuntimeError("Conversation disappeared while rebinding its workspace")
-        return rebound
+        return cast("Conversation", rebound)
 
 
 async def set_conversation_session(
@@ -233,10 +229,7 @@ async def set_conversation_session(
                 raise ValueError(f"Unknown conversation: {conversation_id}")
             # A terminal lifecycle may win a race with output session tracking.
             return conversation
-        conversation = await _conversation_by_id(database, conversation_id)
-        if conversation is None:
-            raise RuntimeError("Conversation disappeared while updating its session")
-        return conversation
+        return cast("Conversation", await _conversation_by_id(database, conversation_id))
 
 
 async def _delivery_by_identity(
@@ -265,8 +258,7 @@ async def _admit_conversation_delivery(
     existing_delivery = await _delivery_by_identity(database, identity)
     if existing_delivery is not None:
         conversation = await _conversation_by_id(database, existing_delivery.conversation_id)
-        if conversation is None:
-            raise RuntimeError("Conversation delivery references a missing conversation")
+        conversation = cast("Conversation", conversation)
         if conversation.subject != subject:
             raise ValueError("External delivery is already linked to another subject")
         return ConversationDeliveryAdmission(
@@ -306,9 +298,7 @@ async def _admit_conversation_delivery(
             json.dumps(payload, sort_keys=True) if payload is not None else None,
         ),
     )
-    sequence = cursor.lastrowid
-    if sequence is None:
-        raise RuntimeError("Conversation delivery insert returned no sequence")
+    sequence = cast("int", cursor.lastrowid)
     delivery = ConversationDelivery(
         sequence=sequence,
         identity=identity,
@@ -407,9 +397,7 @@ async def claim_next_conversation_delivery(
             (head["sequence"],),
         )
         row = await cursor.fetchone()
-        if row is None:
-            raise RuntimeError("Conversation delivery disappeared while claiming it")
-        return _row_to_delivery(row)
+        return _row_to_delivery(cast("Row", row))
 
 
 async def complete_conversation_delivery(
@@ -440,9 +428,7 @@ async def complete_conversation_delivery(
             (claimed["sequence"],),
         )
         row = await result_cursor.fetchone()
-        if row is None:
-            raise RuntimeError("Conversation delivery disappeared while completing it")
-        return _row_to_delivery(row)
+        return _row_to_delivery(cast("Row", row))
 
 
 async def release_conversation_delivery_claim(
@@ -473,6 +459,4 @@ async def release_conversation_delivery_claim(
             (claimed["sequence"],),
         )
         row = await result_cursor.fetchone()
-        if row is None:
-            raise RuntimeError("Conversation delivery disappeared while releasing its claim")
-        return _row_to_delivery(row)
+        return _row_to_delivery(cast("Row", row))

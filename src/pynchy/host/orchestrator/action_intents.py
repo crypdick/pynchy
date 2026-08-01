@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pynchy.action_intents import ActionIntent, ActionIntentStatus
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves runtime annotations.
+    ActionIntentContract,
     HostActionDescriptor,
 )
 from pynchy.state.api import (
@@ -122,9 +123,9 @@ async def _validate_current_intent(
     request_id: str,
 ) -> dict[str, Any] | None:
     """Prove the destination and payload still match the durable approval draft."""
-    contract = action.action_intent
+    contract = cast("ActionIntentContract", action.action_intent)
     existing = await load_action_intent(request_id)
-    if contract is None or existing is None:
+    if existing is None:
         return {"error": "External action record is missing; refusing to send."}
     try:
         current = contract.draft_from_request(data)
@@ -150,9 +151,7 @@ async def _record_action_intent_attempt(
     request_id: str,
 ) -> dict[str, Any]:
     """Persist the result of one provider attempt after its durable claim."""
-    contract = action.action_intent
-    if contract is None:
-        raise RuntimeError("Transactional action lost its intent contract")
+    contract = cast("ActionIntentContract", action.action_intent)
     try:
         response = await action.handler(data)
     except Exception as exc:  # noqa: BLE001 - provider call outcome cannot be proven after an exception.

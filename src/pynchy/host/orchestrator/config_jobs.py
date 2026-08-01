@@ -25,9 +25,6 @@ type JobConfig = Any
 type ResolvedWorkspaceConfig = Any
 type Settings = Any
 
-_JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt"
-_JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
-
 
 def _job_task_id(job_name: str) -> str:
     # TODO: Preserve the exact config key in task identity; `foo_bar` and
@@ -37,8 +34,6 @@ def _job_task_id(job_name: str) -> str:
 
 def _job_prompt(job_name: str, settings: Settings) -> str:
     job = settings.jobs[job_name]
-    if job.prompt is None:
-        raise ValueError(_JOB_PROMPT_REQUIRED_ERROR.format(job_name=job_name))
     return cast("str", job.prompt)
 
 
@@ -50,10 +45,7 @@ def _job_schedule(
         return "cron", job.schedule
     if job.interval_minutes is not None:
         return "interval", str(job.interval_minutes * 60 * 1000)
-    at = job.at
-    if at is None:
-        raise ValueError(_JOB_SCHEDULE_REQUIRED_ERROR.format(job_name=job_name))
-    return "once", at
+    return "once", cast("str", job.at)
 
 
 @dataclass(frozen=True)

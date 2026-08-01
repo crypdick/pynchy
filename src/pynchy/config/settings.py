@@ -105,23 +105,21 @@ def _validated_command_center_connection(settings: Settings) -> None:
 
 def _validate_owner_aliases(settings: Settings) -> None:
     for connection_name, connection in settings.connections.items():
-        connection_security = getattr(connection, "security", None)
+        if connection.type == "matrix":
+            continue
+        connection_security = connection.security
         _validate_owner_alias(
             connection_name,
             connection.type,
-            getattr(connection_security, "allowed_users", None)
-            if connection_security is not None
-            else None,
+            connection_security.allowed_users if connection_security is not None else None,
             settings,
         )
-        for chat_name, chat in getattr(connection, "chat", {}).items():
-            chat_security = getattr(chat, "security", None)
+        for chat_name, chat in connection.chat.items():
+            chat_security = chat.security
             _validate_owner_alias(
                 f"{connection_name}.chat.{chat_name}",
                 connection.type,
-                getattr(chat_security, "allowed_users", None)
-                if chat_security is not None
-                else None,
+                chat_security.allowed_users if chat_security is not None else None,
                 settings,
             )
 

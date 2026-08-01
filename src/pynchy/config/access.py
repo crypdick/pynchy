@@ -15,6 +15,9 @@ from pynchy.config.settings import get_settings
 from pynchy.plugins.api import (
     NewMessage,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves access annotations at runtime.
+)
 
 _KNOWN_CHANNEL_PLATFORMS = {"slack", "whatsapp", "discord"}
 _CHANNEL_PLUGIN_NAME_ERROR = "channel_plugin_name must be a string or None"
@@ -114,7 +117,7 @@ def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -
 
 def filter_allowed_messages(
     messages: list[NewMessage],
-    group: object,
+    group: WorkspaceProfile,
     channel_plugin_name: str | None,
 ) -> list[NewMessage]:
     """Filter messages to only those from allowed senders.
@@ -133,7 +136,7 @@ def filter_allowed_messages(
     """
     if channel_plugin_name is not None and not isinstance(channel_plugin_name, str):
         raise TypeError(_CHANNEL_PLUGIN_NAME_ERROR)
-    if getattr(group, "is_admin", False):
+    if group.is_admin:
         return messages
 
     security = _message_security(channel_plugin_name, messages)
