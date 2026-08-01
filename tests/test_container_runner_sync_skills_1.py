@@ -513,6 +513,13 @@ class TestParseSkillTier:
         assert name == "web-search"
         assert tier == "core"
 
+    def test_unclosed_frontmatter_keeps_parsed_metadata(self, tmp_path: Path):
+        skill_dir = tmp_path / "web-search"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\nname: custom\ntier: core\n")
+
+        assert parse_skill_tier(skill_dir) == ("custom", "core")
+
 
 class TestIsSkillSelected:
     """Test skill selection resolution logic."""
