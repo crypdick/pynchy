@@ -62,6 +62,14 @@ class LinearPlanReviewDecision(StrEnum):
     ERROR = "error"
 
 
+class LinearPlanReviewBlockedError(RuntimeError):
+    """The final reviewer failure was settled as a blocked issue."""
+
+
+class LinearPlanReviewError(RuntimeError):
+    """The reviewer could not make an admission decision."""
+
+
 @dataclass(frozen=True)
 class LinearPlanReviewRequest:
     """Current provider evidence supplied to a hidden plan reviewer."""
@@ -74,6 +82,7 @@ class LinearPlanReviewRequest:
     description: str
     updated_at: str
     public_source: bool
+    attempt: int = 1
 
 
 @dataclass(frozen=True)

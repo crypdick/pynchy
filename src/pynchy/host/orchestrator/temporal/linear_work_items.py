@@ -11,8 +11,12 @@ from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_tracked_activity_result,
     _require_scheduler_deps,
+    parse_temporal_activity_info,
 )
-from pynchy.linear_plan_types import LinearPlanReviewAdmission
+from pynchy.linear_plan_types import (
+    LinearPlanReviewAdmission,
+    LinearPlanReviewBlockedError,
+)
 from pynchy.scheduling.api import safe_workflow_fragment
 
 if TYPE_CHECKING:
@@ -53,9 +57,17 @@ async def run_linear_plan_review_admission(payload: dict[str, Any]) -> str:
     admission = LinearPlanReviewAdmission.from_payload(payload)
     deps = cast("SchedulerDependencies", _require_scheduler_deps())
     activity_id = f"{_PLAN_REVIEW_ACTIVITY_PREFIX}:{admission.identifier}"
+    attempt = parse_temporal_activity_info(activity.info()).attempt or 1
     try:
         async with activity_heartbeats(activity_id):
-            admitted = await deps.process_linear_plan_review_admission(admission)
+            admitted = await deps.process_linear_plan_review_admission(
+                admission,
+                attempt=attempt,
+                reset_context=getattr(deps, "reset_linear_plan_review_context", None),
+            )
+    except LinearPlanReviewBlockedError as exc:
+        _record_tracked_activity_result(activity_id, "blocked", str(exc))
+        return "blocked"
     except Exception as exc:
         _record_tracked_activity_result(activity_id, "error", str(exc))
         raise

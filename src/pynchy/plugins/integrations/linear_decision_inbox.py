@@ -11,8 +11,10 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+from pynchy.linear_plan_types import (
     LinearPlanReviewAdmission,
+    LinearPlanReviewBlockedError,
+    LinearPlanReviewError,
 )
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
@@ -23,6 +25,7 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartyp
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
+from pynchy.plugins.integrations.linear_issue_mutations import update_issue_state
 from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001 - beartype resolves this annotation at runtime.
     LinearPlanReviewer,
 )
@@ -39,6 +42,7 @@ from pynchy.plugins.integrations.linear_statuses import (
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
+    state_id,
     workspace_issue,
 )
 from pynchy.plugins.integrations.linear_work_item_tasks import (
@@ -46,6 +50,8 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     DecisionIssue,
     LinearDecisionClient,
     LinearPlanReviewDeferrer,
+    _report_plan_review_status,
+    _reset_plan_review_context,
     admit_decision_issue,
     decision_state_id,
 )
@@ -271,12 +277,14 @@ async def reconcile_all_linear_work_items(
     return admitted
 
 
-async def process_linear_plan_review_admission(
+async def process_linear_plan_review_admission(  # noqa: PLR0913 - exact review admission dependencies stay explicit.
     admission: LinearPlanReviewAdmission,
     workspaces: Iterable[WorkspaceLike],
     *,
     review_plan: LinearPlanReviewer,
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
+    attempt: int = 1,
+    reset_context: Callable[[str], Awaitable[None]] | None = None,
 ) -> ScheduledTask | None:
     """Review and lease one exact issue revision in its own provider session."""
     workspace = next(
@@ -295,19 +303,41 @@ async def process_linear_plan_review_admission(
             or issue.state_id != decision_state_id(board, HUMAN_APPROVED_STATUS)
         ):
             return None
-        return await admit_decision_issue(
-            issue,
-            workspace,
-            board,
-            HUMAN_APPROVED_STATUS,
-            DecisionAdmission(
-                client=client,
-                observed_at=datetime.now(UTC),
-                public_source=admission.public_source,
-                review_plan=review_plan,
-                broadcast_host_message=broadcast_host_message,
-            ),
+        context = DecisionAdmission(
+            client=client,
+            observed_at=datetime.now(UTC),
+            public_source=admission.public_source,
+            review_plan=review_plan,
+            broadcast_host_message=broadcast_host_message,
+            plan_review_attempt=attempt,
+            reset_context=reset_context,
         )
+        try:
+            return await admit_decision_issue(
+                issue,
+                workspace,
+                board,
+                HUMAN_APPROVED_STATUS,
+                context,
+            )
+        except LinearPlanReviewError as exc:
+            if attempt < 3:
+                raise
+            await update_issue_state(client, issue.id, state_id(board.states["blocked"]))
+            await _report_plan_review_status(
+                issue,
+                workspace,
+                context,
+                "Plan review failed after three attempts and this issue was moved to Blocked. "
+                "Fix it, then move it to Human Approved to retry.",
+            )
+            await _reset_plan_review_context(issue, workspace, context)
+            logger.error(
+                "Linear plan review exhausted and issue was blocked",
+                issue=issue.identifier,
+                error=str(exc),
+            )
+            raise LinearPlanReviewBlockedError(str(exc)) from exc
 
 
 def _boards_by_account(

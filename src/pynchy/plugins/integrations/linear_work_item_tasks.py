@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from pynchy.content_fencing import fence_untrusted_content
 from pynchy.conversation.api import ConversationControlBinding, ConversationId
-from pynchy.linear_plan_types import LinearPlanReviewAdmission
+from pynchy.linear_plan_types import (
+    LinearPlanReviewAdmission,
+)
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves task annotations.
@@ -122,6 +124,8 @@ class DecisionAdmission:
     review_plan: LinearPlanReviewer | None = None
     broadcast_host_message: Callable[[str, str], Awaitable[None]] | None = None
     defer_plan_review: LinearPlanReviewDeferrer | None = None
+    plan_review_attempt: int | None = None
+    reset_context: Callable[[str], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +210,37 @@ async def _report_plan_review_status(
     except Exception:  # noqa: BLE001 - status delivery must not change admission.
         logger.exception(
             "Linear plan review status delivery failed",
+            issue=issue.identifier,
+            workspace=workspace.folder,
+        )
+
+
+def _plan_review_attempt_status(attempt: int) -> str:
+    if attempt == 1:
+        return "🔎 Checking approved plan (1/3)."
+    if attempt == 2:
+        return "🔄 Retrying approved plan review (2/3)."
+    return "🔄 Final approved plan review attempt (3/3)."
+
+
+async def _reset_plan_review_context(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    context: DecisionAdmission,
+) -> None:
+    if context.reset_context is None:
+        return
+    conversation_id = await linear_issue_conversation_id(issue.id, workspace.folder)
+    if conversation_id is None:
+        return
+    binding = await get_conversation_control_binding(ConversationId(conversation_id))
+    if binding is None or binding.closed:
+        return
+    try:
+        await context.reset_context(str(binding.thread_jid))
+    except Exception:  # noqa: BLE001 - cleanup must not turn a settled review into a retry.
+        logger.exception(
+            "Linear plan review context reset failed",
             issue=issue.identifier,
             workspace=workspace.folder,
         )
@@ -469,7 +504,11 @@ async def _admit_human_approved_issue(
             issue,
             workspace,
             context,
-            "🔎 Rechecking the approved plan against the current checkout.",
+            (
+                _plan_review_attempt_status(context.plan_review_attempt)
+                if context.plan_review_attempt is not None
+                else "🔎 Rechecking the approved plan against the current checkout."
+            ),
         )
         reviewed_issue = await review_approved_plan(
             context.client,
@@ -483,6 +522,7 @@ async def _admit_human_approved_issue(
             description=issue.description,
             updated_at=issue.updated_at,
             public_source=context.public_source,
+            attempt=context.plan_review_attempt or 1,
         )
         if reviewed_issue is None:
             await _report_plan_review_status(
