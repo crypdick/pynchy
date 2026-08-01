@@ -216,6 +216,30 @@ class TestApprovalBoundaryEdges:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
+    async def test_mcp_proxy_decision_resolves_existing_future(self, ipc_dir: Path, settings):
+        _write_pending(ipc_dir, "grp", "proxy-resolved", "proxy_tool", {}, handler_type="mcp_proxy")
+        decision_file = _write_decision(ipc_dir, "grp", "proxy-resolved", approved=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
+                return_value=SecurityGate(WorkspaceSecurity()),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.resolve_mcp_proxy_approval",
+                return_value=True,
+            ) as resolve,
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        resolve.assert_called_once_with("proxy-resolved", approved=True)
+        assert not decision_file.exists()
+
+    @pytest.mark.asyncio
     async def test_mcp_proxy_binding_rejection_closes_intent_and_writes_error(
         self, ipc_dir: Path, settings
     ):

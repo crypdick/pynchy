@@ -2,16 +2,34 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pluggy
 import pytest
 
-from pynchy.agent_home import CompanionSkillAccess, refresh_personalized_skills, sync_skills
+from pynchy.agent_home import (
+    CompanionSkillAccess,
+    parse_skill_tier,
+    refresh_personalized_skills,
+    sync_skills,
+)
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+def test_parse_skill_tier_defaults_when_metadata_cannot_be_read(tmp_path: Path) -> None:
+    skill = tmp_path / "unreadable"
+    skill.mkdir()
+    (skill / "SKILL.md").mkdir()
+
+    assert parse_skill_tier(skill) == ("unreadable", "community")
+
+
+def test_parse_skill_tier_defaults_for_empty_frontmatter(tmp_path: Path) -> None:
+    skill = tmp_path / "empty-frontmatter"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("---\n---\n")
+
+    assert parse_skill_tier(skill) == ("empty-frontmatter", "community")
 
 
 class _FakePluginManager(pluggy.PluginManager):
@@ -39,11 +57,53 @@ def test_refresh_personalized_skills_skips_trees_containing_symlinks(
     assert not (session_dir / "skills/linked").exists()
 
 
+def test_refresh_personalized_skills_ignores_non_directory_sources(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    skills_root = project_root / "data/personalization/skills"
+    skills_root.mkdir(parents=True)
+    (skills_root / "README.md").write_text("not a skill directory\n")
+
+    session_dir = tmp_path / "session"
+    refresh_personalized_skills(
+        session_dir,
+        project_root=project_root,
+        workspace_skills=["*"],
+        denied_skill_names=[],
+    )
+
+    assert not (session_dir / "skills/README.md").exists()
+
+
 def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     tmp_path: Path,
 ) -> None:
     session_dir = tmp_path / "session"
     companion = session_dir / "skills/provider"
+    companion.mkdir(parents=True)
+    (companion / "SKILL.md").write_text("---\nname: provider\ntier: community\n---\n")
+    ordinary = session_dir / "skills/ordinary"
+    ordinary.mkdir()
+
+    refresh_personalized_skills(
+        session_dir,
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+        companion_skill_access=CompanionSkillAccess(
+            selected_names=frozenset(),
+            all_names=frozenset({"provider"}),
+        ),
+    )
+
+    assert not companion.exists()
+    assert ordinary.is_dir()
+
+
+def test_refresh_personalized_skills_uses_companion_metadata_name_for_pruning(
+    tmp_path: Path,
+) -> None:
+    session_dir = tmp_path / "session"
+    companion = session_dir / "skills/provider-copy"
     companion.mkdir(parents=True)
     (companion / "SKILL.md").write_text("---\nname: provider\ntier: community\n---\n")
 
@@ -59,6 +119,36 @@ def test_refresh_personalized_skills_prunes_unselected_companion_directories(
     )
 
     assert not companion.exists()
+
+
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_refresh_personalized_skills_prunes_unselected_companion_non_directories(
+    tmp_path: Path, kind: str
+) -> None:
+    session_dir = tmp_path / "session"
+    skills_dir = session_dir / "skills"
+    skills_dir.mkdir(parents=True)
+    companion = skills_dir / "provider"
+    if kind == "file":
+        companion.write_text("unexpected skill shape\n")
+    else:
+        target = tmp_path / "outside"
+        target.write_text("unexpected skill shape\n")
+        companion.symlink_to(target)
+
+    refresh_personalized_skills(
+        session_dir,
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+        companion_skill_access=CompanionSkillAccess(
+            selected_names=frozenset(),
+            all_names=frozenset({"provider"}),
+        ),
+    )
+
+    assert not companion.exists()
+    assert not companion.is_symlink()
 
 
 def test_sync_skills_rejects_plugin_skill_collision_with_reserved_marker(
@@ -83,3 +173,85 @@ def test_sync_skills_rejects_plugin_skill_collision_with_reserved_marker(
             plugin_manager=_FakePluginManager(hook),
             workspace_skills=["*"],
         )
+
+
+@pytest.mark.parametrize("destination_kind", ["file", "marker-directory"])
+def test_sync_skills_rejects_malformed_plugin_destination(
+    tmp_path: Path, destination_kind: str
+) -> None:
+    plugin_skill = tmp_path / "plugin/skill"
+    plugin_skill.mkdir(parents=True)
+    (plugin_skill / "SKILL.md").write_text("---\nname: skill\ntier: community\n---\n")
+
+    destination = tmp_path / "session/skills/skill"
+    if destination_kind == "file":
+        destination.parent.mkdir(parents=True)
+        destination.write_text("existing content\n")
+    else:
+        (destination / ".pynchy-plugin-skill").mkdir(parents=True)
+
+    hook = MagicMock()
+    hook.pynchy_skill_paths.return_value = [[str(plugin_skill)]]
+
+    with pytest.raises(ValueError, match="Skill name collision"):
+        sync_skills(
+            tmp_path / "session",
+            project_root=tmp_path / "project",
+            plugin_manager=_FakePluginManager(hook),
+            workspace_skills=["*"],
+        )
+
+
+def test_sync_skills_treats_unreadable_plugin_marker_as_collision(
+    tmp_path: Path, monkeypatch
+) -> None:
+    plugin_skill = tmp_path / "plugin/skill"
+    plugin_skill.mkdir(parents=True)
+    (plugin_skill / "SKILL.md").write_text("---\nname: skill\ntier: community\n---\n")
+
+    marker = tmp_path / "session/skills/skill/.pynchy-plugin-skill"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("/old/source\n")
+
+    original_read_text = Path.read_text
+
+    def fail_marker_read(path: Path, *args, **kwargs):
+        if path == marker:
+            raise OSError("marker unavailable")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_marker_read)
+    hook = MagicMock()
+    hook.pynchy_skill_paths.return_value = [[str(plugin_skill)]]
+
+    with pytest.raises(ValueError, match="Skill name collision"):
+        sync_skills(
+            tmp_path / "session",
+            project_root=tmp_path / "project",
+            plugin_manager=_FakePluginManager(hook),
+            workspace_skills=["*"],
+        )
+
+
+def test_refresh_personalized_skills_keeps_stale_copy_when_cleanup_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    stale = tmp_path / "session/skills/old"
+    stale.mkdir(parents=True)
+    (stale / ".pynchy-personalized-skill").write_text("managed by pynchy\n")
+
+    def fail_rmtree(path: Path) -> None:
+        if path == stale:
+            raise OSError("copy busy")
+        raise AssertionError(f"unexpected removal: {path}")
+
+    monkeypatch.setattr("pynchy.agent_home.shutil.rmtree", fail_rmtree)
+
+    refresh_personalized_skills(
+        tmp_path / "session",
+        project_root=tmp_path / "project",
+        workspace_skills=["*"],
+        denied_skill_names=[],
+    )
+
+    assert stale.is_dir()

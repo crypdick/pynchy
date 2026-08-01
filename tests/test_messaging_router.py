@@ -228,6 +228,73 @@ class TestStreamTextToChannels:
 
 class TestHandleStreamedOutput:
     @pytest.mark.asyncio
+    async def test_empty_text_delta_does_not_start_a_stream(self):
+        deps = _make_deps()
+        deps._test_channel.owns_jid.return_value = True
+        deps._test_channel.post_event = AsyncMock()
+        group = _make_group()
+
+        try:
+            result = await handle_streamed_output(
+                deps, "g@g.us", group, _make_output(type="text", text="")
+            )
+        finally:
+            stream_states.pop("g@g.us", None)
+
+        assert result is False
+        deps._test_channel.post_event.assert_not_awaited()
+        deps.emit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_text_deltas_append_to_one_stream_message(self):
+        deps = _make_deps()
+        deps._test_channel.owns_jid.return_value = True
+        deps._test_channel.post_event = AsyncMock(return_value="message-1")
+        deps._test_channel.update_event = AsyncMock()
+        group = _make_group()
+
+        try:
+            with patch(
+                "pynchy.host.orchestrator.messaging.streaming.time.monotonic",
+                side_effect=[1.0, 2.0],
+            ):
+                await handle_streamed_output(
+                    deps, "g@g.us", group, _make_output(type="text", text="first")
+                )
+                await handle_streamed_output(
+                    deps, "g@g.us", group, _make_output(type="text", text=" second")
+                )
+        finally:
+            stream_states.pop("g@g.us", None)
+
+        deps._test_channel.post_event.assert_awaited_once()
+        deps._test_channel.update_event.assert_awaited_once()
+        assert deps._test_channel.update_event.await_args.args[2].content == "first second"
+
+    @pytest.mark.asyncio
+    async def test_result_metadata_without_displayable_fields_is_trace_only(self):
+        deps = _make_deps()
+        group = _make_group()
+
+        result = await handle_streamed_output(
+            deps,
+            "g@g.us",
+            group,
+            _make_output(
+                type="result",
+                result_metadata={
+                    "total_cost_usd": None,
+                    "duration_ms": None,
+                    "num_turns": None,
+                },
+            ),
+        )
+
+        assert result is False
+        deps.broadcast_to_channels.assert_not_awaited()
+        deps.emit.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_thinking_event_returns_false(self):
         deps = _make_deps()
         group = _make_group()

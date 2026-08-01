@@ -254,7 +254,7 @@ async def _request_vision_analysis(
 
     url = f"http://localhost:{gateway_instance.port}/v1/responses"
     headers = {
-        "Authorization": f"Bearer {gateway_instance.key}",
+        "Authorization": f"Bearer {gateway_instance.api_key}",
         "Content-Type": "application/json",
     }
     async with (

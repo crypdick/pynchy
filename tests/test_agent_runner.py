@@ -434,6 +434,23 @@ class TestCoreStartupErrors:
         assert outputs[0].query_id == "query-startup"
         assert outputs[0].error == "Failed to start agent core: startup failed"
 
+    @pytest.mark.asyncio
+    async def test_initial_input_failure_is_reported_to_host(self, monkeypatch):
+        outputs: list[ContainerOutput] = []
+
+        def fail_to_read_input():
+            raise RuntimeError("invalid input")
+
+        monkeypatch.setattr("agent_runner.main.read_initial_input", fail_to_read_input)
+        monkeypatch.setattr("agent_runner.main.write_output", outputs.append)
+
+        with pytest.raises(SystemExit):
+            await run_agent_main()
+
+        assert outputs == [
+            ContainerOutput(status="error", error="Failed to read initial input: invalid input")
+        ]
+
 
 class TestScheduledReportFollowupContext:
     """Verify a completed scheduled report remains in the provider conversation."""
@@ -452,7 +469,7 @@ class TestScheduledReportFollowupContext:
                 self.config = config
                 self.history: list[str] = []
                 self.contexts: list[str] = []
-                self._session_id = "provider-session-scheduled-report"
+                self._session_id = ""
 
             @property
             def session_id(self) -> str:
@@ -464,6 +481,11 @@ class TestScheduledReportFollowupContext:
             async def query(self, prompt: str):
                 context = "\n".join((*self.history, f"user: {prompt}"))
                 self.contexts.append(context)
+                if not self.history:
+                    yield SystemEvent(
+                        system_subtype="init",
+                        system_data={"session_id": "provider-session-scheduled-report"},
+                    )
                 if not self.history:
                     result = report
                 elif report in context:

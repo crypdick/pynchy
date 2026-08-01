@@ -28,6 +28,10 @@ pytest_plugins = ("tests.git_policy_support",)
             "Publication blocked: managed feature target changed after Cop inspection.",
         ),
         (
+            "init",
+            "Publication blocked: could not initialize isolated Git transport: init failed",
+        ),
+        (
             "fetch",
             "Publication blocked: could not fetch managed feature target.",
         ),
@@ -40,6 +44,10 @@ pytest_plugins = ("tests.git_policy_support",)
         ),
         (
             "invalid-remote",
+            "Publication blocked: managed feature remote branch returned invalid data.",
+        ),
+        (
+            "ambiguous-remote",
             "Publication blocked: managed feature remote branch returned invalid data.",
         ),
         ("push", "Push failed: permission denied"),
@@ -59,27 +67,43 @@ def test_isolated_transport_failures_block_publication(
     remote_ref = f"refs/heads/{feature}"
 
     def fake_git(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if failure == "target" and args[-1] == "refs/heads/main" and "ls-remote" in args:
-            return subprocess.CompletedProcess(
+        failure_result = None
+        if failure == "init" and args[:2] == ("init", "--bare"):
+            failure_result = subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="init failed"
+            )
+        elif failure == "target" and args[-1] == "refs/heads/main" and "ls-remote" in args:
+            failure_result = subprocess.CompletedProcess(
                 args=args,
                 returncode=0,
                 stdout=f"{'f' * 40}\trefs/heads/main\n",
                 stderr="",
             )
-        if failure == "fetch" and "fetch" in args:
-            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="offline")
-        if failure == "remote" and args[-1] == remote_ref and "ls-remote" in args:
-            return subprocess.CompletedProcess(
+        elif failure == "fetch" and "fetch" in args:
+            failure_result = subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="offline"
+            )
+        elif failure == "remote" and args[-1] == remote_ref and "ls-remote" in args:
+            failure_result = subprocess.CompletedProcess(
                 args=args, returncode=1, stdout="", stderr="remote unavailable"
             )
-        if failure == "invalid-remote" and args[-1] == remote_ref and "ls-remote" in args:
-            return subprocess.CompletedProcess(
+        elif failure == "invalid-remote" and args[-1] == remote_ref and "ls-remote" in args:
+            failure_result = subprocess.CompletedProcess(
                 args=args, returncode=0, stdout=f"not-a-sha\t{remote_ref}\n", stderr=""
             )
-        if failure == "push" and "push" in args:
-            return subprocess.CompletedProcess(
+        elif failure == "ambiguous-remote" and args[-1] == remote_ref and "ls-remote" in args:
+            failure_result = subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=f"{'a' * 40}\t{remote_ref}\n{'b' * 40}\t{remote_ref}\n",
+                stderr="",
+            )
+        elif failure == "push" and "push" in args:
+            failure_result = subprocess.CompletedProcess(
                 args=args, returncode=1, stdout="", stderr="permission denied"
             )
+        if failure_result is not None:
+            return failure_result
         return real_run_git(*args, **kwargs)
 
     def fake_subprocess(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:

@@ -9,7 +9,7 @@ import shutil
 import subprocess  # noqa: S404 - resolved Peekaboo binary runs with closed argv.
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import pluggy
 from pydantic import BaseModel, Field
@@ -149,8 +149,9 @@ def _click_command(request: ComputerUseRequest, _path: Path | None) -> list[str]
         command.extend(["--on", str(request.element)])
     elif request.query is not None:
         command.append(request.query)
-    elif request.coordinate is not None:
-        command.extend(["--coords", f"{request.coordinate[0]},{request.coordinate[1]}"])
+    else:
+        coordinate = cast("tuple[int, int]", request.coordinate)
+        command.extend(["--coords", f"{coordinate[0]},{coordinate[1]}"])
     command.extend(_target_args(request))
     _append_flag(command, "--double", enabled=request.action is ComputerUseAction.DOUBLE_CLICK)
     _append_flag(command, "--right", enabled=request.action is ComputerUseAction.RIGHT_CLICK)
@@ -190,7 +191,7 @@ def _set_value_command(request: ComputerUseRequest, _path: Path | None) -> list[
         "--value",
         request.value or "",
         "--on",
-        _element_or_query(request),
+        str(request.element if request.element is not None else request.query),
         *_snapshot_args(request),
     ]
 
@@ -199,7 +200,7 @@ def _perform_action_command(request: ComputerUseRequest, _path: Path | None) -> 
     return [
         "perform-action",
         "--on",
-        _element_or_query(request),
+        str(request.element if request.element is not None else request.query),
         "--action",
         request.accessibility_action or "",
         *_snapshot_args(request),
@@ -306,13 +307,6 @@ def _append_option(command: list[str], flag: str, value: object | None) -> None:
 def _append_flag(command: list[str], flag: str, *, enabled: bool) -> None:
     if enabled:
         command.append(flag)
-
-
-def _element_or_query(request: ComputerUseRequest) -> str:
-    target = request.element if request.element is not None else request.query
-    if target is None:
-        raise ValueError(f"{request.action.value} requires element or query")
-    return str(target)
 
 
 def _keys(request: ComputerUseRequest) -> tuple[str, ...]:

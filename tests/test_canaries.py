@@ -296,6 +296,39 @@ def test_enabled_canary_rejects_unknown_scenarios():
         )
 
 
+def test_enabled_calendar_canary_requires_its_mcp_tool() -> None:
+    with pytest.raises(ValueError, match="required tools: caldav"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {}},
+                "workspaces": {"canary": {}},
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["calendar.round.trip"],
+                    "calendar_name": "canary-calendar",
+                },
+            }
+        )
+
+
+def test_enabled_linear_canary_requires_an_existing_workspace() -> None:
+    with pytest.raises(ValueError, match="linear_workspace references unknown workspace"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {"tools": ["linear"]}},
+                "tools": {"linear": {"type": "linear"}},
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["linear.workspace.round.trip"],
+                    "linear_team_key": "SYN",
+                    "linear_workspace": "missing",
+                },
+            }
+        )
+
+
 def test_enabled_proton_round_trip_requires_a_delivery_recipient():
     with pytest.raises(ValueError, match="proton_recipient is required"):
         validate_settings_mapping(

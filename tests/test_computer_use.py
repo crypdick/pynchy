@@ -231,9 +231,32 @@ async def test_router_rejects_empty_shortcuts(keys: object) -> None:
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
+        ({"source_group": "admin", "action": "click"}, "click actions require"),
+        ({"source_group": "admin", "action": "type"}, "type requires text"),
+        ({"source_group": "admin", "action": "scroll"}, "scroll requires direction"),
+        ({"source_group": "admin", "action": "launch_app"}, "launch_app requires"),
         ({"source_group": "admin", "action": "launch_app", "app": " "}, "must not be empty"),
         ({"source_group": "../admin", "action": "list_apps"}, "one path component"),
         ({"source_group": "admin", "action": "set_value", "value": "x"}, "requires element"),
+        (
+            {"source_group": "admin", "action": "set_value", "element": "button"},
+            "requires value",
+        ),
+        (
+            {"source_group": "admin", "action": "perform_action", "accessibility_action": "press"},
+            "requires element",
+        ),
+        (
+            {"source_group": "admin", "action": "perform_action", "element": "button"},
+            "requires accessibility_action",
+        ),
+        ({"source_group": "admin", "action": "menu_click"}, "menu_click requires"),
+        ({"source_group": "admin", "action": "dialog_click"}, "dialog_click requires"),
+        ({"source_group": "admin", "action": "dialog_input"}, "dialog_input requires"),
+        ({"source_group": "admin", "action": "dialog_file"}, "dialog_file requires"),
+        ({"source_group": "admin", "action": "clipboard_set"}, "clipboard_set requires"),
+        ({"source_group": "admin", "action": "space_switch"}, "space_switch requires"),
+        ({"source_group": "admin", "action": "space_move_window"}, "space_move_window requires"),
     ],
 )
 @pytest.mark.asyncio
@@ -305,3 +328,30 @@ async def test_capability_probe_reports_fallback_degradation() -> None:
 
     assert result.status is ProbeStatus.DEGRADED
     assert result.reason == "Using fallback provider cua-driver: peekaboo: not installed"
+
+
+@pytest.mark.asyncio
+async def test_capability_probe_reports_ready_primary_provider() -> None:
+    registration = ComputerUsePlugin().pynchy_service_handler((_RecordingBackend("peekaboo"),))
+    probe = registration.actions[0].capability.probe
+    assert probe is not None
+
+    result = await probe(CapabilityProbeContext(workspace="admin"))
+
+    assert result.status is ProbeStatus.READY
+    assert result.reason is None
+
+
+def test_computer_use_plugin_returns_packaged_skill_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "is_dir", lambda _path: True)
+
+    paths = ComputerUsePlugin().pynchy_skill_paths()
+
+    assert len(paths) == 1
+    assert paths[0].endswith("/skills/computer-use")
+
+
+def test_computer_use_plugin_skips_missing_skill_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "is_dir", lambda _path: False)
+
+    assert ComputerUsePlugin().pynchy_skill_paths() == []

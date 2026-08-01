@@ -637,6 +637,27 @@ async def test_text_callback_rejects_an_unauthorized_interaction():
 
 
 @pytest.mark.asyncio
+async def test_form_callback_rejects_an_unauthorized_interaction():
+    ch = _make_channel()
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    await ch.send_ask_user(
+        "discord:direct:42", REQUEST_ID, _single_question() + _free_text_question()
+    )
+    view = fake.sends[0][1]["view"]
+    button = next(item for item in view.children if getattr(item, "label", None) == "Answer")
+    ch.is_interaction_allowed = MagicMock(return_value=False)  # type: ignore[method-assign]
+    interaction = _interaction()
+
+    await button.callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "You are not allowed to answer this prompt.", ephemeral=True
+    )
+
+
+@pytest.mark.asyncio
 async def test_button_callback_rejects_an_interaction_forbidden_at_finalize():
     ch = _make_channel()
     ch.client = object()

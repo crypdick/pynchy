@@ -81,6 +81,37 @@ async def test_start_accepts_a_healthy_postgres_sidecar(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_uses_a_named_postgres_volume_for_a_non_default_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-test")
+    gateway = _gateway(tmp_path)
+    docker = AsyncMock(
+        side_effect=[
+            _docker_result(returncode=0),  # postgres run
+            _docker_result(returncode=0),  # pg_isready
+            _docker_result(returncode=0),  # LiteLLM run
+        ]
+    )
+
+    patches = _startup_patches(gateway)
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patch(f"{_MODULE}.run_docker", docker),
+    ):
+        await gateway.start()
+
+    postgres_run = docker.await_args_list[0].args
+    assert "-v" in postgres_run
+    assert "pynchy-test-litellm-db-data:/var/lib/postgresql/data" in postgres_run
+
+
+@pytest.mark.asyncio
 async def test_start_reports_an_exited_postgres_sidecar(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     docker = AsyncMock(

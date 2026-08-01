@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import stat
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +13,7 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp.test_utils import AioHTTPTestCase, make_mocked_request
 
 from pynchy.config.api import ServerConfig
 from pynchy.host.orchestrator.http_control import (
@@ -75,6 +76,14 @@ def test_default_runtime_binds_loopback_and_enables_unix_socket(
     assert runtime.remote_auth_required is False
     assert runtime.unix_socket == short_unix_socket_root / "data" / "pynchy.sock"
     assert runtime.unix_socket_bind is not None
+
+
+def test_runtime_rejects_an_overlong_unix_socket_path(tmp_path: Path) -> None:
+    with pytest.raises(ControlPlaneConfigurationError, match="portable length limit"):
+        _runtime(
+            ServerConfig(unix_socket=Path("socket-" + "x" * 101)),
+            project_root=tmp_path,
+        )
 
 
 def test_non_loopback_bind_requires_explicit_public_opt_in(tmp_path: Path) -> None:
@@ -374,6 +383,55 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
 
 
 @pytest.mark.asyncio
+async def test_request_without_transport_still_requires_remote_auth() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host=PUBLIC_BIND_TEST_HOST,
+        port=8484,
+        unix_socket=None,
+        public_bind=True,
+        remote_auth_required=True,
+        allow_remote_deploy=True,
+        auth_token=ControlPlaneToken(TEST_TOKEN),
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    middleware = build_control_plane_middleware(runtime)
+    request = make_mocked_request("GET", "/status")
+    request._protocol.transport = None
+
+    unexpected_handler = AsyncMock(side_effect=AssertionError("request should be denied"))
+
+    response = await middleware(request, unexpected_handler)
+
+    assert response.status == 401
+
+
+@pytest.mark.asyncio
+async def test_start_replaces_a_stale_unix_socket(short_unix_socket_root: Path) -> None:
+    runtime = _runtime(
+        ServerConfig(unix_socket=Path("control.sock")),
+        project_root=short_unix_socket_root,
+    )
+    socket_path = runtime.unix_socket
+    assert socket_path is not None
+    socket_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_socket = socket.socket(socket.AF_UNIX)
+    stale_socket.bind(str(socket_path))
+    stale_socket.close()
+    assert stat.S_ISSOCK(socket_path.stat().st_mode)
+
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        await start_control_plane_sites(runner, runtime)
+        assert stat.S_ISSOCK(socket_path.stat().st_mode)
+    finally:
+        await runner.cleanup()
+
+    assert not socket_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_deep_project_root_binds_unix_socket_through_short_relative_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -396,5 +454,51 @@ async def test_deep_project_root_binds_unix_socket_through_short_relative_path(
     try:
         assert runtime.unix_socket.exists()
         assert stat.S_IMODE(runtime.unix_socket.stat().st_mode) == 0o600
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_control_plane_rejects_replacing_a_regular_file(tmp_path: Path) -> None:
+    socket_path = tmp_path / "control.sock"
+    socket_path.write_text("not a socket")
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=0,
+        unix_socket=socket_path,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        with pytest.raises(ControlPlaneConfigurationError, match="non-socket"):
+            await start_control_plane_sites(runner, runtime)
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_start_control_plane_supports_tcp_without_unix_socket() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=0,
+        unix_socket=None,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    runner = web.AppRunner(web.Application())
+    await runner.setup()
+    try:
+        await start_control_plane_sites(runner, runtime)
+        assert runner.addresses
     finally:
         await runner.cleanup()

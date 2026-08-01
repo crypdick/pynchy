@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.host.container_manager.mcp.proxy import create_proxy_app
+import pynchy.host.container_manager.mcp.proxy as proxy_module
+from pynchy.host.container_manager.mcp.proxy import McpProxy, create_proxy_app
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.workspace.api import ServiceTrustConfig, WorkspaceSecurity
@@ -70,3 +72,41 @@ async def test_proxy_returns_timeout_when_human_approval_does_not_resolve(mock_b
         request_id = approval.await_args.args[3]
         resolve_mcp_proxy_approval(request_id, approved=False)
         await client.close()
+
+
+async def test_proxy_app_cleanup_is_idempotent() -> None:
+    app = create_proxy_app({})
+    client = TestClient(TestServer(app))
+    await client.start_server()
+
+    await client.close()
+    await app.cleanup()
+
+
+async def test_proxy_start_rejects_runner_without_a_bound_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Runner:
+        addresses: tuple[object, ...] = ()
+
+        def __init__(self, _app: object) -> None:
+            pass
+
+        async def setup(self) -> None:
+            return None
+
+        async def cleanup(self) -> None:
+            return None
+
+    class _Site:
+        def __init__(self, _runner: _Runner, _host: str, _port: int) -> None:
+            pass
+
+        async def start(self) -> None:
+            return None
+
+    monkeypatch.setattr(proxy_module.web, "AppRunner", _Runner)
+    monkeypatch.setattr(proxy_module.web, "TCPSite", _Site)
+
+    with pytest.raises(RuntimeError, match="did not bind any addresses"):
+        await McpProxy().start({})

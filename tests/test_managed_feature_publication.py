@@ -32,6 +32,24 @@ if TYPE_CHECKING:
 class TestManagedFeaturePublication:
     """Managed feature publication stays bound to one manifest record."""
 
+    def test_rejects_a_stale_inspected_head_before_publishing(self, git_env: dict) -> None:
+        create_managed_feature(git_env, "stale-head-feature")
+        write_managed_manifest(git_env["project"], [managed_record("stale-head-feature")])
+
+        result = host_create_pr_from_managed_feature(
+            "stale-head-feature",
+            [git_env["repo_ctx"]],
+            expected_head_sha="0" * 40,
+        )
+
+        assert result == {
+            "success": False,
+            "message": (
+                "Publication blocked: managed feature changed after Cop inspection. "
+                "Inspect and publish it again."
+            ),
+        }
+
     def test_pushes_only_selected_manifest_feature(self, git_env: dict, tmp_path: Path):
         selected = create_managed_feature(git_env, "selected-feature")
         (selected / ".gitattributes").write_text(

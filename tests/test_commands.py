@@ -230,6 +230,13 @@ class TestIsRedeploy:
 
 
 class TestApplicationCommands:
+    def test_malformed_application_command_metadata_is_ignored(self):
+        metadata = {
+            "application_command": {"name": "approve", "options": []},
+        }
+
+        assert commands.is_approval_command(_MATCHER, "hello", metadata) is None
+
     def test_lifecycle_commands_use_intent_metadata(self):
         def metadata(name: str) -> dict[str, object]:
             return {
@@ -273,3 +280,6 @@ class TestApplicationCommands:
         assert not is_pause("pause", metadata)
         assert not is_end_session("done", metadata)
         assert not is_redeploy("redeploy", metadata)
+
+        assert commands.is_approval_command(_MATCHER, "approve abc123", metadata) is None
+        assert not commands.is_pending_query(_MATCHER, "pending", metadata)

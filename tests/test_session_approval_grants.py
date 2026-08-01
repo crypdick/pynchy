@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 from conftest import make_host_action_catalog
@@ -10,7 +11,7 @@ from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     evaluate_host_action_policy,
 )
-from pynchy.plugins.api import ApprovalMode, HostActionDescriptor
+from pynchy.plugins.api import ApprovalContract, ApprovalMode, ApprovalTrigger, HostActionDescriptor
 from pynchy.workspace.api import (
     CapabilityRule,
     ServiceTrustConfig,
@@ -94,6 +95,24 @@ def test_explicit_capability_allow_skips_service_human_gate() -> None:
     assert not decision.needs_human
     assert "explicitly allowed" in (decision.reason or "")
     assert "Human approval suppressed" in (decision.reason or "")
+
+
+def test_capability_only_contract_explains_suppressed_service_approval() -> None:
+    action = replace(
+        _action("send_email"),
+        approval=ApprovalContract(trigger=ApprovalTrigger.CAPABILITY_ONLY),
+    )
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services={"send_email": ServiceTrustConfig(dangerous_writes=True)},
+        )
+    )
+
+    decision = evaluate_host_action_policy(action, gate, {})
+
+    assert decision.allowed
+    assert not decision.needs_human
+    assert "Automatic service approval suppressed" in (decision.reason or "")
 
 
 def test_explicit_capability_allow_cannot_override_service_forbidden() -> None:

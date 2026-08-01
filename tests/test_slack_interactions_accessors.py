@@ -156,6 +156,19 @@ def test_stop_interaction_invokes_callback_and_removes_buttons() -> None:
     assert update["blocks"][-1]["elements"][0]["text"] == "⏹ Stopped by <@U999>"
 
 
+def test_stop_interaction_without_callback_still_finalizes_message() -> None:
+    ch = _make_channel()
+    body = {
+        "channel": {"id": "C12345"},
+        "message": {"ts": "123.456", "blocks": []},
+        "user": {"id": "U999", "username": "Ada"},
+    }
+
+    asyncio.run(ch.interactions.on_agent_stop_interaction(body, {"action_id": "agent_stop_ops"}))
+
+    ch.slack_app.client.chat_update.assert_awaited_once()
+
+
 def test_ask_user_interaction_ignores_non_submit_actions() -> None:
     callback = MagicMock()
     ch = _make_channel(on_ask_user_answer=callback)
@@ -223,6 +236,22 @@ def test_ask_user_update_failure_does_not_hide_answer() -> None:
         },
     )
     ch.slack_app.client.chat_update.assert_awaited_once()
+
+
+def test_ask_user_submit_without_callback_or_source_message_is_safe() -> None:
+    ch = _make_channel()
+    body = {
+        "channel": {"id": "C12345"},
+        "message": {},
+        "user": {"id": "U999"},
+        "state": {"values": {}},
+    }
+
+    asyncio.run(
+        ch.interactions.on_ask_user_interaction(body, {"action_id": "ask_user_submit_req-1"})
+    )
+
+    ch.slack_app.client.chat_update.assert_not_awaited()
 
 
 def test_approval_interaction_ignores_malformed_action_id() -> None:

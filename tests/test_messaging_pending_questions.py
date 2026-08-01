@@ -13,6 +13,7 @@ from conftest import make_settings
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.orchestrator.messaging.pending_questions import (
     create_pending_question,
+    find_pending_for_jid,
     find_pending_question,
     resolve_pending_question,
     sweep_expired_questions,
@@ -100,6 +101,16 @@ class TestCreatePendingQuestion:
 
 
 class TestFindPendingQuestion:
+    def test_requires_configured_ipc_root(self):
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                None,
+            ),
+            pytest.raises(RuntimeError, match="IPC base directory has not been configured"),
+        ):
+            find_pending_question("anything")
+
     def test_finds_by_request_id(self, ipc_dir: Path, settings):
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
@@ -158,6 +169,44 @@ class TestFindPendingQuestion:
 
         assert result is None
 
+    def test_skips_non_groups_missing_directories_and_corrupt_files(self, ipc_dir: Path, settings):
+        (ipc_dir / "errors").mkdir()
+        (ipc_dir / "not-a-group").write_text("not a directory")
+        (ipc_dir / "group-without-pending").mkdir()
+        corrupt_dir = ipc_dir / "corrupt-group" / "pending_questions"
+        corrupt_dir.mkdir(parents=True)
+        (corrupt_dir / "bad.json").write_text("{not json")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+            settings.data_dir / "ipc",
+        ):
+            assert find_pending_question("bad") is None
+
+
+class TestFindPendingForJid:
+    def test_returns_none_when_no_ipc_dir(self, tmp_path: Path):
+        root = tmp_path / "missing-ipc"
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+            root,
+        ):
+            assert find_pending_for_jid("slack:C1") is None
+
+    def test_skips_non_groups_missing_directories_and_corrupt_files(self, ipc_dir: Path, settings):
+        (ipc_dir / "errors").mkdir()
+        (ipc_dir / "not-a-group").write_text("not a directory")
+        (ipc_dir / "group-without-pending").mkdir()
+        corrupt_dir = ipc_dir / "corrupt-group" / "pending_questions"
+        corrupt_dir.mkdir(parents=True)
+        (corrupt_dir / "bad.json").write_text("{not json")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+            settings.data_dir / "ipc",
+        ):
+            assert find_pending_for_jid("slack:C1") is None
+
 
 # -- resolve_pending_question --------------------------------------------------
 
@@ -194,6 +243,19 @@ class TestResolvePendingQuestion:
 
 
 class TestUpdateMessageId:
+    def test_ignores_corrupt_pending_file(self, ipc_dir: Path, settings):
+        pending_dir = ipc_dir / "grp" / "pending_questions"
+        pending_dir.mkdir(parents=True)
+        (pending_dir / "corrupt.json").write_text("{not json")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+            settings.data_dir / "ipc",
+        ):
+            update_message_id("corrupt", "grp", "msg-123")
+
+        assert (pending_dir / "corrupt.json").read_text() == "{not json"
+
     def test_updates_message_id(self, ipc_dir: Path, settings):
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
@@ -247,6 +309,34 @@ class TestUpdateMessageId:
 
 
 class TestSweepExpiredQuestions:
+    @pytest.mark.asyncio
+    async def test_keeps_expired_file_when_response_write_fails(self, ipc_dir: Path, settings):
+        empty_group = ipc_dir / "empty-group"
+        empty_group.mkdir()
+        pending_dir = ipc_dir / "grp" / "pending_questions"
+        pending_dir.mkdir(parents=True)
+        pending_file = pending_dir / "req-failed.json"
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "request_id": "req-failed",
+                    "timestamp": (datetime.now(UTC) - timedelta(minutes=35)).isoformat(),
+                }
+            )
+        )
+
+        def fail_to_write(_group: str, _request_id: str, _error: str) -> None:
+            raise OSError("response directory unavailable")
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+            settings.data_dir / "ipc",
+        ):
+            expired = await sweep_expired_questions(fail_to_write)
+
+        assert expired == []
+        assert pending_file.exists()
+
     @pytest.mark.asyncio
     async def test_expires_old_pending(self, ipc_dir: Path, settings):
         with (

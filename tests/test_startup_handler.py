@@ -250,6 +250,33 @@ class TestAutoRollback:
         assert events == ["fsync", "fsync", "fsync", "terminate"]
 
     @pytest.mark.asyncio
+    async def test_replaces_malformed_boot_warnings_during_rollback(self, tmp_path, monkeypatch):
+        cont_path = tmp_path / "continuation.json"
+        cont_path.write_text(
+            json.dumps(
+                {
+                    "previous_commit_sha": "prev-sha-1",
+                    "commit_sha": "failed-sha-2",
+                }
+            )
+        )
+        (tmp_path / "boot_warnings.json").write_text("not valid json")
+
+        class FakeResult:
+            returncode = 0
+            stderr = ""
+
+        monkeypatch.setattr(startup_handler, "run_git", lambda *_args: FakeResult())
+        monkeypatch.setattr(startup_handler, "terminate_failed_startup", lambda: None)
+
+        await auto_rollback(cont_path, RuntimeError("startup failed"))
+
+        warnings = json.loads((tmp_path / "boot_warnings.json").read_text())
+        assert len(warnings) == 1
+        assert "failed-sha-2" in warnings[0]
+        assert "prev-sha-1" in warnings[0]
+
+    @pytest.mark.asyncio
     async def test_returns_when_git_reset_fails(self, tmp_path):
         """Should return (not exit) when git reset fails."""
         cont_path = tmp_path / "continuation.json"

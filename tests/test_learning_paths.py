@@ -65,6 +65,13 @@ def test_automation_memory_returns_none_when_learning_is_disabled(tmp_path):
         assert resolve_automation_memory_paths("job-weekly-security") is None
 
 
+def test_automation_memory_context_yields_none_when_learning_is_disabled(tmp_path):
+    settings = _settings(tmp_path=tmp_path, learning=LearningConfig(enabled=False))
+
+    with _configured_learning_paths(settings), automation_memory_dir("job-weekly-security") as path:
+        assert path is None
+
+
 def test_automation_memory_requires_a_task_id(tmp_path):
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(tmp_path / "vault"))
 

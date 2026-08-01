@@ -460,6 +460,7 @@ class TestEnsureRepoCloned:
                 f"ssh://{SCOPED_CREDENTIAL}@github.com/{REPO_SLUG}.git",
                 "unsupported SSH userinfo",
             ),
+            ("https://[invalid", "supported GitHub HTTPS or SSH URL"),
         ],
     )
     def test_unsafe_origin_is_rejected_without_mutating_explicit_checkout(

@@ -27,8 +27,6 @@ from pynchy.plugins.integrations.google_setup._paths import (
 
 def get_project_number(kp: Path) -> str | None:
     """Extract the GCP project number from the OAuth client_id."""
-    if not kp.exists():
-        return None
     try:
         with kp.open(encoding="utf-8") as f:
             data = json.load(f)
@@ -61,9 +59,6 @@ def refresh_access_token(profile_name: str) -> str | None:
     Reads from chrome profile directory (not Docker volume).
     """
     kp = keys_path(profile_name)
-    if not kp.exists():
-        return None
-
     try:
         client_id, client_secret = parse_client_credentials(kp)
     except (OSError, ValueError, KeyError) as exc:
@@ -99,9 +94,6 @@ def refresh_access_token(profile_name: str) -> str | None:
 
 def _stored_refresh_token(profile_name: str) -> str | None:
     creds_path = credentials_path(profile_name)
-    if not creds_path.exists():
-        return None
-
     try:
         creds = json.loads(creds_path.read_text())
         refresh_token = creds.get("refresh_token")

@@ -54,8 +54,6 @@ def _flush_chunk(
     *,
     in_fence: bool,
 ) -> bool:
-    if not parts:
-        return False
     out = "".join(parts)
     if in_fence:
         if not out.endswith("\n"):

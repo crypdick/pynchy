@@ -19,6 +19,7 @@ from pynchy.plugins.channels.discord import (
     DiscordChannelDetails,
     DiscordForwardedMessage,
     DiscordInboundMessage,
+    DiscordInboundReaction,
     DiscordReply,
 )
 
@@ -356,6 +357,123 @@ async def test_application_command_becomes_an_intent_message_without_phrase_matc
         "options": {"message": "include the logs"},
     }
     assert responses[-1] == ("✅ /q queued", True)
+
+
+def _application_interaction(interaction_id: int = 42) -> _ApplicationInteraction:
+    return _ApplicationInteraction(
+        id=interaction_id,
+        user=_ApplicationUser(
+            id="5",
+            bot=False,
+            display_name="Alice",
+            global_name="Alice",
+            name="alice",
+            roles=[],
+        ),
+        guild=_ApplicationGuild(id="g1", name="Pynchy"),
+        channel=_ApplicationChannel(id="c1", name="general", parent=None, parent_id=None),
+        created_at=None,
+        response=_ApplicationResponse(send_message=AsyncMock()),
+    )
+
+
+async def test_application_command_rejects_unauthorized_and_empty_queue_requests():
+    rejected = _application_interaction()
+    rejected_deliveries: list[NewMessage] = []
+    denied = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="disabled"),
+        "token",
+        lambda _jid, message: rejected_deliveries.append(message),
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+
+    await denied.events.handle_application_command(rejected, "reset")
+
+    assert rejected_deliveries == []
+    rejected.response.send_message.assert_awaited_once_with("❌ Not allowed", ephemeral=True)
+
+    queued = _application_interaction(interaction_id=43)
+    delivered: list[NewMessage] = []
+    open_channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        "token",
+        lambda _jid, message: delivered.append(message),
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+
+    await open_channel.events.handle_application_command(queued, "q", {"message": "  "})
+
+    assert delivered == []
+    queued.response.send_message.assert_awaited_once_with("❌ Message required", ephemeral=True)
+
+
+def test_inbound_reactions_filter_bots_and_dms_before_delivery():
+    delivered: list[tuple[str, str, str, str]] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        on_reaction=lambda *reaction: delivered.append(reaction),
+    )
+    channel.bot_user_id = BOT_ID
+
+    channel.events.handle_inbound_reaction(
+        DiscordInboundReaction(
+            user_id=BOT_ID,
+            guild_id="g1",
+            channel_id="c1",
+            message_id="m1",
+            emoji="👍",
+        )
+    )
+    channel.events.handle_inbound_reaction(
+        DiscordInboundReaction(
+            user_id="5",
+            guild_id=None,
+            channel_id="c1",
+            message_id="m1",
+            emoji="👍",
+        )
+    )
+    channel.events.handle_inbound_reaction(
+        DiscordInboundReaction(
+            user_id="5",
+            guild_id="g1",
+            channel_id="c1",
+            message_id="m1",
+            emoji="👍",
+        )
+    )
+
+    assert delivered == [("discord:channel:c1", "m1", "5", "👍")]
+
+
+def test_inbound_reaction_without_a_callback_is_ignored():
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        "token",
+        lambda _jid, _message: None,
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+
+    channel.events.handle_inbound_reaction(
+        DiscordInboundReaction(
+            user_id="5",
+            guild_id="g1",
+            channel_id="c1",
+            message_id="m1",
+            emoji="👍",
+        )
+    )
 
 
 def test_discord_registers_native_application_commands():

@@ -318,6 +318,40 @@ class TestWorkspaceMcpStartup:
 
 class TestMcpManagerLifecycleContracts:
     @pytest.mark.asyncio
+    async def test_ensure_running_records_slow_backend_readiness(self, tmp_path, monkeypatch):
+        config = McpServerConfig(type="script", command="run", port=8001)
+        manager = await _synced_manager(
+            tmp_path, monkeypatch, server_names=("script",), server_configs={"script": config}
+        )
+        ensure = AsyncMock()
+        clock = iter((0.0, 1.0))
+        monkeypatch.setattr(mcp_manager, "ensure_script_running", ensure)
+        monkeypatch.setattr(mcp_manager, "time", MagicMock(monotonic=lambda: next(clock)))
+
+        await manager.ensure_running("script")
+
+        ensure.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_idle_skips_already_stopped_host_process(self, tmp_path, monkeypatch):
+        config = McpServerConfig(type="script", command="run", port=8001, idle_timeout=1)
+        manager = await _synced_manager(
+            tmp_path, monkeypatch, server_names=("script",), server_configs={"script": config}
+        )
+        ensure = AsyncMock()
+        terminate = MagicMock()
+        clock = [0.0]
+        monkeypatch.setattr(mcp_manager, "ensure_script_running", ensure)
+        monkeypatch.setattr(mcp_manager, "terminate_process", terminate)
+        monkeypatch.setattr(mcp_manager, "time", MagicMock(monotonic=lambda: clock[0]))
+
+        await manager.ensure_running("script")
+        clock[0] = 2.0
+        await manager.stop_idle()
+
+        terminate.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_sync_reaps_prior_process_ownership_once(self, tmp_path, monkeypatch):
         reaper = MagicMock(return_value=2)
         monkeypatch.setattr(mcp_manager, "reap_stale_processes", reaper)

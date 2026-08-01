@@ -69,6 +69,17 @@ def test_route_configuration_rejects_invalid_limits_and_identifiers(
         GitHubWebhookRouteConfig(**(values | updates))
 
 
+def test_route_configuration_accepts_a_smaller_payload_limit() -> None:
+    config = GitHubWebhookRouteConfig(
+        name="project",
+        workspace="project",
+        repository=_REPOSITORY,
+        max_body_bytes=1024,
+    )
+
+    assert config.max_body_bytes == 1024
+
+
 def test_authentication_requires_all_provider_headers() -> None:
     raw_body, headers = _request(_payload(), "pull_request")
 

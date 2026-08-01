@@ -97,6 +97,61 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert len(await get_all_tasks()) == 1
 
 
+async def test_reconcile_defers_in_progress_and_follow_up_work_with_uncertain_execution() -> None:
+    client = _DecisionClient()
+    workspaces = [_Workspace("beta", "Beta", "linear:beta")]
+    boards = {"beta": _board("project-beta")}
+    created = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+    )
+    execution = await get_active_work_item_execution("issue-execute")
+    assert execution is not None
+    transition = await begin_work_item_transition(
+        WorkItemTransitionRequest(
+            execution=execution,
+            request_id="execution-uncertain",
+            operation="provider_callback",
+            target_status="unknown",
+            result_execution_status=WorkItemExecutionStatus.UNKNOWN,
+        )
+    )
+    await resolve_work_item_transition(
+        transition=transition,
+        execution_status=WorkItemExecutionStatus.UNKNOWN,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+    )
+
+    issue = client.issues_by_state["state-approved"].pop()
+    issue["state"] = _state("in_progress")
+    client.issues_by_state["state-progress"].append(issue)
+    assert (
+        await reconcile_linear_decision_inbox(
+            client,
+            workspaces,
+            boards,
+            now=datetime(2026, 7, 19, 8, 6, tzinfo=UTC),
+        )
+        == []
+    )
+
+    issue = client.issues_by_state["state-progress"].pop()
+    issue["state"] = _state("follow_ups")
+    client.issues_by_state["state-follow-ups"].append(issue)
+    assert (
+        await reconcile_linear_decision_inbox(
+            client,
+            workspaces,
+            boards,
+            now=datetime(2026, 7, 19, 8, 7, tzinfo=UTC),
+        )
+        == []
+    )
+    assert created
+
+
 async def test_planned_work_is_reviewed_before_execution_lease() -> None:
     client = _DecisionClient()
     client.issues_by_state["state-approved"][0]["description"] = (

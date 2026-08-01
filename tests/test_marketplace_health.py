@@ -212,6 +212,27 @@ def test_snapshot_reports_unconfigured_reader(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.action("marketplace.health.read")
+async def test_marketplace_service_returns_configured_snapshot(tmp_path: Path) -> None:
+    state_file = tmp_path / "pending_actions.json"
+    _write_state(state_file)
+    configure_marketplace_health_runtime(
+        MarketplaceHealthRuntime(
+            options=MarketplaceHealthOptions(pending_actions_file=state_file),
+            reader_environment=lambda _tool: None,
+        )
+    )
+
+    action = MARKETPLACE_HEALTH_HOST_ACTIONS.actions[0]
+
+    assert await action.handler({}) == {
+        "result": {
+            "counts": {"pending": 2, "awaiting_reply": 1},
+            "reader_health": {"status": "unavailable", "reason": "reader_not_configured"},
+        }
+    }
+
+
 def test_marketplace_state_file_must_be_absolute(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must be absolute"):
         MarketplaceHealthOptions(pending_actions_file="relative.json")

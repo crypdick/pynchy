@@ -176,6 +176,28 @@ async def test_script_start_fails_when_process_supervision_shell_is_missing(monk
         await ensure_script_running(_script_instance())
 
 
+async def test_script_start_uses_the_available_process_supervision_shell(monkeypatch):
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.pid = 1234
+    popen = MagicMock(return_value=process)
+    wait_healthy = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "/bin/sh"
+    )
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.subprocess.Popen", popen)
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.wait_healthy", wait_healthy)
+
+    instance = _script_instance()
+    await ensure_script_running(instance)
+
+    assert instance.process is process
+    command = popen.call_args.args[0]
+    assert command[:3] == ["/bin/sh", "-c", '"$@" &\nchild=$!\nwait "$child"\n']
+    assert command[-1] == "backend"
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert wait_healthy.await_count == 1
+
+
 async def test_script_start_terminates_process_when_record_persistence_fails(tmp_path: Path):
     process = subprocess.Popen.__new__(subprocess.Popen)
     process.pid = 1234
@@ -244,6 +266,21 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
         "/project/src/Dockerfile",
         "/project",
     )
+
+
+async def test_warm_image_cache_pulls_a_registry_image_without_a_dockerfile():
+    instance = _instance(server_name="browser")
+    instance.server_config = McpServerConfig(
+        type="docker",
+        image="registry.example/browser:latest",
+        port=8000,
+    )
+    ensure_image = AsyncMock()
+
+    with patch("pynchy.host.container_manager.mcp.lifecycle.ensure_image", ensure_image):
+        await warm_image_cache({"browser": instance})
+
+    ensure_image.assert_awaited_once_with("registry.example/browser:latest")
 
 
 def test_terminate_process_clears_an_already_exited_process_and_record(tmp_path: Path):
@@ -398,6 +435,29 @@ def test_reap_stale_processes_treats_permission_denied_as_an_existing_group(
         ((1234, 0),),
         ((1234, signal.SIGKILL),),
     ]
+
+
+def test_reap_stale_processes_accepts_a_group_that_exits_during_cleanup(
+    monkeypatch, tmp_path: Path
+):
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    marker = "pynchy-mcp-" + "a" * 32
+    (record_dir / "owned.json").write_text(json.dumps({"pid": 1234, "marker": marker}))
+    monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: "ps")
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.subprocess.run",
+        MagicMock(return_value=subprocess.CompletedProcess([], 0, marker, "")),
+    )
+
+    with patch(
+        "pynchy.host.container_manager.mcp.lifecycle.os.killpg",
+        side_effect=[None, ProcessLookupError],
+    ) as killpg:
+        assert reap_stale_processes(record_dir) == 1
+
+    killpg.assert_has_calls([((1234, signal.SIGTERM),), ((1234, 0),)])
+    assert not list(record_dir.iterdir())
 
 
 def test_reap_stale_processes_reaps_a_verified_owned_group(monkeypatch, tmp_path: Path):

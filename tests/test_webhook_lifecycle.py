@@ -398,7 +398,7 @@ async def test_lifecycle_retires_older_turn_immediately_and_suppresses_its_sibli
         assert retired.session_id is None
         assert harness.retired_task_conversations == [str(conversation_id)]
         assert set(harness.retired_folders) == {
-            f"project__thread_conversation-{conversation_id}",
+            dynamic_thread_folder("project", f"conversation-{conversation_id}"),
             dynamic_thread_folder("project", before_close.thread_jid),
         }
         assert before_close.thread_jid not in harness.workspace_map

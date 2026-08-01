@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config.api import RepoConfig, ReposConfig
@@ -85,7 +86,7 @@ def test_invalid_explicit_path_is_not_cloned(tmp_path: Path):
         patch("pynchy.config.api.get_settings", return_value=settings),
         patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
     ):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
     clone.assert_not_called()
     assert checkout.read_text() == "operator data\n"
 
@@ -100,7 +101,7 @@ def test_uncommitted_repository_without_head_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_repository_without_origin_is_rejected(tmp_path: Path):
@@ -113,7 +114,7 @@ def test_repository_without_origin_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_origin_without_owner_and_repo_is_rejected(tmp_path: Path):
@@ -126,7 +127,31 @@ def test_origin_without_owner_and_repo_is_rejected(tmp_path: Path):
         )
     )
     with patch("pynchy.config.api.get_settings", return_value=settings):
-        assert ensure_repo_cloned(_repo_context(tmp_path)) is False
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://[invalid",
+        "https://user@github.com/owner/project.git",
+        "ssh://other@github.com/owner/project.git",
+        "git://github.com/owner/project.git",
+        "https://github.com/owner/project.git?token=embedded",
+    ],
+)
+def test_unsafe_github_origins_are_rejected(tmp_path: Path, origin: str):
+    checkout = tmp_path / "operator-checkout"
+    _init_repo(checkout, origin=origin)
+    settings = make_settings(
+        repos=ReposConfig(
+            root=tmp_path / "repos",
+            overrides={SLUG: RepoConfig(path=str(checkout))},
+        )
+    )
+
+    with patch("pynchy.config.api.get_settings", return_value=settings):
+        assert ensure_repo_cloned(RepoContext(SLUG, checkout, tmp_path / "worktrees")) is False
 
 
 def test_clone_remote_normalization_failure_cleans_staged_checkout(tmp_path: Path):
@@ -164,6 +189,45 @@ def test_clone_readiness_failure_cleans_staged_checkout(tmp_path: Path):
     assert not list(tmp_path.glob(".repo.pynchy-clone-*"))
 
 
+def test_failed_clone_removes_non_directory_staged_artifact(tmp_path: Path):
+    repo_ctx = _repo_context(tmp_path)
+
+    def clone_leaves_file(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.write_text("partial clone\n", encoding="utf-8")
+        return False
+
+    with patch(
+        "pynchy.host.git_ops.repo._clone_repo_to",
+        side_effect=clone_leaves_file,
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert not list(tmp_path.glob(".repo.pynchy-clone-*"))
+
+
+def test_failed_clone_keeps_staged_artifact_when_cleanup_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo_ctx = _repo_context(tmp_path)
+
+    def clone_leaves_file(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.write_text("partial clone\n", encoding="utf-8")
+        return False
+
+    original_unlink = Path.unlink
+
+    def fail_staged_unlink(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".repo.pynchy-clone-"):
+            raise OSError("staged artifact is busy")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_staged_unlink)
+    with patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_leaves_file):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert list(tmp_path.glob(".repo.pynchy-clone-*"))
+
+
 def test_failed_staged_publish_cleans_verified_checkout(tmp_path: Path):
     """A verified clone is removed if publishing it into place fails."""
     repo_ctx = _repo_context(tmp_path)
@@ -182,6 +246,39 @@ def test_failed_staged_publish_cleans_verified_checkout(tmp_path: Path):
 
     assert len(staged_roots) == 1
     assert not staged_roots[0].exists()
+
+
+def test_failed_publish_restores_displaced_checkout(tmp_path: Path):
+    """A failed replacement leaves the invalid checkout available for recovery."""
+    repos_root = tmp_path / "repos"
+    repo_root = repos_root / "project"
+    repo_root.mkdir(parents=True)
+    marker = repo_root / "operator-data.txt"
+    marker.write_text("preserve me\n")
+    repo_ctx = RepoContext(SLUG, repo_root, tmp_path / "worktrees")
+    settings = make_settings(repos=ReposConfig(root=repos_root))
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        return True
+
+    real_rename = Path.rename
+
+    def fail_staged_publish(source: Path, target: Path) -> Path:
+        if source.name.startswith(".project.pynchy-clone-"):
+            raise OSError("replacement unavailable")
+        return real_rename(source, target)
+
+    with (
+        patch("pynchy.config.api.get_settings", return_value=settings),
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pathlib.Path.rename", new=fail_staged_publish),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert marker.read_text() == "preserve me\n"
+    assert repo_root.is_dir()
+    assert not list(repos_root.glob(".project.pynchy-clone-*"))
 
 
 def test_empty_workspace_resolution_returns_no_repositories():

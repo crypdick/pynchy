@@ -149,6 +149,25 @@ async def test_linear_terminal_retirement_callback_is_beartype_resolvable(
     retire.assert_awaited_once_with(execution, "revision-1")
 
 
+async def test_linear_terminal_retirement_defaults_to_host_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure = Mock()
+    monkeypatch.setattr(
+        plugin_configuration,
+        "configure_linear_decision_inbox_runtime",
+        configure,
+    )
+    retire = AsyncMock()
+    monkeypatch.setattr(plugin_configuration, "retire_work_item_execution", retire)
+    plugin_configuration.configure_linear_plugin(_manager(), make_settings(), lambda: None)
+    execution = object.__new__(WorkItemExecution)
+
+    await configure.call_args.args[0].retire_terminal_execution(execution, "revision-1")
+
+    retire.assert_awaited_once_with(execution)
+
+
 def test_builtin_canary_registration_is_idempotent() -> None:
     plugin_configuration.configure_builtin_canaries(make_settings())
     registered = plugin_configuration.registered_canary_scenarios()

@@ -15,6 +15,7 @@ from pydantic import ValidationError
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config.api import (
     BuiltinTool,
+    JobConfig,
     PipelineConfig,
     PipelineStageConfig,
     ProfileConfig,
@@ -25,8 +26,10 @@ from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
+    add_job_to_toml,
     add_workspace_to_toml,
     configure_plugin_workspaces,
+    ensure_runtime_workspace_policy_owner,
     get_repo_access,
     get_repo_access_groups,
     load_resolved_config,
@@ -249,6 +252,15 @@ class TestLoadResolvedConfig:
         assert resolved.capabilities["chat.matrix.*"].decision == "deny"
         assert resolved.capabilities["chat.matrix.route.send"].decision == "deny"
 
+    def test_runtime_restriction_rejects_a_different_policy_owner(self):
+        register_runtime_workspace_restriction(
+            "support-conversation-conv_test",
+            RuntimeWorkspaceRestriction(parent_workspace="support"),
+        )
+
+        with pytest.raises(ValueError, match="different policy owner"):
+            ensure_runtime_workspace_policy_owner("support-conversation-conv_test", "other")
+
     def test_stale_routed_workspace_cannot_inherit_parent_tools(self):
         s = _settings_with_workspaces(
             profiles={
@@ -301,6 +313,11 @@ class TestWorkspaceConfigModel:
 
 
 class TestAddWorkspaceToToml:
+    @pytest.mark.parametrize("name", ["", ".hidden", "nested/name"])
+    def test_rejects_invalid_workspace_names(self, name):
+        with pytest.raises(ValueError, match="Invalid workspace name"):
+            add_workspace_to_toml(name, WorkspaceConfig())
+
     def test_rejects_workspace_that_does_not_round_trip_through_settings(
         self, tmp_path, monkeypatch
     ):
@@ -354,6 +371,19 @@ is_admin = true
         assert data["workspace"]["profiles"] == ["pynchy-dev"]
 
 
+def test_add_job_writes_a_versioned_automation_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    add_job_to_toml(
+        "nightly",
+        JobConfig(schedule="0 * * * *", workspace="host", command="true"),
+    )
+
+    data = tomllib.loads((tmp_path / "data/personalization/automations/nightly.toml").read_text())
+    assert data["schema_version"] == 1
+    assert data["job"] == {"schedule": "0 * * * *", "workspace": "host", "command": "true"}
+
+
 def test_update_profile_skill_policy_persists_grants_and_denials(tmp_path, monkeypatch):
     defaults_path = tmp_path / "data" / "defaults" / "pynchy.toml"
     defaults_path.parent.mkdir(parents=True)
@@ -382,6 +412,23 @@ profiles = ["pynchy-dev"]
     profile = data["profiles"]["pynchy-dev"]
     assert profile["skills"] == ["core", "obsidian-knowledge", "blocked-skill"]
     assert profile["denied_skills"] == ["pynchy-operations"]
+
+
+def test_update_profile_skill_policy_rejects_unknown_profile(tmp_path, monkeypatch):
+    toml_path = tmp_path / "data" / "personalization" / "pynchy.toml"
+    toml_path.parent.mkdir(parents=True)
+    toml_path.write_text("[profiles.existing]\n")
+    settings = make_settings(project_root=tmp_path)
+    monkeypatch.setattr(workspace_config, "get_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="Profile 'missing' is not configured"):
+        update_profile_skill_policy("missing", "skill", grant=True)
+
+
+@pytest.mark.parametrize("name", ["", ".hidden", "nested/name"])
+def test_add_job_rejects_invalid_names(name):
+    with pytest.raises(ValueError, match="Invalid automation name"):
+        add_job_to_toml(name, JobConfig(schedule="0 * * * *", workspace="host", command="true"))
 
 
 class TestGetRepoAccess:
@@ -431,6 +478,28 @@ class TestGetRepoAccessGroups:
         assert result["owner/shared"] == ["code-improver"]
         assert set(result["owner/pynchy"]) == {"code-improver", "other-project"}
         assert "plain" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_skips_workspace_without_resolved_policy():
+    settings = make_settings(
+        profiles={"support": ProfileConfig()},
+        workspaces={"support": WorkspaceConfig(profiles=["support"])},
+    )
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+            return_value=None,
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await reconcile_workspaces({}, [], AsyncMock())
 
 
 @pytest.mark.asyncio

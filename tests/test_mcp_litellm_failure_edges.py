@@ -77,6 +77,16 @@ async def test_api_request_returns_none_on_connection_failure(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_api_request_suppresses_unlogged_connection_failure(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path, port=1)
+
+    async with aiohttp.ClientSession() as session:
+        result = await litellm.api_request(session, gateway, "GET", "/v1/mcp/server")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_api_request_logs_and_returns_none_for_rejected_response(tmp_path: Path) -> None:
     async def rejected(_request: web.Request) -> web.Response:
         await asyncio.sleep(0)
@@ -134,6 +144,76 @@ async def test_endpoint_sync_survives_litellm_list_and_register_failures(
 
 
 @pytest.mark.asyncio
+async def test_endpoint_sync_treats_non_list_server_response_as_empty(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+
+    async def malformed_list(
+        _session: object,
+        _gateway: object,
+        method: str,
+        _path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        return {} if method == "GET" else None
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+            return_value=_LiteLLMSession(),
+        ),
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.api_request",
+            side_effect=malformed_list,
+        ),
+    ):
+        await litellm.sync_mcp_endpoints(gateway, {})
+
+
+@pytest.mark.asyncio
+async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
+    tmp_path: Path,
+) -> None:
+    gateway = _gateway(tmp_path)
+    instance = _instance("browser")
+    calls: list[tuple[str, str]] = []
+
+    async def request(
+        _session: object,
+        _gateway: object,
+        method: str,
+        path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        calls.append((method, path))
+        if method == "GET":
+            return [
+                {
+                    "server_name": "browser",
+                    "url": instance.endpoint_url,
+                    "server_id": "keep",
+                },
+                {"server_name": "browser", "url": "stale", "server_id": ""},
+                {"server_name": "browser", "url": "stale", "server_id": "stale"},
+            ]
+        return method != "DELETE"
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+            return_value=_LiteLLMSession(),
+        ),
+        patch("pynchy.host.container_manager.mcp.litellm.api_request", side_effect=request),
+    ):
+        await litellm.sync_mcp_endpoints(gateway, {"browser": instance})
+
+    assert ("POST", "/v1/mcp/server") not in calls
+    assert ("DELETE", "/v1/mcp/server/") not in calls
+    assert ("DELETE", "/v1/mcp/server/stale") in calls
+
+
+@pytest.mark.asyncio
 async def test_team_is_not_cached_when_virtual_key_creation_fails(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     workspace_teams: dict[str, WorkspaceTeam] = {}
@@ -153,6 +233,30 @@ async def test_team_is_not_cached_when_virtual_key_creation_fails(tmp_path: Path
     with patch(
         "pynchy.host.container_manager.mcp.litellm.api_request",
         side_effect=partial_request,
+    ):
+        await litellm.sync_teams(gateway, {"workspace": ["browser"]}, workspace_teams)
+
+    assert workspace_teams == {}
+
+
+@pytest.mark.asyncio
+async def test_team_is_not_cached_when_team_creation_fails(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    workspace_teams: dict[str, WorkspaceTeam] = {}
+
+    async def failed_creation(
+        _session: object,
+        _gateway: object,
+        _method: str,
+        _path: str,
+        **_kwargs: object,
+    ) -> object:
+        await asyncio.sleep(0)
+        return None
+
+    with patch(
+        "pynchy.host.container_manager.mcp.litellm.api_request",
+        side_effect=failed_creation,
     ):
         await litellm.sync_teams(gateway, {"workspace": ["browser"]}, workspace_teams)
 

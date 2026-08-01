@@ -73,7 +73,7 @@ async def try_step(
     page: Page,
     step_fn: Callable[[Page], Awaitable[None]],
     fallback_msg: str,
-    done_check: Callable[[Page], Awaitable[bool]] | None = None,
+    done_check: Callable[[Page], Awaitable[bool]],
     manual_step_timeout_seconds: int = 60,
 ) -> None:
     """Attempt an automated Console step; use the manual + noVNC path when needed."""
@@ -89,18 +89,17 @@ async def try_step(
 
     logger.info("Manual step required", instructions=fallback_msg)
 
-    if done_check:
-        deadline = time.time() + manual_step_timeout_seconds
-        while time.time() < deadline:
-            with contextlib.suppress(Exception):
-                if await done_check(page):
-                    logger.info("Manual step completed")
-                    return
-            await page.wait_for_timeout(5000)
-        logger.warning(
-            "Timed out waiting for manual step",
-            manual_step_timeout_seconds=manual_step_timeout_seconds,
-        )
+    deadline = time.time() + manual_step_timeout_seconds
+    while time.time() < deadline:
+        with contextlib.suppress(Exception):
+            if await done_check(page):
+                logger.info("Manual step completed")
+                return
+        await page.wait_for_timeout(5000)
+    logger.warning(
+        "Timed out waiting for manual step",
+        manual_step_timeout_seconds=manual_step_timeout_seconds,
+    )
 
 
 # ---------------------------------------------------------------------------

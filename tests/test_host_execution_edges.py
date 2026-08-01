@@ -60,6 +60,7 @@ def test_host_helpers_handle_unscoped_sessions_and_missing_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert host_execution.codex_thread_exists_in_host_runtime(None)
+    assert host_execution.codex_thread_id("codex:thread-1") == "thread-1"
 
     monkeypatch.setattr(
         host_execution.workspace_config,

@@ -49,6 +49,30 @@ async def test_app_accepts_runtime_linear_plan_review_admission(
     start.assert_awaited_once_with(task)
 
 
+async def test_app_does_not_start_a_task_when_plan_review_is_not_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    admit = AsyncMock(return_value=None)
+    start = AsyncMock()
+    monkeypatch.setattr("pynchy.host.orchestrator.app.admit_linear_plan_review", admit)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.app.temporal_scheduler.start_scheduled_agent_task_workflow",
+        start,
+    )
+    admission = LinearPlanReviewAdmission(
+        workspace="beta",
+        issue_id="issue-rejected",
+        identifier="SYN-4",
+        updated_at="2026-07-31T12:00:00Z",
+        public_source=False,
+    )
+
+    assert await app.process_linear_plan_review_admission(admission) is False
+    admit.assert_awaited_once()
+    start.assert_not_awaited()
+
+
 async def test_planned_work_is_deferred_by_issue_revision_without_inline_review() -> None:
     client = _DecisionClient()
     client.issues_by_state["state-approved"][0]["description"] = (

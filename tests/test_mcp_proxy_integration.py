@@ -297,6 +297,37 @@ class TestLiteLLMSyncEndpoints:
             },
         ) in calls
 
+    @pytest.mark.asyncio
+    async def test_sync_mcp_endpoints_omits_an_unset_auth_value(self, tmp_path, monkeypatch):
+        gateway = _make_gateway(tmp_path)
+        calls: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            calls.append((method, path, json_data))
+            if method == "GET" and path == "/v1/mcp/server":
+                return asyncio.sleep(0, result=[])
+            return asyncio.sleep(0, result=True)
+
+        instance = _make_instance(
+            "notebook",
+            instance_id="notebook-service",
+            auth_value_env="NOTEBOOK_TOKEN",
+        )
+        monkeypatch.delenv("NOTEBOOK_TOKEN", raising=False)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=_LiteLLMSession(),
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
+
+        payload = next(json_data for method, path, json_data in calls if method == "POST")
+        assert payload is not None
+        assert "auth_value" not in payload
+
 
 class TestLiteLLMWorkspaceTeams:
     @pytest.mark.asyncio

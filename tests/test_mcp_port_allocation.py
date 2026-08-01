@@ -239,7 +239,11 @@ class TestDockerLifecycleHelpers:
         instance = self._make_instance(
             port=9100,
             extra_ports=[9222, 9333],
-            volumes=["groups/{workspace}:/workspace", "mcp-cache:/cache"],
+            volumes=[
+                "groups/{workspace}:/workspace",
+                "mcp-cache:/cache",
+                f"{tmp_path / 'absolute'}:/absolute",
+            ],
             args=["--workspace-dir", "{workspace}", "--port", "{port}"],
             kwargs={"workspace": "research"},
             project_root=tmp_path,
@@ -269,6 +273,8 @@ class TestDockerLifecycleHelpers:
             f"{tmp_path / 'groups' / 'research'}:/workspace",
             "-v",
             "mcp-cache:/cache",
+            "-v",
+            f"{tmp_path / 'absolute'}:/absolute",
             "img",
             "--workspace-dir",
             "research",

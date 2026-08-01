@@ -179,6 +179,32 @@ async def test_update_failure_is_recorded_as_a_fallback_post(
 
 
 @pytest.mark.asyncio
+async def test_delivery_continues_when_outbound_ledger_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _channel("discord")
+    record = AsyncMock(side_effect=RuntimeError("ledger unavailable"))
+    mark = AsyncMock()
+    monkeypatch.setattr(updating.state, "record_outbound_deliveries", record)
+    monkeypatch.setattr(updating.state, "mark_delivery_succeeded", mark)
+
+    messages = await deliver_updating_event(
+        _deps(channel),
+        "discord:channel:1",
+        _event("📋 result"),
+        {},
+        source="agent_trace",
+    )
+
+    channel.post_event.assert_awaited_once()
+    assert messages["discord"] == UpdatingMessage(
+        message_id="discord-message",
+        content="📋 result",
+    )
+    mark.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_concurrent_chats_never_share_remote_message_ids() -> None:
     channel = _channel("discord")
 

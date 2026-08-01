@@ -17,10 +17,13 @@ DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
 
 
-def _channel() -> DiscordChannel:
+def _channel(*, application_id: str | None = None) -> DiscordChannel:
     return DiscordChannel(
         connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            application_id=application_id,
+        ),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
@@ -42,8 +45,9 @@ class _FakeGatewayClient:
     clients: list[_FakeGatewayClient] = []
     start_error: discord.DiscordException | None = None
 
-    def __init__(self, *, intents: object) -> None:
+    def __init__(self, *, intents: object, application_id: int | None = None) -> None:
         self.intents = intents
+        self.application_id = application_id
         self.user = type("User", (), {"id": "999"})()
         self.handlers: dict[str, Any] = {}
         self.closed = False
@@ -127,6 +131,22 @@ async def test_discord_channel_connects_on_ready_and_stops_through_its_public_ap
     assert client.closed is True
     assert ch.client is None
     assert ch.is_connected() is False
+
+
+@pytest.mark.asyncio
+async def test_discord_channel_connects_with_configured_application_id() -> None:
+    _FakeGatewayClient.clients = []
+    _FakeGatewayClient.start_error = None
+    ch = _channel(application_id="123")
+
+    with patch(
+        "pynchy.plugins.channels.discord._lifecycle.discord.Client",
+        _FakeGatewayClient,
+    ):
+        await ch.connect()
+        client = _FakeGatewayClient.clients[-1]
+        assert client.application_id == 123
+        await ch.disconnect()
 
 
 @pytest.mark.asyncio

@@ -28,7 +28,15 @@ from pynchy.plugins.integrations.linear_planning_tasks import (
     configure_linear_planning_task_runtime,
 )
 from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
-from pynchy.plugins.integrations.linear_work_item_tasks import DecisionIssue
+from pynchy.plugins.integrations.linear_work_item_tasks import (
+    DecisionIssue,
+    LinearWorkItemTaskRuntime,
+    configure_linear_work_item_task_runtime,
+    decision_state_id,
+    ensure_task_active,
+    get_conversation_control_binding,
+)
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.webhook_effects import WebhookEffectId
 from pynchy.workspace.api import WorkspaceProfile
@@ -62,6 +70,55 @@ def test_plugin_namespace_rejects_unknown_attributes() -> None:
         _ = pynchy.plugins.not_a_plugin
 
 
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ([], TypeError),
+        ({"state": "not-an-object", "project": {}}, TypeError),
+        ({"state": {}, "project": "not-an-object"}, TypeError),
+    ],
+)
+def test_decision_issue_rejects_malformed_payloads(payload: object, error: type[Exception]) -> None:
+    with pytest.raises(error):
+        DecisionIssue.from_payload(payload)
+
+
+def test_decision_issue_without_project_is_not_a_managed_issue() -> None:
+    assert DecisionIssue.from_payload({"state": {}, "project": None}) is None
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "error"),
+    [("id", 42, TypeError), ("id", "", ValueError)],
+)
+def test_decision_issue_requires_nonempty_text_fields(
+    key: str, value: object, error: type[Exception]
+) -> None:
+    payload = {
+        "id": "issue-1",
+        "identifier": "SYN-1",
+        "title": "Work",
+        "url": "https://linear.app/issue/SYN-1",
+        "updatedAt": "2026-07-31T00:00:00Z",
+        "state": {"id": "state-1"},
+        "project": {"id": "project-1"},
+    }
+    payload[key] = value
+
+    with pytest.raises(error):
+        DecisionIssue.from_payload(payload)
+
+
+def test_linear_decision_state_id_rejects_missing_or_non_text_state() -> None:
+    with pytest.raises(ValueError, match="lacks decision state"):
+        decision_state_id(LinearWorkspaceBoard(team={}, project={}, states={}), "approved")
+    with pytest.raises(TypeError, match="lacks a text ID"):
+        decision_state_id(
+            LinearWorkspaceBoard(team={}, project={}, states={"approved": {"id": 42}}),
+            "approved",
+        )
+
+
 def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
     plugin_manager = Mock()
     plugin_manager.hook.pynchy_connection_runtime.return_value = [None]
@@ -77,6 +134,153 @@ async def test_linear_conversation_resolution_requires_configuration(monkeypatch
 
     with pytest.raises(RuntimeError, match="Linear conversation runtime has not been configured"):
         await resolve_linear_issue_conversation("issue-1", "workspace", "account")
+
+
+@pytest.mark.asyncio
+async def test_linear_work_item_binding_requires_configuration(monkeypatch) -> None:
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_item_tasks._runtime.runtime", None)
+
+    with pytest.raises(
+        RuntimeError,
+        match="Linear work-item task runtime has not been configured",
+    ):
+        await get_conversation_control_binding("conversation-1")
+
+
+@pytest.mark.asyncio
+async def test_linear_task_recovery_ignores_invalid_last_run_timestamp() -> None:
+    existing = ScheduledTask(
+        id="task-1",
+        group_folder="project",
+        chat_jid="linear:project",
+        prompt="old",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:00:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        status="completed",
+        last_run="not-a-timestamp",
+        derived_thread_name="[SYN-1] Work",
+    )
+    get_task = AsyncMock(return_value=existing)
+    update_task = AsyncMock()
+    runtime = LinearWorkItemTaskRuntime(
+        get_control_binding=AsyncMock(),
+        get_task=get_task,
+        create_task=AsyncMock(),
+        update_task=update_task,
+        get_task_logs=AsyncMock(),
+        bind_execution_to_task=AsyncMock(),
+        get_active_execution=AsyncMock(),
+        resume_once_task=AsyncMock(),
+        get_execution_for_issue=AsyncMock(),
+    )
+
+    configure_linear_work_item_task_runtime(runtime)
+    recovered, admitted = await ensure_task_active(
+        existing,
+        observed_at=datetime(2026, 7, 31, 0, 5, tzinfo=UTC),
+    )
+
+    assert recovered == existing
+    assert admitted is False
+    update_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_linear_task_recovery_treats_naive_recent_last_run_as_utc() -> None:
+    existing = ScheduledTask(
+        id="task-1",
+        group_folder="project",
+        chat_jid="linear:project",
+        prompt="old",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:00:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        status="completed",
+        last_run="2026-07-31T00:04:00",
+        derived_thread_name="[SYN-1] Work",
+    )
+    get_task_logs = AsyncMock()
+    runtime = LinearWorkItemTaskRuntime(
+        get_control_binding=AsyncMock(),
+        get_task=AsyncMock(return_value=existing),
+        create_task=AsyncMock(),
+        update_task=AsyncMock(),
+        get_task_logs=get_task_logs,
+        bind_execution_to_task=AsyncMock(),
+        get_active_execution=AsyncMock(),
+        resume_once_task=AsyncMock(),
+        get_execution_for_issue=AsyncMock(),
+    )
+
+    configure_linear_work_item_task_runtime(runtime)
+    recovered, admitted = await ensure_task_active(
+        existing,
+        observed_at=datetime(2026, 7, 31, 0, 5, tzinfo=UTC),
+    )
+
+    assert recovered == existing
+    assert admitted is False
+    get_task_logs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_linear_task_recovery_refreshes_routing_ownership() -> None:
+    existing = ScheduledTask(
+        id="task-1",
+        group_folder="old-project",
+        chat_jid="linear:old-project",
+        prompt="old",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:00:00+00:00",
+        session_policy=SessionPolicy.RESET_BEFORE_RUN,
+        status="active",
+        conversation_id="conversation-old",
+        derived_thread_name="old thread",
+    )
+    update_task = AsyncMock()
+    runtime = LinearWorkItemTaskRuntime(
+        get_control_binding=AsyncMock(),
+        get_task=AsyncMock(return_value=existing),
+        create_task=AsyncMock(),
+        update_task=update_task,
+        get_task_logs=AsyncMock(),
+        bind_execution_to_task=AsyncMock(),
+        get_active_execution=AsyncMock(),
+        resume_once_task=AsyncMock(),
+        get_execution_for_issue=AsyncMock(),
+    )
+
+    configure_linear_work_item_task_runtime(runtime)
+    proposed = ScheduledTask(
+        id="task-1",
+        group_folder="new-project",
+        chat_jid="linear:new-project",
+        prompt="new",
+        schedule_type="once",
+        schedule_value="2026-07-31T00:05:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        conversation_id="conversation-new",
+        derived_thread_name="new thread",
+    )
+
+    refreshed, admitted = await ensure_task_active(
+        proposed,
+        observed_at=datetime(2026, 7, 31, 0, 5, tzinfo=UTC),
+    )
+
+    assert refreshed.session_policy is SessionPolicy.CONTINUE
+    assert refreshed.conversation_id == "conversation-new"
+    assert refreshed.derived_thread_name == "new thread"
+    assert admitted is False
+    update_task.assert_awaited_once_with(
+        "task-1",
+        {
+            "session_policy": SessionPolicy.CONTINUE,
+            "conversation_id": "conversation-new",
+            "derived_thread_name": "new thread",
+        },
+    )
 
 
 def test_linear_self_echo_recorder_requires_configuration(monkeypatch) -> None:

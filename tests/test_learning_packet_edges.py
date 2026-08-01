@@ -163,6 +163,21 @@ def test_build_caps_source_ids_with_a_tiny_budget(tmp_path: Path) -> None:
     assert packet.provenance["source_message_ids"] == json.dumps([])
 
 
+def test_build_with_one_character_budget_omits_source_ids(tmp_path: Path) -> None:
+    settings = _settings(tmp_path=tmp_path, packet_max_chars=1)
+
+    with _configured(settings):
+        packet = _build(
+            settings,
+            messages=[_message("x", message_id="message-id")],
+            summary=LearningRunSummary(),
+        )
+
+    assert packet is not None
+    assert packet.messages[0]["content"] == "x"
+    assert not packet.provenance["source_message_ids"]
+
+
 def test_build_skips_blank_and_bounds_error_snippets(tmp_path: Path) -> None:
     settings = _settings(tmp_path=tmp_path, packet_max_chars=40)
 

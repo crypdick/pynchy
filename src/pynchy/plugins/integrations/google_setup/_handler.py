@@ -166,8 +166,7 @@ async def _ensure_oauth_credentials(
     shutil.copy2(creds_path, dest)
 
     dl = download_dir()
-    if await asyncio.to_thread(dl.exists):
-        await asyncio.to_thread(shutil.rmtree, dl, ignore_errors=True)
+    await asyncio.to_thread(shutil.rmtree, dl, ignore_errors=True)
 
     return "OAuth credentials created"
 
@@ -316,9 +315,7 @@ async def handle_setup_google(data: dict[str, object]) -> dict[str, object]:
     3. OAuth client credentials exist? → skip consent screen setup if so
     4. Tokens exist and valid? → skip OAuth if so
     """
-    profile_name = data.get("chrome_profile")
-    if not isinstance(profile_name, str) or not profile_name:
-        return {"error": "chrome_profile is required"}
+    profile_name = cast("str", data["chrome_profile"])
 
     raw_source_group = data.get("source_group")
     source_group = raw_source_group if isinstance(raw_source_group, str) else None

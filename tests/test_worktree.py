@@ -17,10 +17,12 @@ from pynchy.host.git_ops.api import (
     RepoContext,
     RoutedHostWorktreeError,
     WorktreeError,
+    WorktreeResult,
     ensure_worktree,
     install_repo_hooks,
     reconcile_worktrees_at_startup,
     resolve_routed_host_worktree_cwd,
+    select_routed_host_repo,
 )
 
 if TYPE_CHECKING:
@@ -187,7 +189,8 @@ def test_install_repo_hooks_finds_shared_hooks_from_linked_worktree(tmp_path: Pa
     worktree_git_dir.mkdir(parents=True)
     worktree = tmp_path / "feature"
     worktree.mkdir()
-    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    relative_git_dir = worktree_git_dir.relative_to(worktree.parent)
+    (worktree / ".git").write_text(f"gitdir: ../{relative_git_dir}\n")
     (worktree_git_dir / "commondir").write_text("../..\n")
     (worktree / "prek.toml").write_text("")
     hooks_dir = common_git_dir / "hooks"
@@ -203,6 +206,58 @@ def test_install_repo_hooks_finds_shared_hooks_from_linked_worktree(tmp_path: Pa
         install_repo_hooks(worktree)
 
     assert run.call_count == 2
+
+
+@pytest.mark.parametrize("git_file", [b"\xff", b"not-a-gitdir\n"])
+def test_install_repo_hooks_ignores_malformed_linked_worktree_metadata(
+    tmp_path: Path, git_file: bytes
+) -> None:
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_bytes(git_file)
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
+
+
+def test_install_repo_hooks_resolves_absolute_linked_worktree_common_dir(tmp_path: Path) -> None:
+    common_git_dir = tmp_path / "repo" / ".git"
+    worktree_git_dir = common_git_dir / "worktrees" / "feature"
+    worktree_git_dir.mkdir(parents=True)
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    (worktree_git_dir / "commondir").write_text(f"{common_git_dir}\n")
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
+
+
+def test_install_repo_hooks_ignores_unreadable_linked_worktree_common_dir(
+    tmp_path: Path,
+) -> None:
+    common_git_dir = tmp_path / "repo" / ".git"
+    worktree_git_dir = common_git_dir / "worktrees" / "feature"
+    worktree_git_dir.mkdir(parents=True)
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    (worktree_git_dir / "commondir").write_bytes(b"\xff")
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
 
 
 @pytest.fixture
@@ -371,6 +426,73 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    def test_selects_repository_that_owns_source_checkout(self, git_env: dict):
+        assert (
+            select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
+            is git_env["repo_ctx"]
+        )
+
+    def test_rejects_routed_slot_occupied_by_a_file(self, git_env: dict):
+        folder = "host__thread_conversation-conv_file_slot"
+        worktree_path = git_env["worktrees_dir"] / folder
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        worktree_path.write_text("do not replace\n")
+
+        with pytest.raises(RoutedHostWorktreeError, match="non-directory"):
+            resolve_routed_host_worktree_cwd(
+                folder,
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert worktree_path.read_text() == "do not replace\n"
+
+    def test_selection_fails_closed_when_git_inspection_errors(self, git_env: dict):
+        with (
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.run_git",
+                side_effect=OSError("git unavailable"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not inspect"),
+        ):
+            select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
+
+    def test_provisioning_failure_is_reported_as_routed_worktree_error(self, git_env: dict):
+        with (
+            patch(
+                "pynchy.host.git_ops.worktree.ensure_worktree",
+                side_effect=OSError("worktree unavailable"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not prepare"),
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_failure",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+    def test_missing_mapped_subdirectory_is_rejected(self, git_env: dict, tmp_path: Path):
+        source_cwd = git_env["project"] / "tools"
+        source_cwd.mkdir()
+        replacement = tmp_path / "replacement-worktree"
+        replacement.mkdir()
+
+        with (
+            patch(
+                "pynchy.host.git_ops.worktree.ensure_worktree",
+                return_value=WorktreeResult(replacement),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="unavailable"),
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_missing-subdirectory",
+                source_cwd,
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
     def test_maps_relative_cwd_and_reuses_child_worktree_after_recovery(self, git_env: dict):
         project = git_env["project"]
         repo_ctx = git_env["repo_ctx"]

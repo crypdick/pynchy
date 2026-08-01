@@ -17,6 +17,7 @@ from pynchy.host.container_manager.gateway import (
     configure_gateway_runtime,
     get_settings,
     start_gateway,
+    stop_gateway,
 )
 from pynchy.host.container_manager.gateway_litellm import collect_litellm_yaml_environment
 from pynchy.plugins.api import McpServerConfig, McpServerSpec
@@ -59,8 +60,16 @@ def test_configure_gateway_runtime_publishes_composed_settings() -> None:
     settings = object()
 
     configure_gateway_runtime(is_apple_container=False, get_settings=lambda: settings)  # type: ignore[arg-type]
+    configure_gateway_runtime(is_apple_container=True)
 
     assert get_settings() is settings
+
+
+def test_gateway_settings_require_composition(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pynchy.host.container_manager.gateway._get_settings", None)
+
+    with pytest.raises(RuntimeError, match="Gateway configuration has not been composed"):
+        get_settings()
 
 
 @pytest.mark.asyncio
@@ -149,6 +158,25 @@ async def test_litellm_start_syncs_plugin_mcp_servers_after_gateway_ready(tmp_pa
     manager_type.assert_called_once()
     set_manager.assert_called_once_with(fake_manager)
     fake_manager.sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stop_gateway_stops_and_clears_active_mcp_manager() -> None:
+    mcp_manager = MagicMock()
+    mcp_manager.stop_all = AsyncMock()
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
+            return_value=mcp_manager,
+        ),
+        patch("pynchy.host.container_manager.mcp.manager.set_mcp_manager") as set_manager,
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
+    ):
+        await stop_gateway()
+
+    mcp_manager.stop_all.assert_awaited_once()
+    set_manager.assert_called_once_with(None)
 
 
 def test_collect_yaml_environment_skips_placeholder_values(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import NullChannel, make_host_action_catalog, make_settings
@@ -14,6 +14,7 @@ from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.redaction import GatewayRedactionPosture
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.workspace.api import WorkspaceProfile, WorkspaceSecurity
 
 if TYPE_CHECKING:
@@ -100,6 +101,37 @@ async def test_http_adapter_exposes_runtime_callbacks_and_plugin_guard(tmp_path:
     message = inbound.await_args.args[1]
     assert message.content == "hello"
     assert message.metadata == {"source": "runtime_harness"}
+
+
+def test_http_adapter_dispatches_scheduled_workflow() -> None:
+    app = PynchyApp()
+    task = ScheduledTask(
+        id="task-1234567890",
+        group_folder="project",
+        chat_jid="discord:project",
+        prompt="run",
+        schedule_type="cron",
+        schedule_value="0 2 * * *",
+        session_policy=SessionPolicy.CONTINUE,
+    )
+    names: list[str | None] = []
+
+    def capture(coro, *, name):
+        coro.close()
+        names.append(name)
+
+    with (
+        patch.object(
+            dep_factory,
+            "start_scheduled_agent_task_workflow",
+            new_callable=AsyncMock,
+        ) as start_workflow,
+        patch.object(dep_factory, "create_background_task", side_effect=capture),
+    ):
+        dep_factory.make_http_deps(app).dispatch_scheduled_task(task)
+
+    start_workflow.assert_called_once_with(task)
+    assert names == ["webhook-task-task-1234567890"]
 
 
 @pytest.mark.asyncio
@@ -193,6 +225,58 @@ async def test_ipc_adapter_projects_sessions_snapshot_and_context_reset(tmp_path
     session_handler.clear_durable_context.assert_awaited_once_with(app, profile)
     snapshot = settings.data_dir / "ipc" / "project" / "available_groups.json"
     assert snapshot.exists()
+
+
+def test_ipc_adapter_enqueues_interactive_turn() -> None:
+    app = PynchyApp()
+    with patch.object(dep_factory, "_schedule_interactive_turn") as schedule:
+        dep_factory.make_ipc_deps(app).enqueue_message_check("discord:project")
+
+    schedule.assert_called_once_with(app, "discord:project")
+
+
+def test_ipc_adapter_projects_skill_access_status(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    deps = dep_factory.make_ipc_deps(PynchyApp())
+    resolved = MagicMock(denied_skills={"blocked"}, skills=["granted"])
+
+    with patch.object(dep_factory, "get_settings", return_value=settings):
+        with patch.object(dep_factory, "find_personalized_skill_dir", return_value=None):
+            assert deps.skill_access_status("project", "missing") == "unknown"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(dep_factory.workspace_config, "load_resolved_config", return_value=None),
+        ):
+            assert deps.skill_access_status("project", "unavailable") == "unavailable"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+        ):
+            assert deps.skill_access_status("project", "blocked") == "denied"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+            patch.object(dep_factory, "parse_skill_tier", return_value=("granted", "default")),
+            patch.object(dep_factory, "is_skill_selected", return_value=True),
+        ):
+            assert deps.skill_access_status("project", "granted") == "granted"
+
+        with (
+            patch.object(dep_factory, "find_personalized_skill_dir", return_value=object()),
+            patch.object(
+                dep_factory.workspace_config, "load_resolved_config", return_value=resolved
+            ),
+            patch.object(dep_factory, "parse_skill_tier", return_value=("available", "default")),
+            patch.object(dep_factory, "is_skill_selected", return_value=False),
+        ):
+            assert deps.skill_access_status("project", "available") == "available"
 
 
 @pytest.mark.asyncio
@@ -327,6 +411,7 @@ async def test_status_adapter_reports_queue_gateway_container_and_counts(tmp_pat
         assert deps.get_workspace_count() == 1
         assert deps.get_speech_synthesizer() is None
         assert deps.get_gateway_info() == {"mode": "none"}
+        assert deps.is_shutting_down() is False
 
         builtin = _BuiltinGateway(
             port=4010,

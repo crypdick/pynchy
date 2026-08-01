@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from pynchy.plugins.api import OutboundEvent, OutboundEventType
@@ -44,3 +45,41 @@ async def test_long_approval_content_puts_controls_only_on_the_first_chunk() -> 
     assert len(destination.sends) > 1
     assert destination.sends[0][1]["view"] is not None
     assert all("view" not in kwargs for _, kwargs in destination.sends[1:])
+
+
+@pytest.mark.asyncio
+async def test_send_event_ignores_discord_resolution_failure() -> None:
+    channel = _channel()
+    channel.client = object()
+    channel.resolve_channel = AsyncMock(side_effect=discord.DiscordException("offline"))  # type: ignore[method-assign]
+
+    await channel.send_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_event_ignores_forbidden_destination() -> None:
+    channel = _channel()
+    channel.client = object()
+    destination = _FakeStreamChannel()
+    channel.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+    forbidden = discord.Forbidden(MagicMock(status=403, reason="blocked"), "blocked")
+
+    with patch("pynchy.plugins.channels.discord._channel.send_text", side_effect=forbidden):
+        await channel.send_event(
+            "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_event_returns_none_when_discord_rejects_preview() -> None:
+    channel = _channel()
+    channel.client = object()
+    channel.resolve_channel = AsyncMock(side_effect=discord.DiscordException("offline"))  # type: ignore[method-assign]
+
+    result = await channel.post_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
+    )
+
+    assert result is None
