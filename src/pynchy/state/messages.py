@@ -22,11 +22,6 @@ def _row_to_message(row: Row) -> NewMessage:
     """Convert a database row to a NewMessage."""
     metadata_str = row["metadata"]
 
-    try:
-        is_from_me: bool | None = bool(row["is_from_me"])
-    except (KeyError, IndexError):
-        is_from_me = None
-
     return NewMessage(
         id=row["id"],
         chat_jid=row["chat_jid"],
@@ -34,7 +29,7 @@ def _row_to_message(row: Row) -> NewMessage:
         sender_name=row["sender_name"],
         content=row["content"],
         timestamp=row["timestamp"],
-        is_from_me=is_from_me,
+        is_from_me=bool(row["is_from_me"]),
         message_type=row["message_type"] or "user",
         metadata=json.loads(metadata_str) if metadata_str else None,
     )

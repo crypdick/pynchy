@@ -184,7 +184,7 @@ def _publication_patch_context(
             "--no-ext-diff",
             "--no-textconv",
             "--unified=3",
-            f"{main_branch}...HEAD",
+            f"origin/{main_branch}...HEAD",
             "--",
             cwd=worktree,
         )

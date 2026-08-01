@@ -19,7 +19,6 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.atomic_json import write_json_atomic
 from pynchy.deployments import DeployRevision
-from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
 from pynchy.host.orchestrator.startup_rollback import (
     ensure_rollback_evidence_durable,
@@ -341,8 +340,6 @@ async def prepare_interrupted_turn_recovery(
     resume_prompt = continuation.get("resume_prompt", default_prompt)
     commit_sha = continuation.get("commit_sha", "unknown")
     config_hash = continuation.get("config_hash")
-    if continuation:
-        _prune_migration_backups(get_settings().data_dir)
     deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
     await _complete_reset_requests_after_restart(deps)
     await prepare_conversation_delivery_recovery()
@@ -498,27 +495,6 @@ async def check_deploy_continuation(
     )
     await confirm_deploy_startup(recovery, active_revision=active_revision)
     return await dispatch_interrupted_turn_recovery(deps, recovery)
-
-
-def _prune_migration_backups(data_dir: Path) -> None:
-    backups_dir = data_dir / "migration-backups"
-    try:
-        result = prune_migration_backups(backups_dir)
-    except OSError as exc:
-        logger.warning(
-            "Failed to prune migration backups",
-            path=str(backups_dir),
-            err=str(exc),
-        )
-        return
-
-    if result.removed:
-        logger.info(
-            "Pruned migration backups",
-            path=str(backups_dir),
-            removed_count=len(result.removed),
-            kept_count=len(result.kept),
-        )
 
 
 # ------------------------------------------------------------------

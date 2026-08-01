@@ -215,7 +215,7 @@ def test_matrix_gateway_environment_name_must_be_valid() -> None:
 
 
 def test_legacy_sandbox_sections_are_rejected() -> None:
-    with pytest.raises(ValidationError, match="Legacy config sections"):
+    with pytest.raises(ValidationError, match="Unknown config sections"):
         validate_settings_mapping(
             {
                 "profiles": {"admin": ProfileConfig(is_admin=True)},
@@ -236,41 +236,6 @@ def test_workspace_profile_reference_must_exist() -> None:
         _settings(
             profiles={},
             workspaces={"admin": WorkspaceConfig(profiles=["missing"])},
-        )
-
-
-def test_workspace_migration_must_target_a_declared_child_thread() -> None:
-    with pytest.raises(ValidationError, match="targets undeclared thread"):
-        validate_settings_mapping(
-            {
-                "workspaces": {
-                    "relationships": {"threads": [{"name": "family"}]},
-                },
-                "workspace_migrations": {
-                    "fam": {
-                        "target_workspace": "relationships",
-                        "target_thread": "other",
-                    }
-                },
-            }
-        )
-
-
-def test_workspace_migration_retirement_requires_all_retargeting_confirmations() -> None:
-    with pytest.raises(ValidationError, match="retire_legacy_workspace requires"):
-        validate_settings_mapping(
-            {
-                "workspaces": {
-                    "relationships": {"threads": [{"name": "family"}]},
-                },
-                "workspace_migrations": {
-                    "fam": {
-                        "target_workspace": "relationships",
-                        "target_thread": "family",
-                        "retire_legacy_workspace": True,
-                    }
-                },
-            }
         )
 
 

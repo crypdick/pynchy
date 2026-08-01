@@ -22,8 +22,8 @@ from pynchy.host.orchestrator.host_execution import (
     HostAgentTurnRequest,
     HostProcessQueue,  # beartype resolves annotations at runtime.
     HostRuntimeOperations,
+    codex_thread_exists_in_host_runtime,
     host_agent_env_vars,
-    migrate_host_codex_thread,
     prepare_host_codex_home,
     run_host_agent_turn,
 )
@@ -92,10 +92,9 @@ async def run_host_execution(  # noqa: PLR0913 - mirrors the shared agent-runner
     """Run one durable thread turn through the direct-host runtime."""
     operations = deps.host_runtime_operations
     codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager, operations)
-    session_available = migrate_host_codex_thread(
+    session_available = codex_thread_exists_in_host_runtime(
         ctx.session_id,
         codex_home=codex_home,
-        sessions_root=operations.sessions_root,
     )
     if (session_id := ctx.session_id) is not None and not session_available:
         logger.info(

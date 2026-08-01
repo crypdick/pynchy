@@ -105,10 +105,6 @@ from pynchy.plugins.integrations.linear_conversation_identity import (
     LinearConversationRuntime,
     configure_linear_conversation_runtime,
 )
-from pynchy.plugins.integrations.linear_legacy_work_items import (
-    LinearLegacyWorkItemRuntime,
-    configure_linear_legacy_work_item_runtime,
-)
 from pynchy.plugins.integrations.linear_planning_tasks import (
     LinearPlanningTaskRuntime,
     configure_linear_planning_task_runtime,
@@ -487,17 +483,6 @@ def configure_linear_plugin(
             transition_request=WorkItemTransitionRequest,
             begin_transition=begin_work_item_transition,
             begin_transition_if_lifecycle_current=begin_work_item_transition_if_lifecycle_current,
-        )
-    )
-    configure_linear_legacy_work_item_runtime(
-        LinearLegacyWorkItemRuntime(
-            get_all_tasks=get_all_tasks,
-            get_transition_by_request=get_work_item_transition_by_request,
-            create_claim=create_work_item_claim,
-            claim_request=WorkItemClaimRequest,
-            get_active_execution=get_active_work_item_execution,
-            get_execution=get_work_item_execution,
-            resolve_transition=resolve_work_item_transition,
         )
     )
     configure_linear_planning_task_runtime(LinearPlanningTaskRuntime(get_all_tasks=get_all_tasks))
