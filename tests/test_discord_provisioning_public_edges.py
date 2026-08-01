@@ -9,6 +9,7 @@ from tests.discord_channel_support import (
     DISCORD_BOT_ENV,
     _channel,
     _FakeDiscordClient,
+    _FakeDiscordForum,
     _FakeDiscordGuild,
     _FakeDiscordTextChannel,
 )
@@ -84,6 +85,46 @@ async def test_resolve_chat_jid_provisions_and_reuses_a_configured_forum():
         "topic",
     ]
     assert guild.forums[0].category_id == guild.categories[0].id
+    assert await ch.resolve_chat_jid("synapse.channels.systems") == second
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_provisions_forum_without_category():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={
+                "synapse": {
+                    "channels": {"systems": {"kind": "forum"}},
+                }
+            },
+        )
+    )
+    guild = _FakeDiscordGuild(123, "synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.resolve_chat_jid("synapse.channels.systems") == "discord:channel:891"
+    assert guild.categories == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_rejects_uneditable_forum_reconciliation(monkeypatch):
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"synapse": {"channels": {"systems": {"kind": "forum"}}}},
+        )
+    )
+    guild = _FakeDiscordGuild(123, "synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+    await ch.resolve_chat_jid("synapse.channels.systems")
+    guild.forums[0].available_tags = []
+    monkeypatch.setattr(_FakeDiscordForum, "edit", None)
+
+    with pytest.raises(TypeError, match="configuration reconciliation"):
+        await ch.resolve_chat_jid("synapse.channels.systems")
 
 
 @pytest.mark.asyncio

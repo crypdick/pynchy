@@ -61,9 +61,6 @@ class SlackAllowlist:
     def register_allowed_channel(self, name: str, channel_id: str) -> None:
         self._channel.register_allowed_channel(name, channel_id)
 
-    def is_allowed_channel(self, channel_id: str) -> bool:
-        return self._channel.is_allowed_channel(channel_id)
-
     async def _ensure_joined(self, channel_id: str, name: str) -> None:
         app = self._require_app()
         try:

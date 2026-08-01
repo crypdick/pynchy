@@ -39,25 +39,20 @@ __all__ = ["DiscordChannel", "DiscordChannelPlugin"]
 
 
 def _channel_context(
-    context: ChannelPluginContext | None,
-) -> (
-    tuple[
-        Callable[[str, NewMessage], None],
-        Callable[[str, str, str | None], None],
-        Callable[[str, str, str, str], None] | None,
-        Callable[[str, dict[str, object]], None] | None,
-        Callable[[str, str, str, str], None] | None,
-        Callable[[], dict[str, WorkspaceProfile]] | None,
-        SpeechSynthesizer | None,
-        Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
-        Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None,
-        Callable[[str], Awaitable[list[str]]] | None,
-    ]
-    | None
-):
-    """Return the callbacks DiscordChannel needs, or ``None`` when unavailable."""
-    if context is None:
-        return None
+    context: ChannelPluginContext,
+) -> tuple[
+    Callable[[str, NewMessage], None],
+    Callable[[str, str, str | None], None],
+    Callable[[str, str, str, str], None] | None,
+    Callable[[str, dict[str, object]], None] | None,
+    Callable[[str, str, str, str], None] | None,
+    Callable[[], dict[str, WorkspaceProfile]] | None,
+    SpeechSynthesizer | None,
+    Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
+    Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]] | None,
+    Callable[[str], Awaitable[list[str]]] | None,
+]:
+    """Return the callbacks DiscordChannel needs."""
     return (
         context.on_message_callback,
         context.on_chat_metadata_callback,
@@ -142,8 +137,6 @@ class DiscordChannelPlugin:
             return None
 
         callbacks = _channel_context(context)
-        if callbacks is None:
-            return None
         (
             on_message,
             on_metadata,

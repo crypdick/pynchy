@@ -373,6 +373,9 @@ class TestSlackInboundBoundary:
 
 
 class TestSlackChannelPlugin:
+    def test_returns_none_without_plugin_context(self) -> None:
+        assert SlackChannelPlugin().pynchy_create_channel(context=None) is None
+
     def test_returns_none_when_no_tokens(self) -> None:
         plugin = SlackChannelPlugin()
         context = _plugin_context()

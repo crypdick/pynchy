@@ -32,20 +32,15 @@ __all__ = [
 
 
 def _channel_context(
-    context: ChannelPluginContext | None,
-) -> (
-    tuple[
-        Callable[[str, NewMessage], None],
-        Callable[[str, str, str | None], None],
-        Callable[[str, str, str, str], None] | None,
-        Callable[[str, dict[str, Any]], None] | None,
-        Callable[[str, str, str, str], None] | None,
-    ]
-    | None
-):
-    """Return the callbacks SlackChannel needs, or ``None`` when unavailable."""
-    if context is None:
-        return None
+    context: ChannelPluginContext,
+) -> tuple[
+    Callable[[str, NewMessage], None],
+    Callable[[str, str, str | None], None],
+    Callable[[str, str, str, str], None] | None,
+    Callable[[str, dict[str, Any]], None] | None,
+    Callable[[str, str, str, str], None] | None,
+]:
+    """Return the callbacks SlackChannel needs."""
     return (
         context.on_message_callback,
         context.on_chat_metadata_callback,
@@ -126,8 +121,6 @@ class SlackChannelPlugin:
             return None
 
         callbacks = _channel_context(context)
-        if callbacks is None:
-            return None
         on_message, on_metadata, on_reaction, on_ask_user_answer, on_approval_decision = callbacks
         channels: list[SlackChannel] = []
 
