@@ -655,8 +655,7 @@ class DiscordChannel:
 
     def processing_ack_emoji(self) -> str | None:
         """Reaction to use when a message enters processing, or None to disable."""
-        emoji = self._config.processing_ack_emoji
-        return emoji if isinstance(emoji, str) or emoji is None else str(emoji)
+        return self._config.processing_ack_emoji
 
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Keep Discord's transient typing signal alive while work is active."""
