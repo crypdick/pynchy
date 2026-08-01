@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
+import pluggy
 import pytest
 
 import pynchy.plugins
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
-from pynchy.plugins.api import WebhookEvent, WebhookRoute, load_connection_runtimes
+from pynchy.plugins.api import PynchySpec, WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_conversation_identity import (
@@ -120,8 +121,8 @@ def test_linear_decision_state_id_rejects_missing_or_non_text_state() -> None:
 
 
 def test_connection_runtime_loader_ignores_empty_plugin_contributions() -> None:
-    plugin_manager = Mock()
-    plugin_manager.hook.pynchy_connection_runtime.return_value = [None]
+    plugin_manager = pluggy.PluginManager("pynchy")
+    plugin_manager.add_hookspecs(PynchySpec)
 
     assert load_connection_runtimes(plugin_manager) == []
 

@@ -20,6 +20,16 @@ class _RecordingGitSyncDeps:
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))
 
+    async def broadcast_host_message(self, _jid: str, _text: str) -> None: ...
+
+    async def broadcast_system_notice(self, _jid: str, _text: str) -> None: ...
+
+    def has_active_session(self, _group_folder: str) -> bool:
+        return False
+
+    def workspaces(self) -> dict:
+        return {}
+
 
 @pytest.mark.asyncio
 async def test_missing_origin_revision_leaves_state_unchanged(tmp_path: Path):

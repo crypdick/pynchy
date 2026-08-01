@@ -23,7 +23,7 @@ def _channel(*, application_id: str | None = None) -> DiscordChannel:
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             application_id=application_id,
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,

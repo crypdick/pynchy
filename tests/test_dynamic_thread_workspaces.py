@@ -61,6 +61,9 @@ class _Deps:
     def emit(self, event) -> None:
         self.emitted.append(event)
 
+    def current_deploy_revision(self) -> tuple[str, str]:
+        return ("test", "test")
+
 
 @pytest.fixture
 async def db():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
 from temporalio import activity
 
@@ -12,6 +12,7 @@ from pynchy.host.orchestrator.host_shell import ShellResult, log_shell_result, r
 from pynchy.host.orchestrator.scheduler_deps import (
     ConfigHostCronJob,  # noqa: TC001 - beartype resolves config host-job annotations at runtime.
     SchedulerDependencies,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
+    SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
@@ -26,6 +27,16 @@ from pynchy.scheduling.api import (
     HostJob,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
+
+
+@runtime_checkable
+class _HostJobRuntime(Protocol):
+    project_root: Path
+
+
+@runtime_checkable
+class _HostJobDeps(Protocol):
+    scheduler_runtime: SchedulerRuntimeConfig
 
 
 def _resolve_job_cwd(cwd: str | None, project_root: Path) -> str:
@@ -127,7 +138,7 @@ async def _run_config_host_cron_job(
 async def _run_database_host_job(
     job: HostJob,
     automation_memory_path: Path | None,
-    scheduler_deps: SchedulerDependencies,
+    scheduler_deps: _HostJobDeps,
 ) -> None:
     command_cwd = _resolve_job_cwd(job.cwd, scheduler_deps.scheduler_runtime.project_root)
     logger.info(

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import discord
     import pytest
 
+    from pynchy.discord import DiscordConnectionSettings
     from pynchy.workspace.api import WorkspaceProfile
 
 DISCORD_BOT_ENV = "X"
@@ -31,12 +32,15 @@ DISCORD_BOT_VALUE = "token"
 
 def _channel(
     speech_synthesizer: object | None = None,
-    config: DiscordConnectionConfig | None = None,
+    config: DiscordConnectionConfig | DiscordConnectionSettings | None = None,
     find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None = get_chat_jids_by_name,
 ) -> DiscordChannel:
+    config = config or DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
+    if isinstance(config, DiscordConnectionConfig):
+        config = config.to_runtime_settings()
     return DiscordChannel(
         connection_name="connection.discord.test",
-        config=config or DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        config=config,
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
@@ -57,7 +61,7 @@ def _configured_voice_channel(speech_synthesizer: object | None = None) -> Disco
                     "channels": {"2": {"name": "General", "kind": "voice"}},
                 }
             },
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,

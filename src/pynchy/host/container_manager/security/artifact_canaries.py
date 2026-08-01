@@ -24,7 +24,9 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager.ipc.deps import IpcDeps
+    from pynchy.host.container_manager.ipc.handlers_artifact_security import (
+        _ArtifactSecurityDeps,
+    )
 
 
 @dataclass(frozen=True)
@@ -73,7 +75,7 @@ class FileSecretTaintCanary:
                     },
                     source_group,
                     is_admin=False,
-                    deps=cast("IpcDeps", _SecurityCanaryDeps(workspace)),
+                    deps=cast("_ArtifactSecurityDeps", _SecurityCanaryDeps(workspace)),
                     response_path_override=response_path,
                 )
                 response = json.loads(response_path.read_text(encoding="utf-8"))

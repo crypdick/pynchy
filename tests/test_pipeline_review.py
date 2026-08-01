@@ -29,6 +29,8 @@ class _Deps:
         self.queue = _Queue()
         self.calls: list[tuple[str, str]] = []
 
+    async def broadcast_host_message(self, _chat_jid: str, _text: str) -> None: ...
+
     async def run_agent(
         self,
         group,

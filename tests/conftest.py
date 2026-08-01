@@ -148,6 +148,26 @@ from tests.conftest_helpers import (
 )
 from tests.conftest_linear import configure_linear_accounts_for
 
+
+def pytest_configure() -> None:
+    pytest.register_assert_rewrite(
+        "tests.action_intents_support",
+        "tests.app_integration_support",
+        "tests.conversation_routing_support",
+        "tests.git_policy_support",
+        "tests.group_queue_support",
+        "tests.ipc_auth_support",
+        "tests.linear_decision_inbox_support",
+        "tests.linear_webhooks_support",
+        "tests.linear_work_items_support",
+        "tests.mcp_proxy_support",
+        "tests.state_support",
+        "tests.task_scheduler_support",
+        "tests.temporal_scheduler_support",
+        "tests.webhook_lifecycle_support",
+    )
+
+
 register_builtin_handlers()
 
 

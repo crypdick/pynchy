@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -157,7 +157,7 @@ async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_name() -> None:
             dm_policy="allowlist",
             allow_from=["alice"],
             group_policy="disabled",
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,
@@ -170,20 +170,17 @@ async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_name() -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client() -> None:
-    with patch(
-        "tests.discord_channel_support.get_chat_jids_by_name",
-        new=AsyncMock(return_value=[]),
-    ):
-        channel = _channel(
-            config=DiscordConnectionConfig(
-                bot_token_env=DISCORD_BOT_ENV,
-                dm_policy="allowlist",
-                allow_from=["alice"],
-                group_policy="disabled",
-            )
-        )
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        ),
+        find_chat_jids_by_name=AsyncMock(return_value=[]),
+    )
 
-        assert await channel.resolve_chat_jid("direct.alice") is None
+    assert await channel.resolve_chat_jid("direct.alice") is None
 
 
 @pytest.mark.asyncio

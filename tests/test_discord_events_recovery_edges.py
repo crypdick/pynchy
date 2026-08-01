@@ -114,7 +114,7 @@ async def test_audio_processing_ignores_patches_for_unknown_attachments():
 async def test_application_command_sync_is_one_shot_after_success():
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,
@@ -138,7 +138,7 @@ async def test_application_command_sync_is_one_shot_after_success():
 async def test_application_command_sync_retries_after_discord_failure():
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,
@@ -192,7 +192,7 @@ async def test_audio_read_failure_keeps_the_message_deliverable():
 async def test_handle_message_parses_and_dispatches_the_typed_message():
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,
@@ -248,7 +248,9 @@ async def test_duplicate_and_self_messages_are_not_delivered():
     delivered: list[Any] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="open"
+        ).to_runtime_settings(),
         "token",
         lambda _jid, message: delivered.append(message),
         lambda _jid, _timestamp, _chat_name: None,
@@ -281,7 +283,9 @@ async def test_recent_redelivery_stays_deduplicated_after_cache_pruning():
     delivered: list[Any] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="open"
+        ).to_runtime_settings(),
         "token",
         lambda _jid, message: delivered.append(message),
         lambda _jid, _timestamp, _chat_name: None,
@@ -351,7 +355,7 @@ def test_registers_gateway_handlers_without_native_command_support():
 
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,

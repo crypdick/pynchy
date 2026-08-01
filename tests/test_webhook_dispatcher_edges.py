@@ -9,7 +9,10 @@ import pytest
 from linear_webhook_test_support import LinearWebhookHarness
 
 from pynchy.conversation.api import ConversationDeliveryCompletion, ConversationId
-from pynchy.host.orchestrator.webhook_conversations import WebhookConversationDispatcher
+from pynchy.host.orchestrator.webhook_conversations import (
+    ConversationWebhookDeps,
+    WebhookConversationDispatcher,
+)
 from tests.webhook_lifecycle_support import (
     _admit,
     _delivery_identity,
@@ -30,7 +33,9 @@ pytest_plugins = ("tests.webhook_lifecycle_support",)
     ids=["missing-control-state", "closed-control-state", "missing-conversation"],
 )
 async def test_project_open_control_ignores_non_open_snapshots(event) -> None:
-    dispatcher = WebhookConversationDispatcher(deps=MagicMock(), routes=(_route(),))
+    dispatcher = WebhookConversationDispatcher(
+        deps=MagicMock(spec=ConversationWebhookDeps), routes=(_route(),)
+    )
 
     assert await dispatcher.project_open_control(_route(), event) is None
 

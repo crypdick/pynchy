@@ -10,12 +10,9 @@ import subprocess  # noqa: S404 - credential discovery uses fixed no-shell gh/gi
 from collections.abc import (  # noqa: TC003 - beartype resolves credential runtime annotations.
     Callable,
 )
+from typing import Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
-from pynchy.host.container_manager.gateway import (  # noqa: TC001 - beartype resolves credential helpers at runtime.
-    BuiltinGateway,
-    LiteLLMGateway,
-)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -62,6 +59,14 @@ _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
 _workspace_env_vars: Callable[..., dict[str, str]] | None = None
 
 
+@runtime_checkable
+class _Gateway(Protocol):
+    base_url: str
+    key: str
+
+    def has_provider(self, provider: str) -> bool: ...
+
+
 def configure_workspace_environment(
     workspace_env_vars: Callable[..., dict[str, str]],
 ) -> None:
@@ -82,13 +87,13 @@ def has_api_credentials() -> bool:
         get_gateway,
     )
 
-    gateway = get_gateway()
+    gateway = cast("_Gateway | None", get_gateway())
     return gateway is not None and (
         gateway.has_provider("anthropic") or gateway.has_provider("openai")
     )
 
 
-def _gateway_env_vars(gateway: LiteLLMGateway | BuiltinGateway | None) -> dict[str, str]:
+def _gateway_env_vars(gateway: _Gateway | None) -> dict[str, str]:
     """LLM credentials, routed through the gateway (real keys never enter the container)."""
     env_vars: dict[str, str] = {}
     if gateway is None:
@@ -114,12 +119,16 @@ def _dedupe_csv(values: list[str]) -> list[str]:
     return result
 
 
-def _gateway_no_proxy_hosts(gateway: LiteLLMGateway | BuiltinGateway) -> list[str]:
+def _gateway_no_proxy_hosts(gateway: _Gateway | None) -> list[str]:
+    if gateway is None:
+        return []
     host = urlparse(gateway.base_url).hostname
     return _dedupe_csv([*_BASE_NO_PROXY_HOSTS, host or ""])
 
 
 def _merge_no_proxy_hosts(env_vars: dict[str, str], hosts: list[str]) -> None:
+    if not hosts:
+        return
     existing: list[str] = []
     for key in ("NO_PROXY", "no_proxy"):
         existing.extend(env_vars.get(key, "").split(","))
@@ -152,12 +161,12 @@ def build_agent_env_vars(
     )
 
     env_vars: dict[str, str] = {}
-    gateway = get_gateway()
+    gateway = cast("_Gateway | None", get_gateway())
     gateway_env_vars = _gateway_env_vars(gateway)
     env_vars.update(gateway_env_vars)
     if extra_env_vars:
         env_vars.update(extra_env_vars)
-    if gateway is not None and gateway_env_vars:
+    if gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
     env_vars.update(_git_identity_env_vars())
     env_vars.update(

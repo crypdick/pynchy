@@ -193,7 +193,6 @@ class TestResolveAllInstancesPortOffset:
             "pynchy.host.orchestrator.workspace_config.get_settings",
             lambda: settings,
         )
-        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         proxy = MagicMock()
         proxy.start = AsyncMock(return_value=0)
         monkeypatch.setattr(
@@ -225,6 +224,7 @@ class TestResolveAllInstancesPortOffset:
             "pynchy.host.container_manager.mcp.manager.create_background_task",
             close_background_task,
         )
+        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         await manager.sync()
         child = "admin__thread_discord-channel-restricted"
         register_runtime_workspace_restriction(

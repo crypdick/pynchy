@@ -7,6 +7,11 @@ gate still approves every tool call before it reaches this bridge.
 from __future__ import annotations
 
 import argparse
+from collections.abc import (  # noqa: TC003 - lifespan annotations must resolve at runtime.
+    AsyncIterator,
+    Awaitable,
+    Callable,
+)
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -20,8 +25,6 @@ from starlette.responses import Response
 from starlette.routing import Mount, Route
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
-
     from mcp.types import CallToolResult, Tool
 
     type _ListToolsHandler = Callable[[], Awaitable[list[Tool]]]

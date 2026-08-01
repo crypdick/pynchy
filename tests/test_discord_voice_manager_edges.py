@@ -118,7 +118,7 @@ async def test_voice_on_ready_ignores_non_voice_configurations() -> None:
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             chat={"1": {"channels": {"2": {"kind": "text"}}}},
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,
@@ -162,7 +162,7 @@ async def test_text_only_configuration_does_not_activate_a_voice_room() -> None:
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             chat={"1": {"channels": {"2": {"name": "General", "kind": "text"}}}},
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,
@@ -286,6 +286,9 @@ async def test_voice_reply_tolerates_playback_start_failure(
 
     channel = _configured_voice_channel(Synthesizer())
     voice_client = await _activate_voice_session(channel, monkeypatch)
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.discord.FFmpegOpusAudio", lambda _path: object()
+    )
 
     with patch.object(voice_client, "play", side_effect=discord.DiscordException("offline")):
         await channel.voice.speak("discord:voice:2", "hello")
@@ -303,6 +306,9 @@ async def test_voice_reply_tolerates_playback_completion_failure(
 
     channel = _configured_voice_channel(Synthesizer())
     voice_client = await _activate_voice_session(channel, monkeypatch)
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.discord.FFmpegOpusAudio", lambda _path: object()
+    )
 
     def play_with_error(_audio: object, *, after) -> None:
         after(RuntimeError("playback failed"))
@@ -341,7 +347,7 @@ async def test_voice_input_transcription_is_forwarded_only_when_successful(
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             chat={"1": {"name": "Pynchy", "channels": {"2": {"kind": "voice"}}}},
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, message: messages.append(message),
         on_chat_metadata=lambda _jid, _timestamp, _name: None,

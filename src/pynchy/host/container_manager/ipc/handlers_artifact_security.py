@@ -10,9 +10,8 @@ from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves the canary response path at runtime.
 )
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
-from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import (
@@ -30,9 +29,29 @@ from pynchy.host.container_manager.security.package_metadata import (
     assess_package_metadata,
 )
 from pynchy.logger import logger
+from pynchy.plugins.api import (
+    OutboundEvent,  # noqa: TC001 - beartype resolves protocol annotations.
+)
+from pynchy.workspace.api import (
+    WorkspaceProfile,  # noqa: TC001 - beartype resolves protocol annotations.
+)
 
 _MAX_TAINT_CANDIDATES = 8
 _MAX_TAINT_ARTIFACT_CHARS = 4_000
+
+
+@runtime_checkable
+class _ArtifactSecurityDeps(Protocol):
+    async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
+
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
+
+
+def _resolve_chat_jid(source_group: str, deps: _ArtifactSecurityDeps) -> str | None:
+    return next(
+        (jid for jid, workspace in deps.workspaces().items() if workspace.folder == source_group),
+        None,
+    )
 
 
 @dataclass(frozen=True)
@@ -188,7 +207,7 @@ async def handle_artifact_security_check(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,  # noqa: FBT001 - registered prefix handler keeps the IPC dispatch contract.
-    deps: IpcDeps,
+    deps: _ArtifactSecurityDeps,
     *,
     response_path_override: Path | None = None,
 ) -> None:
@@ -202,7 +221,7 @@ async def handle_artifact_security_check(
     tool_name = data.get("tool_name")
     safe_tool_name = tool_name if isinstance(tool_name, str) and tool_name else "unknown"
     rule_ids = _string_tuple(data.get("rule_ids"))
-    chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
+    chat_jid = _resolve_chat_jid(source_group, deps) or "unknown"
     gate = get_gate_for_group(source_group)
     if gate is None:
         await _reject_missing_gate(
@@ -309,7 +328,7 @@ async def _request_package_approval(  # noqa: PLR0913 - approval boundary fields
     reason: str | None,
     rule_ids: tuple[str, ...],
     gate: SecurityGate,
-    deps: IpcDeps,
+    deps: _ArtifactSecurityDeps,
 ) -> None:
     from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415 - avoid approval/import cycle.
         approval_event,

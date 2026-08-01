@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 import subprocess  # noqa: S404 - tests execute the repository's fixed backup script.
+from contextlib import closing
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "backup_runtime_dbs.sh"
@@ -127,7 +128,7 @@ def test_backup_quiesces_temporal_and_publishes_complete_snapshot(tmp_path: Path
     assert len(snapshots) == 1
     snapshot = snapshots[0]
     assert {path.name for path in snapshot.iterdir()} == {*DATABASES, "SHA256SUMS"}
-    with sqlite3.connect(snapshot / "temporal.db") as connection:
+    with closing(sqlite3.connect(snapshot / "temporal.db")) as connection:
         assert connection.execute("SELECT value FROM evidence").fetchone() == ("temporal.db",)
     assert calls.read_text(encoding="utf-8").splitlines() == [
         f"print gui/{os.getuid()}/com.pynchy.temporal",

@@ -37,12 +37,24 @@ def runtime() -> ControlPlaneRuntime:
 
 class _NoRuntimeIngress:
     def __init__(self) -> None:
-        self._delegate = MockHttpDeps()
+        delegate = MockHttpDeps()
+        self.capability_status_operations = delegate.capability_status_operations
+        self.deploy_operations = delegate.deploy_operations
+        self.canary_run_to_dict = delegate.canary_run_to_dict
+        self.work_item_execution_to_dict = delegate.work_item_execution_to_dict
 
-    def __getattr__(self, name: str) -> object:
-        if name == "ingest_runtime_harness_message":
-            raise AttributeError(name)
-        return getattr(self._delegate, name)
+    async def broadcast_host_message(self, _jid: str, _text: str) -> None: ...
+
+    def admin_chat_jid(self) -> str:
+        return "admin"
+
+    async def get_canary_report(self, *, history_limit: int) -> dict[str, object]:
+        return {}
+
+    def get_workspace(self, _folder: str) -> None:
+        return None
+
+    def dispatch_scheduled_task(self, _task: object) -> None: ...
 
 
 def test_runtime_harness_requires_message_ingress(monkeypatch: pytest.MonkeyPatch) -> None:

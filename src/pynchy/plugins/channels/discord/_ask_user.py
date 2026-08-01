@@ -369,7 +369,7 @@ class DiscordAskUserView(discord.ui.View):
             if len(options) <= (_MAX_BUTTONS_TOTAL - 1) and not question.get("skill_access"):
                 self.add_item(AskUserTextButton())
 
-    def bind_message_id(self, message_id: str) -> None:
+    def bind_message_id(self, message_id: str | None) -> None:
         self._message_id = message_id
 
     def primary_question(self) -> dict[str, Any]:

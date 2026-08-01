@@ -1,18 +1,8 @@
-"""Inbound Discord event handling for :class:`DiscordChannel`.
-
-``parse_discord_message`` and ``parse_discord_reaction`` establish the boundary
-between discord.py payloads and the access/routing layers. The rest of this
-module operates on Pynchy-owned dataclasses rather than SDK objects.
-
-:class:`DiscordEvents` registers the handlers on the channel's
-``discord.Client`` and turns allowed messages into pynchy ``NewMessage``
-callbacks. It deliberately does **no** per-conversation serialization: pynchy's
-core already serializes inbound messages per chat (as the Slack channel relies
-on), so an extra queue here would be redundant.
-"""
+"""Inbound Discord event handling for :class:`DiscordChannel`."""
 
 from __future__ import annotations
 
+# allow: file-length -- discord.py event registration and routing stay co-located.
 import inspect
 import time
 from collections.abc import (
@@ -23,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
 )
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import discord
 from discord import app_commands
@@ -59,6 +49,18 @@ else:
 
 
 _QUEUE_APPLICATION_COMMANDS = ("q", "queue", "btw")
+
+
+@runtime_checkable
+class _ApplicationCommandResponse(Protocol):
+    async def send_message(self, content: str, *, ephemeral: bool) -> object: ...
+
+
+@runtime_checkable
+class _ApplicationCommandInteraction(Protocol):
+    id: object
+    user: object
+    response: _ApplicationCommandResponse
 
 
 def _author_names(message: DiscordInboundMessage) -> frozenset[str]:
@@ -347,7 +349,9 @@ class DiscordEvents:
 
         def simple_callback(command_name: str) -> Callable[[discord.Interaction], Any]:
             async def callback(interaction: discord.Interaction) -> None:
-                await self.handle_application_command(interaction, command_name)
+                await self.handle_application_command(
+                    cast("_ApplicationCommandInteraction", interaction), command_name
+                )
 
             return callback
 
@@ -363,7 +367,9 @@ class DiscordEvents:
         def queue_callback(command_name: str) -> Callable[[discord.Interaction, str], Any]:
             async def handler(interaction: discord.Interaction, message: str) -> None:
                 await self.handle_application_command(
-                    interaction, command_name, {"message": message}
+                    cast("_ApplicationCommandInteraction", interaction),
+                    command_name,
+                    {"message": message},
                 )
 
             return handler
@@ -385,7 +391,9 @@ class DiscordEvents:
         ) -> Callable[[discord.Interaction, str], Any]:
             async def handler(interaction: discord.Interaction, short_id: str) -> None:
                 await self.handle_application_command(
-                    interaction, selected_command, {"short_id": short_id}
+                    cast("_ApplicationCommandInteraction", interaction),
+                    selected_command,
+                    {"short_id": short_id},
                 )
 
             return handler
@@ -420,7 +428,7 @@ class DiscordEvents:
 
     async def handle_application_command(
         self,
-        interaction: discord.Interaction,
+        interaction: _ApplicationCommandInteraction,
         command_name: str,
         options: dict[str, str] | None = None,
     ) -> None:
@@ -483,7 +491,7 @@ class DiscordEvents:
         await self._respond_to_application_command(interaction, acknowledgement)
 
     async def _respond_to_application_command(
-        self, interaction: discord.Interaction, content: str
+        self, interaction: _ApplicationCommandInteraction, content: str
     ) -> None:
         try:
             await interaction.response.send_message(content, ephemeral=True)

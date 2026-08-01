@@ -57,7 +57,7 @@ async def _start_server() -> tuple[TestClient, list[tuple[str, str | None]]]:
 
 
 async def _start_response_server(body: str, *, status: int = 200) -> TestClient:
-    def handle(_request: web.Request) -> web.Response:
+    async def handle(_request: web.Request) -> web.Response:  # noqa: RUF029 - aiohttp handler contract.
         return web.Response(status=status, text=body, content_type="application/json")
 
     app = web.Application()

@@ -17,6 +17,13 @@ from pynchy.config.api import (
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
 )
+from pynchy.conversation.api import (
+    Conversation,
+    ConversationId,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
 from pynchy.host.orchestrator import lifecycle, linear_issue_controls
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
@@ -99,6 +106,20 @@ def _workspace() -> WorkspaceProfile:
         name="Test",
         folder="test",
         trigger="always",
+    )
+
+
+def _conversation() -> Conversation:
+    return Conversation(
+        id=ConversationId("conversation-1"),
+        workspace="health",
+        subject=ConversationSubject(
+            ConversationSubjectNamespace("linear:issue"),
+            ConversationSubjectKey("issue-1"),
+        ),
+        session_id=None,
+        created_at="2026-07-31T08:00:00Z",
+        updated_at="2026-07-31T08:00:00Z",
     )
 
 
@@ -250,7 +271,7 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
 @pytest.mark.asyncio
 async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> None:
     app = PynchyApp()
-    conversation = MagicMock(id="conversation-1", workspace="health")
+    conversation = _conversation()
     ensured = MagicMock()
     ensured.profile.folder = "health__thread_conversation-1"
     apply_state = AsyncMock(return_value=True)
@@ -303,7 +324,7 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
 @pytest.mark.asyncio
 async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) -> None:
     app = PynchyApp()
-    conversation = MagicMock(id="conversation-1", workspace="health")
+    conversation = _conversation()
     control = LinearIssueControl(
         issue_id="issue-1",
         workspace="health",

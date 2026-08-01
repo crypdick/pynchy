@@ -10,6 +10,7 @@ from pynchy.host.orchestrator.scheduled_turn import (
     TaskAgentResult,
     run_task_agent,
 )
+from pynchy.host.orchestrator.scheduled_turn_deps import ScheduledTurnDeps, ScheduledTurnQueue
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
@@ -39,7 +40,8 @@ def _group() -> WorkspaceProfile:
 
 
 def _deps() -> MagicMock:
-    deps = MagicMock()
+    deps = MagicMock(spec=ScheduledTurnDeps)
+    deps.queue = MagicMock(spec=ScheduledTurnQueue)
     deps.queue.boundary_interrupt_requested.return_value = False
     deps.queue.interrupt_after_tool_result = AsyncMock()
     deps.handle_streamed_output = AsyncMock(return_value=False)
@@ -96,7 +98,7 @@ async def test_run_task_agent_reports_a_mismatched_durable_binding() -> None:
         deps=_deps(),
         group=_group(),
         idle_enabled=False,
-        idle_timeout=1,
+        idle_timeout=1.0,
     )
     with patch(
         "pynchy.host.orchestrator.scheduled_turn.requested_control_outcome",
@@ -115,7 +117,7 @@ async def test_run_task_agent_returns_a_controlled_terminal_outcome() -> None:
         deps=_deps(),
         group=_group(),
         idle_enabled=False,
-        idle_timeout=1,
+        idle_timeout=1.0,
     )
     with (
         patch(

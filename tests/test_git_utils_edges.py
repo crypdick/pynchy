@@ -22,8 +22,10 @@ def test_run_git_requires_default_cwd_when_cwd_is_omitted(monkeypatch) -> None:
 
 
 def test_run_git_timeout_survives_already_exited_process(monkeypatch, tmp_path: Path) -> None:
-    process = Mock(pid=123, returncode=0)
-    process.communicate.side_effect = subprocess.TimeoutExpired(["git", "status"], 0)
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.pid = 123
+    process.returncode = 0
+    process.communicate = Mock(side_effect=subprocess.TimeoutExpired(["git", "status"], 0))
     monkeypatch.setattr(
         "pynchy.host.git_ops.utils.subprocess.Popen", lambda *args, **kwargs: process
     )

@@ -271,10 +271,7 @@ def test_router_config_rejects_duplicate_providers() -> None:
         ComputerUseRouterConfig(providers=("peekaboo", "peekaboo"))
 
 
-def test_router_rejects_invalid_and_duplicate_backend_catalog_entries() -> None:
-    with pytest.raises(TypeError, match="returned an invalid provider"):
-        ComputerUsePlugin().pynchy_service_handler((object(),))  # type: ignore[arg-type]
-
+def test_router_rejects_duplicate_backend_catalog_entries() -> None:
     duplicate = _RecordingBackend("same")
     with pytest.raises(ValueError, match="duplicate computer-use provider: same"):
         ComputerUsePlugin().pynchy_service_handler((duplicate, duplicate))

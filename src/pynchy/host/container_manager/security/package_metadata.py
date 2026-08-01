@@ -6,12 +6,12 @@ import asyncio
 import hashlib
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from time import monotonic
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 from urllib.parse import quote
 
 import aiohttp
@@ -24,6 +24,17 @@ _COORDINATE_KEYS = frozenset({"ecosystem", "name", "version", "source", "intent"
 _PYPI_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _NPM_NAME = re.compile(r"^(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+$")
 _CARGO_NAME = re.compile(r"^[a-z0-9_-]+$")
+
+
+@runtime_checkable
+class _BoundedResponseContent(Protocol):
+    def iter_chunked(self, size: int) -> AsyncIterator[bytes]: ...
+
+
+@runtime_checkable
+class _BoundedResponse(Protocol):
+    status: int
+    content: _BoundedResponseContent
 
 
 class PackageEcosystem(StrEnum):
@@ -226,9 +237,10 @@ async def _fetch_registry_release_time(coordinate: PackageCoordinate) -> datetim
     return _release_time(coordinate, payload)
 
 
-async def _bounded_json(response: aiohttp.ClientResponse) -> dict[str, Any]:
+async def _bounded_json(response: object) -> dict[str, Any]:
+    bounded_response = cast("_BoundedResponse", response)
     content = bytearray()
-    async for chunk in response.content.iter_chunked(16 * 1024):
+    async for chunk in bounded_response.content.iter_chunked(16 * 1024):
         content.extend(chunk)
         if len(content) > _MAX_RESPONSE_BYTES:
             raise RegistryMetadataError("Registry response exceeded the size limit")
@@ -242,8 +254,10 @@ async def _bounded_json(response: aiohttp.ClientResponse) -> dict[str, Any]:
 
 
 def _registry_url(coordinate: PackageCoordinate) -> str:
-    name = quote(cast("str", coordinate.name), safe="@/")
-    version = quote(cast("str", coordinate.version), safe="")
+    if coordinate.name is None or coordinate.version is None:
+        raise RegistryMetadataError("Registry coordinate is incomplete")
+    name = quote(coordinate.name, safe="@/")
+    version = quote(coordinate.version, safe="")
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         return f"https://pypi.org/pypi/{name}/{version}/json"
     if coordinate.ecosystem is PackageEcosystem.NPM:
@@ -252,6 +266,8 @@ def _registry_url(coordinate: PackageCoordinate) -> str:
 
 
 def _release_time(coordinate: PackageCoordinate, payload: dict[str, Any]) -> datetime:
+    if coordinate.version is None:
+        raise RegistryMetadataError("Registry coordinate is incomplete")
     timestamp: object
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         urls = payload.get("urls")
@@ -261,7 +277,7 @@ def _release_time(coordinate: PackageCoordinate, payload: dict[str, Any]) -> dat
         timestamp = next((item for item in timestamps if isinstance(item, str)), None)
     elif coordinate.ecosystem is PackageEcosystem.NPM:
         times = payload.get("time")
-        timestamp = times.get(cast("str", coordinate.version)) if isinstance(times, dict) else None
+        timestamp = times.get(coordinate.version) if isinstance(times, dict) else None
     else:
         version = payload.get("version")
         timestamp = version.get("created_at") if isinstance(version, dict) else None

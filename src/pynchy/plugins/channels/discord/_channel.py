@@ -35,7 +35,7 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     OutboundEventType,
 )
 from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves this runtime annotation.
-    SpeechSynthesizer,
+    SpeechSynthesisProvider,
 )
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
@@ -98,7 +98,7 @@ class DiscordChannel:
         on_ask_user_answer: Callable[[str, dict[str, object]], None] | None = None,
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         workspaces: Callable[[], dict[str, WorkspaceProfile]] | None = None,
-        speech_synthesizer: SpeechSynthesizer | None = None,
+        speech_synthesizer: SpeechSynthesisProvider | None = None,
         transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None = None,
         process_inbound_audio: (
             Callable[[InboundAudioProcessingRequest], Awaitable[InboundAudioProcessingResult]]

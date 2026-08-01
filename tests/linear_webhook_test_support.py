@@ -196,6 +196,10 @@ class LinearWebhookHarness:
         self.bound_sessions: list[tuple[str, SessionId]] = []
         self.retired_folders: list[str] = []
         self.retired_task_conversations: list[str] = []
+        self.capability_status_operations = object()
+        self.deploy_operations = object()
+        self.canary_run_to_dict = lambda *_args, **_kwargs: {}
+        self.work_item_execution_to_dict = lambda *_args, **_kwargs: {}
 
     complete_conversation_delivery = staticmethod(complete_conversation_delivery)
     conversation_control_state_matches = staticmethod(conversation_control_state_matches)
@@ -211,6 +215,9 @@ class LinearWebhookHarness:
 
     def admin_chat_jid(self) -> str:
         return "admin"
+
+    async def get_canary_report(self, *, history_limit: int) -> dict[str, object]:
+        return {}
 
     def get_plugin_manager(self) -> object:
         return object()

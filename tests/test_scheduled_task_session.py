@@ -90,6 +90,15 @@ class _FakeDeps:
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
         return None
 
+    def refresh_personalized_agent_skills(self, group_folder: str) -> None:
+        del group_folder
+
+    def admin_repo_notices(
+        self, group_folder: str, *, is_admin: bool, repo_access: str | None
+    ) -> list[str]:
+        del group_folder, is_admin, repo_access
+        return []
+
 
 def _make_pre_container_result():
     """Build a fake PreContainerResult with all required fields."""

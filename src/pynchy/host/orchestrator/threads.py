@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence  # noqa: TC003 - beartype resolves sequence annotations.
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
@@ -69,6 +70,11 @@ class ThreadTitleChannel(Protocol):
     """Optional channel capability for updating a child-conversation title."""
 
     async def set_thread_title(self, child_jid: str, title: str) -> None: ...
+
+
+@runtime_checkable
+class _ThreadTitleOwner(Protocol):
+    def owns_jid(self, jid: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -210,7 +216,7 @@ async def set_thread_kind(
 
 
 async def set_thread_title(
-    channels: list[Channel],
+    channels: Sequence[_ThreadTitleOwner],
     child_jid: str,
     title: str,
 ) -> None:

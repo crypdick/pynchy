@@ -24,7 +24,7 @@ from pynchy.workspace.api import WorkspaceProfile
 class _Deps:
     queue: GroupQueue = field(
         default_factory=lambda: GroupQueue(
-            QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0),
+            QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0.0),
             make_container_runtime_operations(),
         )
     )

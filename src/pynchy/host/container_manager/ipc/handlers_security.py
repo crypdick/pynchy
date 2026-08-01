@@ -7,7 +7,7 @@ the taint-aware command cascade (blacklist -> Cop -> human approval).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.handlers_artifact_security import (
@@ -23,6 +23,9 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     inspect_bash,
 )
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager.ipc.handlers_artifact_security import _ArtifactSecurityDeps
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     get_gate_for_group,
@@ -266,7 +269,9 @@ async def _handle_security_check(
 ) -> None:
     """Dispatch a typed security request without tool-name assumptions."""
     if data.get("type") == "security:artifact_check":
-        await handle_artifact_security_check(data, source_group, is_admin, deps)
+        await handle_artifact_security_check(
+            data, source_group, is_admin, cast("_ArtifactSecurityDeps", deps)
+        )
         return
     await _handle_bash_security_check(data, source_group, is_admin, deps)
 

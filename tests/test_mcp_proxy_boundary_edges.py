@@ -86,7 +86,7 @@ async def test_proxy_app_cleanup_is_idempotent() -> None:
 async def test_proxy_start_rejects_runner_without_a_bound_address(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class _Runner:
+    class _Runner(proxy_module.web.AppRunner):
         addresses: tuple[object, ...] = ()
 
         def __init__(self, _app: object) -> None:

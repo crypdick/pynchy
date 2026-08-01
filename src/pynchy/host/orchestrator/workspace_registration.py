@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import (
     Awaitable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
     Callable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
+    Sequence,  # noqa: TC003 - beartype resolves sequence annotations.
 )
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -14,9 +15,6 @@ from pynchy.identifiers import (
     RuntimeId,  # beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves workspace registration annotations at runtime.
-)
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
 from pynchy.workspace.api import (
     # beartype resolves workspace registration annotations at runtime.
@@ -48,6 +46,11 @@ class _WorkspaceCreationChannel(Protocol):
     name: str
 
     async def create_group(self, name: str) -> str: ...
+
+
+@runtime_checkable
+class _WorkspaceChannel(Protocol):
+    name: str
 
 
 @runtime_checkable
@@ -90,10 +93,15 @@ async def rebind_workspace_runtime(
     )
 
 
+@runtime_checkable
+class _ChannelOwnership(Protocol):
+    def owns_jid(self, jid: str) -> bool: ...
+
+
 def available_workspace_groups(
     chats: list[dict[str, Any]],
     workspaces: dict[str, WorkspaceProfile],
-    channels: list[Channel],
+    channels: Sequence[_ChannelOwnership],
 ) -> list[dict[str, Any]]:
     """Project visible channel metadata for the agent workspace snapshot."""
 
@@ -138,7 +146,7 @@ async def ensure_workspace_registered(  # noqa: PLR0911,PLR0913 - registration b
     display_name: str,
     workspaces: dict[str, WorkspaceProfile],
     folder_to_jid: dict[str, str],
-    channels: list[Channel],
+    channels: Sequence[_WorkspaceChannel],
     settings: Settings,
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None = None,
@@ -241,7 +249,7 @@ async def ensure_workspace_registered(  # noqa: PLR0911,PLR0913 - registration b
 async def _resolve_configured_chat_jid(
     folder: str,
     chat_ref: str,
-    channels: list[Channel],
+    channels: Sequence[_WorkspaceChannel],
 ) -> str | None:
     """Resolve a configured chat reference without provisioning another chat."""
     parsed = parse_chat_ref(chat_ref)
@@ -277,7 +285,7 @@ async def _resolve_configured_chat_jid(
 
 
 def _workspace_creation_channel(
-    channels: list[Channel], command_center: str | None
+    channels: Sequence[_WorkspaceChannel], command_center: str | None
 ) -> _WorkspaceCreationChannel | None:
     if not command_center:
         return None

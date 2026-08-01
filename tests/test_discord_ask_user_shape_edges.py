@@ -32,7 +32,7 @@ def _channel() -> DiscordChannel:
             bot_token_env=DISCORD_BOT_ENV,
             dm_policy="open",
             group_policy="disabled",
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,

@@ -19,6 +19,7 @@ from pynchy.host.container_manager.security.gate import create_gate, destroy_gat
 from pynchy.plugins.integrations.caldav import (
     CalDAVMcpServerPlugin,
     CalDAVRuntime,
+    CalDAVServerOptions,
     clear_caldav_client_cache,
     configure_caldav_runtime,
 )
@@ -108,13 +109,27 @@ CALDAV_CONFIG = CalDAVConfig(
 EMPTY_CALDAV_CONFIG = CalDAVConfig()
 
 
+def _runtime_servers(config: CalDAVConfig) -> dict[str, CalDAVServerOptions]:
+    return {
+        name: CalDAVServerOptions(
+            url=server.url,
+            username=server.username,
+            password_env=server.password_env,
+            default_calendar=server.default_calendar,
+            allow=tuple(server.allow) if server.allow is not None else None,
+            ignore=tuple(server.ignore) if server.ignore is not None else None,
+        )
+        for name, server in config.servers.items()
+    }
+
+
 def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
     """Create fake settings with CalDAV and workspace security configured."""
 
     configure_caldav_runtime(
         CalDAVRuntime(
             default_server=caldav_cfg.default_server,
-            servers=caldav_cfg.servers,
+            servers=_runtime_servers(caldav_cfg),
         )
     )
 

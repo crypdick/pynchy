@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+import pluggy
 import pytest
 from conftest import make_settings
 
@@ -257,8 +258,8 @@ def test_host_action_is_a_read_only_validated_action() -> None:
 
 
 async def test_empty_options_leave_plugin_action_unconfigured() -> None:
-    plugin_manager = MagicMock()
-    plugin_manager.get_plugin.return_value = MarketplaceHealthPlugin()
+    plugin_manager = pluggy.PluginManager("pynchy")
+    plugin_manager.register(MarketplaceHealthPlugin(), name="marketplace-health")
 
     configure_marketplace_health_plugin(
         plugin_manager,

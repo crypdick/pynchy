@@ -196,8 +196,8 @@ async def test_docker_wait_healthy_reports_an_exited_container(
 
 @pytest.mark.asyncio
 async def test_docker_wait_healthy_reports_a_process_exit() -> None:
-    process = MagicMock()
-    process.poll.return_value = 1
+    process = subprocess.Popen.__new__(subprocess.Popen)
+    process.poll = MagicMock(return_value=1)
 
     with pytest.raises(RuntimeError, match="Script script exited unexpectedly"):
         await docker.wait_healthy(

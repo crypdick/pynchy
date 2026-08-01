@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn, InFlightWorkKind
+from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
 from pynchy.host.orchestrator.messaging.turn_control import (
     TurnPreparationCallbacks,
     prepare_agent_batch,
@@ -57,7 +58,7 @@ def _message() -> NewMessage:
 
 
 def _deps() -> MagicMock:
-    deps = MagicMock()
+    deps = MagicMock(spec=MessageHandlerDeps)
     deps.last_agent_timestamp = {}
     deps.repo_is_dirty.return_value = False
     deps.set_typing_on_channels = AsyncMock()
