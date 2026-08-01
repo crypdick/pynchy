@@ -224,6 +224,42 @@ def test_install_repo_hooks_ignores_malformed_linked_worktree_metadata(
     run.assert_called_once()
 
 
+def test_install_repo_hooks_resolves_absolute_linked_worktree_common_dir(tmp_path: Path) -> None:
+    common_git_dir = tmp_path / "repo" / ".git"
+    worktree_git_dir = common_git_dir / "worktrees" / "feature"
+    worktree_git_dir.mkdir(parents=True)
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    (worktree_git_dir / "commondir").write_text(f"{common_git_dir}\n")
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
+
+
+def test_install_repo_hooks_ignores_unreadable_linked_worktree_common_dir(
+    tmp_path: Path,
+) -> None:
+    common_git_dir = tmp_path / "repo" / ".git"
+    worktree_git_dir = common_git_dir / "worktrees" / "feature"
+    worktree_git_dir.mkdir(parents=True)
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    (worktree_git_dir / "commondir").write_bytes(b"\xff")
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
+
+
 @pytest.fixture
 def git_env(tmp_path: Path):
     """Set up origin + project repos with patched settings."""
