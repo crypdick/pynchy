@@ -251,6 +251,37 @@ class TestSyncWorktreeToMain:
             "message": "Publication blocked: invalid or replayed approval receipt.",
         }
 
+    async def test_invalid_pr_metadata_writes_a_blocked_result(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        result_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
+        result_dir.mkdir(parents=True)
+
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+            return_value=_test_settings(data_dir=tmp_path / "data"),
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-invalid-metadata",
+                    "publication": "pull-request",
+                    "title": "",
+                    "body": "body",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        result = json.loads((result_dir / "req-invalid-metadata.json").read_text())
+        assert result == {
+            "success": False,
+            "message": "Publication blocked: PR title must be non-empty and at most 256 bytes.",
+        }
+
     async def test_empty_repository_selection_returns_without_cop_or_publication(
         self,
         deps: MockDeps,
