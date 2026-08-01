@@ -18,7 +18,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.config.api import CommandCenterConfig
 from pynchy.host.container_manager.ipc.registry import dispatch
@@ -49,7 +49,7 @@ OTHER_GROUP = WorkspaceProfile(
 )
 
 
-class MockDeps:
+class MockDeps(NullIpcDeps):
     """Minimal mock satisfying the IpcDeps protocol."""
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -152,7 +153,7 @@ def _create_source_database(
     collector_checked_ms: int | None = None,
 ) -> None:
     path.parent.mkdir(parents=True)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.execute(
             "CREATE TABLE messages ("
             "timestamp INTEGER NOT NULL, is_from_me INTEGER NOT NULL, "
@@ -169,6 +170,7 @@ def _create_source_database(
                 "INSERT INTO bridge_state VALUES ('last_receive_ok_ms', ?)",
                 (str(collector_checked_ms),),
             )
+        connection.commit()
 
 
 async def test_projects_host_aggregate_health_without_identity_or_body(
@@ -262,7 +264,7 @@ async def test_source_health_reports_unreadable_and_stale_host_stores(
     assert signal["status"] == "unavailable"
 
     signal_db.unlink()
-    with sqlite3.connect(signal_db) as database:
+    with closing(sqlite3.connect(signal_db)) as database:
         database.execute("CREATE TABLE messages (timestamp, is_from_me)")
         database.commit()
     signal = await SourceHealthProjection.project_personal_source("signal")
@@ -270,7 +272,7 @@ async def test_source_health_reports_unreadable_and_stale_host_stores(
 
     whatsapp_db = aggregate_root / "whatsapp" / "messages.db"
     whatsapp_db.parent.mkdir(parents=True)
-    with sqlite3.connect(whatsapp_db) as database:
+    with closing(sqlite3.connect(whatsapp_db)) as database:
         database.execute("CREATE TABLE messages (timestamp, is_from_me)")
         database.execute("INSERT INTO messages VALUES ('invalid', 0)")
         database.commit()

@@ -82,7 +82,13 @@ class TemporalRuntime(Protocol):
     async def reconcile_schedules(self) -> None: ...
 
 
-def _build_temporal_runtime(deps: SchedulerDependencies) -> object:
+@runtime_checkable
+class _SchedulerRuntimeDeps(Protocol):
+    @property
+    def scheduler_runtime(self) -> object: ...
+
+
+def _build_temporal_runtime(deps: _SchedulerRuntimeDeps) -> object:
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:
@@ -91,7 +97,7 @@ def _build_temporal_runtime(deps: SchedulerDependencies) -> object:
 
 
 async def _run_scheduler_owner(
-    deps: SchedulerDependencies,
+    deps: _SchedulerRuntimeDeps,
     ready: asyncio.Future[None] | None,
 ) -> None:
     async with _build_temporal_runtime(deps) as temporal_runtime:
@@ -102,7 +108,7 @@ async def _run_scheduler_owner(
 
 
 async def start_scheduler_loop(
-    deps: SchedulerDependencies,
+    deps: _SchedulerRuntimeDeps,
     *,
     ready: asyncio.Future[None] | None = None,
 ) -> None:
@@ -125,7 +131,7 @@ async def start_scheduler_loop(
 
 
 async def _run_scheduler_loop(
-    _deps: SchedulerDependencies, temporal_runtime: TemporalRuntime
+    _deps: _SchedulerRuntimeDeps, temporal_runtime: TemporalRuntime
 ) -> None:
     """Reconcile desired scheduled work into Temporal-owned schedules."""
     while True:

@@ -15,7 +15,7 @@ from datetime import (
 from types import (
     TracebackType,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
 from temporalio.client import Client
@@ -143,7 +143,15 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves nested activity annotations.
     TurnOutcome,
 )
-from pynchy.workspace.api import RuntimeTarget
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+
+
+@runtime_checkable
+class _CanaryNotificationDeps(Protocol):
+    @property
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
 
 @dataclass
@@ -381,7 +389,9 @@ async def run_scheduled_canaries() -> str:
     return f"completed:{len(results)}"
 
 
-async def _notify_canary_transitions(results: list[CanaryRun], deps: SchedulerDependencies) -> None:
+async def _notify_canary_transitions(
+    results: list[CanaryRun], deps: _CanaryNotificationDeps
+) -> None:
     """Send concise regression and recovery notices to every admin workspace."""
     notices = [
         _canary_transition_notice(result)
@@ -412,9 +422,7 @@ def _canary_transition_notice(result: CanaryRun) -> str:
 class TemporalSchedulerRuntime:
     """Owns the Temporal client, worker, and schedule reconciliation."""
 
-    def __init__(
-        self, deps: SchedulerDependencies, scheduler_config: SchedulerRuntimeConfig
-    ) -> None:
+    def __init__(self, deps: object, scheduler_config: SchedulerRuntimeConfig) -> None:
         self.deps = deps
         self.scheduler_config = scheduler_config
         self.client: Client | None = None

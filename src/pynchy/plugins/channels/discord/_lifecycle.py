@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import discord
 
@@ -34,6 +34,11 @@ def _intents() -> discord.Intents:
     intents.dm_reactions = True
     intents.voice_states = True
     return intents
+
+
+@runtime_checkable
+class _GatewayClient(Protocol):
+    async def start(self, token: str) -> None: ...
 
 
 class DiscordLifecycle:
@@ -70,7 +75,7 @@ class DiscordLifecycle:
 
         self._task = asyncio.ensure_future(self._run(client))
 
-    async def _run(self, client: discord.Client) -> None:
+    async def _run(self, client: _GatewayClient) -> None:
         try:
             await client.start(self._channel.bot_token)
         except asyncio.CancelledError:

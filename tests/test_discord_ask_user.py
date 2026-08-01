@@ -121,7 +121,7 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> DiscordChannel
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV, dm_policy="open", group_policy="disabled"
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,

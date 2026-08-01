@@ -107,6 +107,13 @@ async def test_execute_accepts_string_keys_app_targets_and_delta_scrolls() -> No
 async def test_execute_timeout_kills_provider_process() -> None:
     process = FakeProcess()
     backend = PeekabooBackend(PeekabooConfig(binary="peekaboo", timeout_seconds=2))
+
+    def timeout_without_await(awaitable: object, _timeout: float) -> object:
+        close = getattr(awaitable, "close", None)
+        if callable(close):
+            close()
+        raise TimeoutError
+
     with (
         patch("pynchy.plugins.integrations.peekaboo.shutil.which", return_value="/bin/peekaboo"),
         patch(
@@ -115,7 +122,7 @@ async def test_execute_timeout_kills_provider_process() -> None:
         ),
         patch(
             "pynchy.plugins.integrations.peekaboo.asyncio.wait_for",
-            new=AsyncMock(side_effect=TimeoutError),
+            new=timeout_without_await,
         ),
         pytest.raises(RuntimeError, match="timed out after 2s"),
     ):

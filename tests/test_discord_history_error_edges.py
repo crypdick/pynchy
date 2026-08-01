@@ -35,7 +35,7 @@ async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client
             dm_policy="allowlist",
             allow_from=["alice"],
             group_policy="disabled",
-        ),
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_ENV,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,

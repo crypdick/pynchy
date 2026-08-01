@@ -25,14 +25,15 @@ from tests.discord_channel_support import (
 )
 
 if TYPE_CHECKING:
+    from pynchy.discord import DiscordConnectionSettings
     from pynchy.workspace.api import WorkspaceProfile
 
 
-def _voice_config() -> DiscordConnectionConfig:
+def _voice_config() -> DiscordConnectionSettings:
     return DiscordConnectionConfig(
         bot_token_env=DISCORD_BOT_ENV,
         chat={"1": {"name": "Pynchy", "channels": {"2": {"kind": "voice"}}}},
-    )
+    ).to_runtime_settings()
 
 
 @pytest.mark.asyncio

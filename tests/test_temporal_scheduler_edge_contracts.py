@@ -15,6 +15,7 @@ from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskTerminalErro
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
+    WorkflowControlClient,
 )
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
@@ -101,7 +102,7 @@ async def test_scheduler_waits_briefly_for_runtime_startup(
 async def test_scheduler_wrapper_uses_runtime_that_appears_during_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = Mock()
+    client = Mock(spec=WorkflowControlClient)
     client.start_workflow = AsyncMock()
     runtime = temporal_scheduler.TemporalSchedulerRuntime(NullSchedulerDeps(), _scheduler_runtime())
     runtime.client = client
@@ -227,7 +228,7 @@ async def test_publishing_scheduler_config_updates_the_active_runtime(
     monkeypatch.setattr(
         temporal_scheduler.Client,
         "connect",
-        AsyncMock(return_value=Mock()),
+        AsyncMock(return_value=Mock(spec=WorkflowControlClient)),
     )
 
     class _WorkerContext:
@@ -361,7 +362,7 @@ async def test_scheduled_task_activity_opens_routed_conversation_before_running(
 @pytest.mark.asyncio
 async def test_channel_reconciliation_starts_when_temporal_is_ready() -> None:
     runtime = _runtime()
-    client = Mock()
+    client = Mock(spec=WorkflowControlClient)
     client.start_workflow = AsyncMock()
     runtime.client = client
 
@@ -448,7 +449,7 @@ async def test_deploy_start_skips_already_admitted_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = _runtime()
-    runtime.client = Mock()
+    runtime.client = Mock(spec=WorkflowControlClient)
     monkeypatch.setattr(
         temporal_scheduler,
         "claim_deployment",
@@ -472,7 +473,7 @@ async def test_deploy_start_clears_claim_when_workflow_dispatch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = _runtime()
-    runtime.client = Mock()
+    runtime.client = Mock(spec=WorkflowControlClient)
     request = DeployRequest(
         chat_jid="slack:admin",
         commit_sha="sha",
@@ -503,7 +504,7 @@ async def test_scheduler_dispatch_records_generic_start_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = _runtime()
-    client = Mock()
+    client = Mock(spec=WorkflowControlClient)
     client.start_workflow = AsyncMock(side_effect=RuntimeError("Temporal offline"))
     runtime.client = client
 

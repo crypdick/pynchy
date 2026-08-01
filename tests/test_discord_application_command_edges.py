@@ -20,7 +20,9 @@ from tests.test_discord_events import (
 def _channel(delivered: list[Any], *, group_policy: str = "open") -> DiscordChannel:
     return DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy=group_policy),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy=group_policy
+        ).to_runtime_settings(),
         "token",
         lambda _jid, message: delivered.append(message),
         lambda _jid, _timestamp, _chat_name: None,

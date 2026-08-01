@@ -42,7 +42,9 @@ async def _approval_view(
 ) -> tuple[DiscordChannel, object]:
     ch = DiscordChannel(
         connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="open"),
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, dm_policy="open"
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _msg: None,
         on_chat_metadata=lambda _jid, _ts, _name: None,
@@ -102,7 +104,9 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
     decision_callback = MagicMock()
     ch = DiscordChannel(
         connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="open"),
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, dm_policy="open"
+        ).to_runtime_settings(),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _msg: None,
         on_chat_metadata=lambda _jid, _ts, _name: None,

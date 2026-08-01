@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+# allow: file-length -- lifecycle delivery scenarios stay together for fixture reuse.
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from linear_webhook_test_support import LinearWebhookHarness
@@ -26,7 +27,10 @@ from pynchy.host.orchestrator.conversation_control import (
     EnsuredConversationWorkspace,
     ensure_conversation_workspace,
 )
-from pynchy.host.orchestrator.webhook_conversations import WebhookConversationDispatcher
+from pynchy.host.orchestrator.webhook_conversations import (
+    ConversationWebhookDeps,
+    WebhookConversationDispatcher,
+)
 from pynchy.host.orchestrator.webhook_delivery_admission import (
     WebhookDeliveryAdmissionRequest,
     admit_prepared_event,
@@ -90,7 +94,9 @@ async def test_project_open_control_requires_a_workspace_owner() -> None:
         _message_event("missing-workspace"),
         conversation=replace(_conversation(closed=False), workspace=None),
     )
-    dispatcher = WebhookConversationDispatcher(deps=MagicMock(), routes=(route,))
+    dispatcher = WebhookConversationDispatcher(
+        deps=MagicMock(spec=ConversationWebhookDeps), routes=(route,)
+    )
 
     with pytest.raises(RuntimeError, match="has no workspace owner"):
         await dispatcher.project_open_control(route, event)
@@ -258,25 +264,34 @@ async def test_ignored_open_without_reopened_conversation_skips_runtime_restore(
         disposition="ignored",
         ignored_reason="duplicate_delivery",
     )
-    dispatcher = MagicMock()
-    dispatcher.project_open_control = AsyncMock(return_value=None)
-    dispatcher.deps.channels.return_value = []
-    dispatcher.restore_existing_open_control_runtime = AsyncMock()
-
-    admission, conversation_id = await admit_prepared_event(
-        dispatcher,
-        route,
-        event,
-        WebhookDeliveryAdmissionRequest(
-            receipt=receipt,
-            task=None,
-            defer_process_event=False,
-        ),
+    dispatcher = WebhookConversationDispatcher(
+        deps=MagicMock(spec=ConversationWebhookDeps), routes=(route,)
     )
+    dispatcher.deps.channels.return_value = []
+    project_open_control = AsyncMock(return_value=None)
+    restore_runtime = AsyncMock()
+    with (
+        patch.object(WebhookConversationDispatcher, "project_open_control", project_open_control),
+        patch.object(
+            WebhookConversationDispatcher,
+            "restore_existing_open_control_runtime",
+            restore_runtime,
+        ),
+    ):
+        admission, conversation_id = await admit_prepared_event(
+            dispatcher,
+            route,
+            event,
+            WebhookDeliveryAdmissionRequest(
+                receipt=receipt,
+                task=None,
+                defer_process_event=False,
+            ),
+        )
 
     assert admission.created is True
     assert conversation_id is None
-    dispatcher.restore_existing_open_control_runtime.assert_not_awaited()
+    restore_runtime.assert_not_awaited()
 
 
 async def test_deferred_controller_event_reopens_control_without_agent_turn() -> None:

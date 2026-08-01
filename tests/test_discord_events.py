@@ -181,7 +181,7 @@ async def _deliver(
     metadata: list[tuple[str, str, str | None]] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs).to_runtime_settings(),
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
@@ -267,7 +267,7 @@ async def test_thread_created_system_message_is_not_delivered_to_parent_channel_
             bot_token_env=DISCORD_BOT_ENV,
             group_policy="allowlist",
             chat={"g1": {"channels": {"c1": {"require_mention": False}}}},
-        ),
+        ).to_runtime_settings(),
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
@@ -295,7 +295,9 @@ async def test_application_command_becomes_an_intent_message_without_phrase_matc
     responses: list[tuple[str, bool]] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="open"
+        ).to_runtime_settings(),
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda _jid, _timestamp, _chat_name: None,
@@ -382,7 +384,9 @@ async def test_application_command_rejects_unauthorized_and_empty_queue_requests
     rejected_deliveries: list[NewMessage] = []
     denied = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="disabled"),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="disabled"
+        ).to_runtime_settings(),
         "token",
         lambda _jid, message: rejected_deliveries.append(message),
         lambda _jid, _timestamp, _chat_name: None,
@@ -398,7 +402,9 @@ async def test_application_command_rejects_unauthorized_and_empty_queue_requests
     delivered: list[NewMessage] = []
     open_channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="open"),
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="open"
+        ).to_runtime_settings(),
         "token",
         lambda _jid, message: delivered.append(message),
         lambda _jid, _timestamp, _chat_name: None,
@@ -415,7 +421,7 @@ def test_inbound_reactions_filter_bots_and_dms_before_delivery():
     delivered: list[tuple[str, str, str, str]] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,
@@ -458,7 +464,7 @@ def test_inbound_reactions_filter_bots_and_dms_before_delivery():
 def test_inbound_reaction_without_a_callback_is_ignored():
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,
@@ -479,7 +485,7 @@ def test_inbound_reaction_without_a_callback_is_ignored():
 def test_discord_registers_native_application_commands():
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
         "token",
         lambda _jid, _message: None,
         lambda _jid, _timestamp, _chat_name: None,

@@ -290,7 +290,7 @@ def test_stop_escalates_for_a_term_ignoring_group_child(
         with contextlib.suppress(PermissionError, ProcessLookupError):
             harness.os.killpg(process.pid, harness.signal.SIGKILL)
         with contextlib.suppress(ChildProcessError):
-            harness.os.waitpid(process.pid, 0)
+            process.wait()
 
 
 def test_setup_supervises_runtime_children_with_unique_markers(

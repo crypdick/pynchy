@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from re import compile as compile_pattern
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.learning.api import capture as learning_capture
+from pynchy.host.orchestrator.messaging.deps import CommandMatcher
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
 from pynchy.plugins.api import NewMessage
 from pynchy.state import init_test_database
@@ -19,6 +21,10 @@ _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"
+_COMMAND_MATCHER = CommandMatcher.from_values(
+    compile_pattern(r"^$"),
+    {name: {} for name in ("reset", "end_session", "redeploy", "pause")},
+)
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +42,7 @@ def _make_deps(
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
     deps._dispatched_through = {}
     deps.channels = []
+    deps.command_matcher = _COMMAND_MATCHER
     deps.last_timestamp = ""
     deps.message_data_dir = Path()
     deps.routing_cursor = MagicMock(

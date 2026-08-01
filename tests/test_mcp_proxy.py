@@ -50,7 +50,7 @@ class TestMcpProxyRouting:
             await client.close()
 
     async def test_invalid_backend_json_is_returned_unchanged(self):
-        def handle(_request: web.Request) -> web.Response:
+        async def handle(_request: web.Request) -> web.Response:  # noqa: RUF029 - aiohttp handler contract.
             return web.Response(body=b"not-json", content_type="text/plain")
 
         backend_app = web.Application()

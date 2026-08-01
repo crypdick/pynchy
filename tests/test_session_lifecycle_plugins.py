@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pluggy
@@ -12,6 +13,7 @@ from pynchy.host.orchestrator import session_handler
 from pynchy.identifiers import RuntimeId
 from pynchy.plugins.api import NewMessage, PynchySpec, prepare_context_reset
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
+from pynchy.plugins.integrations.linear_session_reset import LinearSessionResetState
 from pynchy.workspace.api import WorkspaceProfile
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -24,6 +26,16 @@ class _LifecyclePlugin:
     @hookimpl
     async def pynchy_before_context_reset(self, group: WorkspaceProfile) -> None:
         await self.before_reset(group)
+
+
+@dataclass(frozen=True)
+class _HookRoot:
+    pynchy_before_context_reset: object
+
+
+@dataclass(frozen=True)
+class _MalformedPluginManager:
+    hook: _HookRoot
 
 
 async def test_context_reset_awaits_each_valid_participant() -> None:
@@ -113,7 +125,14 @@ async def test_linear_plugin_settles_its_execution_before_reset() -> None:
         "pynchy.plugins.integrations.linear.cancel_linear_execution_for_reset",
         new_callable=AsyncMock,
     ) as cancel:
-        state = MagicMock()
+        state = LinearSessionResetState(
+            get_control_by_thread=MagicMock(),
+            get_conversation=MagicMock(),
+            get_active_execution=MagicMock(),
+            cancel_task=MagicMock(),
+            cancel_execution=MagicMock(),
+            transition_request=MagicMock(),
+        )
         await LinearMcpPlugin(
             cancel_scheduled_workflow=cancel_workflow,
             session_reset_state=state,
@@ -165,8 +184,7 @@ async def test_context_reset_rejects_a_hook_result_count_mismatch() -> None:
     hook = MagicMock()
     hook.get_hookimpls.return_value = [object(), object()]
     hook.return_value = [asyncio.sleep(0)]
-    manager = MagicMock()
-    manager.hook.pynchy_before_context_reset = hook
+    manager = _MalformedPluginManager(_HookRoot(hook))
 
     with pytest.raises(TypeError, match="must return an awaitable"):
         await prepare_context_reset(
@@ -179,8 +197,7 @@ async def test_context_reset_ignores_non_coroutine_in_count_mismatch() -> None:
     hook = MagicMock()
     hook.get_hookimpls.return_value = [object(), object()]
     hook.return_value = [object()]
-    manager = MagicMock()
-    manager.hook.pynchy_before_context_reset = hook
+    manager = _MalformedPluginManager(_HookRoot(hook))
 
     with pytest.raises(TypeError, match="must return an awaitable"):
         await prepare_context_reset(
@@ -194,8 +211,7 @@ async def test_context_reset_closes_pending_hooks_after_a_non_awaitable() -> Non
     hook.get_hookimpls.return_value = [object(), object()]
     pending = asyncio.sleep(0)
     hook.return_value = [object(), pending]
-    manager = MagicMock()
-    manager.hook.pynchy_before_context_reset = hook
+    manager = _MalformedPluginManager(_HookRoot(hook))
 
     with pytest.raises(TypeError, match="must return an awaitable"):
         await prepare_context_reset(

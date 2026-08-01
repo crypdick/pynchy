@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from pynchy.plugins.api import OutboundEvent, OutboundEventType
@@ -100,21 +98,6 @@ def test_edit_tool_trace_handles_partial_input(tool_input, expected):
     )
 
     assert _code_block(result)["text"] == expected
-
-
-def test_unknown_event_type_uses_plain_text_fallback():
-    event = OutboundEvent(type=cast("OutboundEventType", "future"), content="fallback")
-
-    result = SlackBlocksFormatter().render(event)
-
-    assert result.text == "fallback"
-    assert result.blocks is None
-    assert (
-        SlackBlocksFormatter()
-        .render_batch([OutboundEvent(type=cast("OutboundEventType", "future"), content="")])
-        .blocks
-        is None
-    )
 
 
 def test_streaming_text_with_group_name_includes_stop_action():

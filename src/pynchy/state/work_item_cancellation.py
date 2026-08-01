@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-
-from aiosqlite import Connection  # noqa: TC002 - beartype resolves annotations.
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
     ConversationLifecycleFence,
@@ -17,6 +16,21 @@ from pynchy.work_items.api import (
     WorkItemExecutionStatus,
 )
 
+if TYPE_CHECKING:
+    from aiosqlite import Row
+
+
+@runtime_checkable
+class _CancellationCursor(Protocol):
+    rowcount: int
+
+    async def fetchone(self) -> object: ...
+
+
+@runtime_checkable
+class _CancellationDatabase(Protocol):
+    async def execute(self, *args: object) -> _CancellationCursor: ...
+
 
 async def cancel_work_item_execution(
     execution_id: str,
@@ -26,7 +40,9 @@ async def cancel_work_item_execution(
     """Force a local execution terminal after an operator-owned context reset."""
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as database:
-        return await _cancel_work_item_execution(database, execution_id, blocker, now)
+        return await _cancel_work_item_execution(
+            cast("_CancellationDatabase", database), execution_id, blocker, now
+        )
 
 
 async def cancel_work_item_execution_if_lifecycle_current(
@@ -40,11 +56,13 @@ async def cancel_work_item_execution_if_lifecycle_current(
     async with atomic_write() as database:
         if not await lifecycle_fence_matches(database, lifecycle_fence):
             return None
-        return await _cancel_work_item_execution(database, execution_id, blocker, now)
+        return await _cancel_work_item_execution(
+            cast("_CancellationDatabase", database), execution_id, blocker, now
+        )
 
 
 async def _cancel_work_item_execution(
-    database: Connection,
+    database: _CancellationDatabase,
     execution_id: str,
     blocker: str,
     now: str,
@@ -79,4 +97,4 @@ async def _cancel_work_item_execution(
         if update_cursor.rowcount == 1:
             raise RuntimeError("Linear work item execution disappeared during cancellation")
         raise ValueError("Linear work item execution does not exist")
-    return row_to_execution(row)
+    return row_to_execution(cast("Row", row))

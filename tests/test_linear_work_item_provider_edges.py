@@ -68,7 +68,7 @@ def _runtime(
         get_execution=get_execution or AsyncMock(),
         get_active_execution=get_active_execution or AsyncMock(return_value=None),
         create_claim=create_claim or AsyncMock(),
-        claim_request=AsyncMock(),
+        claim_request=Mock(),
         begin_transition=begin_transition or AsyncMock(),
         transition_resolution=Mock(),
         resolve_transition=resolve_transition or AsyncMock(),

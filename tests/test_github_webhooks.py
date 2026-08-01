@@ -487,6 +487,9 @@ async def test_linked_issue_provider_failures_are_reported(
 class _WebhookDeps:
     def __init__(self) -> None:
         self.capability_status_operations = AsyncMock()
+        self.deploy_operations = object()
+        self.canary_run_to_dict = lambda *_args, **_kwargs: {}
+        self.work_item_execution_to_dict = lambda *_args, **_kwargs: {}
         self.workspace = WorkspaceProfile(
             jid="discord:project-channel",
             name="Project",
@@ -501,6 +504,9 @@ class _WebhookDeps:
 
     def admin_chat_jid(self) -> str:
         return "discord:pynchy-dev"
+
+    async def get_canary_report(self, *, history_limit: int) -> dict[str, object]:
+        return {}
 
     def get_plugin_manager(self) -> object:
         return object()

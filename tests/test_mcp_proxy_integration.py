@@ -381,6 +381,7 @@ class TestLiteLLMWorkspaceTeams:
             {"team_id": "team-current", "metadata": {"allowed_mcp_servers": ["notebook"]}},
         ) in calls
         assert ("POST", "/team/delete", {"team_ids": ["team-stale"]}) in calls
+        await session.close()
 
     def test_team_cache_round_trips_and_discards_malformed_data(self, tmp_path):
         cache_path = tmp_path / "mcp" / "teams.json"

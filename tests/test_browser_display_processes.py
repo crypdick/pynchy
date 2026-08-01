@@ -20,8 +20,8 @@ class _FakeProcess(subprocess.Popen[bytes]):
     def __init__(self, command: list[str], **_kwargs: Any) -> None:
         self.command = command
 
-    def poll(self) -> None:
-        return None
+    def poll(self) -> int | None:
+        return self.returncode
 
 
 def test_browser_virtual_display_uses_resolved_executables(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,11 +159,13 @@ def test_browser_display_checks_fail_closed_without_display_or_tools(
 
 
 def test_browser_stops_processes_and_kills_stragglers() -> None:
-    waiting = MagicMock()
-    waiting.poll.return_value = None
+    waiting = _FakeProcess(["waiting"])
+    waiting.terminate = MagicMock()
+    waiting.kill = MagicMock()
+    waiting.wait = MagicMock()
     waiting.wait.side_effect = [subprocess.TimeoutExpired("wait", 5), None]
-    stuck = MagicMock()
-    stuck.poll.return_value = 0
+    stuck = _FakeProcess(["stuck"])
+    stuck.returncode = 0
 
     browser.stop_procs([waiting, stuck])
 

@@ -35,12 +35,12 @@ from ._lookup import discord_user_names, same_name
 from ._voice_client import PynchyVoiceClient
 
 if TYPE_CHECKING:
-    from pynchy.plugins.speech.api import SpeechSynthesizer
+    from pynchy.plugins.speech.api import SpeechSynthesisProvider
 
     from ._channel import DiscordChannel
 else:
     DiscordChannel = object
-    SpeechSynthesizer = object
+    SpeechSynthesisProvider = object
 
 _PCM_SAMPLE_RATE = 48_000
 _PCM_CHANNELS = 2
@@ -116,7 +116,7 @@ class DiscordVoiceManager:
     def __init__(
         self,
         channel: DiscordChannel,
-        speech_synthesizer: SpeechSynthesizer | None = None,
+        speech_synthesizer: SpeechSynthesisProvider | None = None,
         transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None = None,
     ) -> None:
         self._channel = channel
@@ -258,7 +258,7 @@ class _VoiceSession:
         jid: str,
         voice_client: PynchyVoiceClient,
         allowed_members: dict[str, str],
-        speech_synthesizer: SpeechSynthesizer | None,
+        speech_synthesizer: SpeechSynthesisProvider | None,
         transcribe_audio: Callable[[Path], Awaitable[AudioTranscriptionResult]] | None,
     ) -> None:
         self.jid = jid

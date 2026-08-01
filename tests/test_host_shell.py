@@ -42,6 +42,21 @@ def _exit_trap_command(pid_file: Path, cleanup_file: Path) -> str:
     return f"/bin/sh -c {shlex.quote(script)}"
 
 
+class _FakeProcess(asyncio.subprocess.Process):
+    def __init__(self) -> None:
+        self.terminate = MagicMock()
+        self.kill = MagicMock()
+        self.communicate = AsyncMock(return_value=(b"", b""))
+
+    @property
+    def pid(self) -> int:
+        return 123
+
+    @property
+    def returncode(self) -> int | None:
+        return None
+
+
 async def _wait_for_pid_file(pid_file: Path) -> int:
     for _ in range(200):
         try:
@@ -126,10 +141,7 @@ class TestRunShellCommand:
     async def test_timeout_falls_back_to_direct_kill_when_group_signal_is_denied(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        process = MagicMock()
-        process.pid = 123
-        process.returncode = None
-        process.communicate = AsyncMock(return_value=(b"", b""))
+        process = _FakeProcess()
 
         def always_timeout(awaitable: object, timeout: float) -> object:
             del timeout
@@ -161,9 +173,7 @@ class TestRunShellCommand:
     async def test_timeout_tolerates_a_process_group_that_already_disappeared(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        process = MagicMock()
-        process.pid = 123
-        process.communicate = AsyncMock(return_value=(b"", b""))
+        process = _FakeProcess()
 
         def always_timeout(awaitable: object, timeout: float) -> object:
             del timeout
@@ -193,9 +203,7 @@ class TestRunShellCommand:
     async def test_communication_failure_is_returned_after_cleanup(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        process = MagicMock()
-        process.pid = 123
-        process.communicate = AsyncMock(return_value=(b"", b""))
+        process = _FakeProcess()
         wait_calls = 0
 
         async def fail_then_cleanup(awaitable: object, **kwargs: object) -> object:

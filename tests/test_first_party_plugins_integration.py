@@ -9,14 +9,17 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pluggy
 import pytest
 
 from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.host.orchestrator.plugin_configuration import configure_observer_plugins
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.api import ChannelPluginContext, attach_observers
+from pynchy.plugins.api import ChannelPluginContext, PynchySpec, attach_observers
 from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
+
+hookimpl = pluggy.HookimplMarker("pynchy")
 
 
 class TestInRepoPluginDiscovery:
@@ -83,8 +86,15 @@ class TestObserverPluginRuntimeTypes:
         assert attach_observers(plugin_manager, EventBus()) == []
 
     def test_attach_observers_ignores_discovery_failure(self):
-        plugin_manager = MagicMock()
-        plugin_manager.hook.pynchy_observer.side_effect = RuntimeError("broken plugin")
+        plugin_manager = pluggy.PluginManager("pynchy")
+        plugin_manager.add_hookspecs(PynchySpec)
+
+        class BrokenPlugin:
+            @hookimpl
+            def pynchy_observer(self):
+                raise RuntimeError("broken plugin")
+
+        plugin_manager.register(BrokenPlugin())
 
         assert attach_observers(plugin_manager, EventBus()) == []
 
@@ -98,8 +108,15 @@ class TestObserverPluginRuntimeTypes:
             async def close(self):
                 return None
 
-        plugin_manager = MagicMock()
-        plugin_manager.hook.pynchy_observer.return_value = [BrokenObserver()]
+        plugin_manager = pluggy.PluginManager("pynchy")
+        plugin_manager.add_hookspecs(PynchySpec)
+
+        class BrokenPlugin:
+            @hookimpl
+            def pynchy_observer(self):
+                return BrokenObserver()
+
+        plugin_manager.register(BrokenPlugin())
 
         assert attach_observers(plugin_manager, EventBus()) == []
 

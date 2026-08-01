@@ -24,6 +24,7 @@ from pynchy.config.api import (
     publish_settings,
 )
 from pynchy.host.container_manager.api import AgentHomeMounts
+from pynchy.host.container_manager.mounts import MountOperations
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
@@ -152,14 +153,18 @@ class TestMountBuilding:
         with _patch_settings(tmp_path, learning=learning):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
             with patch(
-                "pynchy.host.container_manager.mounts._configured_mount_operations"
-            ) as configured:
-                configured.return_value.prepare_agent_homes.return_value = AgentHomeMounts(
-                    claude_home=tmp_path / "claude",
-                    codex_home=tmp_path / "codex",
-                    vault_mount_root=vault.resolve(),
-                    vault_mount_path="/mnt/obsidian",
-                )
+                "pynchy.host.container_manager.mounts._configured_mount_operations",
+                return_value=MountOperations(
+                    prepare_agent_homes=lambda *_args: AgentHomeMounts(
+                        claude_home=tmp_path / "claude",
+                        codex_home=tmp_path / "codex",
+                        vault_mount_root=vault.resolve(),
+                        vault_mount_path="/mnt/obsidian",
+                    ),
+                    repo_container_path=lambda slug: f"/home/agent/src/{slug}",
+                    runtime_name=lambda: "docker",
+                ),
+            ):
                 mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         vault_mount = next(

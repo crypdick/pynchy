@@ -33,6 +33,7 @@ from pynchy.host.orchestrator.scheduler_deps import (
     ScheduledExecutionLifecycle,
     SchedulerRuntimeConfig,
 )
+from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.scheduling.api import (
@@ -188,6 +189,8 @@ class MockSchedulerDeps:
         self.scheduled_execution: ScheduledExecutionLifecycle | None = None
         self.scheduled_execution_queries: list[str] = []
         self._scheduler_runtime = _scheduler_runtime_from_settings(make_settings())
+        self.startup_readiness = StartupReadiness()
+        self.startup_readiness.mark_ready()
         # Configurable return value for run_agent
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
@@ -237,6 +240,21 @@ class MockSchedulerDeps:
     async def run_declared_canaries(self, target_profile: str, scenario_ids: tuple[str, ...]):
         del target_profile, scenario_ids
         return []
+
+    async def run_learning_review(self, packet) -> str:
+        del packet
+        return "completed"
+
+    async def reconcile_linear_work_items(self) -> int | None:
+        return None
+
+    async def process_linear_plan_review_admission(self, admission) -> bool:
+        del admission
+        return True
+
+    def sync_personalization(self, project_root) -> str:
+        del project_root
+        return ""
 
     async def reset_scheduled_context(
         self,

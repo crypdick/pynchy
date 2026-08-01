@@ -11,6 +11,7 @@ import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at r
 from pynchy.logger import logger
 
 __all__ = [
+    "SpeechSynthesisProvider",
     "SpeechSynthesisResult",
     "SpeechSynthesizer",
     "SpeechSynthesizerHealth",
@@ -35,6 +36,13 @@ class SpeechSynthesizerHealth:
     ready: bool
     endpoint: str | None = None
     error: str | None = None
+
+
+@runtime_checkable
+class SpeechSynthesisProvider(Protocol):
+    """Provider subset required to render one spoken reply."""
+
+    async def synthesize(self, text: str, output_path: Path) -> SpeechSynthesisResult: ...
 
 
 @runtime_checkable

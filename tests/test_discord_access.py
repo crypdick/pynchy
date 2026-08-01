@@ -131,7 +131,7 @@ async def _delivered_messages(
     delivered: list[tuple[str, NewMessage]] = []
     channel = DiscordChannel(
         "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs),
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs).to_runtime_settings(),
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda _jid, _timestamp, _chat_name: None,

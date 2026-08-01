@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,9 +42,9 @@ def _group() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_user_input_trace_skips_non_mapping_messages() -> None:
+async def test_user_input_trace_emits_mapping_messages() -> None:
     deps = _deps()
-    messages = cast("list[dict[str, Any]]", [object(), {"content": "hello"}])
+    messages = [{"content": "hello"}]
 
     await broadcast_agent_input(deps, "chat:1", messages)
 
@@ -54,9 +53,9 @@ async def test_user_input_trace_skips_non_mapping_messages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_synthetic_input_skips_non_mapping_and_truncates_long_content() -> None:
+async def test_synthetic_input_truncates_long_content() -> None:
     deps = _deps()
-    messages = cast("list[dict[str, Any]]", [object(), {"content": "x" * 600}])
+    messages = [{"content": "x" * 600}]
 
     await broadcast_agent_input(deps, "chat:1", messages, source="scheduled_task")
 

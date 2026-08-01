@@ -107,11 +107,14 @@ async def test_setup_session_uses_existing_xvfb_without_vnc(
 async def test_setup_session_starts_xvfb_when_no_native_display_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class RunningProcess:
+    class RunningProcess(subprocess.Popen[bytes]):
         returncode = None
 
-        def poll(self) -> None:
-            return None
+        def __init__(self) -> None:
+            self.returncode = None
+
+        def poll(self) -> int | None:
+            return self.returncode
 
     action_globals = _action_globals(monkeypatch)
     monkeypatch.setitem(action_globals, "has_display", lambda: True)
@@ -240,17 +243,16 @@ def test_cleanup_xvfb_kills_a_process_that_ignores_termination(
 async def test_setup_session_reports_vnc_url_after_starting_both_processes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class RunningProcess:
-        returncode = None
-
-        def poll(self) -> None:
-            return None
-
     launched: list[list[str]] = []
+    popen_type = subprocess.Popen
 
-    def fake_popen(args: list[str], **_kwargs: object) -> RunningProcess:
+    def fake_popen(args: list[str], **_kwargs: object) -> subprocess.Popen[bytes]:
         launched.append(args)
-        return RunningProcess()
+        process = popen_type.__new__(popen_type)
+        process._child_created = False
+        process.returncode = None
+        process.poll = lambda: None
+        return process
 
     action_globals = _action_globals(monkeypatch)
     monkeypatch.setitem(action_globals, "has_display", lambda: False)

@@ -164,9 +164,13 @@ def test_register_operational_canaries_wires_all_three_scenarios() -> None:
     registered: list[tuple[str, object]] = []
     register_operational_canary_scenarios(
         lambda name, scenario: registered.append((name, scenario)),
-        calendar=object(),
-        linear=object(),
-        proton=object(),
+        calendar=CalendarRoundTripCanary("canary"),
+        linear=LinearWorkspaceRoundTripCanary(
+            "CANARY",
+            WorkspaceContext(folder="canary", name="Canary"),
+            client_context=linear_client_context(None),
+        ),
+        proton=ProtonMailRoundTripCanary("INBOX", "recipient", client_factory=object),
     )
 
     assert [name for name, _scenario in registered] == [
@@ -205,6 +209,12 @@ class _LifecycleLinearClient:
             "issue-1": {"id": "issue-1"},
             "todo-1": {"id": "todo-1", "state": {"type": "completed"}},
         }
+
+    async def query(self, _query: str, **_variables: object) -> dict[str, object]:
+        return {}
+
+    async def list_teams(self) -> list[dict[str, object]]:
+        return []
 
     async def list_issues(self, *, team_id: str) -> list[dict[str, object]]:
         assert team_id == "team-1"

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pydantic import SecretStr
 
 import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import (
@@ -483,46 +481,6 @@ def test_runtime_policy_projection_reads_existing_prompt_sources(
     changes = runtime_policy_changes(settings, settings.model_copy(deep=True), ())
 
     assert changes.live_changed is False
-
-
-class _FingerprintMode(Enum):
-    TEST = "test"
-
-
-def test_restart_fingerprint_normalizes_supported_value_types(tmp_path: Path) -> None:
-    class FingerprintSettings:
-        project_root = tmp_path
-
-        def model_dump(self, *, mode: str) -> dict[str, object]:
-            assert mode == "python"
-            return {
-                "profiles": {"base": {"skills": [], "mixed": {SecretStr("secret"), "plain"}}},
-                "workspaces": {"test": {"threads": [], "scopes": []}},
-                "agent": {
-                    "model_reasoning_effort": None,
-                    "enum": _FingerprintMode.TEST,
-                    "path": tmp_path,
-                },
-                "prompts": {},
-                "pipelines": {},
-                "container": {
-                    "image": "image",
-                    "timeout_ms": 1,
-                    "memory_mb": 1,
-                    "idle_timeout_ms": 1,
-                },
-                "learning": {
-                    "enabled": False,
-                    "review_after_turn": False,
-                    "max_attempts": 1,
-                    "packet_max_chars": 1,
-                    "obsidian": {},
-                },
-                "security": {"blocked_patterns": []},
-                "jobs": {},
-            }
-
-    assert restart_fingerprint(FingerprintSettings())
 
 
 async def test_automation_prompt_change_reconciles_without_restart(

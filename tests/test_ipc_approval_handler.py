@@ -593,7 +593,7 @@ class TestIpcApprovalDispatch:
         )
         decision_file = _write_decision(ipc_dir, "grp", "ipc-req1", approved=True)
 
-        mock_deps = MagicMock()
+        mock_deps = NullIpcDeps()
         mock_dispatch = AsyncMock()
 
         with (
@@ -665,7 +665,7 @@ class TestIpcApprovalDispatch:
         )
         decision_file = _write_decision(ipc_dir, "grp", "ipc-req3", approved=True)
 
-        mock_deps = MagicMock()
+        mock_deps = NullIpcDeps()
         mock_dispatch = AsyncMock(side_effect=RuntimeError("dispatch failed"))
 
         with (
