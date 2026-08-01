@@ -16,7 +16,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these runtime a
     Callable,
 )
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from pynchy.logger import logger
@@ -30,20 +30,67 @@ COULD_NOT_DETECT_CREDENTIAL_DOWNLOAD_ERROR = (
 CREDENTIALS_FILE_NOT_FOUND_ERROR = "Credentials file not found at {path}"
 INVALID_CREDENTIALS_JSON_ERROR = "Invalid credentials JSON — missing 'installed' or 'web' key"
 
-if TYPE_CHECKING:
-    from playwright.async_api import Page
-else:
-    try:
-        from playwright.async_api import Page
-    except ImportError:
-        Page = Any
+
+@runtime_checkable
+class ConsoleControl(Protocol):
+    @property
+    def first(self) -> ConsoleControl: ...
+
+    def nth(self, index: int) -> ConsoleControl: ...
+
+    async def click(self) -> object: ...
+
+    async def clear(self) -> object: ...
+
+    async def fill(self, value: str) -> object: ...
+
+    async def count(self) -> int: ...
+
+    async def is_visible(self, **kwargs: object) -> bool: ...
+
+
+class ConsoleDownload(Protocol):
+    async def save_as(self, path: str) -> object: ...
+
+
+class ConsoleDownloadInfo(Protocol):
+    value: Awaitable[ConsoleDownload]
+
+
+@runtime_checkable
+class ConsolePage(Protocol):
+    """Browser surface used by Google Console automation."""
+
+    @property
+    def url(self) -> str: ...
+
+    async def goto(self, url: str, *, wait_until: str) -> object: ...
+
+    async def wait_for_timeout(self, milliseconds: int) -> object: ...
+
+    async def wait_for_url(self, predicate: Callable[[str], bool], **kwargs: object) -> object: ...
+
+    async def text_content(self, selector: str) -> str | None: ...
+
+    async def screenshot(self, *, path: str) -> object: ...
+
+    def get_by_role(self, role: str, *, name: object | None = None) -> ConsoleControl: ...
+
+    def get_by_text(self, text: str, **kwargs: object) -> ConsoleControl: ...
+
+    def locator(self, selector: str) -> ConsoleControl: ...
+
+    def expect_download(
+        self, **kwargs: object
+    ) -> contextlib.AbstractAsyncContextManager[ConsoleDownloadInfo]: ...
+
 
 # ---------------------------------------------------------------------------
 # GCP Console helpers
 # ---------------------------------------------------------------------------
 
 
-async def dismiss_modals(page: Page) -> None:
+async def dismiss_modals(page: ConsolePage) -> None:
     """Try to dismiss common GCP Console popups/modals."""
     for text in ("Got it", "Dismiss", "No thanks", "Skip", "Not now"):
         with contextlib.suppress(Exception):
@@ -57,7 +104,7 @@ async def dismiss_modals(page: Page) -> None:
             await close.click()
 
 
-async def wait_for_login(page: Page) -> None:
+async def wait_for_login(page: ConsolePage) -> None:
     """Wait until Google login is complete (if a login page appeared)."""
     if urlparse(page.url).hostname == "accounts.google.com":
         logger.info("Waiting for Google login via noVNC")
@@ -70,10 +117,10 @@ async def wait_for_login(page: Page) -> None:
 
 
 async def try_step(
-    page: Page,
-    step_fn: Callable[[Page], Awaitable[None]],
+    page: ConsolePage,
+    step_fn: Callable[[ConsolePage], Awaitable[None]],
     fallback_msg: str,
-    done_check: Callable[[Page], Awaitable[bool]],
+    done_check: Callable[[ConsolePage], Awaitable[bool]],
     manual_step_timeout_seconds: int = 60,
 ) -> None:
     """Attempt an automated Console step; use the manual + noVNC path when needed."""
@@ -107,7 +154,7 @@ async def try_step(
 # ---------------------------------------------------------------------------
 
 
-async def ensure_project(page: Page, project_id: str) -> None:
+async def ensure_project(page: ConsolePage, project_id: str) -> None:
     """Create a GCP project (or verify it exists)."""
     logger.info("Ensuring GCP project exists", project_id=project_id)
 
@@ -137,7 +184,7 @@ async def ensure_project(page: Page, project_id: str) -> None:
     await page.wait_for_timeout(5000)
     await dismiss_modals(page)
 
-    async def _automate(p: Page) -> None:
+    async def _automate(p: ConsolePage) -> None:
         name_input = p.get_by_role("textbox").first
         await name_input.click()
         await name_input.fill(project_id)
@@ -159,7 +206,7 @@ async def ensure_project(page: Page, project_id: str) -> None:
             wait_until="domcontentloaded",
         )
 
-    async def _project_exists(p: Page) -> bool:
+    async def _project_exists(p: ConsolePage) -> bool:
         if project_id not in p.url:
             return False
         body = await p.text_content("body") or ""
@@ -174,7 +221,7 @@ async def ensure_project(page: Page, project_id: str) -> None:
     logger.info("GCP project ready", project_id=project_id)
 
 
-async def ensure_api(page: Page, project_id: str, api_id: str) -> None:
+async def ensure_api(page: ConsolePage, project_id: str, api_id: str) -> None:
     """Enable a Google API for the project."""
     logger.info("Enabling Google API", project_id=project_id, api=api_id)
 
@@ -190,12 +237,12 @@ async def ensure_api(page: Page, project_id: str, api_id: str) -> None:
         logger.info("API already enabled (no Enable button found)", api=api_id)
         return
 
-    async def _automate(p: Page) -> None:
+    async def _automate(p: ConsolePage) -> None:
         btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
         await btn.click()
         await p.wait_for_timeout(5000)
 
-    async def _api_enabled(p: Page) -> bool:
+    async def _api_enabled(p: ConsolePage) -> bool:
         btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
         return bool(await btn.count() == 0)
 
@@ -208,7 +255,7 @@ async def ensure_api(page: Page, project_id: str, api_id: str) -> None:
     logger.info("API enabled", api=api_id)
 
 
-async def ensure_consent_screen(page: Page, project_id: str) -> None:
+async def ensure_consent_screen(page: ConsolePage, project_id: str) -> None:
     """Configure OAuth consent screen (External, Testing mode)."""
     logger.info("Configuring OAuth consent screen", project_id=project_id)
 
@@ -224,7 +271,7 @@ async def ensure_consent_screen(page: Page, project_id: str) -> None:
         logger.info("OAuth consent screen already configured")
         return
 
-    async def _automate(p: Page) -> None:
+    async def _automate(p: ConsolePage) -> None:
         external = p.get_by_text("External", exact=False).first
         await external.click()
         await p.wait_for_timeout(500)
@@ -249,7 +296,7 @@ async def ensure_consent_screen(page: Page, project_id: str) -> None:
             else:
                 break
 
-    async def _consent_configured(p: Page) -> bool:
+    async def _consent_configured(p: ConsolePage) -> bool:
         body = await p.text_content("body") or ""
         return "edit app" in body.lower() or "publishing status" in body.lower()
 
@@ -268,7 +315,7 @@ async def ensure_consent_screen(page: Page, project_id: str) -> None:
     logger.info("OAuth consent screen configured")
 
 
-async def create_oauth_credentials(page: Page, project_id: str) -> Path:
+async def create_oauth_credentials(page: ConsolePage, project_id: str) -> Path:
     """Create Desktop App OAuth credentials and download the JSON."""
     logger.info("Creating OAuth Desktop App credentials", project_id=project_id)
 
@@ -283,7 +330,7 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
 
     dest = dl_dir / "gcp-oauth.keys.json"
 
-    async def _automate(p: Page) -> None:
+    async def _automate(p: ConsolePage) -> None:
         type_dropdown = p.locator("mat-select, [role='listbox'], [role='combobox']").first
         await type_dropdown.click()
         await p.wait_for_timeout(500)

@@ -18,6 +18,7 @@ from pynchy.plugins.integrations.browser import (
     stop_procs,
 )
 from pynchy.plugins.integrations.google_setup._console import (
+    ConsolePage,
     create_oauth_credentials,
     dismiss_modals,
     ensure_api,
@@ -49,8 +50,6 @@ from pynchy.plugins.integrations.google_setup._rest_api import (
 
 if TYPE_CHECKING:
     import subprocess
-
-    from playwright.async_api import Page
 
     from pynchy.plugins.integrations.google_setup._oauth import OAuthPage
 
@@ -155,9 +154,7 @@ async def _ensure_oauth_credentials(
     if await asyncio.to_thread(kp.exists):
         return "OAuth credentials already exist"
 
-    # Playwright's concrete Page narrows several keyword parameters, so the
-    # focused runtime protocol and the SDK type need an explicit boundary cast.
-    console_page = cast("Page", page)
+    console_page = cast("ConsolePage", page)
     await ensure_consent_screen(console_page, project_id)
     creds_path = await create_oauth_credentials(console_page, project_id)
 
