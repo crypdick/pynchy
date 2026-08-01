@@ -712,3 +712,6 @@ class TestBuiltinGatewayAuthHeaders:
         headers = build_upstream_headers({}, "openai", "sk-secret")
         assert headers["Authorization"] == "Bearer sk-secret"
         assert "x-api-key" not in headers
+
+    def test_unknown_provider_does_not_add_provider_auth(self):
+        assert build_upstream_headers({}, "unknown", "sk-secret") == {}

@@ -173,8 +173,6 @@ async def _intercept_pending_command(
     )
     if control_result is not None:
         return control_result
-    if not all_pending:
-        return True
     last_message = all_pending[-1]
     if await intercept_special_command(deps, group_jid, group, last_message):
         logger.info("route_trace", step="intercepted", group=group.name)
