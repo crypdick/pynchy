@@ -23,6 +23,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerSetupRequest,
+    append_post_work_prompt,
     build_admin_system_notices,
     pre_container_setup,
     session_tracking_output_handler,
@@ -52,6 +53,21 @@ TEST_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
+
+
+def test_append_post_work_prompt_preserves_input_and_appends_to_last_message():
+    messages = [{"content": "Run objective", "metadata": {"source": "task"}}]
+
+    result = append_post_work_prompt(messages, "[POST-WORK REFLECTION]")
+
+    assert result == [
+        {
+            "content": "Run objective\n\n[POST-WORK REFLECTION]",
+            "metadata": {"source": "task"},
+        }
+    ]
+    assert messages == [{"content": "Run objective", "metadata": {"source": "task"}}]
+
 
 TEST_INPUT = ContainerInput(
     messages=[
@@ -182,6 +198,69 @@ class TestAgentRunnerPreContainerHelpers:
         )
         assert result.corruption_tainted is True
         assert result.secret_tainted is True
+        assert result.post_work_prompt is None
+
+    @pytest.mark.asyncio
+    async def test_scheduled_preflight_resolves_post_work_prompt(self):
+        deps = _AgentRunnerDeps()
+
+        def read_prompts(names: list[str]) -> str:
+            if names == ["executors/post-work-reflection"]:
+                return "reflection prompt"
+            return "executor prompt"
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=SessionSecurityTaint(),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.prompt_ids_for_context",
+                return_value=["executor/default"],
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.read_prompts",
+                side_effect=read_prompts,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
+                new_callable=AsyncMock,
+                return_value=1.0,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_tool_access",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_agent_core",
+                return_value=("agent_runner.cores.claude", "ClaudeAgentCore"),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_container_timeout",
+                return_value=30.0,
+            ),
+        ):
+            result = await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    group=TEST_GROUP,
+                    chat_jid="test@g.us",
+                    messages=[{"content": "scheduled work"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="scheduled_task",
+                    is_scheduled_task=True,
+                    repo_access_override=None,
+                    runtime=deps.agent_execution_runtime,
+                )
+            )
+
+        assert result.post_work_prompt == "reflection prompt"
 
     @pytest.mark.asyncio
     async def test_missing_executor_prompt_fails_before_broadcast(self):

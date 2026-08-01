@@ -84,11 +84,14 @@ committed changes. They resolve any error it returns and attach the PR to the
 current Linear issue when one exists. Scheduled prompts don't need sentinel
 commits.
 
-During a scheduled run, the agent tries to resolve snags, bugs, and tool
-failures itself. When an unresolved problem ought to be fixed and Linear tools
-are available, the agent checks for an existing report and creates an
-`Agent Proposed` work item only when needed. It doesn't report problems that it
-fixes during the run.
+During a scheduled run, the agent tries to resolve ordinary snags, bugs, and
+tool failures itself. After the primary objective, the default post-work
+reflection prompt asks it to review unresolved bugs, failures, and workflow
+papercuts; search existing Linear and papercut records; and file only missing
+reports. It doesn't report problems that it fixes during the run. The prompt
+fragment lives at
+`data/defaults/prompts/executors/post-work-reflection.md` and is injected into
+scheduled agent work after the automation objective.
 
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).

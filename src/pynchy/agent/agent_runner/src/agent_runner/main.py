@@ -312,12 +312,8 @@ def build_agent_prompt(container_input: ContainerInput) -> str:
             "This is an automated scheduled task — not a live user conversation. "
             "Complete the requested objective within the authority granted by your tools "
             "and workspace policy. Report the outcome and relevant evidence in your final "
-            "response; that response ends the run. If Linear tools are available and you "
-            "encounter a snag, bug, or tool failure that you cannot fix yourself but that "
-            "ought to be fixed, check whether it has already been reported in Linear. If "
-            "not, create an Agent Proposed work item. Do not report problems that you fix "
-            "yourself. Continue the scheduled objective when possible rather than giving "
-            "up at the problem.\n\n" + prompt
+            "response. Fix ordinary snags yourself when possible and continue the scheduled "
+            "objective rather than giving up at the problem.\n\n" + prompt
         )
 
     # Prepend system notices as part of the user message rather than the system
