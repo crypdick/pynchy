@@ -244,7 +244,7 @@ async def test_signed_delivery_bypasses_bearer_and_enters_one_issue_conversation
     assert len(deps.ingested) == 1
     message = deps.ingested[0]
     assert "EXTERNAL_UNTRUSTED_CONTENT" not in message.content
-    assert "A new comment was posted" in message.content
+    assert "test comment instructions" in message.content
     assert "Issue: PYN-1" in message.content
     assert "Comment:\nplease review this" in message.content
     assert message.metadata["authenticated_external_route"] is True

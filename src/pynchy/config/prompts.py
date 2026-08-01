@@ -19,7 +19,7 @@ from pydantic import (
 from pynchy.config.errors import PersonalizationError
 from pynchy.config.models import PromptName, ValidatedPromptId, _StrictModel
 
-_PROMPT_SCOPES = frozenset({"souls", "executors", "reviewers"})
+_PROMPT_SCOPES = frozenset({"souls", "executors", "reviewers", "webhooks"})
 _PROMPT_ID_ADAPTER = TypeAdapter(ValidatedPromptId)
 
 

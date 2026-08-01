@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves webhook runtime callbacks at runtime.
+    Mapping,  # noqa: TC003 - beartype resolves webhook parser annotations at runtime.
 )
 from dataclasses import dataclass, replace
+from datetime import (
+    datetime,  # noqa: TC003 - beartype resolves webhook parser annotations at runtime.
+)
 from functools import partial
 from typing import Any
 
@@ -42,7 +46,12 @@ from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
     process_linear_webhook_lifecycle,
 )
-from pynchy.plugins.integrations.linear_webhook_parser import parse_linear_webhook
+from pynchy.plugins.integrations.linear_webhook_parser import (
+    parse_linear_webhook as _parse_linear_webhook,
+)
+from pynchy.plugins.integrations.linear_webhook_prompts import (  # noqa: TC001 - beartype resolves webhook parser annotations at runtime.
+    LinearWebhookPrompts,
+)
 from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
     linear_client,
@@ -59,6 +68,7 @@ class LinearWebhookRuntime:
     """Resolved route configuration selected during Linear plugin composition."""
 
     options: LinearPluginOptions
+    prompts: LinearWebhookPrompts
     account_for_name: Callable[[str], LinearAccount]
     workspace_tools: Callable[[str], tuple[str, ...] | None]
     workspace_names_for_account: Callable[[str], tuple[str, ...]]
@@ -81,6 +91,27 @@ def _configured_runtime() -> LinearWebhookRuntime:
     if _runtime.runtime is None:
         raise RuntimeError("Linear webhook runtime has not been configured")
     return _runtime.runtime
+
+
+# allow: too-many-arguments - public parser keeps its authenticated transport boundary explicit.
+def parse_linear_webhook(  # noqa: PLR0913
+    raw_body: bytes,
+    raw_headers: Mapping[str, str],
+    secret: str,
+    now: datetime,
+    *,
+    config: LinearWebhookRouteConfig,
+    prompts: LinearWebhookPrompts | None = None,
+) -> WebhookEvent:
+    """Parse one delivery using the prompts resolved for the Linear runtime."""
+    return _parse_linear_webhook(
+        raw_body,
+        raw_headers,
+        secret,
+        now,
+        config=config,
+        prompts=prompts or _configured_runtime().prompts,
+    )
 
 
 async def _event_workspace(
@@ -265,7 +296,7 @@ def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
                 name=config.name,
                 workspace=config.workspace,
                 secret_env=config.secret_env,
-                parse=partial(parse_linear_webhook, config=config),
+                parse=partial(parse_linear_webhook, config=config, prompts=runtime.prompts),
                 public_source=account.config.public_source is not False,
                 validate_workspace=partial(_validate_linear_workspace, config=config),
                 max_body_bytes=config.max_body_bytes,

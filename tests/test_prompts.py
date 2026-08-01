@@ -35,13 +35,18 @@ class TestReadPrompts:
         defaults = tmp_path / "data" / "defaults" / "prompts"
         (defaults / "souls").mkdir(parents=True)
         (defaults / "executors").mkdir()
+        (defaults / "webhooks").mkdir()
         (defaults / "souls" / "base.md").write_text("# Base\nShared instructions.")
         (defaults / "executors" / "admin-ops.md").write_text("# Admin Ops\nAdmin-only content.")
+        (defaults / "webhooks" / "linear.md").write_text("# Linear\nWebhook content.")
         return PersonalizationPaths.for_project(tmp_path)
 
     def test_reads_single_default_prompt(self, paths: PersonalizationPaths):
         result = read_prompts(["souls/base"], paths)
         assert result == "# Base\nShared instructions."
+
+    def test_reads_webhook_prompt(self, paths: PersonalizationPaths):
+        assert read_prompts(["webhooks/linear"], paths) == "# Linear\nWebhook content."
 
     def test_reads_multiple_prompts(self, paths: PersonalizationPaths):
         result = read_prompts(["souls/base", "executors/admin-ops"], paths)

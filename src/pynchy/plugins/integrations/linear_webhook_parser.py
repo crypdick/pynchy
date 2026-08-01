@@ -42,9 +42,8 @@ from pynchy.plugins.integrations.linear_webhook_evidence import (
     comment_webhook_evidence,
     issue_state_webhook_evidence,
 )
-from pynchy.plugins.integrations.linear_webhook_prompts import (
-    LINEAR_ISSUE_INSTRUCTIONS,
-    comment_instructions,
+from pynchy.plugins.integrations.linear_webhook_prompts import (  # noqa: TC001 - beartype resolves parser prompt annotations at runtime.
+    LinearWebhookPrompts,
 )
 from pynchy.webhook_effects import (  # noqa: TC001 - beartype resolves parser evidence.
     WebhookEffectEvidence,
@@ -368,6 +367,7 @@ def _comment_event(
     delivery_id: str,
     *,
     config: LinearWebhookRouteConfig,
+    prompts: LinearWebhookPrompts,
 ) -> WebhookEvent:
     _required_data_text(payload, "id")
     issue_id = _required_data_text(payload, "issueId")
@@ -377,7 +377,7 @@ def _comment_event(
         action=payload.action,
         subject_id=issue_id,
         occurred_at=payload.created_at,
-        instructions=comment_instructions(payload.action),
+        instructions=prompts.comment,
         external_context=_comment_context(payload, issue_id),
         conversation=_conversation(payload, issue_id),
         actor=_actor(payload),
@@ -391,6 +391,7 @@ def _issue_event(
     delivery_id: str,
     *,
     config: LinearWebhookRouteConfig,
+    prompts: LinearWebhookPrompts,
 ) -> WebhookEvent:
     issue_id = _issue_id(payload)
     state = _issue_state(payload)
@@ -432,7 +433,7 @@ def _issue_event(
         action=payload.action,
         subject_id=issue_id,
         occurred_at=payload.created_at,
-        instructions=LINEAR_ISSUE_INSTRUCTIONS,
+        instructions=prompts.issue,
         external_context=_issue_context(payload, issue_id),
         conversation=conversation,
         actor=_actor(payload),
@@ -446,13 +447,15 @@ def _issue_event(
     )
 
 
-def parse_linear_webhook(
+# allow: too-many-arguments - authenticated parser keeps transport, route, and prompts explicit.
+def parse_linear_webhook(  # noqa: PLR0913
     raw_body: bytes,
     raw_headers: Mapping[str, str],
     secret: str,
     now: datetime,
     *,
     config: LinearWebhookRouteConfig,
+    prompts: LinearWebhookPrompts,
 ) -> WebhookEvent:
     """Authenticate and parse one Linear delivery into a closed event contract."""
     delivery_id, timestamp = _authenticate(raw_body, raw_headers, secret, now, config)
@@ -460,9 +463,9 @@ def parse_linear_webhook(
     if config.organization_id and payload.organization_id != config.organization_id:
         raise WebhookPayloadError("Linear webhook organization does not match the route")
     if payload.type == "Comment":
-        return _comment_event(payload, delivery_id, config=config)
+        return _comment_event(payload, delivery_id, config=config, prompts=prompts)
     if payload.type == "Issue":
-        return _issue_event(payload, delivery_id, config=config)
+        return _issue_event(payload, delivery_id, config=config, prompts=prompts)
     subject_id = payload.data.get("id")
     return _ignored_event(
         payload,
