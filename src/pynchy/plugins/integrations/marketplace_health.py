@@ -144,7 +144,7 @@ def _load_counts(path: Path) -> MarketplaceCounts:
     for entry in payload["pending"].values():
         if not isinstance(entry, dict):
             raise TypeError("Marketplace action state has an invalid entry")
-        status = entry.get("status", "pending")
+        status = entry.get("status")
         if not isinstance(status, str):
             raise TypeError("Marketplace action state has an invalid status")
         if status in counts:
