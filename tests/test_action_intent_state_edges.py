@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from pynchy.action_intents import ActionIntentStatus
@@ -12,6 +14,7 @@ from pynchy.state import (
     deny_action_intent,
     init_test_database,
     list_action_intents,
+    mark_action_intent_awaiting_approval,
 )
 
 
@@ -67,3 +70,19 @@ async def test_approving_drafted_action_intent_rejects_wrong_state() -> None:
 
     intents = await list_action_intents(workspace="workspace")
     assert intents[0].status is ActionIntentStatus.DENIED
+
+
+async def test_status_update_fails_if_intent_disappears_after_commit() -> None:
+    await create_action_intent(_request("request-disappears"))
+
+    with (
+        patch(
+            "pynchy.state.action_intents.get_action_intent_by_request",
+            new=AsyncMock(return_value=None),
+        ),
+        pytest.raises(RuntimeError, match="Action intent disappeared"),
+    ):
+        await mark_action_intent_awaiting_approval(
+            "request-disappears",
+            policy_decision="approved",
+        )

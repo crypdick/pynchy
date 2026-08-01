@@ -301,6 +301,54 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) -> None:
+    app = PynchyApp()
+    conversation = MagicMock(id="conversation-1", workspace="health")
+    control = LinearIssueControl(
+        issue_id="issue-1",
+        workspace="health",
+        parent_jid="discord:channel:health-forum",
+        account_name="linear",
+        title="[SYN-1] Restore sleep access",
+        updated_at="2026-07-31T09:00:00Z",
+    )
+    profile = WorkspaceProfile(
+        jid="discord:thread:issue-1",
+        name="Issue",
+        folder="health__thread_issue-1",
+        trigger="@Pynchy",
+        added_at="2026-07-31T08:00:00Z",
+    )
+    app.workspaces[profile.jid] = profile
+    binding = MagicMock(parent_jid=control.parent_jid, thread_jid=profile.jid, closed=False)
+    apply_state = AsyncMock(return_value=True)
+    ensure_workspace = AsyncMock()
+    ensure_policy = MagicMock()
+    monkeypatch.setattr(linear_issue_controls, "apply_conversation_control_state", apply_state)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "get_conversation_control_binding",
+        AsyncMock(return_value=binding),
+    )
+    monkeypatch.setattr(linear_issue_controls, "ensure_conversation_workspace", ensure_workspace)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "ensure_runtime_workspace_policy_owner",
+        ensure_policy,
+    )
+
+    await linear_issue_controls.ensure_issue_control(app, control, conversation)
+
+    apply_state.assert_awaited_once_with(
+        conversation.id,
+        closed=False,
+        control_state_revision=control.updated_at,
+    )
+    ensure_workspace.assert_not_awaited()
+    ensure_policy.assert_called_once_with(profile.folder, conversation.workspace)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "github_plugin",
     [
