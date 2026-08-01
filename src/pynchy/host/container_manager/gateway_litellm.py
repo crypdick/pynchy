@@ -275,8 +275,6 @@ class LiteLLMGateway:
         if not isinstance(config, dict):
             return False
         settings = config.get("litellm_settings") or {}
-        if not isinstance(settings, dict):
-            return False
         callbacks = settings.get("callbacks") or []
         if isinstance(callbacks, str):
             callbacks = [callbacks]

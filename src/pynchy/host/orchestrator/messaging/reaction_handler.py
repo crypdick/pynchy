@@ -63,7 +63,7 @@ async def handle_reaction(
         await deps.start_interactive_turn(jid)
         logger.info("Reaction retry", group=group.name, emoji=emoji)
 
-    elif action == "interrupt":
+    else:
         runtime_id = RuntimeId(group.folder)
         if deps.queue.is_active_task(runtime_id):
             deps.queue.clear_pending_tasks(runtime_id)

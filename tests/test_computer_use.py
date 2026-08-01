@@ -277,6 +277,14 @@ def test_router_rejects_duplicate_backend_catalog_entries() -> None:
         ComputerUsePlugin().pynchy_service_handler((duplicate, duplicate))
 
 
+def test_router_rejects_invalid_backend_catalog_entry() -> None:
+    with (
+        pytest.warns(UserWarning, match="violates type hint"),
+        pytest.raises(TypeError, match="invalid provider"),
+    ):
+        ComputerUsePlugin().pynchy_service_handler((object(),))
+
+
 @pytest.mark.action("desktop.computer.capture")
 @pytest.mark.asyncio
 async def test_router_uses_lifecycle_configuration(tmp_path: Path) -> None:

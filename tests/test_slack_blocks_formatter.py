@@ -76,14 +76,17 @@ def test_render_tool_result_uses_preformatted():
 def test_render_batch_respects_50_block_limit():
     fmt = SlackBlocksFormatter()
     # Create many events that would exceed 50 blocks
-    events = [
-        OutboundEvent(
-            type=OutboundEventType.TOOL_TRACE,
-            content="",
-            metadata={"tool_name": "Read", "tool_input": {"file_path": f"/path/{i}"}},
-        )
-        for i in range(30)
-    ]
+    events = [OutboundEvent(type=OutboundEventType.RESULT, content="")]
+    events.extend(
+        [
+            OutboundEvent(
+                type=OutboundEventType.TOOL_TRACE,
+                content="",
+                metadata={"tool_name": "Read", "tool_input": {"file_path": f"/path/{i}"}},
+            )
+            for i in range(30)
+        ]
+    )
     result = fmt.render_batch(events)
     assert result.blocks is not None
     assert len(result.blocks) <= 50
