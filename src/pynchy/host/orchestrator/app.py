@@ -713,11 +713,9 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
     for name, job in settings.jobs.items():
         if not job.is_host or not job.enabled:
             continue
-        if job.command is None or job.schedule is None:
-            raise RuntimeError(f"validated host job {name!r} is incomplete")
         config_host_cron_jobs[name] = ConfigHostCronJob(
-            command=job.command,
-            schedule=job.schedule,
+            command=cast("str", job.command),
+            schedule=cast("str", job.schedule),
             cwd=job.cwd,
             timeout_seconds=job.timeout_seconds,
             quiet_on_success=job.quiet_on_success is True,

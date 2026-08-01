@@ -54,10 +54,6 @@ def _row_to_action_intent(row: aiosqlite.Row) -> ActionIntent:
     payload = json.loads(row["payload"])
     receipt = json.loads(row["provider_receipt"]) if row["provider_receipt"] else None
     source_refs = json.loads(row["source_refs"])
-    if not isinstance(payload, dict) or not isinstance(source_refs, list):
-        raise TypeError("action intent payload or sources has an invalid persisted shape")
-    if receipt is not None and not isinstance(receipt, dict):
-        raise TypeError("action intent receipt has an invalid persisted shape")
     return ActionIntent(
         id=row["id"],
         request_id=row["request_id"],

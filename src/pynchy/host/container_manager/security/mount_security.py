@@ -9,6 +9,7 @@ import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from pynchy.host.paths import AGENT_EXTRA_MOUNT_CONTAINER_ROOT
 from pynchy.logger import logger
@@ -40,8 +41,6 @@ _ERR_REQUIRED_BOOL = "{key} must be a boolean"
 _ERR_REQUIRED_STRING = "{field_name} must be a string"
 _ERR_ALLOWED_ROOT_TABLE = "allowed_roots[{index}] must be a table"
 _ERR_ALLOWLIST_TABLE = "Mount allowlist must decode to a TOML table"
-_ERR_MISSING_REAL_HOST_PATH = "Allowed mount validation result is missing real_host_path"
-_ERR_MISSING_EFFECTIVE_READONLY = "Allowed mount validation result is missing effective_readonly"
 
 
 def reset_mount_allowlist_cache() -> None:
@@ -379,25 +378,23 @@ def validate_additional_mounts(
         )
 
         if result.allowed:
-            if result.real_host_path is None:
-                raise RuntimeError(_ERR_MISSING_REAL_HOST_PATH)
-            if result.effective_readonly is None:
-                raise RuntimeError(_ERR_MISSING_EFFECTIVE_READONLY)
+            real_host_path = cast("str", result.real_host_path)
+            effective_readonly = cast("bool", result.effective_readonly)
             validated.append(
                 {
-                    "hostPath": result.real_host_path,
+                    "hostPath": real_host_path,
                     "containerPath": (
                         f"{AGENT_EXTRA_MOUNT_CONTAINER_ROOT}/{result.resolved_container_path}"
                     ),
-                    "readonly": result.effective_readonly,
+                    "readonly": effective_readonly,
                 }
             )
             logger.debug(
                 "Mount validated successfully",
                 group=group_name,
-                host_path=result.real_host_path,
+                host_path=real_host_path,
                 container_path=result.resolved_container_path,
-                readonly=result.effective_readonly,
+                readonly=effective_readonly,
                 reason=result.reason,
             )
         else:

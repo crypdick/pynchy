@@ -48,12 +48,14 @@ _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 # Module-level cooldown state (survives across calls within a process)
 _last_reconciled: dict[tuple[str, str], datetime] = {}
 _allowed_message_filter: (
-    Callable[[list[NewMessage], object, str | None], list[NewMessage]] | None
+    Callable[[list[NewMessage], WorkspaceProfile, str | None], list[NewMessage]] | None
 ) = None
 
 
 def configure_allowed_message_filter(
-    allowed_message_filter: Callable[[list[NewMessage], object, str | None], list[NewMessage]],
+    allowed_message_filter: Callable[
+        [list[NewMessage], WorkspaceProfile, str | None], list[NewMessage]
+    ],
 ) -> None:
     """Inject routed sender policy from application composition."""
     global _allowed_message_filter  # noqa: PLW0603 - one host process owns one sender policy.
@@ -61,7 +63,7 @@ def configure_allowed_message_filter(
 
 
 def _messages_are_allowed(
-    messages: list[NewMessage], group: WorkspaceProfile | None, channel_name: str
+    messages: list[NewMessage], group: WorkspaceProfile, channel_name: str
 ) -> bool:
     if _allowed_message_filter is None:
         raise RuntimeError("reconciler sender policy has not been configured")
@@ -73,7 +75,7 @@ class _ReconcileInboundRequest:
     ch: Channel
     canonical_jid: str
     target_jid: str
-    group: WorkspaceProfile | None
+    group: WorkspaceProfile
     inbound: _InboundCursor
     deps: ReconcilerDeps
 
@@ -368,7 +370,7 @@ async def _reconcile_channel_pair(
     canonical_jid: str,
     now: datetime,
 ) -> tuple[int, int, str | None] | None:
-    group = deps.workspaces.get(canonical_jid)
+    group = deps.workspaces[canonical_jid]
     if _is_on_cooldown(ch, canonical_jid, now):
         return None
 
