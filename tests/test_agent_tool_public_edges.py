@@ -358,12 +358,19 @@ async def test_sync_worktree_tool_reports_a_successful_pull_request_publication(
     monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", write_request)
 
     with use_agent_tool_runtime(_runtime(tmp_path)):
-        result = await call_tool("sync_worktree_to_main", {})
+        result = await call_tool(
+            "sync_worktree_to_main", {"title": "Test publication", "body": "Test body"}
+        )
 
     assert result[0].text == "https://github/pr/1"
     write_request.assert_called_once_with(
         "sync_worktree_to_main",
-        {"groupFolder": "group", "publication": "pull-request"},
+        {
+            "groupFolder": "group",
+            "publication": "pull-request",
+            "title": "Test publication",
+            "body": "Test body",
+        },
         request_id="1700000000000-fixed",
         reply_to="merge_results",
     )
@@ -383,7 +390,9 @@ async def test_sync_worktree_tool_includes_the_active_turn_id(
     monkeypatch.setattr("agent_runner.agent_tools._ipc.write_request_file", write_request)
 
     with use_agent_tool_runtime(_runtime(tmp_path, turn_id="turn-1")):
-        result = await call_tool("sync_worktree_to_main", {})
+        result = await call_tool(
+            "sync_worktree_to_main", {"title": "Test publication", "body": "Test body"}
+        )
 
     assert result[0].text == "https://github/pr/2"
     assert write_request.call_args.kwargs["request_id"] == "1700000000000-fixed"
@@ -409,7 +418,9 @@ async def test_sync_worktree_tool_reports_per_repository_publication_failure(
     )
 
     with use_agent_tool_runtime(_runtime(tmp_path)):
-        result = await call_tool("sync_worktree_to_main", {})
+        result = await call_tool(
+            "sync_worktree_to_main", {"title": "Test publication", "body": "Test body"}
+        )
 
     assert result.isError is True
     assert result.content[0].text == "pynchy: branch is dirty"
@@ -447,7 +458,9 @@ async def test_publication_tool_recovers_from_a_malformed_host_response(
     )
 
     with use_agent_tool_runtime(_runtime(tmp_path)):
-        result = await call_tool("sync_worktree_to_main", {})
+        result = await call_tool(
+            "sync_worktree_to_main", {"title": "Test publication", "body": "Test body"}
+        )
 
     assert result[0].text == "recovered"
 
@@ -469,7 +482,9 @@ async def test_publication_tool_reports_timeout_without_a_host_response(
     )
 
     with use_agent_tool_runtime(_runtime(tmp_path)):
-        result = await call_tool("sync_worktree_to_main", {})
+        result = await call_tool(
+            "sync_worktree_to_main", {"title": "Test publication", "body": "Test body"}
+        )
 
     assert result.isError is True
     assert result.content[0].text == "Timed out (120s). Retry or check with the host."
