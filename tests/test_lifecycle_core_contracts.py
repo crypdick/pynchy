@@ -75,7 +75,6 @@ async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path
     monkeypatch.setattr(lifecycle.system_checks, "ensure_container_system_running", MagicMock())
     monkeypatch.setattr(lifecycle.gateway_manager, "start_gateway", AsyncMock())
     monkeypatch.setattr(lifecycle, "init_database", AsyncMock())
-    monkeypatch.setattr(lifecycle, "prepare_conversation_runtime_ownership_recovery", AsyncMock())
     monkeypatch.setattr(lifecycle, "recover_incomplete_action_intents", AsyncMock())
     monkeypatch.setattr(lifecycle, "recover_incomplete_webhook_effects", AsyncMock())
     monkeypatch.setattr(lifecycle, "initialize_deployment_state", AsyncMock())

@@ -2,8 +2,7 @@
 
 The plugin registers a host-side script MCP server that gives agents a small,
 task-tracking-focused Linear surface: discover teams, list issues, and create
-issues. Existing backlog migration can build on this instead of embedding a
-separate Linear client into backlog-specific scripts.
+issues through the shared Linear client and board helpers.
 """
 
 from __future__ import annotations

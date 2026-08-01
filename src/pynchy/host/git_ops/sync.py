@@ -72,7 +72,7 @@ def host_create_pr_from_worktree(
 
     Returns {"success": bool, "message": str}.
     """
-    ctx = _validate_sync_preconditions(group_folder, repo_ctx)
+    ctx = _validate_sync_preconditions(group_folder, repo_ctx, compare_with_origin=True)
     if isinstance(ctx, dict):
         return ctx
     return _create_pr_from_context(
@@ -250,14 +250,12 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             [  # noqa: S607 - gh is the trusted host GitHub CLI.
                 "gh",
                 "pr",
-                "view",
-                branch_name,
-                "--repo",
-                repo_ctx.slug,
-                "--json",
-                "url",
-                "--jq",
-                ".url",
+                "list",
+                f"--head={branch_name}",
+                f"--repo={repo_ctx.slug}",
+                f"--base={ctx.main_branch}",
+                "--json=url",
+                "--jq=.[0].url",
             ],
             cwd=str(gh_cwd),
             capture_output=True,
@@ -493,5 +491,5 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     )
     return {
         "success": True,
-        "message": f"Pushed {ctx.ahead} commit(s) and opened PR: {pr_url}",
+        "message": f"Pushed {ctx.ahead} commit(s) to {branch_name} and opened PR: {pr_url}",
     }

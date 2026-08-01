@@ -84,16 +84,14 @@ def test_host_helpers_handle_unscoped_sessions_and_missing_cwd(
     )
 
 
-def test_existing_host_thread_skips_migration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_existing_host_thread_is_available(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         host_execution,
         "codex_thread_exists_in_host_runtime",
         lambda *_args, **_kwargs: True,
     )
 
-    assert host_execution.migrate_host_codex_thread(
+    assert host_execution.codex_thread_exists_in_host_runtime(
         "codex:gpt-5.5:thread-1", codex_home=tmp_path / ".codex"
     )
 
