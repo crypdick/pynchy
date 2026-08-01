@@ -24,7 +24,6 @@ from pynchy.logger import logger
 _DEFAULT_TIER = "community"
 _PLUGIN_SKILL_MARKER = ".pynchy-plugin-skill"
 _PERSONALIZED_SKILL_MARKER = ".pynchy-personalized-skill"
-_LEGACY_LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
 _SKILL_NAME_COLLISION_ERROR = (
     "Skill name collision: skill '{skill_name}' conflicts with an existing skill. "
     "Rename the plugin skill directory to avoid shadowing a default or other plugin skill."
@@ -428,10 +427,9 @@ def _selected_personalized_skill_names(
 def _prune_stale_personalized_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
     for dst_dir in sorted(skills_dst.iterdir(), key=lambda path: path.name):
         personalized = _is_marked_skill_copy(dst_dir, _PERSONALIZED_SKILL_MARKER)
-        legacy_learned = _is_marked_skill_copy(dst_dir, _LEGACY_LEARNED_SKILL_MARKER)
         if personalized and dst_dir.name in desired_names:
             continue
-        if not personalized and not legacy_learned:
+        if not personalized:
             continue
 
         try:

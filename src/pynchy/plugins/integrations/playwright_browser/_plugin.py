@@ -46,10 +46,9 @@ class PlaywrightBrowserPlugin:
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         """Register playwright-mcp as a script-type MCP server.
 
-        The ``{port}`` placeholder is expanded at launch time to each
-        instance's assigned port (via ``mcp_server_instances`` or
-        ``_resolve_all_instances``).  This lets multiple workspaces
-        each run their own Playwright process without port conflicts.
+        The ``{port}`` placeholder is expanded at launch time to the
+        instance's assigned port. This lets multiple workspaces each run
+        their own Playwright process without port conflicts.
         """
         return (
             McpServerSpec(

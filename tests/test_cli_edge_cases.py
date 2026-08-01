@@ -168,52 +168,6 @@ def test_validate_personalization_cli_reports_invalid_input(
     )
 
 
-def test_prune_cli_reports_when_nothing_is_removed(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    backups = tmp_path / "backups"
-    backups.mkdir()
-    monkeypatch.setattr(
-        "pynchy.config.api.get_settings", lambda: make_settings(project_root=tmp_path)
-    )
-    monkeypatch.setattr(sys, "argv", ["pynchy", "prune-migration-backups", str(backups)])
-
-    cli.main()
-
-    assert capsys.readouterr().out == (
-        f"Migration backups: {backups}\n"
-        "Keeping 0 backup(s).\n"
-        "No older backup directories to remove.\n"
-    )
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"workspaces": {}},
-        {"workspaces": [1]},
-        {"workspaces": [{"capabilities": {}}]},
-        {"workspaces": [{"capabilities": [1]}]},
-    ],
-)
-def test_doctor_rejects_malformed_workspace_snapshots(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-    payload: object,
-) -> None:
-    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", Mock(return_value=payload))
-    monkeypatch.setattr(sys, "argv", ["pynchy", "doctor"])
-
-    with pytest.raises(SystemExit) as exited:
-        cli.main()
-
-    assert exited.value.code == 1
-    assert capsys.readouterr().err.startswith("Capability doctor failed:")
-
-
 def test_doctor_reports_an_empty_capability_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

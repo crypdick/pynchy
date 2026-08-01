@@ -19,13 +19,10 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     acquire_work_item_lease,
 )
 from pynchy.scheduling.api import (
-    ScheduledTask,
-    SessionPolicy,
     TaskRunLog,
 )
 from pynchy.state import (
     begin_in_flight_turn,
-    create_task,
     get_active_work_item_execution,
     get_all_tasks,
     get_conversation_for_subject_key,
@@ -110,66 +107,6 @@ async def test_reconcile_does_not_infer_authority_from_unleased_in_progress() ->
 
     assert created == []
     assert await get_active_work_item_execution("issue-unleased") is None
-
-
-async def test_reconcile_adopts_completed_legacy_plan_as_approval_evidence() -> None:
-    client = _DecisionClient()
-    client.issues_by_state["state-approved"] = []
-    client.issues_by_state["state-progress"] = [
-        _issue(
-            "issue-legacy",
-            "SYN-13",
-            "Resume legacy approved work",
-            "in_progress",
-            "project-beta",
-        )
-    ]
-    await create_task(
-        ScheduledTask(
-            id="linear-ready-for-planning-syn-13-wrong-issue",
-            group_folder="retired-pynchy-dev",
-            chat_jid="linear:retired-pynchy-dev",
-            prompt=(
-                "[Source: linear-decision-inbox]\n"
-                '{"identifier": "SYN-13", "issue_id": "another-issue"}'
-            ),
-            schedule_type="once",
-            schedule_value="2026-07-19T08:00:00+00:00",
-            session_policy=SessionPolicy.RESET_BEFORE_RUN,
-            status="completed",
-            created_at="2026-07-19T08:00:00+00:00",
-        )
-    )
-    await create_task(
-        ScheduledTask(
-            id="linear-ready-for-planning-syn-13-proof",
-            group_folder="retired-pynchy-dev",
-            chat_jid="linear:retired-pynchy-dev",
-            prompt=(
-                "[Source: linear-decision-inbox]\n"
-                '{"identifier": "SYN-13", "issue_id": "issue-legacy"}'
-            ),
-            schedule_type="once",
-            schedule_value="2026-07-19T08:00:00+00:00",
-            session_policy=SessionPolicy.RESET_BEFORE_RUN,
-            status="completed",
-            created_at="2026-07-19T08:00:00+00:00",
-        )
-    )
-
-    created = await reconcile_linear_decision_inbox(
-        client,
-        [_Workspace("beta", "Beta", "linear:beta")],
-        {"beta": _board("project-beta")},
-        now=datetime(2026, 7, 25, 8, 5, tzinfo=UTC),
-    )
-
-    assert len(created) == 1
-    assert created[0].id.startswith("linear-execute-syn-13-")
-    adopted = await get_active_work_item_execution("issue-legacy")
-    assert adopted is not None
-    assert adopted.initiated_by == ("linear-legacy-task:linear-ready-for-planning-syn-13-proof")
-    assert adopted.task_id == created[0].id
 
 
 async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -> None:

@@ -230,7 +230,7 @@ class TestDockerRuntime:
 
         assert [item.created_at for item in result] == [datetime(2026, 1, 1, 12, tzinfo=UTC)] * 2
 
-    def test_list_containers_marks_agent_by_label_or_legacy_image(self):
+    def test_list_containers_marks_agent_by_label(self):
         rt = DockerContainerRuntime()
         ndjson = "\n".join(
             [
@@ -266,7 +266,6 @@ class TestDockerRuntime:
 
         assert [item.name for item in result if item.is_agent_container] == [
             "pynchy-labeled",
-            "pynchy-legacy",
         ]
 
     def test_list_containers_discards_invalid_timestamp_and_malformed_label(self):
@@ -470,7 +469,7 @@ class TestAppleRuntime:
         assert result == ["pynchy-admin-1"]
         assert mock_run.call_args.kwargs["timeout"] == 5
 
-    def test_list_containers_marks_agent_by_label_or_legacy_image(self):
+    def test_list_containers_marks_agent_by_label(self):
         rt = AppleContainerRuntime()
         output = json.dumps(
             [
@@ -506,7 +505,6 @@ class TestAppleRuntime:
 
         assert [item.name for item in result if item.is_agent_container] == [
             "pynchy-labeled",
-            "pynchy-legacy",
         ]
 
     def test_list_containers_skips_nonobjects_and_invalid_creation_dates(self):

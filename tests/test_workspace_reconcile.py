@@ -658,35 +658,6 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].repo_access is None
 
-    async def test_legacy_context_hint_maps_to_reset_policy(self, db, groups_dir):
-        """Legacy workspace hints cannot reintroduce an ephemeral session."""
-        _write_workspace_yaml(
-            groups_dir,
-            "isolated-agent",
-            {
-                "schedule": "0 9 * * *",
-                "prompt": "Isolated work",
-                "context_mode": "isolated",
-            },
-        )
-
-        registered = {
-            "iso@g.us": WorkspaceProfile(
-                jid="iso@g.us",
-                name="Isolated Agent",
-                folder="isolated-agent",
-                trigger="@Pynchy",
-                added_at=datetime.now(UTC).isoformat(),
-            ),
-        }
-
-        register_fn = AsyncMock()
-        await reconcile_workspaces(registered, [], register_fn)
-
-        tasks = await get_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
-
     async def test_updates_workspace_name_from_config(self, db, groups_dir):
         """Changed name in config.toml should update existing workspace profile."""
         _write_workspace_yaml(

@@ -16,8 +16,8 @@ At startup, Pynchy **reconciles** workspace specs against the database, creating
 
 Workspace specs can also declare named child threads. The reconciler creates
 or reuses each thread below its configured root, then registers a dynamic
-workspace. A thread without `workspace` keeps the legacy behavior and inherits
-the root's complete profile. A semantic thread names `workspace` and `profiles`
+workspace. A thread without `workspace` inherits the root's complete profile.
+A semantic thread names `workspace` and `profiles`
 to own distinct policy. It requires a channel to support
 thread lookup as well as creation; creation without lookup would make startup
 non-idempotent. The thread reconciler supports a dry-run mode that returns its
@@ -75,21 +75,6 @@ Scheduled-task definitions and run evidence live in the database, but the **sour
 2. Creates chat groups for workspaces missing database entries
 3. Creates or updates scheduled tasks from `automations/*.toml`
 4. Creates channel aliases across messaging platforms
-
-### Root-to-thread migration safety
-
-A Discord root channel cannot become a child thread, so parent-workspace
-migration proceeds as an additive change. `[workspace_migrations.<legacy>]`
-maps a retained legacy root to a declared target workspace and thread. Until
-`retire_legacy_workspace` is confirmed with both inbound and scheduled-job
-retargeting confirmations, reconciliation preserves that legacy registration.
-Even after confirmation, an active stored task that still targets the legacy
-folder blocks retirement. Retirement removes only Pynchy's registration; it
-does not delete the external Discord channel.
-
-The scheduler owns scheduled-job retargeting. Workspace reconciliation only
-checks that old persisted tasks no longer target the legacy root before it
-retires that registration.
 
 ### Automatic config-to-database sync
 
@@ -150,7 +135,7 @@ selection into the next session's skill registry; a denied skill is never
 injected, including when `skills = ["learned"]` or `skills = ["*"]` would
 otherwise select it. Dynamic Discord threads use their policy owner's
 configuration for both the catalog and persistent choice. An unowned manual
-thread inherits its physical parent for backward compatibility.
+thread inherits its physical parent by default.
 
 Companion skills form a separate set: only an available selected tool installs
 them. Learned-skill grants and wildcard selection cannot add a companion skill

@@ -213,7 +213,7 @@ def test_profile_selecting_unknown_tool_is_rejected() -> None:
 
 def test_legacy_service_trust_toml_is_not_user_facing_config():
     """The old [services] trust shape is rejected at the Settings boundary."""
-    with pytest.raises(ValidationError, match="Legacy config sections"):
+    with pytest.raises(ValidationError, match="Unknown config sections"):
         validate_settings_mapping({"services": {"browser": {"public_source": True}}})
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -370,42 +369,6 @@ class TestCheckDeployContinuation:
             claimed_at=claimed_at,
             control_state=control_state,
         )
-
-    @pytest.mark.asyncio
-    async def test_prunes_migration_backups_after_successful_deploy(self, tmp_path, monkeypatch):
-        """Deploy continuation consumption should bound migration backup growth."""
-        await init_test_database()
-        cont_path = tmp_path / "deploy_continuation.json"
-        cont_path.write_text(
-            json.dumps(
-                {
-                    "commit_sha": "abc123",
-                    "resume_prompt": "Deploy complete.",
-                    "interrupted_turns": [],
-                }
-            )
-        )
-        backups = tmp_path / "migration-backups"
-        backups.mkdir()
-        oldest = backups / "20260704-runtime"
-        old = backups / "20260705-runtime"
-        mid = backups / "20260706-runtime"
-        new = backups / "20260707-runtime"
-        for index, path in enumerate((oldest, old, mid, new), start=1):
-            path.mkdir()
-            os.utime(path, (index, index))
-
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.startup_handler.get_settings",
-            type("S", (), {"data_dir": tmp_path}),
-        )
-
-        await check_deploy_continuation(FakeDeps({}), active_revision=_ACTIVE_REVISION)
-
-        assert not oldest.exists()
-        assert old.exists()
-        assert mid.exists()
-        assert new.exists()
 
     @pytest.mark.asyncio
     async def test_dispatches_each_durable_interrupted_turn(self, tmp_path, monkeypatch):

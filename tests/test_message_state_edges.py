@@ -9,7 +9,6 @@ import pytest
 from pynchy.plugins.api import NewMessage
 from pynchy.state import (
     get_chat_history,
-    get_messages_since,
     init_test_database,
     mark_message_as_host,
     store_message,
@@ -105,25 +104,3 @@ async def test_mark_message_as_host_fails_when_update_loses_its_row() -> None:
         pytest.raises(ValueError, match="disappeared"),
     ):
         await mark_message_as_host("control-1", "group@g.us")
-
-
-async def test_legacy_message_without_sender_flag_defaults_to_unknown() -> None:
-    database = _Database(
-        rows=[
-            {
-                "id": "legacy-message",
-                "chat_jid": "group@g.us",
-                "sender": "alice",
-                "sender_name": "Alice",
-                "content": "hello",
-                "timestamp": "2026-07-29T00:00:00+00:00",
-                "message_type": "user",
-                "metadata": "{}",
-            }
-        ]
-    )
-
-    with patch("pynchy.state.messages._get_db", return_value=database):
-        messages = await get_messages_since("group@g.us", None)
-
-    assert messages[0].is_from_me is None

@@ -1,19 +1,20 @@
 version: 2
-multi-ecosystem-groups:
-  all-dependencies:
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 2
 updates:
   - package-ecosystem: uv
-    directory: /
-    patterns: ["*"]
-    multi-ecosystem-group: all-dependencies
-  - package-ecosystem: uv
-    directory: /src/pynchy/agent/agent_runner
-    patterns: ["*"]
-    multi-ecosystem-group: all-dependencies
+    directories:
+      - /
+      - /src/pynchy/agent/agent_runner
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      all-uv-dependencies:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
-    patterns: ["*"]
-    multi-ecosystem-group: all-dependencies
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      all-github-actions:
+        patterns: ["*"]
