@@ -107,8 +107,6 @@ async def reconcile_workflow_state_position(
 
 def _next_projects_page_cursor(team: dict[str, Any]) -> str | None:
     projects = team.get("projects")
-    if not isinstance(projects, dict):
-        raise LinearBoardError(_LINEAR_PROJECT_PAGE_INFO_MISSING)
     page_info = projects.get("pageInfo")
     if not isinstance(page_info, dict):
         raise LinearBoardError(_LINEAR_PROJECT_PAGE_INFO_MISSING)

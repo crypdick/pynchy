@@ -59,6 +59,10 @@ def test_owns_only_discord_jids():
     assert ch.owns_jid("slack:C1") is False
 
 
+def test_exposes_configured_processing_ack_emoji():
+    assert _channel().processing_ack_emoji() == "🦞"
+
+
 @pytest.mark.asyncio
 async def test_creates_child_thread_for_scheduled_task():
     ch = _channel()
