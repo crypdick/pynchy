@@ -17,6 +17,7 @@ from pynchy.plugins.channels.discord import DiscordChannel, PynchyVoiceClient
 from pynchy.state.api import get_chat_jids_by_name
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from datetime import datetime
 
     import discord
@@ -31,6 +32,7 @@ DISCORD_BOT_VALUE = "token"
 def _channel(
     speech_synthesizer: object | None = None,
     config: DiscordConnectionConfig | None = None,
+    find_chat_jids_by_name: Callable[[str], Awaitable[list[str]]] | None = get_chat_jids_by_name,
 ) -> DiscordChannel:
     return DiscordChannel(
         connection_name="connection.discord.test",
@@ -39,7 +41,7 @@ def _channel(
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
         audio_cache_dir=Path("data/media/discord"),
-        find_chat_jids_by_name=get_chat_jids_by_name,
+        find_chat_jids_by_name=find_chat_jids_by_name,
         speech_synthesizer=speech_synthesizer,
     )
 

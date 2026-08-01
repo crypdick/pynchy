@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from pynchy.config.api import DiscordConnectionConfig
+from pynchy.plugins.channels.discord import DiscordChannel
 from tests.discord_channel_support import (
     DISCORD_BOT_ENV,
+    DISCORD_BOT_VALUE,
     _channel,
     _DirectMessageClient,
     _FakeDiscordGuild,
@@ -119,6 +123,52 @@ async def test_resolve_chat_jid_uses_connected_client_for_numeric_direct_ref() -
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_finds_direct_name_in_guild_members_without_bulk_helper() -> None:
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        )
+    )
+    user = _FakeDiscordUser(42, "asmith", display_name="Alice")
+
+    class _ClientWithoutBulkMemberHelper:
+        def __init__(self) -> None:
+            self.guilds = [_FakeDiscordGuild(1, "Guild", [], members=[user])]
+            self.users: list[object] = []
+
+    channel.client = _ClientWithoutBulkMemberHelper()
+
+    assert await channel.resolve_chat_jid("direct.alice") == "discord:direct:42"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_name() -> None:
+    async def find_chat_jids(_name: str) -> list[str]:
+        await asyncio.sleep(0)
+        return ["discord:direct:41", "discord:direct:42"]
+
+    channel = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            allow_from=["alice"],
+            group_policy="disabled",
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _message: None,
+        on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        find_chat_jids_by_name=find_chat_jids,
+    )
+
+    assert await channel.resolve_chat_jid("direct.alice") is None
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client() -> None:
     with patch(
         "tests.discord_channel_support.get_chat_jids_by_name",
@@ -138,9 +188,8 @@ async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client
 
 @pytest.mark.asyncio
 async def test_resolve_chat_jid_rejects_ambiguous_stored_direct_matches() -> None:
-    channel = _channel()
-    channel._find_chat_jids_by_name = AsyncMock(  # type: ignore[attr-defined]
-        return_value=["discord:direct:1", "discord:direct:2"]
+    channel = _channel(
+        find_chat_jids_by_name=AsyncMock(return_value=["discord:direct:1", "discord:direct:2"])
     )
 
     assert await channel.resolve_chat_jid("direct.alice") is None
