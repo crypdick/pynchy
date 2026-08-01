@@ -189,7 +189,8 @@ def test_install_repo_hooks_finds_shared_hooks_from_linked_worktree(tmp_path: Pa
     worktree_git_dir.mkdir(parents=True)
     worktree = tmp_path / "feature"
     worktree.mkdir()
-    (worktree / ".git").write_text(f"gitdir: {worktree_git_dir}\n")
+    relative_git_dir = worktree_git_dir.relative_to(worktree.parent)
+    (worktree / ".git").write_text(f"gitdir: ../{relative_git_dir}\n")
     (worktree_git_dir / "commondir").write_text("../..\n")
     (worktree / "prek.toml").write_text("")
     hooks_dir = common_git_dir / "hooks"
