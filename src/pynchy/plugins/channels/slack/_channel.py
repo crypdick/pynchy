@@ -159,9 +159,6 @@ class SlackChannel:
         """
         self.lifecycle.on_handler_done(task)
 
-    async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
-        await self.lifecycle.reconnect_with_backoff(delay)
-
     # ------------------------------------------------------------------
     # Allowlist — delegated to self.allowlist
     # ------------------------------------------------------------------

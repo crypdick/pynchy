@@ -114,16 +114,12 @@ def _dedupe_csv(values: list[str]) -> list[str]:
     return result
 
 
-def _gateway_no_proxy_hosts(gateway: LiteLLMGateway | BuiltinGateway | None) -> list[str]:
-    if gateway is None:
-        return []
+def _gateway_no_proxy_hosts(gateway: LiteLLMGateway | BuiltinGateway) -> list[str]:
     host = urlparse(gateway.base_url).hostname
     return _dedupe_csv([*_BASE_NO_PROXY_HOSTS, host or ""])
 
 
 def _merge_no_proxy_hosts(env_vars: dict[str, str], hosts: list[str]) -> None:
-    if not hosts:
-        return
     existing: list[str] = []
     for key in ("NO_PROXY", "no_proxy"):
         existing.extend(env_vars.get(key, "").split(","))
@@ -161,7 +157,7 @@ def build_agent_env_vars(
     env_vars.update(gateway_env_vars)
     if extra_env_vars:
         env_vars.update(extra_env_vars)
-    if gateway_env_vars:
+    if gateway is not None and gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
     env_vars.update(_git_identity_env_vars())
     env_vars.update(

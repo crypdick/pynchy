@@ -191,3 +191,39 @@ async def test_stdio_bridge_cli_lifespan_initializes_and_closes_backend(
     async with app.router.lifespan_context(app):
         session = FakeSession.instances[-1]
         assert session.initialized
+
+
+@pytest.mark.asyncio
+async def test_stdio_bridge_rejects_requests_before_backend_connection(monkeypatch) -> None:
+    handlers = {}
+    started = Mock()
+
+    class FakeServer:
+        def __init__(self, _name):
+            pass
+
+        def list_tools(self):
+            return lambda handler: handlers.setdefault("list_tools", handler)
+
+        def call_tool(self):
+            return lambda handler: handlers.setdefault("call_tool", handler)
+
+    class FakeSessionManager:
+        def __init__(self, _server, *, json_response):
+            assert json_response is True
+
+        async def handle_request(self, _scope, _receive, _send):
+            return None
+
+        @asynccontextmanager
+        async def run(self):
+            yield
+
+    monkeypatch.setattr(stdio_bridge, "Server", FakeServer)
+    monkeypatch.setattr(stdio_bridge, "StreamableHTTPSessionManager", FakeSessionManager)
+    monkeypatch.setattr(stdio_bridge.uvicorn, "run", started)
+    monkeypatch.setattr(sys, "argv", ["stdio-bridge", "--port", "8765", "--", "backend"])
+    stdio_bridge.main()
+
+    with pytest.raises(RuntimeError, match="backend is not connected"):
+        await handlers["list_tools"]()

@@ -139,12 +139,17 @@ def filter_allowed_messages(
     if group.is_admin:
         return messages
 
-    security = _message_security(channel_plugin_name, messages)
+    if channel_plugin_name is None:
+        return messages
+    connection = get_settings().connections.get(channel_plugin_name)
+    if connection is None:
+        return messages
+    security = _message_security(connection, messages)
     if security is None or security.allowed_users is None:
         return messages
 
     settings = get_settings()
-    policy_channel_name = _policy_channel_name(channel_plugin_name)
+    policy_channel_name = _policy_channel_name(channel_plugin_name, connection)
     resolved_users = resolve_allowed_users(
         security.allowed_users,
         settings.user_groups,
@@ -165,23 +170,14 @@ def filter_allowed_messages(
 
 
 def _message_security(
-    channel_plugin_name: str | None, messages: list[NewMessage]
+    connection: ConnectionConfig, messages: list[NewMessage]
 ) -> ChannelOverrideConfig | None:
-    connection = _connection_config(channel_plugin_name)
-    if connection is None:
-        return None
     if connection.type == "matrix":
         return None
     for msg in messages:
         if security := _chat_security(connection, msg.chat_jid):
             return security
     return connection.security
-
-
-def _connection_config(channel_plugin_name: str | None) -> ConnectionConfig | None:
-    if channel_plugin_name is None:
-        return None
-    return get_settings().connections.get(channel_plugin_name)
 
 
 def _chat_security(connection: ConnectionConfig, chat_jid: str) -> ChannelOverrideConfig | None:
@@ -204,15 +200,10 @@ def _chat_name_matches_jid(chat_name: str, chat_jid: str) -> bool:
     return lowered_jid.endswith(f":{lowered_name}")
 
 
-def _policy_channel_name(channel_plugin_name: str | None) -> str | None:
-    if channel_plugin_name is None:
-        return None
+def _policy_channel_name(channel_plugin_name: str, connection: ConnectionConfig) -> str:
     platform = channel_platform_from_name(channel_plugin_name)
     if platform in _KNOWN_CHANNEL_PLATFORMS:
         return platform
-    connection = _connection_config(channel_plugin_name)
-    if connection is None:
-        return channel_plugin_name
     return connection.type
 
 

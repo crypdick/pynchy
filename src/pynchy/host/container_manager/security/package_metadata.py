@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from time import monotonic
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 import aiohttp
@@ -242,10 +242,8 @@ async def _bounded_json(response: aiohttp.ClientResponse) -> dict[str, Any]:
 
 
 def _registry_url(coordinate: PackageCoordinate) -> str:
-    if coordinate.name is None or coordinate.version is None:
-        raise RegistryMetadataError("Registry coordinate is incomplete")
-    name = quote(coordinate.name, safe="@/")
-    version = quote(coordinate.version, safe="")
+    name = quote(cast("str", coordinate.name), safe="@/")
+    version = quote(cast("str", coordinate.version), safe="")
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         return f"https://pypi.org/pypi/{name}/{version}/json"
     if coordinate.ecosystem is PackageEcosystem.NPM:
@@ -254,8 +252,6 @@ def _registry_url(coordinate: PackageCoordinate) -> str:
 
 
 def _release_time(coordinate: PackageCoordinate, payload: dict[str, Any]) -> datetime:
-    if coordinate.version is None:
-        raise RegistryMetadataError("Registry coordinate is incomplete")
     timestamp: object
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         urls = payload.get("urls")
@@ -265,7 +261,7 @@ def _release_time(coordinate: PackageCoordinate, payload: dict[str, Any]) -> dat
         timestamp = next((item for item in timestamps if isinstance(item, str)), None)
     elif coordinate.ecosystem is PackageEcosystem.NPM:
         times = payload.get("time")
-        timestamp = times.get(coordinate.version) if isinstance(times, dict) else None
+        timestamp = times.get(cast("str", coordinate.version)) if isinstance(times, dict) else None
     else:
         version = payload.get("version")
         timestamp = version.get("created_at") if isinstance(version, dict) else None

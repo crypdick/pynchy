@@ -136,3 +136,42 @@ def test_doctor_reports_an_invalid_capability_response(monkeypatch, capsys, tmp_
     assert capsys.readouterr().err == (
         "Capability doctor failed: Capability endpoint returned a non-object response\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"workspaces": {}}, "invalid workspace list"),
+        ({"workspaces": ["personal"]}, "invalid workspace snapshot"),
+        (
+            {"workspaces": [{"workspace": "personal", "capabilities": {}}]},
+            "invalid capability list",
+        ),
+        (
+            {"workspaces": [{"workspace": "personal", "capabilities": ["broken"]}]},
+            "invalid capability",
+        ),
+    ],
+)
+def test_doctor_rejects_malformed_workspace_capability_payload(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+    payload: object,
+    message: str,
+) -> None:
+    monkeypatch.setattr(cli.urllib.request, "urlopen", Mock(return_value=_Response(payload)))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["pynchy", "--token-file", str(tmp_path / "missing-token"), "doctor"],
+    )
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 1
+    assert (
+        capsys.readouterr().err
+        == f"Capability doctor failed: Capability endpoint returned an {message}\n"
+    )

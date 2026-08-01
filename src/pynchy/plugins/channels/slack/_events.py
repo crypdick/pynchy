@@ -207,9 +207,6 @@ class SlackEvents:
         trigger = f"@{ch.assistant_name}"
         return re.sub(rf"<@{re.escape(ch.bot_user_id)}>", trigger, text).strip()
 
-    def _normalize_bot_mention(self, text: str) -> str:
-        return self.normalize_bot_mention(text)
-
     def dedup_ts(self, ts: str) -> bool:
         """Return True if this ``ts`` was already seen (duplicate event).
 
@@ -217,9 +214,6 @@ class SlackEvents:
         """
         ch = self._channel
         return ch.track_slack_ts(ts, time.monotonic())
-
-    def _dedup_ts(self, ts: str) -> bool:
-        return self.dedup_ts(ts)
 
     async def on_slack_message(self, event: JsonDict) -> None:
         """Route an inbound Slack event to the pynchy message callback."""
@@ -280,9 +274,6 @@ class SlackEvents:
             text_len=len(text),
         )
         ch.emit_message(jid, msg)
-
-    async def _on_slack_message(self, event: JsonDict) -> None:
-        await self.on_slack_message(event)
 
     async def _on_slack_reaction(self, event: JsonDict) -> None:
         """Route an inbound Slack reaction to the pynchy reaction callback."""
