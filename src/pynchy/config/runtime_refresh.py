@@ -6,7 +6,6 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -277,16 +276,12 @@ def _restart_file_digest(path: Path) -> str:
 def _fingerprint_value(value: object) -> object:
     if isinstance(value, SecretStr):
         result: object = value.get_secret_value()
-    elif isinstance(value, Enum):
-        result = value.value
     elif isinstance(value, Path):
         result = str(value)
     elif isinstance(value, Mapping):
         result = {str(key): _fingerprint_value(child) for key, child in value.items()}
     elif isinstance(value, (list, tuple)):
         result = [_fingerprint_value(child) for child in value]
-    elif isinstance(value, (set, frozenset)):
-        result = sorted((_fingerprint_value(child) for child in value), key=repr)
     else:
         result = value
     return result

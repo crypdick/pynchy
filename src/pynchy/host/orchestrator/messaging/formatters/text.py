@@ -61,7 +61,7 @@ class TextFormatter:
             OutboundEventType.SYSTEM: self._render_system,
             OutboundEventType.APPROVAL: self._render_approval,
         }
-        return renderers.get(event.type, self._render_default)(event)
+        return renderers[event.type](event)
 
     def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
         """Render multiple events as a single newline-joined message."""
@@ -104,9 +104,6 @@ class TextFormatter:
         return RenderedMessage(text=f"\u2699\ufe0f {event.content}")
 
     def _render_approval(self, event: OutboundEvent) -> RenderedMessage:
-        return RenderedMessage(text=event.content)
-
-    def _render_default(self, event: OutboundEvent) -> RenderedMessage:
         return RenderedMessage(text=event.content)
 
 

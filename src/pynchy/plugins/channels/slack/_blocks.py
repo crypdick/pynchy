@@ -107,7 +107,7 @@ class SlackBlocksFormatter:
             OutboundEventType.SYSTEM: self._render_system,
             OutboundEventType.APPROVAL: self._render_approval,
         }
-        return renderers.get(event.type, self._render_default)(event)
+        return renderers[event.type](event)
 
     def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
         """Render multiple events as a single block list.
@@ -126,11 +126,9 @@ class SlackBlocksFormatter:
             rendered = self.render(event)
             if rendered.text:
                 all_texts.append(rendered.text)
-            if (
-                rendered.blocks
-                and len(all_blocks) + len(rendered.blocks) <= _MAX_BLOCKS_PER_MESSAGE
-            ):
-                all_blocks.extend(rendered.blocks)
+            rendered_blocks = cast("list[dict[str, Any]]", rendered.blocks)
+            if len(all_blocks) + len(rendered_blocks) <= _MAX_BLOCKS_PER_MESSAGE:
+                all_blocks.extend(rendered_blocks)
 
         return RenderedMessage(
             text="\n".join(all_texts),
@@ -305,9 +303,6 @@ class SlackBlocksFormatter:
                 }
             )
         return RenderedMessage(text=event.content, blocks=blocks)
-
-    def _render_default(self, event: OutboundEvent) -> RenderedMessage:
-        return RenderedMessage(text=event.content)
 
     # ------------------------------------------------------------------
     # Helpers
