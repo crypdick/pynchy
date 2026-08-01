@@ -208,6 +208,22 @@ def test_install_repo_hooks_finds_shared_hooks_from_linked_worktree(tmp_path: Pa
     assert run.call_count == 2
 
 
+@pytest.mark.parametrize("git_file", [b"\xff", b"not-a-gitdir\n"])
+def test_install_repo_hooks_ignores_malformed_linked_worktree_metadata(
+    tmp_path: Path, git_file: bytes
+) -> None:
+    worktree = tmp_path / "feature"
+    worktree.mkdir()
+    (worktree / ".git").write_bytes(git_file)
+    (worktree / "prek.toml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(worktree)
+
+    run.assert_called_once()
+
+
 @pytest.fixture
 def git_env(tmp_path: Path):
     """Set up origin + project repos with patched settings."""
