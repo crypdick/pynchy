@@ -30,6 +30,18 @@ def test_physical_thread_without_semantic_policy_is_accepted() -> None:
     assert semantic_workspace_configs(settings.workspaces) == {}
 
 
+def test_explicitly_empty_optional_thread_fields_are_accepted() -> None:
+    settings = validate_settings_mapping(
+        {
+            "workspaces": {
+                "engineering": {"threads": [{"name": "review", "workspace": None, "soul": None}]}
+            }
+        }
+    )
+
+    assert settings.workspace_config("engineering").threads[0].workspace is None
+
+
 @pytest.mark.parametrize(
     ("layout", "message"),
     [

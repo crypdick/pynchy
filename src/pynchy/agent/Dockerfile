@@ -47,9 +47,8 @@ WORKDIR /opt/pynchy/agent-runner
 COPY agent_runner/ /opt/pynchy/agent-runner/
 RUN uv pip install --system --no-cache-dir /opt/pynchy/agent-runner
 
-# Pynchy uses prek; pre-commit remains available for managed external repositories
-# that still declare the legacy YAML hook format.
-RUN uv pip install --system --no-cache-dir prek pre-commit
+# Pynchy uses prek for repository hooks.
+RUN uv pip install --system --no-cache-dir prek
 
 # Install custom plugin dependencies (users add packages to this file)
 COPY requirements-plugins.txt /opt/pynchy/requirements-plugins.txt

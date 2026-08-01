@@ -11,12 +11,18 @@ from pynchy.state import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
     create_work_item_claim,
+    get_work_item_execution_for_turn,
 )
 
 pytest_plugins = ("tests.state_support",)
 
 
-def _request(issue_id: str = "issue-1", *, request_id: str | None = None) -> WorkItemClaimRequest:
+def _request(
+    issue_id: str = "issue-1",
+    *,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+) -> WorkItemClaimRequest:
     return WorkItemClaimRequest(
         workspace="pynchy",
         issue={
@@ -25,7 +31,7 @@ def _request(issue_id: str = "issue-1", *, request_id: str | None = None) -> Wor
             "url": f"https://linear.app/example/issue/{issue_id}",
             "state": {"id": "todo", "name": "Todo"},
         },
-        turn_id=None,
+        turn_id=turn_id,
         task_id=None,
         initiated_by="test",
         request_id=request_id or f"claim-{issue_id}",
@@ -72,3 +78,10 @@ async def test_claim_rejects_missing_attempt_count_row() -> None:
         pytest.raises(RuntimeError, match="attempt count query returned no row"),
     ):
         await create_work_item_claim(_request())
+
+
+async def test_execution_lookup_by_turn_returns_bound_execution() -> None:
+    execution = await create_work_item_claim(_request(turn_id="turn-1"))
+
+    assert await get_work_item_execution_for_turn("turn-1") == execution
+    assert await get_work_item_execution_for_turn("turn-missing") is None

@@ -189,9 +189,6 @@ def _resolved_workspace_config(
 def _mcp_runtime_updates(tool: _McpToolConfig) -> dict[str, Any]:
     fields = set(tool.mcp.model_fields_set)
     fields.discard("credentials_path")
-    if not fields:
-        return {}
-
     updates = tool.mcp.model_dump(include=fields, exclude_none=True)
     if "runtime" in updates:
         updates["type"] = updates.pop("runtime")
@@ -214,8 +211,6 @@ def merged_mcp_servers(
         if tool is None:
             continue
         updates = _mcp_runtime_updates(tool)
-        if not updates:
-            continue
         base = result.get(name)
         if base is None:
             if "type" not in updates:

@@ -295,11 +295,7 @@ def _sync_plugin_skill_path(
     if not isinstance(skill_path_str, str | Path):
         logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
         return
-    try:
-        skill_path = Path(skill_path_str)
-    except (TypeError, ValueError):
-        logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
-        return
+    skill_path = Path(skill_path_str)
 
     if not skill_path.exists() or not skill_path.is_dir():
         logger.warning(

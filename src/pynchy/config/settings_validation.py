@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
     Callable,
 )
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from pynchy.actions.api import ACTION_SPECS
 from pynchy.config.jobs import (  # noqa: TC001 - beartype resolves annotations at runtime.
@@ -19,7 +19,7 @@ from pynchy.config.models import (  # noqa: TC001 - beartype resolves annotation
 from pynchy.config.profiles import (  # noqa: TC001 - beartype resolves annotations at runtime.
     ProfileConfig,
 )
-from pynchy.config.refs import parse_chat_ref
+from pynchy.config.refs import ChatRef, parse_chat_ref
 from pynchy.config.scheduler_models import (  # noqa: TC001 - beartype resolves annotations at runtime.
     CanaryConfig,
 )
@@ -99,9 +99,7 @@ def validate_workspace_chat_references(settings: Settings) -> None:
     for workspace_name, workspace in settings.workspaces.items():
         if workspace.chat is None:
             continue
-        parsed = parse_chat_ref(workspace.chat)
-        if parsed is None:
-            continue
+        parsed = cast("ChatRef", parse_chat_ref(workspace.chat))
         connection = settings.connections.get(parsed.name)
         if connection is None:
             raise ValueError(
@@ -122,9 +120,7 @@ def validate_route_references(settings: Settings) -> None:
     """Ensure each route targets an existing endpoint and parent workspace."""
     used_sources: set[str] = set()
     for route_name, route in settings.routes.items():
-        parsed = parse_chat_ref(route.source)
-        if parsed is None:
-            raise ValueError(f"routes.{route_name}.source is not a chat endpoint reference")
+        parsed = cast("ChatRef", parse_chat_ref(route.source))
         connection = settings.connections.get(parsed.name)
         if connection is None:
             raise ValueError(f"routes.{route_name}.source references an unknown connection")
