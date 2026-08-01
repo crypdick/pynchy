@@ -186,15 +186,6 @@ def test_install_repo_hooks_selects_declared_runner_and_handles_failure(tmp_path
     failed_install.assert_called_once_with(repo_root, "prek")
 
 
-def test_install_repo_hooks_uses_pre_commit_when_prek_is_absent(tmp_path: Path) -> None:
-    repo_root = tmp_path / "repo"
-    repo_root.mkdir()
-    (repo_root / ".pre-commit-config.yml").write_text("repos: []\n")
-    with patch.object(worktree, "_run_hook_installer", return_value=_result()) as install:
-        install_repo_hooks(repo_root)
-    install.assert_called_once_with(repo_root, "pre-commit")
-
-
 def test_reconcile_startup_skips_missing_or_unavailable_repositories(tmp_path: Path) -> None:
     configure_worktree_startup_runtime(WorktreeStartupRuntime(tmp_path, tmp_path / "project", {}))
     with (

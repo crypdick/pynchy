@@ -234,7 +234,7 @@ def test_repos_root_config_resolves_relative_to_project_root(
     ],
 )
 def test_legacy_schema_keys_are_rejected(legacy_key: str) -> None:
-    with pytest.raises(ValidationError, match="Legacy config sections"):
+    with pytest.raises(ValidationError, match="Unknown config sections"):
         _settings_from_dict({legacy_key: {}})
 
 

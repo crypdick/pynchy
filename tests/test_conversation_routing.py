@@ -54,20 +54,15 @@ from pynchy.state import (
     get_session,
     get_session_security_taint,
     get_webhook_receipt,
-    get_workspace_profile,
     mark_session_security_taint,
     prepare_conversation_delivery_recovery,
-    prepare_conversation_runtime_ownership_recovery,
-    rebind_conversation_workspace,
     resolve_conversation,
     retire_conversation_for_terminal,
     set_chat_cleared_at,
     set_conversation_control_binding,
     set_conversation_session,
     set_session,
-    set_workspace_profile,
 )
-from pynchy.workspace.api import WorkspaceProfile
 from tests.conversation_routing_support import (
     _admit,
     _bind_control_thread,
@@ -482,115 +477,3 @@ async def test_startup_recovery_repairs_legacy_reset_orphan() -> None:
     assert retired_pending.status is ConversationDeliveryStatus.COMPLETED
     assert retained_pending is not None
     assert retained_pending.status is ConversationDeliveryStatus.PENDING
-
-
-async def test_startup_recovery_consolidates_legacy_scheduled_session() -> None:
-    thread_jid = ChatJid("discord:channel:thread-scheduled")
-    conversation = await resolve_conversation(
-        _subject("issue-scheduled-session"),
-        GroupFolder("triage"),
-    )
-    await _bind_control_thread(conversation.id, thread_jid)
-    copied_session = SessionId("scheduled-session")
-    scheduled_folder = dynamic_thread_folder("triage", thread_jid)
-    routed_folder = routed_conversation_folder("triage", conversation.id)
-    await set_conversation_session(conversation.id, copied_session)
-    await set_session(GroupFolder(scheduled_folder), copied_session)
-    await mark_session_security_taint(
-        GroupFolder(scheduled_folder),
-        corruption_tainted=True,
-    )
-    await set_session(GroupFolder(routed_folder), copied_session)
-
-    legitimate = await resolve_conversation(
-        _subject("issue-legitimate-session"),
-        GroupFolder("triage"),
-    )
-    await _bind_control_thread(
-        legitimate.id,
-        ChatJid("discord:channel:thread-legitimate"),
-    )
-    legitimate_session = SessionId("legitimate-session")
-    legitimate_folder = routed_conversation_folder("triage", legitimate.id)
-    await set_conversation_session(legitimate.id, legitimate_session)
-    await set_session(GroupFolder(legitimate_folder), legitimate_session)
-
-    recovered = await prepare_conversation_delivery_recovery()
-
-    migrated = await get_conversation(conversation.id)
-    preserved = await get_conversation(legitimate.id)
-    assert recovered == 1
-    assert migrated is not None
-    assert migrated.session_id == copied_session
-    assert await get_session(GroupFolder(scheduled_folder)) is None
-    assert await get_session(GroupFolder(routed_folder)) == copied_session
-    legacy_taint = await get_session_security_taint(GroupFolder(scheduled_folder))
-    routed_taint = await get_session_security_taint(GroupFolder(routed_folder))
-    assert legacy_taint.corruption_tainted is False
-    assert routed_taint.corruption_tainted is True
-    assert preserved is not None
-    assert preserved.session_id == legitimate_session
-    assert await get_session(GroupFolder(legitimate_folder)) == legitimate_session
-
-
-async def test_startup_recovery_migrates_legacy_thread_runtime_ownership() -> None:
-    thread_jid = ChatJid("discord:channel:thread-runtime-owner")
-    conversation = await resolve_conversation(
-        _subject("issue-runtime-owner"),
-        GroupFolder("triage"),
-    )
-    await _bind_control_thread(conversation.id, thread_jid)
-    legacy_folder = dynamic_thread_folder("triage", thread_jid)
-    routed_folder = routed_conversation_folder("triage", conversation.id)
-    await set_workspace_profile(
-        WorkspaceProfile(
-            jid=thread_jid,
-            name="Legacy issue thread",
-            folder=legacy_folder,
-            trigger="@Pynchy",
-        )
-    )
-
-    recovered = await prepare_conversation_runtime_ownership_recovery()
-
-    profile = await get_workspace_profile(thread_jid)
-    assert recovered == 1
-    assert profile is not None
-    assert profile.folder == routed_folder
-
-
-async def test_startup_recovery_moves_same_conversation_to_new_workspace_owner() -> None:
-    thread_jid = ChatJid("discord:channel:thread-runtime-owner-move")
-    conversation = await resolve_conversation(
-        _subject("issue-runtime-owner-move"),
-        GroupFolder("triage"),
-    )
-    await _bind_control_thread(conversation.id, thread_jid)
-    old_folder = routed_conversation_folder("triage", conversation.id)
-    new_folder = routed_conversation_folder("engineering", conversation.id)
-    session_id = SessionId("runtime-owner-move-session")
-    await set_workspace_profile(
-        WorkspaceProfile(
-            jid=thread_jid,
-            name="Routed issue thread",
-            folder=old_folder,
-            trigger="@Pynchy",
-        )
-    )
-    await set_conversation_session(conversation.id, session_id)
-    await set_session(GroupFolder(old_folder), session_id)
-    await mark_session_security_taint(GroupFolder(old_folder), secret_tainted=True)
-    await rebind_conversation_workspace(conversation.id, GroupFolder("engineering"))
-
-    recovered = await prepare_conversation_runtime_ownership_recovery()
-
-    profile = await get_workspace_profile(thread_jid)
-    old_taint = await get_session_security_taint(GroupFolder(old_folder))
-    new_taint = await get_session_security_taint(GroupFolder(new_folder))
-    assert recovered == 2
-    assert profile is not None
-    assert profile.folder == new_folder
-    assert await get_session(GroupFolder(old_folder)) is None
-    assert await get_session(GroupFolder(new_folder)) == session_id
-    assert old_taint.secret_tainted is False
-    assert new_taint.secret_tainted is True

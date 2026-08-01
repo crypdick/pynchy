@@ -84,7 +84,6 @@ from pynchy.state.api import (
     get_last_group_sync,
     init_database,
     initialize_deployment_state,
-    prepare_conversation_runtime_ownership_recovery,
     recover_incomplete_action_intents,
     recover_incomplete_webhook_effects,
     set_last_group_sync,
@@ -209,7 +208,6 @@ async def _initialize_core(app: PynchyApp) -> None:
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
     await init_database(StateRuntimeConfig(database_path=settings.data_dir / "messages.db"))
-    await prepare_conversation_runtime_ownership_recovery()
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.
     await recover_incomplete_action_intents()

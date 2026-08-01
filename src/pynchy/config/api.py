@@ -98,7 +98,6 @@ from pynchy.config.tool_access import (
     resolve_tool_access,
     tool_process_environment,
 )
-from pynchy.config.workspace_layout import WorkspaceMigrationConfig
 from pynchy.config.workspace_names import dynamic_thread_folder, static_workspace_name
 
 __all__ = [
@@ -153,7 +152,6 @@ __all__ = [
     "ToolConfig",
     "WhatsAppConnectionConfig",
     "WorkspaceConfig",
-    "WorkspaceMigrationConfig",
     "WorkspaceThreadConfig",
     "WorkspaceTool",
     "access",

@@ -177,29 +177,6 @@ def _bootstrap_control_plane_token(*, rotate: bool) -> int:
     return 0
 
 
-def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
-    from pynchy.config.api import (  # noqa: PLC0415 - prune command loads settings only when invoked.
-        get_settings,
-    )
-    from pynchy.host.migration_backups import (  # noqa: PLC0415 - prune implementation is command specific.
-        prune_migration_backups,
-    )
-
-    project_root = get_settings().project_root
-    backups_dir = Path(path) if path else project_root / "data" / "migration-backups"
-    result = prune_migration_backups(backups_dir, keep=keep, dry_run=not apply)
-    action = "Removed" if apply else "Would remove"
-
-    sys.stdout.write(f"Migration backups: {backups_dir}\n")
-    sys.stdout.write(f"Keeping {len(result.kept)} backup(s).\n")
-    if not result.removed:
-        sys.stdout.write("No older backup directories to remove.\n")
-        return
-
-    for removed_path in result.removed:
-        sys.stdout.write(f"{action}: {removed_path}\n")
-
-
 def _control_url(host: str, relative_url: str) -> str:
     base = host if "://" in host else f"http://{host}"
     return f"{base.rstrip('/')}/{relative_url.lstrip('/')}"
@@ -409,26 +386,6 @@ def main() -> None:
         action="store_true",
         help="Replace an existing token and invalidate clients that still use it",
     )
-    prune = sub.add_parser(
-        "prune-migration-backups",
-        help="Prune old data/migration-backups directories",
-    )
-    prune.add_argument(
-        "path",
-        nargs="?",
-        help="Migration-backups directory (default: data/migration-backups under project root)",
-    )
-    prune.add_argument(
-        "--keep",
-        type=int,
-        default=3,
-        help="Number of newest backup directories to keep (default: 3)",
-    )
-    prune.add_argument(
-        "--apply",
-        action="store_true",
-        help="Delete old backup directories. Without this flag, only report what would be removed.",
-    )
     doctor = sub.add_parser(
         "doctor",
         help="Explain effective workspace host-action capabilities",
@@ -475,8 +432,6 @@ def main() -> None:
         case "control-plane":
             if args.control_plane_command == "bootstrap":
                 sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))
-        case "prune-migration-backups":
-            _prune_migration_backups(args.path, keep=args.keep, apply=args.apply)
         case "doctor":
             sys.exit(
                 _doctor(

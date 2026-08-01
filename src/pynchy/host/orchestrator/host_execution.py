@@ -18,10 +18,7 @@ from pynchy.conversation.api import conversation_id_from_folder
 from pynchy.host.orchestrator.codex_rollouts import (
     CodexRolloutInspectionError as _CodexRolloutInspectionError,
 )
-from pynchy.host.orchestrator.codex_rollouts import (
-    migrate_rollout,
-    rollout_exists,
-)
+from pynchy.host.orchestrator.codex_rollouts import rollout_exists
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 from pynchy.identifiers import RuntimeId  # noqa: TC001
@@ -199,31 +196,6 @@ def prepare_host_codex_home(
 ) -> Path:
     """Synchronize selected skills into a direct-host workspace's Codex home."""
     return operations.prepare_host_codex_home(group_folder, plugin_manager)
-
-
-def migrate_host_codex_thread(
-    session_id: str | None,
-    *,
-    codex_home: Path,
-    sessions_root: Path | None = None,
-    legacy_codex_home: Path | None = None,
-) -> bool:
-    """Copy a pre-scoped host rollout into its workspace-local Codex home."""
-    thread_id = codex_thread_id(session_id)
-    if thread_id is None:
-        return True
-    if codex_thread_exists_in_host_runtime(session_id, codex_home=codex_home):
-        return True
-
-    return (
-        migrate_rollout(
-            thread_id,
-            codex_home=codex_home,
-            legacy_codex_home=legacy_codex_home or _codex_home(),
-            scoped_sessions_root=sessions_root or codex_home.parent,
-        )
-        is not None
-    )
 
 
 def host_agent_env_vars(

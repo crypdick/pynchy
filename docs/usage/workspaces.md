@@ -103,29 +103,6 @@ Ordinary dynamic threads and scheduled agent jobs inherit the parent
 workspace's selected tools. A semantic child workspace resolves its own
 profiles and therefore its own tool access.
 
-## Move Existing Roots Safely
-
-Creating a parent workspace does not move messages from an existing Discord
-root channel. Keep every legacy root registered while users move to its target
-thread and while scheduled tasks still target the old workspace. Record that
-mapping before removing the legacy workspace from `[workspaces]`:
-
-```toml
-[workspace_migrations.fam]
-target_workspace = "relationships"
-target_thread = "family"
-# Leave both false while the old root remains live.
-inbound_retargeted = false
-scheduled_jobs_retargeted = false
-retire_legacy_workspace = false
-```
-
-Set `retire_legacy_workspace = true` only after changing the external inbound
-workflow and scheduled-job configuration. Pynchy requires both corresponding
-confirmation fields and still refuses retirement if an active stored task
-targets the legacy workspace. Retirement unregisters Pynchy from the old root;
-it does not delete the Discord channel.
-
 ## Workspace Overrides
 
 A workspace can override the resolved profile model without duplicating the
