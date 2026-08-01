@@ -49,6 +49,7 @@ def make_shell_executor(
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
             except TimeoutError:
                 proc.kill()
+                await proc.communicate()
                 results.append(
                     ShellCommandOutput(
                         stderr=f"Command timed out after {timeout_s}s",
