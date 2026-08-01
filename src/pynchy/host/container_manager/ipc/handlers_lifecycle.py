@@ -12,7 +12,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
-from typing import Any, NoReturn, Protocol, runtime_checkable
+from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
@@ -123,8 +123,7 @@ def _aggregate_publication_results(
     for repo_ctx, result in publication_results:
         safe_result = dict(result)
         message = safe_result.get("message")
-        if isinstance(message, str):
-            safe_result["message"] = redact_git_diagnostic(message)
+        safe_result["message"] = redact_git_diagnostic(cast("str", message))
         safe_results[repo_ctx.slug] = safe_result
     return {
         "success": success,

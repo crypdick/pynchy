@@ -110,3 +110,24 @@ async def test_proxy_start_rejects_runner_without_a_bound_address(
 
     with pytest.raises(RuntimeError, match="did not bind any addresses"):
         await McpProxy().start({})
+
+
+async def test_proxy_fails_closed_when_http_session_was_not_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_gate("test-ws", 1000.0, WorkspaceSecurity())
+    startup = AsyncMock()
+    monkeypatch.setattr(proxy_module, "_start_http_session", startup)
+    app = create_proxy_app({"browser": "http://backend.test/mcp"})
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/mcp/test-ws/1000.0/browser",
+            json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+        )
+        assert response.status == 500
+    finally:
+        await client.close()
+
+    startup.assert_awaited_once()

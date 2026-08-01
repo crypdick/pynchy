@@ -8,6 +8,7 @@ import selectors
 import signal
 import subprocess  # noqa: S404 - fixed no-shell Git commands.
 import time
+import typing
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves Git helper signatures at runtime.
 
@@ -51,14 +52,13 @@ def run_git_bounded_stdout(  # noqa: PLR0912, PLR0915 - streaming two pipes need
         start_new_session=True,
         env=_git_subprocess_env(env, inherit_env=True),
     )
-    if process.stdout is None or process.stderr is None:
-        _terminate_unread_process_group(process)
-        raise RuntimeError("Git process did not expose requested output pipes")
+    stdout_pipe = typing.cast("typing.BinaryIO", process.stdout)
+    stderr_pipe = typing.cast("typing.BinaryIO", process.stderr)
     stdout = bytearray()
     stderr = bytearray()
     selector = selectors.DefaultSelector()
-    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+    selector.register(stdout_pipe, selectors.EVENT_READ, "stdout")
+    selector.register(stderr_pipe, selectors.EVENT_READ, "stderr")
     deadline = time.monotonic() + timeout
     exceeded_limit = False
     timed_out = False
@@ -95,8 +95,8 @@ def run_git_bounded_stdout(  # noqa: PLR0912, PLR0915 - streaming two pipes need
                 _terminate_unread_process_group(process)
     finally:
         selector.close()
-        process.stdout.close()
-        process.stderr.close()
+        stdout_pipe.close()
+        stderr_pipe.close()
     if timed_out:
         return BoundedGitOutput(
             returncode=124,

@@ -242,9 +242,7 @@ async def _transcribe_audio_attachments(
     | None,
 ) -> str:
     attachments = list(message.attachments)
-    metadata_attachments = metadata.get("attachments", [])
-    if not isinstance(metadata_attachments, list):
-        return content
+    metadata_attachments = cast("list[dict[str, Any]]", metadata.get("attachments", []))
 
     inbound_attachments: list[InboundAudioAttachment] = []
     for attachment in attachments:
@@ -284,8 +282,6 @@ async def _transcribe_audio_attachments(
         if patch.index >= len(metadata_attachments):
             continue
         attachment_metadata = metadata_attachments[patch.index]
-        if not isinstance(attachment_metadata, dict):
-            continue
         if patch.cached_path is not None:
             attachment_metadata["cached_path"] = patch.cached_path
         attachment_metadata["transcription"] = patch.transcription
@@ -341,9 +337,7 @@ class DiscordEvents:
             await self.handle_reaction(payload)
 
     def _register_application_commands(self) -> None:
-        tree = self._command_tree
-        if tree is None:
-            return
+        tree = cast("app_commands.CommandTree", self._command_tree)
 
         simple_commands = (
             ("pause", "Pause the current agent turn", "pause"),

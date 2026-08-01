@@ -28,10 +28,9 @@ tools = ["marketplace-health"]
 Select a marketplace executor from the workspace's named pipeline. See
 [Prompts and pipelines](../usage/prompts.md).
 
-The action ledger must contain a top-level `pending` object. The projection
-counts entries whose `status` equals `pending` or `awaiting_reply`; a missing
-status counts as `pending` for compatibility with existing ledgers. Other
-statuses remain terminal and do not appear in either count.
+The action ledger must contain a top-level `pending` object. Each entry must
+have a `status` of `pending` or `awaiting_reply` to appear in the matching
+count. Other statuses remain terminal and do not appear in either count.
 
 The optional `reader_tool` names a configured Proton Mail MCP tool. The health
 probe authenticates and performs IMAP mailbox discovery, then discards the

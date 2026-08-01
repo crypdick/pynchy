@@ -504,8 +504,6 @@ def build_stdio_env(
 
 
 def _stdio_bridge_command(instance: McpInstance) -> list[str]:
-    if instance.port is None:
-        raise RuntimeError(f"Stdio MCP has no host port: {instance.instance_id}")
     placeholders = _build_placeholders(instance)
     args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
     return [

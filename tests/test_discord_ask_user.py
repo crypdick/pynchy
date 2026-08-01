@@ -399,6 +399,50 @@ async def test_file_upload_modal_submit_delivers_attachment_metadata():
 
 
 @pytest.mark.asyncio
+async def test_file_upload_flag_uses_required_single_file_defaults():
+    ch = _make_channel()
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_ask_user(
+        "discord:direct:42",
+        REQUEST_ID,
+        [{"question": "Attach evidence", "fileUpload": True}],
+    )
+
+    view = fake.sends[0][1]["view"]
+    button = next(item for item in view.children if item.label == "Attach files")
+    interaction = _interaction()
+    await button.callback(interaction)
+
+    modal = interaction.response.send_modal.call_args.args[0]
+    assert modal.file_input.required is True
+    assert modal.file_input.max_values == 1
+
+
+@pytest.mark.asyncio
+async def test_file_upload_button_rejects_an_unauthorized_interaction():
+    ch = _make_channel()
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_ask_user("discord:direct:42", REQUEST_ID, _file_upload_question())
+    view = fake.sends[0][1]["view"]
+    view.is_interaction_allowed = MagicMock(return_value=False)
+    button = next(item for item in view.children if item.label == "Attach files")
+    interaction = _interaction()
+
+    await button.callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "You are not allowed to answer this prompt.", ephemeral=True
+    )
+    interaction.response.send_modal.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_multi_question_modal_supports_file_uploads():
     callback = MagicMock()
     ch = _make_channel(on_ask_user_answer=callback)

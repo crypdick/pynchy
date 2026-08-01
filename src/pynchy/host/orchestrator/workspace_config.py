@@ -238,11 +238,9 @@ def load_workspace_config(
     policy_folder = parent_folder or group_folder
     spec = specs.get(policy_folder)
     if spec is None:
-        semantic_lookup = getattr(effective_settings, "workspace_config", None)
-        if semantic_lookup is not None:
-            semantic = cast("WorkspaceConfig | None", semantic_lookup(policy_folder))
-            if semantic is not None:
-                return semantic
+        semantic = effective_settings.workspace_config(policy_folder)
+        if semantic is not None:
+            return semantic
     if spec is None:
         return None
     config = _workspace_spec_config(spec)

@@ -428,23 +428,6 @@ class NotificationsConfig(_StrictModel):
     admin_workspace: ValidatedWorkspaceName | None = None
 
 
-def __getattr__(name: str) -> object:
-    if name == "CapabilityTomlConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415 - lazy re-export keeps imports acyclic.
-            CapabilityTomlConfig,
-        )
-
-        return CapabilityTomlConfig
-    if name == "ProfileConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415 - lazy re-export keeps imports acyclic.
-            ProfileConfig,
-        )
-
-        return ProfileConfig
-    message = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(message)
-
-
 class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 

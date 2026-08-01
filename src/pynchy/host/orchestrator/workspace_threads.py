@@ -8,7 +8,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, NoReturn
+from typing import Any, Literal, NoReturn, cast
 
 from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
@@ -175,9 +175,7 @@ async def reconcile_workspace_threads(
                     WorkspaceThreadAction("reuse", folder, declared_thread.name, ensured.jid)
                 )
 
-            child_jid = ensured.jid
-            if child_jid is None:
-                raise RuntimeError("Ensured workspace thread returned no chat JID")
+            child_jid = cast("str", ensured.jid)
             existing = workspaces.get(child_jid)
             profile = _declared_child_profile(
                 workspaces[parent_jid],

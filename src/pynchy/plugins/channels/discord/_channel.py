@@ -233,8 +233,6 @@ class DiscordChannel:
         return await self._find_stored_direct_jid(user_key)
 
     def _known_users(self) -> Iterable[object]:
-        if self.client is None:
-            return ()
         client = cast("Any", self.client)
         cached_users = tuple(getattr(client, "users", ()) or ())
         members: list[object] = []
@@ -249,9 +247,6 @@ class DiscordChannel:
     def _find_configured_user(self, user_key: str) -> object | None:
         if self.client is None:
             return None
-        client = cast("Any", self.client)
-        if user_key.isdecimal():
-            return cast("object | None", client.get_user(int(user_key)))
         return next(
             (
                 user
@@ -660,8 +655,7 @@ class DiscordChannel:
 
     def processing_ack_emoji(self) -> str | None:
         """Reaction to use when a message enters processing, or None to disable."""
-        emoji = self._config.processing_ack_emoji
-        return emoji if isinstance(emoji, str) or emoji is None else str(emoji)
+        return self._config.processing_ack_emoji
 
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Keep Discord's transient typing signal alive while work is active."""

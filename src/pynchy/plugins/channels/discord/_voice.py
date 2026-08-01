@@ -105,8 +105,6 @@ def _pcm_rms(frame: bytes) -> int:
     if not frame:
         return 0
     samples = memoryview(frame).cast("h")
-    if not samples:
-        return 0
     return int((sum(sample * sample for sample in samples) / len(samples)) ** 0.5)
 
 

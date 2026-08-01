@@ -551,6 +551,43 @@ allow_read_write = true
         assert result.allowed is True
         assert result.effective_readonly is False
 
+    def test_unresolvable_allowed_root_is_skipped(self, tmp_path: Path):
+        target = tmp_path / "target"
+        target.mkdir()
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            f"""
+non_admin_read_only = true
+blocked_patterns = []
+
+[[allowed_roots]]
+path = "{tmp_path}"
+allow_read_write = true
+""".strip(),
+        )
+        original_resolve = mount_security.Path.resolve
+        root_calls = 0
+
+        def resolve(path, *args, **kwargs):
+            nonlocal root_calls
+            if path == tmp_path:
+                root_calls += 1
+            if root_calls == 2:
+                raise OSError("root disappeared")
+            return original_resolve(path, *args, **kwargs)
+
+        with patch.object(mount_security.Path, "resolve", resolve):
+            result = mount_security.validate_mount(
+                AdditionalMount(host_path=str(target), container_path="target"),
+                is_admin=True,
+                allowlist_path=allowlist,
+                default_blocked_patterns=(),
+            )
+
+        assert result.allowed is False
+        assert "not under any allowed root" in result.reason
+
 
 class TestBatchValidation:
     def test_filters_rejected_mounts(self, tmp_path: Path):

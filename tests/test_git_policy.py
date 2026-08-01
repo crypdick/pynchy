@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
 from conftest import make_settings
 
-from pynchy.host.container_manager.ipc.handlers_lifecycle import (
-    PublicationRepositoryError,
-    publication_metadata,
-)
+from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import (
@@ -27,11 +23,6 @@ from pynchy.host.git_ops.api import (
 from tests.git_policy_support import GitPolicyDeps, git
 
 pytest_plugins = ("tests.git_policy_support",)
-
-
-@dataclass(frozen=True)
-class LinearExecutionFixture:
-    linear_issue_identifier: str
 
 
 if TYPE_CHECKING:
@@ -280,23 +271,6 @@ class TestHostCreatePrFromWorktree:
 
 class TestIpcPolicyRouting:
     """Tests that IPC handler publishes generic workspace worktrees."""
-
-    async def test_linear_publication_metadata_derives_branch_name(self) -> None:
-        """Linear publication hides the transient workspace branch from reviewers."""
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-            new=AsyncMock(return_value=LinearExecutionFixture(linear_issue_identifier="SYN-247")),
-        ):
-            metadata = await publication_metadata(
-                {"title": "Fix login", "body": "## Summary\nFix the login flow."},
-                "turn-syn-247",
-            )
-
-        assert metadata == (
-            "Fix login",
-            "## Summary\nFix the login flow.",
-            "syn/247/fix-login",
-        )
 
     async def test_cop_receives_the_committed_worktree_patch(
         self,

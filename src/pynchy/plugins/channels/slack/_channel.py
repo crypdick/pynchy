@@ -159,9 +159,6 @@ class SlackChannel:
         """
         self.lifecycle.on_handler_done(task)
 
-    async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
-        await self.lifecycle.reconnect_with_backoff(delay)
-
     # ------------------------------------------------------------------
     # Allowlist — delegated to self.allowlist
     # ------------------------------------------------------------------
@@ -313,9 +310,6 @@ class SlackChannel:
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         return await self.allowlist.resolve_chat_jid(chat_name)
 
-    def _is_allowed_channel(self, channel_id: str) -> bool:
-        return self.is_allowed_channel(channel_id)
-
     # ------------------------------------------------------------------
     # Inbound events — delegated to self.events
     # ------------------------------------------------------------------
@@ -383,7 +377,7 @@ class SlackChannel:
     def owns_jid(self, jid: str) -> bool:
         if not jid.startswith(JID_PREFIX):
             return False
-        return self._is_allowed_channel(channel_id_from_jid(jid))
+        return self.is_allowed_channel(channel_id_from_jid(jid))
 
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
