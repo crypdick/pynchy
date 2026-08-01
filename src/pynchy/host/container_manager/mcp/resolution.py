@@ -21,14 +21,11 @@ from pathlib import (
 )
 from typing import Any, Protocol, cast, runtime_checkable
 
-from pynchy.logger import logger
 from pynchy.plugins.api import McpServerConfig
 from pynchy.runtime_names import runtime_container_name
 from pynchy.workspace.api import (
     ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
-
-_SERVER_NAME_MUST_BE_NON_EMPTY = "server_name must be a non-empty string"
 
 
 @runtime_checkable
@@ -62,15 +59,6 @@ class _ToolTrustConfig(Protocol):
 class McpSettings(Protocol):
     @property
     def tools(self) -> Mapping[str, object]: ...
-
-    @property
-    def mcp_server_instances(self) -> Mapping[str, Mapping[str, Mapping[str, object]]]: ...
-
-    @property
-    def mcp_groups(self) -> Mapping[str, Sequence[str]]: ...
-
-    @property
-    def mcp_presets(self) -> Mapping[str, Mapping[str, str]]: ...
 
     @property
     def workspaces(self) -> Mapping[str, object]: ...
@@ -216,10 +204,7 @@ def merged_mcp_servers(
 ) -> dict[str, McpServerConfig]:
     """Tool-declared MCP runtime configs + plugin-provided servers.
 
-    Instance expansion: for each template in internal ``mcp_server_instances``,
-    the bare template is consumed (dropped from result) and expanded into
-    one entry per instance with auto-assigned port, chrome-profile volume
-    mount, and PORT env var.
+    Tool declarations override matching plugin-provided server definitions.
     """
     result = dict(plugin_mcp_servers)
 
@@ -241,34 +226,6 @@ def merged_mcp_servers(
             update=updates,
         )
 
-    # Expand template x instance pairs
-    for template, instances in getattr(settings_view, "mcp_server_instances", {}).items():
-        base = result.pop(template, None)
-        if base is None:
-            logger.warning(
-                "No base spec for MCP template",
-                template=template,
-            )
-            continue
-
-        for i, (inst_name, overrides) in enumerate(sorted(instances.items())):
-            qualified = f"{template}.{inst_name}"
-            port = (base.port or 3000) + i
-            chrome_profile = overrides.get("chrome_profile")
-
-            # Build merged config updates
-            instance_updates: dict[str, Any] = {"port": port}
-
-            if chrome_profile:
-                vol = f"data/chrome-profiles/{chrome_profile}:/home/chrome"
-                instance_updates["volumes"] = [*base.volumes, vol]
-
-            merged_env = dict(base.env)
-            merged_env["PORT"] = str(port)
-            instance_updates["env"] = merged_env
-
-            result[qualified] = base.model_copy(update=instance_updates)
-
     return result
 
 
@@ -283,61 +240,7 @@ def resolve_workspace_servers(
     if not ws_config:
         return []
 
-    configured_servers = [name for name in ws_config.tools if name in all_servers]
-
-    servers: set[str] = set()
-    for entry in configured_servers:
-        # TODO: Remove the unreachable `all` and `mcp_groups` branches after
-        # confirming no external Settings substitutes bypass strict schema validation.
-        if entry == "all":
-            servers.update(all_servers.keys())
-        elif entry in getattr(settings_view, "mcp_groups", {}):
-            servers.update(settings_view.mcp_groups[entry])
-        elif entry in all_servers:
-            servers.add(entry)
-        else:
-            logger.warning(
-                "Unknown MCP server or group in workspace config",
-                workspace=group_folder,
-                entry=entry,
-            )
-    return sorted(servers)
-
-
-def resolve_kwargs(settings: object, group_folder: str, server_name: str) -> dict[str, str]:
-    """Resolve per-workspace kwargs for an MCP server.
-
-    Expands presets and merges with explicit values.
-    """
-    settings_view = _settings(settings)
-    if group_folder not in settings_view.workspaces:
-        return {}
-    if not server_name:
-        raise ValueError(_SERVER_NAME_MUST_BE_NON_EMPTY)
-
-    raw_kwargs: dict[str, Any] = {}
-
-    # Extract and expand presets
-    preset_names: list[str] = raw_kwargs.pop("presets", [])
-    merged: dict[str, str] = {}
-
-    for preset_name in preset_names:
-        preset = getattr(settings_view, "mcp_presets", {}).get(preset_name, {})
-        for key, value in preset.items():
-            if key in merged:
-                # Merge values with semicolons (for domain lists, etc.)
-                merged[key] = f"{merged[key]};{value}"
-            else:
-                merged[key] = value
-
-    # Explicit kwargs override/append to presets
-    for key, value in raw_kwargs.items():
-        if key in merged:
-            merged[key] = f"{merged[key]};{value!s}"
-        else:
-            merged[key] = str(value)
-
-    return merged
+    return sorted(name for name in ws_config.tools if name in all_servers)
 
 
 def get_instance_id(server_name: str, kwargs: dict[str, str]) -> str:
@@ -380,16 +283,8 @@ def resolve_all_instances(
         instance_ids: list[str] = []
 
         for server_name in servers:
-            server_config = all_servers.get(server_name)
-            if server_config is None:
-                logger.warning(
-                    "MCP server not found in config",
-                    server=server_name,
-                    workspace=folder,
-                )
-                continue
-
-            kwargs = resolve_kwargs(settings, folder, server_name)
+            server_config = all_servers[server_name]
+            kwargs: dict[str, str] = {}
             if server_config.inject_workspace:
                 kwargs.setdefault("workspace", folder)
             iid = get_instance_id(server_name, kwargs)

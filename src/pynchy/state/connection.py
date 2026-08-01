@@ -1,7 +1,7 @@
 """Database connection and write utilities.
 
 Single module-level connection, initialized by init_database().
-Schema definition and migrations live in :mod:`schema`.
+Schema definition lives in :mod:`schema`.
 """
 
 from __future__ import annotations

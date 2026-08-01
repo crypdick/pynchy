@@ -406,34 +406,26 @@ async def _remove_orphaned_workspaces(
     specs: dict[str, WorkspaceSpec],
     workspaces: dict[str, WorkspaceProfile],
     unregister_fn: Callable[[str], Awaitable[None]] | None,
-    retained_legacy_folders: set[str],
 ) -> None:
     """Remove workspace registrations in the DB but not in config.
 
     Admin workspaces are created dynamically at first boot without a config entry,
-    so they remain exempt unless an explicit migration has cleared its retirement
-    gates. Child threads of an explicitly retired admin root retire with it.
+    so they remain exempt.
     """
     if unregister_fn is None:
         return
     config_folders = {*specs, *get_settings().workspace_names()}
-    retired_legacy_folders = set(get_settings().workspace_migrations) - retained_legacy_folders
     task_workspace_folders = {
         task.group_folder for task in await get_all_tasks() if task.status in {"active", "paused"}
     }
     for jid, profile in list(workspaces.items()):
-        if profile.folder in retained_legacy_folders:
-            continue
         if profile.folder in task_workspace_folders:
             logger.info(
                 "Retained task-owned workspace registration", folder=profile.folder, jid=jid
             )
             continue
         parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
-        explicitly_retired = (
-            profile.folder in retired_legacy_folders or parent_folder in retired_legacy_folders
-        )
-        if profile.folder in config_folders or (profile.is_admin and not explicitly_retired):
+        if profile.folder in config_folders or profile.is_admin:
             continue
         if (
             conversation_id_from_folder(profile.folder) is not None
@@ -450,34 +442,6 @@ async def _remove_orphaned_workspaces(
             continue
         await unregister_fn(jid)
         logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
-
-
-async def _retained_legacy_workspace_folders() -> set[str]:
-    """Return source roots that cannot safely retire yet.
-
-    Discord cannot move a root channel's inbound messages into a child thread.
-    The migration flags therefore serve as an explicit operator
-    confirmation, while this check independently refuses retirement while a
-    non-terminal scheduled task still targets the source workspace.
-    """
-    migrations = get_settings().workspace_migrations
-    task_workspace_folders = {
-        task.group_folder for task in await get_all_tasks() if task.status in {"active", "paused"}
-    }
-    retained: set[str] = set()
-    for legacy_folder, migration in migrations.items():
-        if not migration.retire_legacy_workspace:
-            retained.add(legacy_folder)
-            continue
-        if legacy_folder in task_workspace_folders:
-            retained.add(legacy_folder)
-            logger.warning(
-                "Legacy workspace retirement blocked by non-terminal scheduled task",
-                legacy_workspace=legacy_folder,
-                target_workspace=migration.target_workspace,
-                target_thread=migration.target_thread,
-            )
-    return retained
 
 
 async def reconcile_workspaces(
@@ -541,7 +505,6 @@ async def reconcile_workspaces(
         specs,
         workspaces,
         unregister_fn,
-        await _retained_legacy_workspace_folders(),
     )
 
 
