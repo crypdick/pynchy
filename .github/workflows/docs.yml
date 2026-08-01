@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0  # needed for git-revision-date-localized plugin
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       - run: uv run --with mkdocs-material --with mkdocs-include-markdown-plugin --with mkdocs-git-revision-date-localized-plugin --with mkdocs-minify-plugin --with mkdocs-awesome-pages-plugin mkdocs build --strict
 
