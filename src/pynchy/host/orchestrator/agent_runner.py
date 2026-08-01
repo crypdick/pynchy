@@ -69,6 +69,7 @@ pre_container_setup = _preflight.pre_container_setup
 session_tracking_output_handler = _preflight.session_tracking_output_handler
 build_admin_system_notices = _preflight.build_admin_system_notices
 session_id_from_output = _preflight.session_id_from_output
+append_post_work_prompt = _preflight.append_post_work_prompt
 
 
 @runtime_checkable
@@ -475,6 +476,7 @@ async def run_agent(  # noqa: PLR0913 - public orchestrator entry point preserve
         )
     )
     ctx.turn_id = resolved_turn_id
+    messages = append_post_work_prompt(messages, ctx.post_work_prompt)
     if resume_session_id is not None:
         ctx.session_id = resume_session_id
     recovered_host_session = ctx.session_id is not None

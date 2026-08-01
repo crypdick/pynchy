@@ -179,7 +179,16 @@ class TestContainerInput:
     def test_scheduled_prompt_states_contract_without_choreography(self):
         ci = ContainerInput.from_dict(
             {
-                "messages": [{"sender_name": "Scheduler", "content": "Review the repo."}],
+                "messages": [
+                    {
+                        "sender_name": "Scheduler",
+                        "content": (
+                            "Review the repo.\n\n"
+                            "[POST-WORK REFLECTION]\n"
+                            "Review for missing reports."
+                        ),
+                    }
+                ],
                 "group_folder": "review",
                 "chat_jid": "scheduled:review",
                 "is_admin": False,
@@ -192,13 +201,9 @@ class TestContainerInput:
 
         assert "objective" in prompt
         assert "authority" in prompt
-        assert "relevant evidence" in prompt
-        assert "response ends the run" in prompt
-        assert "If Linear tools are available" in prompt
-        assert "snag, bug, or tool failure that you cannot fix yourself" in prompt
-        assert "check whether it has already been reported in Linear" in prompt
-        assert "create an Agent Proposed work item" in prompt
-        assert "Do not report problems that you fix yourself" in prompt
+        assert "[POST-WORK REFLECTION]" in prompt
+        assert prompt.index("Review the repo.") < prompt.index("[POST-WORK REFLECTION]")
+        assert "Review for missing reports." in prompt
         assert "rather than giving up at the problem" in prompt
         assert "finished_work" not in prompt
         assert "host applies publication" not in prompt
@@ -206,7 +211,16 @@ class TestContainerInput:
     def test_shared_scheduled_prompt_contract_applies_without_container_ipc(self):
         ci = ContainerInput.from_dict(
             {
-                "messages": [{"sender_name": "Scheduler", "content": "Review the repo."}],
+                "messages": [
+                    {
+                        "sender_name": "Scheduler",
+                        "content": (
+                            "Review the repo.\n\n"
+                            "[POST-WORK REFLECTION]\n"
+                            "Review for missing reports."
+                        ),
+                    }
+                ],
                 "group_folder": "review",
                 "chat_jid": "scheduled:review",
                 "is_admin": False,
@@ -216,10 +230,22 @@ class TestContainerInput:
 
         prompt = build_agent_prompt(ci)
 
-        assert "If Linear tools are available" in prompt
-        assert "check whether it has already been reported in Linear" in prompt
-        assert "create an Agent Proposed work item" in prompt
-        assert "Do not report problems that you fix yourself" in prompt
+        assert "[POST-WORK REFLECTION]" in prompt
+        assert "Review for missing reports." in prompt
+
+    def test_post_work_reflection_is_scoped_to_scheduled_tasks(self):
+        ci = ContainerInput.from_dict(
+            {
+                "messages": [{"sender_name": "User", "content": "Review the repo."}],
+                "group_folder": "review",
+                "chat_jid": "chat:review",
+                "is_admin": False,
+            }
+        )
+
+        prompt = build_agent_prompt(ci)
+
+        assert "[POST-WORK REFLECTION]" not in prompt
 
     def test_defaults_agent_core(self):
         data = {

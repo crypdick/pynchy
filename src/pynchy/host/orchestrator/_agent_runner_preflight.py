@@ -55,6 +55,7 @@ class PreContainerResult:
     wrapped_on_output: OnOutput
     config_timeout: float
     snapshot_ms: float
+    post_work_prompt: str | None = None
     turn_id: str | None = None
     input_source: str = "user"
     is_scheduled_task: bool = False
@@ -194,6 +195,11 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         repo_access_override=request.repo_access_override,
         input_source=request.input_source,
     )
+    post_work_prompt = (
+        workspace_config.read_prompts(["executors/post-work-reflection"])
+        if request.is_scheduled_task
+        else None
+    )
     await request.deps.broadcast_agent_input(
         request.chat_jid, request.messages, source=request.input_source
     )
@@ -236,6 +242,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         repo_access=repo_access,
         repo_accesses=repo_accesses,
         system_prompt_append=system_prompt_append,
+        post_work_prompt=post_work_prompt,
         session_id=session_id,
         system_notices=system_notices,
         agent_core_module=agent_core_module,
@@ -277,6 +284,19 @@ def resolved_pre_container_context(
         executor_turn_context,
         session_id,
     )
+
+
+def append_post_work_prompt(
+    messages: list[dict[str, Any]], prompt: str | None
+) -> list[dict[str, Any]]:
+    """Append one resolved post-work prompt to the current user input."""
+    if not prompt or not messages:
+        return messages
+    last = messages[-1]
+    content = last.get("content")
+    if not isinstance(content, str):
+        return messages
+    return [*messages[:-1], {**last, "content": f"{content}\n\n{prompt}"}]
 
 
 async def write_container_snapshots(
