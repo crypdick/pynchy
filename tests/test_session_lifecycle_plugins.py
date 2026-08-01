@@ -234,6 +234,33 @@ async def test_scheduled_reset_settles_plugins_before_destructive_cleanup() -> N
     clear_session.assert_not_awaited()
 
 
+async def test_clear_confirmation_persists_boundary_and_notifies_completed_deliveries() -> None:
+    deps = MagicMock(spec=session_handler.SessionDeps)
+    completion = object()
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.session_handler.set_chat_cleared_at",
+            new_callable=AsyncMock,
+            return_value=[completion],
+        ) as set_cleared,
+        patch(
+            "pynchy.host.orchestrator.session_handler.notify_conversation_delivery_completed",
+            new_callable=AsyncMock,
+        ) as notify,
+        patch(
+            "pynchy.host.orchestrator.session_handler._send_command_confirmation",
+            new_callable=AsyncMock,
+        ) as confirm,
+    ):
+        await session_handler.send_clear_confirmation(deps, "slack:C123")
+
+    set_cleared.assert_awaited_once()
+    deps.emit.assert_called_once()
+    confirm.assert_awaited_once_with(deps, "slack:C123", None, "🗑️")
+    notify.assert_awaited_once_with(completion)
+
+
 async def test_manual_reset_stops_worker_before_plugin_settlement() -> None:
     group = WorkspaceProfile(
         jid="slack:C123",

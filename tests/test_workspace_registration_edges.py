@@ -158,6 +158,93 @@ async def test_ensure_workspace_registered_handles_unparseable_and_unresolvable_
     )
 
 
+@pytest.mark.asyncio
+async def test_ensure_workspace_registered_keeps_existing_target() -> None:
+    settings = make_settings()
+    resolved = _resolved()
+    profile = _profile("discord:channel:existing")
+    workspaces = {profile.jid: profile}
+    folder_to_jid = {"project": profile.jid}
+
+    with patch.object(
+        registration,
+        "parse_chat_ref",
+        return_value=_ChatRef("connection.discord.main", "project"),
+    ):
+        result = await ensure_workspace_registered(
+            "project",
+            _Config(chat="connection.discord.main.chat.project"),
+            resolved,
+            "Project",
+            workspaces,
+            folder_to_jid,
+            [_Channel("connection.discord.main", resolved=profile.jid)],
+            settings,
+            AsyncMock(),
+        )
+
+    assert result == profile.jid
+
+
+@pytest.mark.asyncio
+async def test_ensure_workspace_registered_rejects_target_owned_by_another_folder() -> None:
+    settings = make_settings()
+    resolved = _resolved()
+    old = _profile("discord:channel:old", folder="project")
+    other = _profile("discord:channel:new", folder="other")
+    workspaces = {old.jid: old, other.jid: other}
+    folder_to_jid = {"project": old.jid}
+
+    with patch.object(
+        registration,
+        "parse_chat_ref",
+        return_value=_ChatRef("connection.discord.main", "project"),
+    ):
+        result = await ensure_workspace_registered(
+            "project",
+            _Config(chat="connection.discord.main.chat.project"),
+            resolved,
+            "Project",
+            workspaces,
+            folder_to_jid,
+            [_Channel("connection.discord.main", resolved=other.jid)],
+            settings,
+            AsyncMock(),
+        )
+
+    assert result == old.jid
+    assert folder_to_jid["project"] == old.jid
+
+
+@pytest.mark.asyncio
+async def test_ensure_workspace_registered_requires_rebind_for_target_change() -> None:
+    settings = make_settings()
+    resolved = _resolved()
+    old = _profile("discord:channel:old")
+    workspaces = {old.jid: old}
+    folder_to_jid = {"project": old.jid}
+
+    with patch.object(
+        registration,
+        "parse_chat_ref",
+        return_value=_ChatRef("connection.discord.main", "project"),
+    ):
+        result = await ensure_workspace_registered(
+            "project",
+            _Config(chat="connection.discord.main.chat.project"),
+            resolved,
+            "Project",
+            workspaces,
+            folder_to_jid,
+            [_Channel("connection.discord.main", resolved="discord:channel:new")],
+            settings,
+            AsyncMock(),
+        )
+
+    assert result == old.jid
+    assert folder_to_jid["project"] == old.jid
+
+
 def test_available_workspace_groups_filters_sync_and_unowned_chats() -> None:
     channel = _Channel("connection.discord.main")
     visible = available_workspace_groups(

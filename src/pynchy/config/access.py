@@ -80,9 +80,6 @@ class _AllowedUsersResolver:
 
     def resolve(self, entries: list[str]) -> None:
         for entry in entries:
-            if entry == "*":
-                # Shouldn't reach here (caller checks), but handle defensively.
-                return
             if entry == "owner":
                 owner_id = _resolve_owner(self.owner_config, self.channel_plugin_name)
                 if owner_id:

@@ -657,6 +657,9 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
             self.workspaces = {}  # No workspace configured
             self.services = {}
 
+        def workspace_config(self, workspace_name):
+            return self.workspaces.get(workspace_name)
+
     settings = FakeSettings()
     settings.data_dir = tmp_path
 
