@@ -9,7 +9,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these annotatio
     Mapping,
 )
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pynchy.linear_plan_types import (
     LinearPlanReviewAdmission,
@@ -18,6 +18,7 @@ from pynchy.linear_plan_types import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
+    LinearAccount,
     configured_linear_accounts,
     linear_account_for_workspace,
 )
@@ -222,9 +223,8 @@ async def reconcile_all_linear_work_items(
     accounts = {account.name: account for account in configured_linear_accounts()}
     for account_boards in boards_by_account.values():
         workspace = next(iter(account_boards))
-        account = linear_account_for_workspace(workspace)
-        if account is not None:
-            accounts.setdefault(account.name, account)
+        account = cast("LinearAccount", linear_account_for_workspace(workspace))
+        accounts.setdefault(account.name, account)
     eligible_accounts = {
         name: account
         for name, account in accounts.items()

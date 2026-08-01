@@ -53,6 +53,12 @@ def test_single_line_longer_than_limit_is_hard_split():
     assert "".join(chunks) == text
 
 
+def test_exact_multiple_of_limit_has_no_trailing_remainder():
+    text = "z" * 4000
+
+    assert chunk_discord_text(text) == ["z" * 2000, "z" * 2000]
+
+
 def test_long_line_prefers_whitespace_break():
     # 400 space-separated words; each chunk should end at a word boundary,
     # never mid-word, when a boundary is available.

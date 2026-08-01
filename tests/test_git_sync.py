@@ -1,11 +1,8 @@
-"""Tests for coordinated git sync system.
-
-Tests host_sync_worktree(), host_notify_worktree_updates(), guard_git.sh,
-and the MCP tool round-trip via mocked IPC.
-"""
+"""Tests for coordinated git sync system."""
 
 from __future__ import annotations
 
+# allow: file-length -- git sync contracts share one public workflow fixture.
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
@@ -226,6 +223,32 @@ class TestHostSyncWorktree:
         assert retried["success"] is True
         assert "already merged" in retried["message"]
         assert push.call_count == 2
+
+    def test_sync_reports_pending_main_push_failure(self, git_env: dict):
+        repo_ctx = git_env["repo_ctx"]
+        with (
+            patch(
+                "pynchy.host.git_ops.worktree_sync._validate_sync_preconditions",
+                return_value={"success": True},
+            ),
+            patch(
+                "pynchy.host.git_ops.worktree_sync.count_unpushed_commits",
+                return_value=1,
+            ),
+            patch(
+                "pynchy.host.git_ops.worktree_sync.push_local_commits",
+                return_value=False,
+            ),
+        ):
+            result = host_sync_worktree("agent-1", repo_ctx)
+
+        assert result == {
+            "success": False,
+            "message": (
+                "Push to origin still failed. Your commits remain on the host main branch; "
+                "inspect the reported Git state and call sync_worktree_to_main again."
+            ),
+        }
 
     def test_sync_conflict_leaves_markers(self, git_env: dict):
         """On conflict, leaves conflict markers in worktree for agent to fix."""

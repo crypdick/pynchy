@@ -195,6 +195,20 @@ async def test_app_ensures_optional_mcp_start_when_manager_is_configured(
     manager.ensure_workspace_running.assert_awaited_once_with("test-group")
 
 
+async def test_agent_requires_composed_container_spawn_runtime(app, monkeypatch) -> None:
+    group = app.workspaces["group@g.us"]
+    monkeypatch.setattr(f"{_CR_ORCH}._container_cli", None)
+
+    assert (
+        await app.run_agent(
+            group,
+            "group@g.us",
+            [{"message_type": "user", "content": "check runtime"}],
+        )
+        == "error"
+    )
+
+
 async def test_host_mcp_preparation_skips_when_manager_is_unconfigured(
     app: PynchyApp, monkeypatch
 ) -> None:
@@ -245,3 +259,28 @@ async def test_host_mcp_preparation_notifies_failures_and_attaches_routes(
         instance_ids=("docs-instance",),
     )
     broadcast.assert_awaited_once()
+
+
+async def test_host_mcp_preparation_attaches_routes_without_failures(
+    app: PynchyApp, monkeypatch
+) -> None:
+    manager = MagicMock()
+    manager.ensure_workspace_running = AsyncMock(
+        return_value=McpWorkspaceStartup(("docs-instance",), ())
+    )
+    manager.get_direct_server_configs.return_value = [
+        {"name": "docs", "url": "http://mcp-docs:8000", "transport": "sse"}
+    ]
+    monkeypatch.setattr("pynchy.host.orchestrator.app.get_mcp_manager", lambda: manager)
+    input_data = ContainerInput([], "test-group", "group@g.us", False)
+    broadcast = AsyncMock()
+
+    await app.host_runtime_operations.prepare_mcp(
+        input_data,
+        "test-group",
+        "group@g.us",
+        broadcast,
+    )
+
+    assert input_data.mcp_direct_servers == manager.get_direct_server_configs.return_value
+    broadcast.assert_not_awaited()

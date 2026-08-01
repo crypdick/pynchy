@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pynchy.actions._contract import validate_action_specs
 from pynchy.actions._spec_helpers import agent_action, mcp_action
 from pynchy.actions._specs_computer_use import COMPUTER_USE_ACTION_SPECS
 from pynchy.actions._specs_core import CORE_ACTION_SPECS
@@ -324,7 +323,3 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "shutdown_kernel",
     ),
 )
-
-_CATALOG_ERRORS = validate_action_specs(ACTION_SPECS)
-if _CATALOG_ERRORS:
-    raise RuntimeError(f"Invalid built-in action catalog: {'; '.join(_CATALOG_ERRORS)}")

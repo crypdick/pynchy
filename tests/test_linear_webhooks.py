@@ -348,7 +348,16 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     assert event.lifecycle is not None
 
-    workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, _workspace_board()))
+    workspace_issue = AsyncMock(
+        return_value=(
+            {
+                "id": "issue-1",
+                "updatedAt": "2026-07-27T00:00:04+00:00",
+                "state": {"id": "state-done", "type": "completed"},
+            },
+            _workspace_board(),
+        )
+    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhooks.linear_client",
         lambda **_kwargs: _linear_client_context(),

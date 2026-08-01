@@ -7,7 +7,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves configured work
     Callable,
 )
 from dataclasses import dataclass
-from typing import Any, overload
+from typing import Any, cast, overload
 
 import aiohttp
 
@@ -140,8 +140,7 @@ class LinearClientContext:
         )
 
     async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
-        if self._session is not None:
-            await self._session.close()
+        await cast("aiohttp.ClientSession", self._session).close()
 
 
 def linear_client(

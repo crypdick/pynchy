@@ -186,12 +186,11 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def _reject_unknown_sections(cls, data: dict[str, Any]) -> dict[str, Any]:
-        if isinstance(data, dict):
-            allowed = set(cls.model_fields)
-            unknown = sorted(set(data) - allowed)
-            if unknown:
-                message = f"Unknown config sections are not supported: {unknown}"
-                raise ValueError(message)
+        allowed = set(cls.model_fields)
+        unknown = sorted(set(data) - allowed)
+        if unknown:
+            message = f"Unknown config sections are not supported: {unknown}"
+            raise ValueError(message)
         return data
 
     @model_validator(mode="after")

@@ -201,9 +201,7 @@ class GroupQueue:
 
     def _cancel_queued_task(self, runtime_id: RuntimeId, task: QueuedTask) -> bool:
         """Remove queued work whose awaiting owner was cancelled."""
-        state = self._registry.get(runtime_id)
-        if state is None:
-            return False
+        state = self._registry.require(runtime_id)
         for pending in state.pending_tasks:
             if pending is not task:
                 continue
@@ -411,7 +409,7 @@ class GroupQueue:
         elif result is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT:
             state.retry_count = 0
             state.pending_messages = True
-        elif result is TurnOutcome.RETRY:
+        else:
             self._schedule_retry(state)
         return result
 

@@ -110,3 +110,21 @@ async def test_terminal_retirement_includes_a_bound_task_folder() -> None:
 
     assert retirement is not None
     assert GroupFolder(bound_folder) in retirement.runtime_folders
+
+
+async def test_terminal_retirement_ignores_a_task_folder_for_another_conversation() -> None:
+    conversation_id = await _conversation_id()
+    unrelated_folder = routed_conversation_folder("secondary", "other-conversation")
+    await create_task(
+        replace(_task("unrelated", conversation_id), bound_group_folder=unrelated_folder)
+    )
+    await apply_conversation_control_state(
+        conversation_id,
+        closed=True,
+        control_state_revision="2026-07-29T20:00:00+00:00",
+    )
+
+    retirement = await get_terminal_conversation_retirement(conversation_id)
+
+    assert retirement is not None
+    assert GroupFolder(unrelated_folder) not in retirement.runtime_folders

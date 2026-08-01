@@ -53,6 +53,20 @@ class _FailedDeps(_Deps):
         return "error"
 
 
+class _EmptyThenValidDeps(_Deps):
+    async def run_agent(
+        self,
+        _group,
+        _chat_jid,
+        _messages,
+        on_output=None,
+        **_kwargs,
+    ) -> str:
+        await on_output(ContainerOutput(status="success", type="result", result=""))
+        await on_output(ContainerOutput(status="success", type="result", result="valid review"))
+        return "success"
+
+
 def _task() -> ScheduledTask:
     return ScheduledTask(
         id="task-1",
@@ -121,6 +135,26 @@ async def test_pipeline_reviewer_requires_a_successful_final_result() -> None:
             )
     finally:
         clear_runtime_workspace_restrictions()
+
+
+async def test_pipeline_reviewer_ignores_empty_result_events() -> None:
+    clear_runtime_workspace_restrictions()
+    try:
+        results = await run_pipeline_reviews(
+            _EmptyThenValidDeps(),
+            PipelineReviewRequest(
+                parent_workspace="alpha",
+                task_id="task-1",
+                task_prompt="Do the work",
+                executor_result="Done",
+                reviewer_ids=("reviewers/security",),
+                repo_access=None,
+            ),
+        )
+    finally:
+        clear_runtime_workspace_restrictions()
+
+    assert results[0].review == "valid review"
 
 
 async def test_configured_pipeline_reviews_broadcast_and_append_successful_reviews() -> None:

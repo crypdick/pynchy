@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -292,6 +292,79 @@ class TestAgentRunnerPreContainerHelpers:
 
         taint.assert_not_awaited()
         assert deps.session_cleared == {"project__thread_conversation-conv_terminal"}
+
+    @pytest.mark.asyncio
+    async def test_open_control_allows_preflight_to_continue(self):
+        deps = _AgentRunnerDeps()
+        binding = MagicMock(conversation_id=ConversationId("conv_open"))
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation",
+                new_callable=AsyncMock,
+                return_value=MagicMock(control_closed=False),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.mark_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=SessionSecurityTaint(),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=SessionSecurityTaint(),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.prompt_ids_for_context",
+                return_value=["executor/default"],
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.read_prompts",
+                return_value="executor prompt",
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
+                new_callable=AsyncMock,
+                return_value=1.0,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.workspace_config.load_resolved_tool_access",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_agent_core",
+                return_value=("agent_runner.cores.claude", "ClaudeAgentCore"),
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.resolve_container_timeout",
+                return_value=30.0,
+            ),
+        ):
+            result = await pre_container_setup(
+                PreContainerSetupRequest(
+                    deps=deps,
+                    group=TEST_GROUP,
+                    chat_jid="discord:channel:open",
+                    messages=[{"content": "continue"}],
+                    on_output=None,
+                    extra_system_notices=None,
+                    input_source="user",
+                    is_scheduled_task=False,
+                    repo_access_override=None,
+                    runtime=deps.agent_execution_runtime,
+                )
+            )
+
+        assert result.is_admin is False
 
     @pytest.mark.asyncio
     async def test_session_tracking_output_handler_records_session(self):

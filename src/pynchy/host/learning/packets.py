@@ -317,8 +317,6 @@ def _reserve_source_id_budget(raw_budgets: dict[str, int], max_chars: int) -> No
         raw_budgets[donor] -= taken
         raw_budgets["source_ids"] += taken
         deficit -= taken
-        if deficit == 0:
-            return
 
 
 def _bounded_messages(

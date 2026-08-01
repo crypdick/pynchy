@@ -371,7 +371,8 @@ def _rebase_and_push_local_commits(  # noqa: PLR0911, PLR0913 - bounded retry st
     inherit_env: bool,
 ) -> bool:
     # Try rebase+push, retry once if origin advanced mid-operation.
-    for attempt in range(2):
+    attempt = 0
+    while True:
         if expected_head is not None and (
             _current_head(cwd=cwd, env=local_env, inherit_env=False) != expected_head
         ):
@@ -403,6 +404,7 @@ def _rebase_and_push_local_commits(  # noqa: PLR0911, PLR0913 - bounded retry st
                         include_diagnostics=include_diagnostics,
                     )
                     return False
+                attempt = 1
                 continue
             _log_push_failure(
                 "push_local: rebase failed after retry",
@@ -439,7 +441,6 @@ def _rebase_and_push_local_commits(  # noqa: PLR0911, PLR0913 - bounded retry st
             return False
         logger.info("push_local: pushed local commits")
         return True
-    return False
 
 
 def _fetch_git_remote(

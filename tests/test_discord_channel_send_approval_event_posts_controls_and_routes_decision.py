@@ -609,6 +609,12 @@ async def test_duplicate_typing_request_does_not_start_another_refresh():
     await ch.set_typing("discord:channel:1", is_typing=False)
 
 
+async def test_stopping_typing_without_an_active_lease_is_safe():
+    ch = _channel()
+
+    await ch.set_typing("discord:channel:1", is_typing=False)
+
+
 def test_streaming_channel_satisfies_protocol_and_is_detected():
     ch = _channel()
     # core detects streaming targets via hasattr on both methods

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -100,7 +100,7 @@ async def test_retirement_cancels_only_the_execution_runtime() -> None:
         patch(
             "pynchy.host.orchestrator.terminal_task_retirement.get_task_by_id",
             AsyncMock(return_value=task),
-        ),
+        ) as get_task,
         patch(
             "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
             cancel_workflow,
@@ -122,6 +122,37 @@ async def test_retirement_cancels_only_the_execution_runtime() -> None:
     }
     cancel_task.assert_awaited_once_with(task.id)
     clear_turn.assert_awaited_once_with("turn-1")
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.terminal_task_retirement.get_task_by_id",
+            AsyncMock(return_value=task),
+        ) as get_task,
+        patch(
+            "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
+            new_callable=AsyncMock,
+        ) as late_cancel_workflow,
+        patch(
+            "pynchy.host.orchestrator.terminal_task_retirement.cancel_task_and_checkpoint",
+            new_callable=AsyncMock,
+        ) as late_cancel_task,
+        patch(
+            "pynchy.host.orchestrator.terminal_task_retirement.clear_in_flight_turn",
+            new_callable=AsyncMock,
+        ) as late_clear_turn,
+    ):
+        await retire_work_item_execution(
+            replace(execution, task_id=None, turn_id=None, temporal_workflow_id=None)
+        )
+        late_cancel_workflow.assert_not_awaited()
+        late_cancel_task.assert_not_awaited()
+        late_clear_turn.assert_not_awaited()
+
+        get_task.return_value = replace(task, schedule_type="interval")
+        await retire_work_item_execution(
+            replace(execution, turn_id=None, temporal_workflow_id=None)
+        )
+        late_cancel_workflow.assert_not_awaited()
 
 
 async def test_stale_provider_terminal_snapshot_retires_only_exact_execution() -> None:

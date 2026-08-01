@@ -130,6 +130,18 @@ def test_reconnect_closes_a_handler_without_a_live_socket_task() -> None:
     asyncio.run(scenario())
 
 
+def test_reconnect_connects_when_no_handler_exists() -> None:
+    async def scenario() -> None:
+        channel = _channel()
+        channel.connect = AsyncMock()
+
+        await channel.reconnect()
+
+        channel.connect.assert_awaited_once()
+
+    asyncio.run(scenario())
+
+
 def test_failed_backoff_reconnect_schedules_a_capped_retry() -> None:
     async def scenario() -> None:
         channel = _channel()

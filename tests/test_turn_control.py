@@ -11,6 +11,7 @@ import pytest
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn, InFlightWorkKind
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
 from pynchy.host.orchestrator.messaging.turn_control import (
+    AgentBatch,
     TurnPreparationCallbacks,
     prepare_agent_batch,
     run_interactive_agent,
@@ -170,6 +171,54 @@ async def test_prepare_agent_batch_returns_paused_when_only_paused_work_remains(
         )
 
     assert result is TurnOutcome.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_prepare_agent_batch_returns_fresh_batch_for_active_checkpoint(
+    tmp_path: Path,
+) -> None:
+    deps = _deps()
+    callbacks = TurnPreparationCallbacks(
+        process_pending=AsyncMock(),
+        get_pending_messages=AsyncMock(return_value=[_message()]),
+    )
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.messaging.turn_control.resume_interrupted_message_if_present",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.turn_control.handle_reset_handoff",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.turn_control.get_oldest_resumable_turn_for_group",
+            new_callable=AsyncMock,
+            return_value=_turn(CheckpointControlState.ACTIVE),
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.turn_control.should_skip_batch",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.turn_control.prepare_message_context",
+            return_value=([{"content": "continue"}], []),
+        ),
+    ):
+        result = await prepare_agent_batch(
+            deps,
+            "discord:channel:project",
+            _group(),
+            tmp_path,
+            callbacks,
+        )
+
+    assert isinstance(result, AgentBatch)
+    assert result.messages == [{"content": "continue"}]
 
 
 @pytest.mark.asyncio

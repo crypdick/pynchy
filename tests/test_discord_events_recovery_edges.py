@@ -110,6 +110,43 @@ async def test_audio_processing_ignores_patches_for_unknown_attachments():
     assert "cached_path" not in msg.metadata["attachments"][0]
 
 
+async def test_audio_processing_records_transcription_without_cached_file():
+    async def process(_request: Any) -> InboundAudioProcessingResult:
+        await asyncio.sleep(0)
+        return InboundAudioProcessingResult(
+            content="processed",
+            metadata_patches=(
+                AudioMetadataPatch(index=0, cached_path=None, transcription={"ok": True}),
+            ),
+        )
+
+    audio = DiscordAttachment(
+        id="a1",
+        filename="voice.ogg",
+        url="https://example.invalid/voice.ogg",
+        proxy_url="https://cdn.example.invalid/voice.ogg",
+        content_type="audio/ogg",
+        size=17,
+        description=None,
+        spoiler=False,
+        read=lambda: b"voice",
+    )
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            attachments=(audio,),
+            mentions=(BOT_ID,),
+        ),
+        process_inbound_audio=process,
+        group_policy="open",
+    )
+
+    assert msg.metadata["attachments"][0]["transcription"] == {"ok": True}
+    assert "cached_path" not in msg.metadata["attachments"][0]
+
+
 @pytest.mark.asyncio
 async def test_application_command_sync_is_one_shot_after_success():
     channel = DiscordChannel(
@@ -342,28 +379,3 @@ async def test_unresolved_reply_does_not_add_empty_reply_metadata():
 
     assert msg.metadata is not None
     assert not any(key.startswith("reply_to_") for key in msg.metadata)
-
-
-def test_registers_gateway_handlers_without_native_command_support():
-    class EventClient:
-        def __init__(self) -> None:
-            self.handlers: dict[str, object] = {}
-
-        def event(self, handler: object) -> object:
-            self.handlers[handler.__name__] = handler
-            return handler
-
-    channel = DiscordChannel(
-        "discord",
-        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV).to_runtime_settings(),
-        "token",
-        lambda _jid, _message: None,
-        lambda _jid, _timestamp, _chat_name: None,
-        audio_cache_dir=Path("data/media/discord"),
-    )
-    client = EventClient()
-    channel.client = client
-
-    channel.events.register()
-
-    assert set(client.handlers) == {"on_message", "on_raw_reaction_add"}

@@ -132,13 +132,14 @@ class PynchySpec:
     @hookspec
     def pynchy_connection_runtime(
         self,
-    ) -> ConnectionRuntime | tuple[ConnectionRuntime, ...] | None:
+    ) -> ConnectionRuntime | tuple[ConnectionRuntime, ...]:
         """Provide named external-provider connection runtimes.
 
         Connection runtimes own authenticated provider identities, durable
         polling or subscription lifecycles, and readiness. They do not become
         operator channels, so ordinary agent output never routes to them.
         """
+        raise NotImplementedError
 
     @hookspec
     def pynchy_speech_synthesizer(self) -> SpeechSynthesizer | None:

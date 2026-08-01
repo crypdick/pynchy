@@ -64,8 +64,7 @@ def build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -
     if diffstat.returncode == 0 and diffstat.stdout.strip():
         # Last line of --stat is the summary (e.g. "3 files changed, ...")
         stat_lines = diffstat.stdout.strip().splitlines()
-        if stat_lines:
-            parts.append(stat_lines[-1].strip())
+        parts.append(stat_lines[-1].strip())
 
     if commit_count == 1:
         # Show full commit message for single commits

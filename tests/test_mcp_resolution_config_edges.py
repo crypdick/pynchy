@@ -67,6 +67,18 @@ def test_tool_declared_runtime_overrides_plugin_server() -> None:
     assert result["browser"].env == {"MODE": "new"}
 
 
+def test_stdio_tool_config_accepts_streamable_http_transport() -> None:
+    config = McpToolConfig(
+        runtime="stdio",
+        command="stdio-backend",
+        port=9100,
+        transport="streamable_http",
+    )
+
+    assert config.runtime == "stdio"
+    assert config.transport == "streamable_http"
+
+
 def test_resolve_all_instances_assigns_unique_ports_across_server_names() -> None:
     settings = _Settings(
         tools={"first": object(), "second": object()},

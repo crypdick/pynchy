@@ -267,7 +267,7 @@ def _recurring_schedule_spec(
         return ScheduleSpec(
             intervals=[ScheduleIntervalSpec(every=timedelta(milliseconds=interval_ms))]
         )
-    raise ValueError(_UNSUPPORTED_RECURRING_SCHEDULE_TYPE.format(schedule_type=schedule_type))
+    raise AssertionError(_UNSUPPORTED_RECURRING_SCHEDULE_TYPE.format(schedule_type=schedule_type))
 
 
 def _schedule_policy() -> SchedulePolicy:

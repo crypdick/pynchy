@@ -322,9 +322,8 @@ class DiscordEvents:
     def register(self) -> None:
         client = self._channel.client
 
-        if hasattr(client, "http") and hasattr(client, "_connection"):
-            self._command_tree = app_commands.CommandTree(cast("discord.Client", client))
-            self._register_application_commands()
+        self._command_tree = app_commands.CommandTree(cast("discord.Client", client))
+        self._register_application_commands()
 
         # discord.py's event decorator is untyped to mypy (discord is
         # ignore_missing_imports), hence the per-handler untyped-decorator ignores.

@@ -69,13 +69,36 @@ async def test_startup_does_not_restore_policy_for_closed_conversation(monkeypat
     routed = WorkspaceProfile(
         jid="discord:channel:routed",
         name="Closed",
-        folder=routed_conversation_folder("support", "closed"),
+        folder=routed_conversation_folder("support", "conv_closed"),
         trigger="@pynchy",
         is_admin=True,
     )
     monkeypatch.setattr(
         "pynchy.host.orchestrator.routed_workspace_policy.get_conversation",
         AsyncMock(return_value=MagicMock(control_closed=True)),
+    )
+    ensure_owner = MagicMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.ensure_runtime_workspace_policy_owner",
+        ensure_owner,
+    )
+
+    await restore_routed_workspace_policy_owners([routed])
+
+    ensure_owner.assert_not_called()
+
+
+async def test_startup_does_not_restore_policy_for_missing_conversation(monkeypatch) -> None:
+    routed = WorkspaceProfile(
+        jid="discord:channel:routed",
+        name="Missing",
+        folder=routed_conversation_folder("support", "conv_missing"),
+        trigger="@pynchy",
+        is_admin=True,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.routed_workspace_policy.get_conversation",
+        AsyncMock(return_value=None),
     )
     ensure_owner = MagicMock()
     monkeypatch.setattr(

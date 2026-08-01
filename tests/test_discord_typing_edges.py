@@ -26,3 +26,11 @@ async def test_set_typing_ignores_unavailable_or_voice_destinations(channel, jid
     await channel.set_typing(jid, is_typing=True)
 
     channel.resolve_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stopping_typing_without_an_active_refresh_is_idempotent() -> None:
+    channel = _channel()
+    channel.client = object()
+
+    await channel.set_typing("discord:channel:1", is_typing=False)

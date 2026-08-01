@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -16,6 +16,7 @@ from pynchy.state import (
     get_all_chats,
     get_task_by_id,
     init_database,
+    init_test_database,
 )
 from pynchy.state.connection import StateRuntimeConfig, atomic_write
 
@@ -44,6 +45,44 @@ async def test_init_database_uses_explicit_runtime_config(tmp_path: Path) -> Non
         assert await get_all_chats() == []
         assert database_path.is_file()
     finally:
+        close_test_database()
+
+
+@pytest.mark.asyncio
+async def test_init_test_database_does_not_wait_past_worker_stop_deadline() -> None:
+    await init_test_database()
+    with patch(
+        "pynchy.state.connection.asyncio.wait",
+        new=AsyncMock(return_value=(set(), set())),
+    ):
+        await init_test_database()
+    close_test_database()
+
+
+@pytest.mark.asyncio
+async def test_init_database_fails_when_foreign_keys_remain_disabled(tmp_path: Path) -> None:
+    cursor = MagicMock()
+    cursor.fetchone = AsyncMock(return_value=(0,))
+    database = MagicMock()
+    database.execute = AsyncMock(side_effect=[None, cursor])
+
+    with (
+        patch("pynchy.state.connection.aiosqlite.connect", AsyncMock(return_value=database)),
+        pytest.raises(RuntimeError, match="foreign-key enforcement could not be enabled"),
+    ):
+        await init_database(StateRuntimeConfig(database_path=tmp_path / "disabled.db"))
+
+
+def test_close_test_database_handles_a_connection_without_a_worker_thread() -> None:
+    close_test_database()
+
+    class _StoppedDatabase:
+        _thread = None
+
+        def stop(self) -> None:
+            return None
+
+    with patch("pynchy.state.connection._state.db", _StoppedDatabase()):
         close_test_database()
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# allow: file-length -- application lifecycle scenarios share one composition fixture.
 import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
@@ -9,13 +10,22 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import pynchy.host.orchestrator.app as app_module
-from pynchy.config.api import McpTool, McpToolConfig
+from pynchy.config.api import (
+    LearningConfig,
+    McpTool,
+    McpToolConfig,
+    ObsidianLearningConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+    WorkspaceThreadConfig,
+)
 from pynchy.conversation.models import Conversation, ConversationSubject
 from pynchy.conversation_primitives import (
     ConversationId,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
+from pynchy.host.orchestrator.api import resolve_workspace_placement
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.learning_packets import LearningPacket
@@ -51,6 +61,39 @@ class _HttpRunner:
 
     async def cleanup(self) -> None:
         self.cleaned = True
+
+
+def test_application_composes_learning_and_missing_workspace_profiles(tmp_path) -> None:
+    settings = app_module.get_settings()
+    original = (settings.learning, settings.profiles, settings.workspaces)
+    settings.learning = LearningConfig(
+        enabled=True,
+        obsidian=ObsidianLearningConfig(vault_root=str(tmp_path / "vault")),
+    )
+    settings.profiles = {"default": ProfileConfig()}
+    settings.workspaces = {
+        "root": WorkspaceConfig(
+            profiles=["default"],
+            threads=[
+                WorkspaceThreadConfig(
+                    name="child",
+                    workspace="child",
+                    profiles=["default"],
+                )
+            ],
+        )
+    }
+    try:
+        app = PynchyApp()
+        assert app.host_runtime_operations.host_learning_vault("child") == (tmp_path / "vault")
+
+        root = WorkspaceProfile(jid="root", name="Root", folder="root", trigger="@Pynchy")
+        placement = resolve_workspace_placement([root], "child")
+        assert placement is not None
+        assert placement.owner.folder == "child"
+        assert placement.control_parent is root
+    finally:
+        settings.learning, settings.profiles, settings.workspaces = original
 
 
 def _learning_packet() -> LearningPacket:
@@ -386,11 +429,15 @@ def test_application_exposes_selected_workspace_environment_through_host_runtime
             "browser.work": McpTool(
                 type="mcp",
                 mcp=McpToolConfig(runtime="url", url="https://example.test/mcp"),
-            )
+            ),
+            "browser.other": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(runtime="url", url="https://other.example.test/mcp"),
+            ),
         },
     )
     access = MagicMock(workspace_env={"SELECTED": "yes"})
-    resolved = MagicMock(tools=("browser.work", "missing", "not-mcp"))
+    resolved = MagicMock(tools=("browser.work", "browser.other", "missing", "not-mcp"))
     monkeypatch.setattr(app_module, "get_settings", lambda: settings)
     monkeypatch.setattr(app_module, "load_resolved_tool_access", lambda _: access)
     monkeypatch.setattr(app_module, "load_resolved_config", lambda *_args, **_kwargs: resolved)
@@ -538,6 +585,92 @@ async def test_learning_review_propagates_queued_agent_cancellation(
         await app.run_learning_review(_learning_packet())
     await asyncio.gather(*tasks, return_exceptions=True)
     run_agent.assert_awaited_once()
+
+
+async def test_learning_review_cancels_waiter_when_queued_agent_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    run_agent = AsyncMock(side_effect=asyncio.CancelledError())
+    app.run_agent = run_agent
+    tasks: list[asyncio.Task[None]] = []
+
+    def enqueue_task(
+        _target: object,
+        _task_id: str,
+        callback: Callable[[], Awaitable[None]],
+    ) -> bool:
+        tasks.append(asyncio.create_task(callback()))
+        return True
+
+    async def review(
+        _packet: LearningPacket,
+        run_agent_via_queue: Callable[..., Awaitable[str]],
+        _prompt: str,
+    ) -> str:
+        with pytest.raises(asyncio.CancelledError):
+            await run_agent_via_queue(group, "chat", [])
+        return "cancelled"
+
+    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
+    monkeypatch.setattr(app_module, "run_host_learning_review", review)
+    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
+
+    assert await app.run_learning_review(_learning_packet()) == "cancelled"
+    await asyncio.gather(*tasks, return_exceptions=True)
+    run_agent.assert_awaited_once()
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "late_cancel"])
+async def test_learning_review_ignores_late_queue_callback_result(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    callbacks: list[Callable[[], Awaitable[None]]] = []
+    if outcome == "success":
+        run_agent = AsyncMock(side_effect=["success", "success"])
+    elif outcome == "error":
+        run_agent = AsyncMock(side_effect=[RuntimeError("agent failed")] * 2)
+    else:
+        run_agent = AsyncMock(side_effect=["success", asyncio.CancelledError()])
+    app.run_agent = run_agent
+    tasks: list[asyncio.Task[None]] = []
+
+    def enqueue_task(
+        _target: object,
+        _task_id: str,
+        callback: Callable[[], Awaitable[None]],
+    ) -> bool:
+        callbacks.append(callback)
+        tasks.append(asyncio.create_task(callback()))
+        return True
+
+    async def review(
+        _packet: LearningPacket,
+        run_agent_via_queue: Callable[..., Awaitable[str]],
+        _prompt: str,
+    ) -> str:
+        await run_agent_via_queue(group, "chat", [])
+        return "done"
+
+    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
+    monkeypatch.setattr(app_module, "run_host_learning_review", review)
+    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
+
+    if outcome == "error":
+        with pytest.raises(RuntimeError):
+            await app.run_learning_review(_learning_packet())
+    else:
+        assert await app.run_learning_review(_learning_packet()) == "done"
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    if outcome == "late_cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await callbacks[0]()
+    else:
+        await callbacks[0]()
 
 
 async def test_application_runs_declared_canaries_through_the_canary_adapter(

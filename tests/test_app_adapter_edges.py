@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
+from conftest import make_settings
 
 import pynchy.host.orchestrator.app as app_module
+from pynchy.config.api import JobConfig
 from pynchy.host.container_manager.security.approval import configure_approval_state_root
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.learning_packets import LearningPacket
@@ -18,6 +20,7 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
+from pynchy.plugins.integrations.linear_boot import LinearIssueControl
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -102,6 +105,61 @@ def test_application_reports_no_live_session_when_runtime_is_absent(
     monkeypatch.setattr(app_module, "get_session", lambda _folder: None)
 
     assert app.ask_user_runtime_operations.has_live_session("chat") is False
+
+
+async def test_application_run_delegates_to_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    run_app = AsyncMock()
+    monkeypatch.setattr("pynchy.host.orchestrator.lifecycle.run_app", run_app)
+
+    await app.run()
+
+    run_app.assert_awaited_once_with(app)
+
+
+async def test_application_ensures_linear_issue_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    control = LinearIssueControl(
+        issue_id="issue-1",
+        workspace="project",
+        parent_jid="discord:channel:project",
+        account_name="linear",
+        title="Issue",
+        updated_at="2026-08-01T00:00:00Z",
+    )
+    conversation = object()
+    resolve = AsyncMock(return_value=conversation)
+    ensure = AsyncMock()
+    monkeypatch.setattr(app_module, "resolve_linear_issue_conversation", resolve)
+    monkeypatch.setattr(app_module.linear_issue_controls, "ensure_issue_control", ensure)
+
+    await app.ensure_linear_issue_control(control)
+
+    resolve.assert_awaited_once_with("issue-1", "project", "linear")
+    ensure.assert_awaited_once_with(app, control, conversation)
+
+
+def test_application_projects_enabled_host_jobs_into_scheduler_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        jobs={
+            "nightly": JobConfig(
+                workspace="host",
+                command="scripts/nightly.py",
+                schedule="0 2 * * *",
+            )
+        }
+    )
+    monkeypatch.setattr(app_module, "get_settings", lambda: settings)
+
+    app = PynchyApp()
+
+    assert app.scheduler_runtime.config_host_cron_jobs["nightly"].command == "scripts/nightly.py"
 
 
 async def test_learning_review_drops_queued_callback_after_waiter_cancellation(

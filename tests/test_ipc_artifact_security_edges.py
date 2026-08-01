@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -18,6 +19,8 @@ from pynchy.host.container_manager.security.package_metadata import (
     PackageCoordinate,
     PackageEcosystem,
     PackageIntent,
+    PackageMetadataAssessment,
+    PackageMetadataState,
     PackageSource,
 )
 from pynchy.workspace.api import WorkspaceProfile, WorkspaceSecurity
@@ -168,3 +171,66 @@ async def test_degraded_package_metadata_is_recorded_in_audit_decision(tmp_path)
         )
 
     assert response["result"]["decision"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_locked_reconciliation_survives_degraded_package_metadata() -> None:
+    coordinate = PackageCoordinate(
+        PackageEcosystem.PYPI,
+        "trusted-package",
+        "1.2.3",
+        PackageSource.REGISTRY,
+        PackageIntent.RECONCILIATION,
+        True,
+    )
+
+    async def degraded(_coordinate: PackageCoordinate) -> PackageMetadataAssessment:
+        await asyncio.sleep(0)
+        return PackageMetadataAssessment(PackageMetadataState.DEGRADED, "metadata unavailable")
+
+    result, rule_ids = await evaluate_package_coordinates((coordinate,), assessor=degraded)
+
+    assert result == {"decision": "allow"}
+    assert rule_ids == ("PKG005",)
+
+
+@pytest.mark.asyncio
+async def test_degraded_non_reconciliation_package_metadata_needs_human_review() -> None:
+    coordinate = PackageCoordinate(
+        PackageEcosystem.PYPI,
+        "unlocked-package",
+        "1.2.3",
+        PackageSource.REGISTRY,
+        PackageIntent.DEPENDENCY,
+        False,
+    )
+
+    async def degraded(_coordinate: PackageCoordinate) -> PackageMetadataAssessment:
+        await asyncio.sleep(0)
+        return PackageMetadataAssessment(PackageMetadataState.DEGRADED, "metadata unavailable")
+
+    result, rule_ids = await evaluate_package_coordinates((coordinate,), assessor=degraded)
+
+    assert result == {"decision": "needs_human", "reason": "metadata unavailable"}
+    assert rule_ids == ("PKG005",)
+
+
+@pytest.mark.asyncio
+async def test_established_package_metadata_allows_a_non_static_coordinate() -> None:
+    coordinate = PackageCoordinate(
+        PackageEcosystem.PYPI,
+        "established-package",
+        "1.2.3",
+        PackageSource.REGISTRY,
+        PackageIntent.DEPENDENCY,
+        False,
+    )
+
+    async def established(_coordinate: PackageCoordinate) -> PackageMetadataAssessment:
+        await asyncio.sleep(0)
+        return PackageMetadataAssessment(PackageMetadataState.ESTABLISHED, "known metadata")
+
+    result, rule_ids = await evaluate_package_coordinates((coordinate,), assessor=established)
+
+    assert result == {"decision": "allow"}
+    assert rule_ids == ()

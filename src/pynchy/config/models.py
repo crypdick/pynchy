@@ -629,7 +629,7 @@ class McpToolConfig(_StrictModel):
                 raise ValueError(SCRIPT_MCP_COMMAND_MESSAGE)
             if self.port is None:
                 raise ValueError(SCRIPT_MCP_PORT_MESSAGE)
-        elif self.runtime == "stdio":
+        else:
             if not self.command:
                 raise ValueError(STDIO_MCP_COMMAND_MESSAGE)
             if self.port is None:

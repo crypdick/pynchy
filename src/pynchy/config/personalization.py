@@ -360,22 +360,20 @@ def _validate_prompt_configuration(
             required.update(stage.reviewers)
 
     workspaces = settings.get("workspaces", {})
-    if isinstance(workspaces, Mapping):
-        for workspace in workspaces.values():
-            if isinstance(workspace, Mapping) and isinstance(workspace.get("soul"), str):
-                required.add(workspace["soul"])
+    for workspace in workspaces.values():
+        if isinstance(workspace, Mapping) and isinstance(workspace.get("soul"), str):
+            required.add(workspace["soul"])
 
     missing = sorted(required - set(catalog.content))
     if missing:
         raise PersonalizationError(f"Required prompt IDs do not resolve: {', '.join(missing)}")
 
     selected_pipelines = {prompts.default_pipeline}
-    if isinstance(workspaces, Mapping):
-        selected_pipelines.update(
-            workspace["pipeline"]
-            for workspace in workspaces.values()
-            if isinstance(workspace, Mapping) and isinstance(workspace.get("pipeline"), str)
-        )
+    selected_pipelines.update(
+        workspace["pipeline"]
+        for workspace in workspaces.values()
+        if isinstance(workspace, Mapping) and isinstance(workspace.get("pipeline"), str)
+    )
     unknown_pipelines = sorted(selected_pipelines - set(pipelines))
     if unknown_pipelines:
         raise PersonalizationError(

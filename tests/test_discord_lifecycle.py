@@ -48,6 +48,8 @@ class _FakeGatewayClient:
     def __init__(self, *, intents: object, application_id: int | None = None) -> None:
         self.intents = intents
         self.application_id = application_id
+        self.http = object()
+        self._connection = type("ConnectionState", (), {"_command_tree": None})()
         self.user = type("User", (), {"id": "999"})()
         self.handlers: dict[str, Any] = {}
         self.closed = False

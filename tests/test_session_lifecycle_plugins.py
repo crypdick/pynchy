@@ -387,3 +387,81 @@ async def test_end_session_stops_runtime_and_reacts_on_owned_channel() -> None:
         source_message.sender,
         "👋",
     )
+
+
+async def test_manual_redeploy_without_source_message_broadcasts_confirmation() -> None:
+    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps.current_deploy_revision.return_value = ("sha", "config")
+    deps.broadcast_host_message = AsyncMock()
+
+    with patch(
+        "pynchy.host.orchestrator.session_handler.start_deploy_workflow",
+        new_callable=AsyncMock,
+    ):
+        await session_handler.trigger_manual_redeploy(deps, "chat")
+
+    deps.broadcast_host_message.assert_awaited_once_with("chat", "🔄")
+
+
+async def test_inbound_without_owned_channel_skips_read_receipt() -> None:
+    class _Channel:
+        def __init__(self, name: str, owned: bool) -> None:
+            self.name = name
+            self._owned = owned
+
+        def owns_jid(self, _jid: str) -> bool:
+            return self._owned
+
+    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps.channels = [_Channel("other", False), _Channel("owner", True)]
+    deps.workspaces = {}
+    message = NewMessage(
+        id="message-1",
+        chat_jid="chat",
+        sender="sender",
+        sender_name="Sender",
+        content="hello",
+        timestamp="2026-07-29T00:00:00Z",
+    )
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.session_handler._ensure_dynamic_thread_workspace",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.orchestrator.session_handler.ingest_user_message",
+            new_callable=AsyncMock,
+        ) as ingest,
+    ):
+        await session_handler.on_inbound(deps, "chat", message)
+
+    ingest.assert_awaited_once_with(deps, message, source_channel="owner")
+
+
+async def test_inbound_without_any_channel_finishes_channel_scan() -> None:
+    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps.channels = []
+    deps.workspaces = {}
+    message = NewMessage(
+        id="message-2",
+        chat_jid="chat",
+        sender="sender",
+        sender_name="Sender",
+        content="hello",
+        timestamp="2026-07-29T00:00:00Z",
+    )
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.session_handler._ensure_dynamic_thread_workspace",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.orchestrator.session_handler.ingest_user_message",
+            new_callable=AsyncMock,
+        ) as ingest,
+    ):
+        await session_handler.on_inbound(deps, "chat", message)
+
+    ingest.assert_awaited_once_with(deps, message, source_channel=None)

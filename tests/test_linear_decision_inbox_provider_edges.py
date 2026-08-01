@@ -158,7 +158,10 @@ async def test_decision_inbox_ignores_boards_without_matching_workspace_projects
     created = await reconcile_linear_decision_inbox(
         client,
         [_Workspace("beta", "Beta", "linear:beta")],
-        {"beta": _board("project-unlisted")},
+        {
+            "beta": _board("project-unlisted"),
+            "removed": _board("project-removed"),
+        },
     )
 
     assert created == []
@@ -367,3 +370,62 @@ async def test_removed_workspace_issue_retires_only_after_every_account_reports_
     )
 
     retire.assert_awaited_once_with(execution)
+
+
+async def test_removed_workspace_issue_stays_pending_until_every_account_reports_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accounts = (
+        _Account("primary", _AccountConfig(public_source=True)),
+        _Account("secondary", _AccountConfig(public_source=True)),
+    )
+    execution = _execution()
+    clients = {account.name: object() for account in accounts}
+    retire = AsyncMock()
+
+    async def reconcile(
+        _client: object,
+        _boards: object,
+        *,
+        account_name: str,
+        unavailable_probes: dict[str, UnavailableExecutionProbe],
+    ) -> int:
+        await sleep(0)
+        if account_name == "primary":
+            probe = unavailable_probes.setdefault(
+                "execution-1",
+                UnavailableExecutionProbe(execution, set()),
+            )
+            probe.account_names.add(account_name)
+        return 0
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.configured_linear_accounts",
+        lambda: accounts,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
+        lambda _workspace: None,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
+        lambda *, account_name: _ClientContext(clients[account_name]),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_provider_work_item_state",
+        reconcile,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.retire_globally_unavailable_work_item",
+        retire,
+    )
+
+    await reconcile_all_linear_work_items(
+        {},
+        {},
+        review_plan=AsyncMock(),
+        broadcast_host_message=AsyncMock(),
+        defer_plan_review=AsyncMock(),
+    )
+
+    retire.assert_not_awaited()

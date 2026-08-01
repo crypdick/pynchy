@@ -74,6 +74,9 @@ async def test_app_reports_target_specific_thread_creation_support() -> None:
 
     assert await app.supports_thread_creation("discord:channel:parent") is False
 
+    app.channels = [_ThreadCapableChannel()]
+    assert await app.supports_thread_creation("discord:channel:parent") is True
+
 
 @pytest.mark.asyncio
 async def test_app_routes_thread_creation_to_owning_channel() -> None:
@@ -119,3 +122,10 @@ async def test_app_adds_participants_to_existing_thread() -> None:
     await app.add_thread_participants("discord:channel:existing", ("123",))
 
     assert channel.reused_participants == [("discord:channel:existing", ("123",))]
+
+
+@pytest.mark.asyncio
+async def test_app_ignores_participants_when_no_channel_owns_child() -> None:
+    app = PynchyApp()
+
+    await app.add_thread_participants("slack:C123", ("123",))

@@ -271,8 +271,8 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
             request.group,
             request.input_data,
             request.container_name,
-            request.deps.plugin_manager,
             request.runtime,
+            request.deps.plugin_manager,
         )
     except OSError as exc:
         logger.error("Failed to spawn container", error=str(exc), container=request.container_name)

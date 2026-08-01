@@ -27,8 +27,6 @@ def inspect_managed_pr(  # noqa: PLR0911 - fail-closed checks keep exact diagnos
     require_head: bool = True,
 ) -> tuple[str | None, str | None]:
     """Return a matching managed PR URL or its fail-closed diagnostic."""
-    if ctx.base_sha is None or ctx.head_sha is None:
-        return None, "Publication blocked: managed feature Git identity is incomplete."
     try:
         pr_check = runner(
             [

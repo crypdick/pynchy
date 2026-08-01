@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import signal
 import subprocess  # noqa: S404 - test starts a controlled local Git process.
+from dataclasses import dataclass
 from unittest.mock import patch
 
 import pytest
@@ -67,6 +68,116 @@ def test_bounded_git_times_out_before_reading_output(tmp_path) -> None:
     assert result.returncode == 124
     assert not result.stdout
     assert result.stderr == "git command timed out after 0 seconds"
+
+
+def test_bounded_git_handles_wait_timeout_after_pipes_close() -> None:
+    @dataclass
+    class Key:
+        fileobj: object
+        data: str
+
+    class Pipe:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            return None
+
+    class Selector:
+        def __init__(self) -> None:
+            self.keys = {}
+
+        def register(self, fileobj: object, _events: int, data: str) -> None:
+            self.keys[data] = Key(fileobj, data)
+
+        def get_map(self) -> dict[str, Key]:
+            return self.keys
+
+        def select(self, _timeout: float) -> list[tuple[Key, int]]:
+            return [(next(iter(self.keys.values())), 1)]
+
+        def unregister(self, fileobj: object) -> None:
+            for name, key in self.keys.items():
+                if key.fileobj is fileobj:
+                    del self.keys[name]
+                    return
+
+        def close(self) -> None:
+            return None
+
+    fake_process = type(
+        "FakeProcess",
+        (),
+        {"stdout": Pipe(), "stderr": Pipe(), "pid": 1, "returncode": None},
+    )()
+    fake_process.wait = lambda **_kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired("git", 1))
+
+    with (
+        patch("pynchy.host.git_ops._bounded_git.subprocess.Popen", return_value=fake_process),
+        patch("pynchy.host.git_ops._bounded_git.selectors.DefaultSelector", Selector),
+        patch("pynchy.host.git_ops._bounded_git.os.read", return_value=b""),
+        patch("pynchy.host.git_ops._bounded_git._terminate_unread_process_group"),
+    ):
+        result = run_git_bounded_stdout("status", max_stdout_bytes=32, timeout=1)
+
+    assert result.returncode == 124
+    assert result.stderr == "git command timed out after 1 seconds"
+
+
+def test_bounded_git_caps_stderr_without_stopping_stdout_drain() -> None:
+    @dataclass
+    class Key:
+        fileobj: object
+        data: str
+
+    class Pipe:
+        def fileno(self) -> int:
+            return 1
+
+        def close(self) -> None:
+            return None
+
+    class Selector:
+        def __init__(self) -> None:
+            self.keys: dict[str, Key] = {}
+            self.events = ["stderr", "stderr", "stderr", "stdout"]
+
+        def register(self, fileobj: object, _events: int, data: str) -> None:
+            self.keys[data] = Key(fileobj, data)
+
+        def get_map(self) -> dict[str, Key]:
+            return self.keys
+
+        def select(self, _timeout: float) -> list[tuple[Key, int]]:
+            data = self.events.pop(0)
+            return [(self.keys[data], 1)]
+
+        def unregister(self, fileobj: object) -> None:
+            for name, key in list(self.keys.items()):
+                if key.fileobj is fileobj:
+                    del self.keys[name]
+                    return
+
+        def close(self) -> None:
+            return None
+
+    fake_process = type(
+        "FakeProcess",
+        (),
+        {"stdout": Pipe(), "stderr": Pipe(), "pid": 1, "returncode": 0},
+    )()
+    fake_process.wait = lambda **_kwargs: None
+    reads = iter([b"e" * 4096, b"overflow", b"", b""])
+
+    with (
+        patch("pynchy.host.git_ops._bounded_git.subprocess.Popen", return_value=fake_process),
+        patch("pynchy.host.git_ops._bounded_git.selectors.DefaultSelector", Selector),
+        patch("pynchy.host.git_ops._bounded_git.os.read", side_effect=reads),
+    ):
+        result = run_git_bounded_stdout("status", max_stdout_bytes=32, timeout=1)
+
+    assert result.returncode == 0
+    assert len(result.stderr.encode()) == 4096
 
 
 def test_bounded_git_uses_direct_child_fallback_when_group_signal_fails() -> None:

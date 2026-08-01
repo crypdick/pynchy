@@ -61,12 +61,7 @@ def resolve_routed_host_worktree_cwd(
             "Check repository access and retry."
         ) from exc
 
-    try:
-        relative_cwd = source_cwd.resolve().relative_to(source_root)
-    except (OSError, ValueError) as exc:
-        raise RoutedHostWorktreeError(
-            "Could not map the configured host working directory into the routed worktree."
-        ) from exc
+    relative_cwd = source_cwd.resolve().relative_to(source_root)
     routed_cwd = worktree.path / relative_cwd
     if not routed_cwd.is_dir():
         raise RoutedHostWorktreeError(
@@ -104,11 +99,6 @@ def _validate_routed_worktree_slot(
     worktree_path: Path, repo_ctx: RepoContext, group_folder: str
 ) -> None:
     """Reject a populated routed slot unless it is the expected child worktree."""
-    if worktree_path.is_symlink():
-        raise RoutedHostWorktreeError(
-            "Routed conversation worktree path is a symbolic link; leave it untouched and "
-            "recover it manually."
-        )
     if not worktree_path.is_dir():
         raise RoutedHostWorktreeError(
             "Routed conversation worktree path is occupied by a non-directory; leave it "

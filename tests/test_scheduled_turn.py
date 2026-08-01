@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.scheduled_turn import (
     TaskAgentRequest,
     TaskAgentResult,
@@ -115,6 +116,75 @@ async def test_run_task_agent_returns_a_controlled_terminal_outcome() -> None:
     request = TaskAgentRequest(
         task=_task(),
         deps=_deps(),
+        group=_group(),
+        idle_enabled=False,
+        idle_timeout=1.0,
+    )
+    with (
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.begin_message_turn",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.requested_control_outcome",
+            new_callable=AsyncMock,
+            return_value=TurnOutcome.COMPLETED,
+        ),
+    ):
+        result = await run_task_agent(request)
+
+    assert result.error is None
+    assert result.terminal_outcome is TurnOutcome.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_run_task_agent_handles_output_without_an_idle_timer() -> None:
+    deps = _deps()
+
+    async def run_agent(*args, **_kwargs) -> str:
+        on_output = args[3]
+        await on_output(ContainerOutput(status="success", result="done"))
+        return "success"
+
+    deps.run_agent = run_agent
+    request = TaskAgentRequest(
+        task=_task(),
+        deps=deps,
+        group=_group(),
+        idle_enabled=False,
+        idle_timeout=1.0,
+    )
+    with (
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.begin_message_turn",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.requested_control_outcome",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.clear_in_flight_turn",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.orchestrator.scheduled_turn.release_in_flight_turn_claim",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await run_task_agent(request)
+
+    assert result.result == "done"
+
+
+@pytest.mark.asyncio
+async def test_run_task_agent_preserves_controlled_outcome_after_agent_exception() -> None:
+    deps = _deps()
+    deps.run_agent = AsyncMock(side_effect=RuntimeError("agent failed"))
+    request = TaskAgentRequest(
+        task=_task(),
+        deps=deps,
         group=_group(),
         idle_enabled=False,
         idle_timeout=1.0,

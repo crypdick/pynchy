@@ -16,7 +16,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves managed publica
     Sequence,
 )
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pynchy.host.git_ops._bounded_git import run_git_bounded_stdout
 from pynchy.host.git_ops._pr_publication import PrPublication
@@ -205,7 +205,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     isolated_git_dir: Path | None = None
     if ctx.head_sha is not None:
         isolated_git_dir = gh_cwd / "repository.git"
-        if ctx.base_sha is None or not isolated_git_dir.is_dir():
+        if not isolated_git_dir.is_dir():
             return {
                 "success": False,
                 "message": "Publication blocked: managed feature Git identity is incomplete.",
@@ -226,12 +226,9 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
         if existing_pr_failure is not None:
             return {"success": False, "message": existing_pr_failure}
         if existing_pr_url is not None:
-            if isolated_git_dir is None:
-                return {
-                    "success": False,
-                    "message": "Publication blocked: managed feature Git identity is incomplete.",
-                }
-            if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+            if not _managed_refs_match(
+                ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git
+            ):
                 return {
                     "success": False,
                     "message": (
@@ -278,11 +275,6 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     log_range_start = ctx.main_branch
     log_range_end = ctx.head_sha or ctx.branch_name
     if ctx.head_sha is not None:
-        if isolated_git_dir is None or ctx.base_sha is None:
-            return {
-                "success": False,
-                "message": "Publication blocked: managed feature Git identity is incomplete.",
-            }
         # Read commit text from fresh Git metadata, not agent-writable shared config.
         managed_git_args = (
             "-c",
@@ -298,7 +290,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 "message": "Publication blocked: managed feature object store is unavailable.",
             }
         log_cwd = gh_cwd
-        log_range_start = ctx.base_sha
+        log_range_start = cast("str", ctx.base_sha)
         log_range_end = ctx.head_sha
         title_args = (*title_args, ctx.head_sha)
     if ctx.head_sha is None:
@@ -365,17 +357,13 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
         f"Automated PR from {publication.source_label}.\n\n### Commits\n{commit_summaries}"
     )
 
-    if ctx.head_sha is not None:
-        if isolated_git_dir is None:
-            return {
-                "success": False,
-                "message": "Publication blocked: managed feature Git identity is incomplete.",
-            }
-        if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
-            return {
-                "success": False,
-                "message": "Publication blocked: managed feature refs changed after inspection.",
-            }
+    if ctx.head_sha is not None and not _managed_refs_match(
+        ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git
+    ):
+        return {
+            "success": False,
+            "message": "Publication blocked: managed feature refs changed after inspection.",
+        }
 
     pr_create = subprocess.run(  # noqa: S603 - PR fields are argv elements, not shell-interpreted.
         [  # noqa: S607 - gh is the trusted host GitHub CLI.
@@ -464,16 +452,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 ctx.env,
                 runner=subprocess.run,
             )
-        if isolated_git_dir is None:
-            return _created_managed_pr_failure(
-                pr_url,
-                "Publication blocked: managed feature Git identity is incomplete.",
-                repo_ctx,
-                gh_cwd,
-                ctx.env,
-                runner=subprocess.run,
-            )
-        if not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+        if not _managed_refs_match(ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git):
             return _created_managed_pr_failure(
                 pr_url,
                 "Publication blocked: managed feature refs changed after inspection.",

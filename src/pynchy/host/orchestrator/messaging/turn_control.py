@@ -94,9 +94,6 @@ async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcom
     if turn.control_state is CheckpointControlState.RESET_REQUESTED:
         await clear_in_flight_turn(turn.turn_id)
         return TurnOutcome.RESET
-    if turn.control_state is not CheckpointControlState.PAUSED:
-        return TurnOutcome.COMPLETED
-
     is_scheduled = turn.work_kind is InFlightWorkKind.SCHEDULED
     resumed = await resume_paused_in_flight_turn(
         turn.turn_id,

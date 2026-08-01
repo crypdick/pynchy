@@ -190,6 +190,52 @@ async def test_plan_review_status_delivery_failure_does_not_block_admission(
     )
 
 
+@pytest.mark.parametrize(
+    ("attempt", "expected"),
+    [
+        (1, "🔎 Checking approved plan (1/3)."),
+        (2, "🔄 Retrying approved plan review (2/3)."),
+        (3, "🔄 Final approved plan review attempt (3/3)."),
+    ],
+)
+async def test_plan_review_attempt_status_is_reported_at_public_admission_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    attempt: int,
+    expected: str,
+) -> None:
+    client = _DecisionClient()
+    configure_linear_work_item_task_runtime(_runtime())
+    broadcast = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value="conversation-1"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.get_conversation_control_binding",
+        AsyncMock(return_value=_binding(closed=False)),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.review_approved_plan",
+        AsyncMock(return_value=None),
+    )
+
+    assert (
+        await admit_decision_issue(
+            _planned_issue(),
+            _Workspace("beta", "Beta", "linear:beta"),
+            _board("project-beta"),
+            HUMAN_APPROVED_STATUS,
+            _context(
+                client,
+                broadcast_host_message=broadcast,
+                plan_review_attempt=attempt,
+            ),
+        )
+        is None
+    )
+    assert broadcast.await_args_list[0].args[1] == expected
+
+
 async def test_human_approved_admission_ignores_existing_active_execution() -> None:
     configure_linear_work_item_task_runtime(_runtime(active_execution=Mock(id="execution-1")))
 

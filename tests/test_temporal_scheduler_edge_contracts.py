@@ -247,6 +247,35 @@ async def test_publishing_scheduler_config_updates_the_active_runtime(
 
 
 @pytest.mark.asyncio
+async def test_stale_scheduler_exit_does_not_clear_newer_active_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock(spec=WorkflowControlClient)
+
+    class _WorkerContext:
+        async def __aenter__(self) -> _WorkerContext:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setattr(temporal_scheduler.Client, "connect", AsyncMock(return_value=client))
+    monkeypatch.setattr(temporal_scheduler, "Worker", lambda *_args, **_kwargs: _WorkerContext())
+    first = _runtime()
+    second = _runtime()
+    replacement = _scheduler_runtime()
+
+    await first.__aenter__()  # noqa: PLC2801 - test stale context-manager exit ordering.
+    await second.__aenter__()  # noqa: PLC2801 - test stale context-manager exit ordering.
+    try:
+        await first.__aexit__(None, None, None)
+        temporal_scheduler.publish_scheduler_config(replacement)
+        assert second.scheduler_config is replacement
+    finally:
+        await second.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
 async def test_scheduled_task_workflow_wrapper_propagates_runtime_unavailability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

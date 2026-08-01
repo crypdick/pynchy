@@ -451,12 +451,6 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     return True
 
 
-def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
-    """Return the first resolved repo context for a workspace, if configured."""
-    repo_contexts = resolve_repos_for_group(group_folder)
-    return repo_contexts[0] if repo_contexts else None
-
-
 def resolve_repos_for_group(group_folder: str) -> list[RepoContext]:
     """Return every resolved repo context for a workspace, preserving profile order."""
     resolved = load_resolved_config(group_folder)

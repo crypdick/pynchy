@@ -13,11 +13,14 @@ import pytest
 from linear_webhook_test_support import LinearWebhookHarness
 
 from pynchy.conversation.models import (
+    ConversationDelivery,
+    ConversationDeliveryCompletion,
     ConversationDeliveryStatus,
     ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
+    ExternalRoute,
     TerminalConversationRetirement,
 )
 from pynchy.conversation.workspaces import dynamic_thread_folder
@@ -115,6 +118,54 @@ async def test_project_open_control_ignores_an_unchanged_state(
     )
 
     assert await dispatcher.project_open_control(route, _message_event("unchanged")) is None
+
+
+async def test_wake_completes_a_deferred_delivery_without_reopening_closed_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = LinearWebhookHarness()
+    route = _route()
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    delivery = ConversationDelivery(
+        sequence=1,
+        identity=_delivery_identity(route, "deferred-closed"),
+        conversation_id=ConversationId("conversation-1"),
+        status=ConversationDeliveryStatus.CLAIMED,
+        received_at=_NOW,
+        payload={"control_closed": True},
+    )
+    completion = ConversationDeliveryCompletion(
+        identity=delivery.identity,
+        conversation_id=delivery.conversation_id,
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.claim_next_conversation_delivery",
+        AsyncMock(side_effect=[delivery, delivery]),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.process_deferred_event",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.complete_webhook_delivery",
+        AsyncMock(side_effect=[completion, None]),
+    )
+    notify = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.webhook_conversations.notify_conversation_delivery_completed",
+        notify,
+    )
+
+    await dispatcher.wake(delivery.conversation_id)
+    await dispatcher.wake(delivery.conversation_id)
+
+    notify.assert_awaited_once_with(completion)
+    foreign = ConversationDeliveryCompletion(
+        identity=replace(delivery.identity, route=ExternalRoute("other")),
+        conversation_id=delivery.conversation_id,
+    )
+    await dispatcher.after_completion(foreign)
+    assert notify.await_count == 1
 
 
 async def test_admission_fails_when_parsed_route_target_disappears(

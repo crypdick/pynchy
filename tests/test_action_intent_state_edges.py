@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import aiosqlite
 import pytest
 
 from pynchy.action_intents import ActionIntentStatus
@@ -53,6 +54,23 @@ async def test_duplicate_action_intent_request_reuses_existing_draft() -> None:
     assert created is True
     assert duplicate_created is False
     assert second.id == first.id
+
+
+@pytest.mark.parametrize("existing", [True, False])
+async def test_insert_race_handles_integrity_error(
+    existing: bool,
+) -> None:
+    first, _ = await create_action_intent(_request("request-race"))
+    query = AsyncMock(return_value=first if existing else None)
+
+    with patch("pynchy.state.action_intents.get_action_intent_by_request", new=query):
+        if existing:
+            result, created = await create_action_intent(_request("request-race"))
+            assert result.id == first.id
+            assert created is False
+        else:
+            with pytest.raises(aiosqlite.IntegrityError):
+                await create_action_intent(_request("request-race"))
 
 
 async def test_approving_missing_action_intent_fails_closed() -> None:

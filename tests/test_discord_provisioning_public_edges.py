@@ -106,6 +106,8 @@ async def test_resolve_chat_jid_provisions_forum_without_category():
 
     assert await ch.resolve_chat_jid("synapse.channels.systems") == "discord:channel:891"
     assert guild.categories == []
+    guild.forums[0].guild = None
+    assert await ch.resolve_chat_jid("synapse.channels.systems") == "discord:channel:891"
 
 
 @pytest.mark.asyncio

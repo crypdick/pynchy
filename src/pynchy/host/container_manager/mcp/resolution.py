@@ -313,8 +313,7 @@ def resolve_all_instances(
 
             instance_ids.append(iid)
 
-        if instance_ids:
-            state.workspace_instances[folder] = instance_ids
+        state.workspace_instances[folder] = instance_ids
 
     return state
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# allow: file-length -- HTTP endpoint contracts share one server fixture set.
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from dataclasses import replace
@@ -710,3 +711,57 @@ async def test_deploy_rolls_back_when_import_validation_fails(tmp_path: Path) ->
     assert deps.broadcasts == [
         ("admin-1@g.us", "Deploy failed — import validation error, rolled back to old-sha.")
     ]
+
+
+async def test_deploy_import_validation_failure_without_admin_notification(
+    tmp_path: Path,
+) -> None:
+    deps = MockHttpDeps()
+    deps._admin_jid = ""
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),
+        _cp(stdout="No local changes"),
+        _cp(),
+        _cp(),
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.subprocess.run",
+            return_value=_cp(returncode=1, stderr="import failed"),
+        ):
+            response = await client.post("/deploy")
+        assert response.status == 422
+    finally:
+        await client.close()
+
+    assert deps.broadcasts == []
+
+
+async def test_deploy_continues_after_import_validation_succeeds(tmp_path: Path) -> None:
+    deps = MockHttpDeps()
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),
+        _cp(stdout="No local changes"),
+        _cp(),
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.subprocess.run",
+            return_value=_cp(),
+        ):
+            response = await client.post("/deploy")
+        assert response.status == 200
+    finally:
+        await client.close()

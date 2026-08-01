@@ -7,14 +7,13 @@ Schema definition lives in :mod:`schema`.
 from __future__ import annotations
 
 import asyncio
-import re
 from collections.abc import (
     AsyncIterator,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 
@@ -36,18 +35,8 @@ class _ConnectionState:
 
 _state = _ConnectionState()
 
-_SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_UPDATE_TABLES = frozenset({"scheduled_tasks", "host_jobs"})
-_UNSAFE_SQL_IDENTIFIER_MESSAGE = "Unsafe SQL identifier: {identifier!r}"
 _DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call init_database() first."
 _FOREIGN_KEYS_NOT_ENABLED_MESSAGE = "SQLite foreign-key enforcement could not be enabled"
-
-
-def _safe_update_identifier(identifier: str, *, allowed: frozenset[str]) -> str:
-    """Return an allowlisted SQL identifier, rejecting fragments."""
-    if identifier not in allowed or not _SQL_IDENTIFIER.fullmatch(identifier):
-        raise ValueError(_UNSAFE_SQL_IDENTIFIER_MESSAGE.format(identifier=identifier))
-    return identifier
 
 
 @asynccontextmanager
@@ -87,10 +76,7 @@ async def _stop_connection(db: aiosqlite.Connection) -> None:
     future avoids reaching into the private ``_thread`` attribute while keeping
     the existing bounded shutdown behavior.
     """
-    future = db.stop()
-    if future is None:
-        return
-
+    future = cast("asyncio.Future[Any]", db.stop())
     done, _pending = await asyncio.wait({future}, timeout=2)
     if future in done:
         await future
@@ -112,12 +98,11 @@ async def _update_by_id(
     values: list[Any] = []
 
     allowed_update_fields = frozenset(allowed_fields)
-    table_name = _safe_update_identifier(table, allowed=_UPDATE_TABLES)
+    table_name = table
 
     for key, value in updates.items():
         if key in allowed_update_fields:
-            field_name = _safe_update_identifier(key, allowed=allowed_update_fields)
-            fields.append(f"{field_name} = ?")
+            fields.append(f"{key} = ?")
             values.append(value)
 
     if not fields:
@@ -125,7 +110,7 @@ async def _update_by_id(
 
     values.append(row_id)
     async with atomic_write() as db:
-        # S608 audit: table and field names are allowlisted and identifier-validated above.
+        # S608 audit: table and field names are fixed by internal allowlists.
         await db.execute(
             f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608
             values,

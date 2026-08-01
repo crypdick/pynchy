@@ -102,6 +102,48 @@ async def test_reconcile_prefers_workspace_root_over_registered_thread(monkeypat
     assert args[1][0].jid == root.jid
 
 
+async def test_reconcile_deduplicates_dynamic_threads_with_one_parent(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"health": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+    first = _workspace(
+        dynamic_thread_folder("health", "discord:channel:first"),
+        "Health/first",
+    )
+    second = _workspace(
+        dynamic_thread_folder("health", "discord:channel:second"),
+        "Health/second",
+    )
+    reconcile = AsyncMock(return_value={})
+
+    with patch(
+        "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+        reconcile,
+    ):
+        await reconcile_linear_workspace_boards([first, second])
+
+    _, args, _ = reconcile.mock_calls[0]
+    assert [workspace.jid for workspace in args[1]] == [first.jid]
+
+
+def test_configured_workspace_names_skip_workspaces_without_linear_account():
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={
+            "alpha": WorkspaceConfig(profiles=["linear"]),
+            "unconfigured": WorkspaceConfig(),
+        },
+        tools={"linear": LinearTool(type="linear")},
+    )
+    configure_linear_accounts_for(settings)
+
+    assert configured_linear_workspace_names("linear") == ()
+
+
 async def test_reconcile_materializes_active_issue_controls(monkeypatch):
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
     settings = make_settings(

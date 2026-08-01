@@ -227,3 +227,72 @@ async def test_stdio_bridge_rejects_requests_before_backend_connection(monkeypat
 
     with pytest.raises(RuntimeError, match="backend is not connected"):
         await handlers["list_tools"]()
+
+
+@pytest.mark.asyncio
+async def test_stdio_bridge_forwards_requests_after_backend_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handlers = {}
+    started = Mock()
+
+    class FakeServer:
+        def __init__(self, _name):
+            pass
+
+        def list_tools(self):
+            return lambda handler: handlers.setdefault("list_tools", handler)
+
+        def call_tool(self):
+            return lambda handler: handlers.setdefault("call_tool", handler)
+
+    class FakeSession:
+        def __init__(self, *_args):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc_info):
+            return None
+
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            return type("ToolResult", (), {"tools": ["echo"]})()
+
+        async def call_tool(self, name, arguments):
+            return {"name": name, "arguments": arguments}
+
+    @asynccontextmanager
+    async def fake_stdio_client(_parameters):
+        yield object(), object()
+
+    class FakeSessionManager:
+        def __init__(self, _server, *, json_response):
+            assert json_response is True
+
+        async def handle_request(self, _scope, _receive, _send):
+            return None
+
+        @asynccontextmanager
+        async def run(self):
+            yield
+
+    monkeypatch.setattr(stdio_bridge, "Server", FakeServer)
+    monkeypatch.setattr(stdio_bridge, "stdio_client", fake_stdio_client)
+    monkeypatch.setattr(stdio_bridge, "ClientSession", FakeSession)
+    monkeypatch.setattr(stdio_bridge, "StreamableHTTPSessionManager", FakeSessionManager)
+    monkeypatch.setattr(stdio_bridge.uvicorn, "run", started)
+    monkeypatch.setattr(sys, "argv", ["stdio-bridge", "--port", "8765", "--", "backend"])
+
+    stdio_bridge.main()
+    app = started.call_args.args[0]
+
+    async with app.router.lifespan_context(app):
+        assert await handlers["list_tools"]() == ["echo"]
+        assert await handlers["call_tool"]("echo", {"value": "ok"}) == {
+            "name": "echo",
+            "arguments": {"value": "ok"},
+        }

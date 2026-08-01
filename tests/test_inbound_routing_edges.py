@@ -222,6 +222,27 @@ async def test_deferred_control_is_executed_without_starting_agent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_consumed_control_with_remaining_agent_input_keeps_routing() -> None:
+    jid = "group@g.us"
+    group = _make_group()
+    deps = _make_deps(groups={jid: group})
+    control = _make_message("done", chat_jid=jid, message_id="done-1")
+    regular = _make_message("continue", chat_jid=jid, message_id="regular-1")
+    await init_test_database()
+    await store_message(control)
+    await store_message(regular)
+
+    with (
+        patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=([control], "poll")),
+        patch(f"{_PR}.get_messages_since", new_callable=AsyncMock, return_value=[control, regular]),
+        patch(f"{_PR}.reclassify_batch_host_controls", new_callable=AsyncMock, return_value=1),
+    ):
+        await _run_loop_once(deps)
+
+    deps.start_interactive_turn.assert_awaited_once_with(jid)
+
+
+@pytest.mark.asyncio
 async def test_active_turn_defers_lifecycle_control_for_drain() -> None:
     jid = "group@g.us"
     group = _make_group()

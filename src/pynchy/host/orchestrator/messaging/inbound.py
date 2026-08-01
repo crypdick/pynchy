@@ -281,8 +281,7 @@ async def _execute_deferred_controls_without_agent(
     for message in messages:
         if (message.metadata or {}).get("deferred_host_control") is True:
             await intercept_special_command(deps, group_jid, group, message)
-    if messages:
-        await advance_cursor(deps, group_jid, messages[-1].timestamp)
+    await advance_cursor(deps, group_jid, messages[-1].timestamp)
 
 
 async def _route_pending_messages(

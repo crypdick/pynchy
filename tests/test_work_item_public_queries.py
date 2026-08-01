@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from pynchy.state import (
     WorkItemClaimRequest,
+    cancel_work_item_execution,
     create_work_item_claim,
     list_work_item_executions,
+    retire_terminal_execution_resources_if_unowned,
 )
 
 pytest_plugins = ("tests.state_support",)
@@ -56,6 +60,15 @@ async def test_workspace_listing_can_be_unbounded_for_reconciliation() -> None:
         await create_work_item_claim(_claim(workspace="alpha", issue=_issue(f"alpha-{index}")))
 
     assert len(await list_work_item_executions(workspace="alpha", limit=None)) == 3
+
+
+async def test_terminal_resource_retirement_handles_execution_without_task_or_turn() -> None:
+    execution = await create_work_item_claim(_claim(workspace="alpha", issue=_issue("orphan")))
+    execution = await cancel_work_item_execution(execution.id, blocker="test retirement")
+    retire_runtime = AsyncMock()
+
+    assert await retire_terminal_execution_resources_if_unowned(execution, retire_runtime) is True
+    retire_runtime.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

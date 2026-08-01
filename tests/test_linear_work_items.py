@@ -24,7 +24,9 @@ from pynchy.state import (
     get_work_item_transition_by_request,
     mark_work_item_delivery_delivered_for_turn,
 )
-from pynchy.work_items.api import WorkItemExecutionStatus
+from pynchy.work_items.api import (
+    WorkItemExecutionStatus,
+)
 from tests.linear_work_items_support import (
     Lifecycle,
     _begin_turn,

@@ -259,6 +259,58 @@ class TestManagedFeatureCopGate:
         )
         assert "pull/1" in (result_dir / "managed-1.json").read_text()
 
+    async def test_valid_receipt_publishes_without_redacting_non_text_result(self, deps, tmp_path):
+        publication = _managed_publication(tmp_path)
+        binding = {
+            "feature_slug": publication.feature_slug,
+            "repository": publication.repo_slug,
+            "branch": publication.branch_name,
+            "target_branch": publication.main_branch,
+            "base_sha": publication.base_sha,
+            "head_sha": publication.head_sha,
+        }
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[publication.repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.resolve_managed_feature_publication",
+                return_value=ManagedFeatureResolution(publication, None),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+                new_callable=AsyncMock,
+                return_value=ReceiptVerification.VALID,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.host_create_pr_from_managed_feature",
+                return_value={"success": True, "message": 42},
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "publish_managed_feature",
+                    "request_id": "managed-valid-receipt",
+                    "publication": "pull-request",
+                    "feature_slug": publication.feature_slug,
+                    "_approval_receipt": "receipt",
+                    "_managed_feature_binding": binding,
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        response = (
+            tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "managed-valid-receipt.json"
+        )
+        assert '"message": 42' in response.read_text()
+
     async def test_cop_denial_and_invalid_receipt_cannot_publish(self, deps, tmp_path):
         publication = _managed_publication(tmp_path)
         with (

@@ -486,8 +486,6 @@ def _resolve_mcp_workspace_config(
 
 
 def _read_selected_prompts(names: list[str]) -> str | None:
-    if not names:
-        return None
     settings = get_settings()
     return load_prompt_catalog(
         default_prompts=settings.project_root / "data/defaults/prompts",
@@ -724,9 +722,8 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
 
     repo_slugs: set[str] = set()
     for workspace_name in settings.workspaces:
-        resolved = settings.resolved_workspace_config(workspace_name)
-        if resolved is not None:
-            repo_slugs.update(resolved.repo)
+        resolved = cast("Any", settings.resolved_workspace_config(workspace_name))
+        repo_slugs.update(resolved.repo)
     external_repo_sync_slugs = tuple(
         repo_slug
         for repo_slug in sorted(repo_slugs)
@@ -1190,10 +1187,8 @@ class PynchyApp(ThreadRouting):
         def missing_workspace_profile(
             folder: str, control_parent: WorkspaceProfile
         ) -> WorkspaceProfile | None:
-            config = settings.workspace_config(folder)
-            resolved = settings.resolved_workspace_config(folder)
-            if config is None or resolved is None:
-                return None
+            config = cast("WorkspaceConfig", settings.workspace_config(folder))
+            resolved = cast("Any", settings.resolved_workspace_config(folder))
             return WorkspaceProfile(
                 jid=control_parent.jid,
                 name=folder.replace("-", " ").title(),

@@ -70,6 +70,22 @@ def test_selection_fails_closed_when_git_identity_is_invalid(git_env: dict):
         select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
 
 
+def test_selection_fails_closed_when_git_identity_paths_cannot_be_resolved(git_env: dict):
+    valid = subprocess.CompletedProcess([], 0, stdout=str(git_env["project"]), stderr="")
+    with (
+        patch(
+            "pynchy.host.git_ops._routed_host_worktree.run_git",
+            return_value=valid,
+        ),
+        patch(
+            "pynchy.host.git_ops._routed_host_worktree.Path.resolve",
+            side_effect=OSError("path unavailable"),
+        ),
+        pytest.raises(RoutedHostWorktreeError, match="Could not resolve"),
+    ):
+        select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
+
+
 def test_clean_legacy_source_can_recover_into_a_child_worktree(git_env: dict):
     folder = "host__thread_conversation-conv_clean_recovery"
 

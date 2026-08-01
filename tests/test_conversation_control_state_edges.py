@@ -140,3 +140,21 @@ async def test_terminal_conversation_forces_new_binding_closed() -> None:
 
     assert stored.closed is True
     assert (await get_conversation_control_binding(conversation.id)).closed is True
+
+
+async def test_terminal_retirement_is_idempotent_for_current_closed_state() -> None:
+    conversation = await _conversation("already-closed")
+    revision = "2026-07-29T20:00:00+00:00"
+    await apply_conversation_control_state(
+        conversation.id,
+        closed=True,
+        control_state_revision=revision,
+    )
+
+    retirement = await retire_conversation_for_terminal(
+        conversation.id,
+        preserve_delivery=None,
+        control_state_revision=revision,
+    )
+
+    assert retirement.is_current is True

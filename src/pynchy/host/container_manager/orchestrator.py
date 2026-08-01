@@ -129,8 +129,8 @@ async def _spawn_container(
     group: WorkspaceProfile,
     input_data: ContainerInput,
     container_name: str,
+    runtime: AgentExecutionRuntime,
     plugin_manager: pluggy.PluginManager | None = None,
-    runtime: AgentExecutionRuntime | None = None,
 ) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount], tuple[McpStartupFailure, ...]]:
     """Resolve environment, build mounts, and spawn a container subprocess.
 
@@ -159,8 +159,6 @@ async def _spawn_container(
     )
     input_data.invocation_ts = invocation_ts
 
-    if runtime is None:
-        raise ValueError("Agent execution runtime is required")
     # The harness deliberately defers this expensive check at host startup,
     # but an agent container must never be spawned without its image.
     container_cli, ensure_agent_image, resolve_repo_mounts = _configured_container_runtime()

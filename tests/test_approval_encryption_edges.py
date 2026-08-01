@@ -89,6 +89,16 @@ class TestEncryptedPendingApproval:
         with pytest.raises(TypeError, match="not an object"):
             approval.read_pending_approval(path)
 
+    def test_unknown_redaction_marker_is_not_restored_as_secret_taint(self, tmp_path: Path):
+        path = _create_pending(tmp_path, "unknown-marker")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["redaction_required"] = "unknown"
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        restored = approval.read_pending_approval(path)
+
+        assert "secret_tainted" not in restored
+
     def test_key_creation_recovers_when_another_process_wins_race(self, tmp_path: Path):
         root = _approval_root(tmp_path)
         key = Fernet.generate_key()
@@ -155,11 +165,19 @@ class TestApprovalStateBoundaries:
         with patch.object(approval, "_approval_root", root):
             assert approval.find_pending_by_short_id("target") is None
 
+    def test_find_ignores_a_valid_nonmatching_pending_approval(self, tmp_path: Path):
+        root = _approval_root(tmp_path)
+        _create_pending(tmp_path, "other")
+
+        with patch.object(approval, "_approval_root", root):
+            assert approval.find_pending_by_short_id("target") is None
+
     def test_short_id_generation_handles_corrupt_files_and_exhaustion(self, tmp_path: Path):
         root = _approval_root(tmp_path)
         pending_dir = root / "group" / "pending_approvals"
         pending_dir.mkdir(parents=True)
         (pending_dir / "corrupt.json").write_text("not-json", encoding="utf-8")
+        (pending_dir / "without-short-id.json").write_text("{}", encoding="utf-8")
         (pending_dir / "occupied.json").write_text(json.dumps({"short_id": "aa"}), encoding="utf-8")
 
         with (

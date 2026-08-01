@@ -7,7 +7,7 @@ import re
 import subprocess  # noqa: S404 - used only for Git runner return annotation.
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pynchy.host.git_ops.utils import redact_git_diagnostic, run_git
 from pynchy.host.git_ops.worktree_sync import (
@@ -91,15 +91,10 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
     git_runner: _GitRunner = run_git,
 ) -> dict[str, Any] | None:
     """Push an inspected SHA without loading the managed worktree's Git config."""
-    if (
-        ctx.object_format not in {"sha1", "sha256"}
-        or ctx.remote_url is None
-        or ctx.base_sha is None
-    ):
-        return {
-            "success": False,
-            "message": "Publication blocked: managed feature object store is unavailable.",
-        }
+    object_format = cast("str", ctx.object_format)
+    remote_url = cast("str", ctx.remote_url)
+    base_sha = cast("str", ctx.base_sha)
+    head_sha = cast("str", ctx.head_sha)
     object_store_failure = {
         "success": False,
         "message": "Publication blocked: managed feature object store is unavailable.",
@@ -109,7 +104,7 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
         ctx,
         "init",
         "--bare",
-        f"--object-format={ctx.object_format}",
+        f"--object-format={object_format}",
         str(bare_dir),
         cwd=isolated_dir,
         git_runner=git_runner,
@@ -133,7 +128,6 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
         "core.fsmonitor=false",
         f"--git-dir={bare_dir}",
     )
-    remote_url = ctx.remote_url
     target_ref = f"refs/heads/{ctx.main_branch}"
     target = _run_managed_git(
         ctx,
@@ -148,7 +142,7 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
     if target is None:
         return object_store_failure
     target_sha = _remote_branch_sha(target.stdout, target_ref) if target.returncode == 0 else None
-    if target_sha != ctx.base_sha:
+    if target_sha != base_sha:
         return {
             "success": False,
             "message": "Publication blocked: managed feature target changed after Cop inspection.",
@@ -180,7 +174,7 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
     )
     if fetched_sha is None:
         return object_store_failure
-    if fetched_sha.returncode != 0 or fetched_sha.stdout.strip() != ctx.base_sha:
+    if fetched_sha.returncode != 0 or fetched_sha.stdout.strip() != base_sha:
         return {
             "success": False,
             "message": "Publication blocked: managed feature target changed after Cop inspection.",
@@ -220,7 +214,7 @@ def _push_managed_feature(  # noqa: PLR0911, PLR0912 - fail-closed remote checks
         "--no-verify",
         f"--force-with-lease={remote_ref}:{remote_sha}",
         remote_url,
-        f"{ctx.head_sha}:{remote_ref}",
+        f"{head_sha}:{remote_ref}",
         cwd=isolated_dir,
         git_runner=git_runner,
     )
@@ -255,8 +249,9 @@ def _managed_refs_match(
     git_runner: _GitRunner = run_git,
 ) -> bool:
     """Require exact remote target and feature refs at one publication checkpoint."""
-    if ctx.remote_url is None or ctx.base_sha is None or ctx.head_sha is None:
-        return False
+    remote_url = cast("str", ctx.remote_url)
+    base_sha = cast("str", ctx.base_sha)
+    head_sha = cast("str", ctx.head_sha)
     target_ref = f"refs/heads/{ctx.main_branch}"
     head_ref = f"refs/heads/{ctx.branch_name}"
     result = _run_managed_git(
@@ -269,7 +264,7 @@ def _managed_refs_match(
         f"--git-dir={bare_dir}",
         "ls-remote",
         "--refs",
-        ctx.remote_url,
+        remote_url,
         target_ref,
         head_ref,
         cwd=cwd,
@@ -279,7 +274,7 @@ def _managed_refs_match(
         return False
     return _remote_refs_match(
         result.stdout,
-        {target_ref: ctx.base_sha, head_ref: ctx.head_sha},
+        {target_ref: base_sha, head_ref: head_sha},
     )
 
 
@@ -287,8 +282,6 @@ def _remote_refs_match(output: str, expected: dict[str, str]) -> bool:
     """Parse one exact `ls-remote --refs` response without accepting extras."""
     actual: dict[str, str] = {}
     for line in output.splitlines():
-        if not line:
-            continue
         sha, separator, ref = line.partition("\t")
         if separator != "\t" or _GIT_OBJECT_ID.fullmatch(sha) is None or ref in actual:
             return False

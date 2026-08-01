@@ -52,8 +52,6 @@ def load_connection_runtimes(pm: pluggy.PluginManager) -> list[ConnectionRuntime
     """Collect typed runtimes and reject ambiguous connection identities."""
     runtimes: list[ConnectionRuntime] = []
     for contribution in pm.hook.pynchy_connection_runtime():
-        if contribution is None:
-            continue
         candidates = contribution if isinstance(contribution, tuple | list) else (contribution,)
         for candidate in candidates:
             if not isinstance(candidate, ConnectionRuntime):

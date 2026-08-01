@@ -446,6 +446,28 @@ async def test_analyze_screenshot_reports_gateway_http_failure(
 
 
 @pytest.mark.asyncio
+async def test_analyze_screenshot_reports_response_without_text(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = make_settings(data_dir=tmp_path)
+    handler = _handler(settings, "analyze_screenshot")
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    fake_session = _FakeVisionSession(_FakeVisionResponse({"output": "not-a-list"}))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.desktop_screenshot.aiohttp.ClientSession",
+        lambda **_kwargs: fake_session,
+    )
+
+    result = await handler({"source_group": "admin", "image_path": "screen.png"})
+
+    assert result == {
+        "error": "Vision analysis failed: Vision response did not include text output."
+    }
+
+
+@pytest.mark.asyncio
 async def test_screenshot_actions_validate_platform_runtime_and_request(tmp_path: Path) -> None:
     settings = make_settings(data_dir=tmp_path)
     plugin = DesktopScreenshotPlugin()

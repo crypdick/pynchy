@@ -281,6 +281,88 @@ def test_failed_publish_restores_displaced_checkout(tmp_path: Path):
     assert not list(repos_root.glob(".project.pynchy-clone-*"))
 
 
+def test_failed_publish_reports_when_displaced_checkout_cannot_be_restored(tmp_path: Path):
+    repos_root = tmp_path / "repos"
+    repo_root = repos_root / "project"
+    repo_root.mkdir(parents=True)
+    repo_ctx = RepoContext(SLUG, repo_root, tmp_path / "worktrees")
+    settings = make_settings(repos=ReposConfig(root=repos_root))
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        return True
+
+    real_rename = Path.rename
+
+    def fail_publish_and_restore(source: Path, target: Path) -> Path:
+        if source.name.startswith(".project.pynchy-clone-"):
+            raise OSError("replacement unavailable")
+        if source.name.startswith(".project.pynchy-recovery-"):
+            raise OSError("recovery unavailable")
+        return real_rename(source, target)
+
+    with (
+        patch("pynchy.config.api.get_settings", return_value=settings),
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pathlib.Path.rename", new=fail_publish_and_restore),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+    assert not repo_root.exists()
+    assert not list(repos_root.glob(".project.pynchy-clone-*"))
+
+
+def test_failed_publish_without_existing_checkout_skips_restore(tmp_path: Path):
+    repo_ctx = _repo_context(tmp_path)
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        return True
+
+    with (
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pathlib.Path.rename", side_effect=OSError("replacement unavailable")),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+
+def test_failed_publish_retries_a_colliding_recovery_name(tmp_path: Path):
+    repos_root = tmp_path / "repos"
+    repo_root = repos_root / "project"
+    repo_root.mkdir(parents=True)
+    repo_ctx = RepoContext(SLUG, repo_root, tmp_path / "worktrees")
+    settings = make_settings(repos=ReposConfig(root=repos_root))
+    recovery_candidates = 0
+
+    def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+        target.mkdir()
+        return True
+
+    def path_present(path: Path) -> bool:
+        nonlocal recovery_candidates
+        if path == repo_root:
+            return True
+        if "-clone-" in path.name:
+            return False
+        recovery_candidates += 1
+        return recovery_candidates != 2
+
+    real_rename = Path.rename
+
+    def fail_staged_publish(source: Path, target: Path) -> Path:
+        if "-clone-" in source.name:
+            raise OSError("replacement unavailable")
+        return real_rename(source, target)
+
+    with (
+        patch("pynchy.config.api.get_settings", return_value=settings),
+        patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        patch("pynchy.host.git_ops.repo._path_present", side_effect=path_present),
+        patch("pathlib.Path.rename", new=fail_staged_publish),
+    ):
+        assert ensure_repo_cloned(repo_ctx) is False
+
+
 def test_empty_workspace_resolution_returns_no_repositories():
     with patch("pynchy.host.git_ops.repo.load_resolved_config", return_value=None):
         assert resolve_repos_for_group("group") == []

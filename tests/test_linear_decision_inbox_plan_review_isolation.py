@@ -14,6 +14,7 @@ from pynchy.plugins.integrations.linear_decision_inbox import (
     reconcile_linear_decision_inbox,
 )
 from pynchy.state import get_active_work_item_execution
+from pynchy.workspace.api import WorkspaceProfile
 from tests.linear_decision_inbox_support import (
     _board,
     _DecisionClient,
@@ -71,6 +72,25 @@ async def test_app_does_not_start_a_task_when_plan_review_is_not_admitted(
     assert await app.process_linear_plan_review_admission(admission) is False
     admit.assert_awaited_once()
     start.assert_not_awaited()
+
+
+async def test_app_resets_linear_plan_review_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    app.workspaces["chat"] = group
+    reset = AsyncMock()
+    monkeypatch.setattr(app, "handle_context_reset", reset)
+
+    await app.reset_linear_plan_review_context("missing")
+    await app.reset_linear_plan_review_context("chat")
+
+    reset.assert_awaited_once()
+    args = reset.await_args
+    assert args.args[:2] == ("chat", group)
+    assert args.args[2]
+    assert args.kwargs["source_message"].content == "/reset"
 
 
 async def test_planned_work_is_deferred_by_issue_revision_without_inline_review() -> None:

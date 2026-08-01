@@ -165,7 +165,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         binding := await get_conversation_control_by_thread(ChatJid(request.chat_jid))
     ):
         conversation = await get_conversation(binding.conversation_id)
-        if conversation is not None and conversation.control_closed:
+        if conversation.control_closed:
             raise ConversationControlClosedError(
                 f"Conversation control is closed: {binding.conversation_id}"
             )

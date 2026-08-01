@@ -430,8 +430,7 @@ def main() -> None:
         case "validate-personalization":
             sys.exit(validate_personalization(args.path))
         case "control-plane":
-            if args.control_plane_command == "bootstrap":
-                sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))
+            sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))
         case "doctor":
             sys.exit(
                 _doctor(

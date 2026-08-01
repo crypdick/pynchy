@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess  # noqa: S404 - test double models fixed gh subprocess responses.
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -130,6 +131,36 @@ def test_blocks_object_store_mutation_before_push(git_env: dict, tmp_path: Path)
     git_runner.assert_not_called()
     open_pr.assert_not_called()
     assert "mutated-store-feature" not in git(git_env["origin"], "branch").stdout
+
+
+@pytest.mark.action("lifecycle.managed.feature.publish")
+def test_blocks_publication_when_isolated_transport_disappears(
+    git_env: dict,
+) -> None:
+    feature = "missing-isolated-transport"
+    create_managed_feature(git_env, feature)
+    write_managed_manifest(git_env["project"], [managed_record(feature)])
+
+    def remove_transport(
+        _ctx: object, isolated_dir: Path, *_args: object, **_kwargs: object
+    ) -> None:
+        transport = isolated_dir / "repository.git"
+        if transport.exists():
+            if transport.is_dir():
+                shutil.rmtree(transport)
+            else:
+                transport.unlink()
+
+    with (
+        patch("pynchy.host.git_ops.sync._managed_existing_pr", return_value=(None, None)),
+        patch("pynchy.host.git_ops.sync._push_managed_feature", side_effect=remove_transport),
+    ):
+        result = host_create_pr_from_managed_feature(feature, [git_env["repo_ctx"]])
+
+    assert result == {
+        "success": False,
+        "message": "Publication blocked: managed feature Git identity is incomplete.",
+    }
 
 
 @pytest.mark.action("lifecycle.managed.feature.publish")

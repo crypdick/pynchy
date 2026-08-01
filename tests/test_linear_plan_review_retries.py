@@ -137,3 +137,83 @@ async def test_temporal_final_plan_review_failure_completes_as_blocked(
     ]
     assert tracked["result"] == "blocked"
     assert tracked["error"] == "reviewer timed out"
+
+
+@pytest.mark.parametrize(
+    "reset_case", ["no_callback", "missing", "closed", "closed_binding", "open", "error"]
+)
+async def test_plan_review_context_reset_handles_cleanup_states(
+    monkeypatch: pytest.MonkeyPatch,
+    reset_case: str,
+) -> None:
+    client = _DecisionClient()
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = "<!-- pynchy.plan:start -->approved<!-- pynchy.plan:end -->"
+    board = _board("project-beta")
+    board.states["blocked"] = {"id": "state-blocked", "name": "Blocked", "type": "started"}
+    admission = LinearPlanReviewAdmission(
+        workspace="beta",
+        issue_id=issue["id"],
+        identifier=issue["identifier"],
+        updated_at=issue["updatedAt"],
+        public_source=True,
+    )
+    reset = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_linear_client(*, workspace: str):
+        assert workspace == "beta"
+        yield client
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.linear_client",
+        fake_linear_client,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.workspace_issue",
+        AsyncMock(return_value=(issue, board)),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.admit_decision_issue",
+        AsyncMock(side_effect=LinearPlanReviewError("reviewer timed out")),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.update_issue_state", AsyncMock()
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox._report_plan_review_status",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value=None if reset_case == "missing" else "conversation-1"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.get_conversation_control_binding",
+        AsyncMock(
+            return_value=None
+            if reset_case == "closed"
+            else type(
+                "Binding",
+                (),
+                {"thread_jid": "thread-1", "closed": reset_case == "closed_binding"},
+            )(),
+        ),
+    )
+    if reset_case == "error":
+        reset.side_effect = RuntimeError("reset failed")
+
+    with pytest.raises(LinearPlanReviewBlockedError):
+        await process_linear_plan_review_admission(
+            admission,
+            [_Workspace("beta", "Beta", "linear:beta")],
+            review_plan=AsyncMock(),
+            broadcast_host_message=AsyncMock(),
+            attempt=3,
+            reset_context=None if reset_case == "no_callback" else reset,
+        )
+
+    if reset_case in {"open", "error"}:
+        reset.assert_awaited_once_with("thread-1")
+    else:
+        reset.assert_not_awaited()

@@ -165,6 +165,20 @@ async def test_lid_inbound_message_is_delivered_to_phone_workspace(tmp_path) -> 
 
 
 @pytest.mark.asyncio
+async def test_connect_without_complete_device_identity_still_connects(tmp_path) -> None:
+    client = _FakeWhatsAppClient()
+    client.me = MagicMock(JID=None, LID=None)
+    channel = _channel(tmp_path, client)
+
+    await channel.connect()
+
+    try:
+        assert channel.is_connected() is True
+    finally:
+        await channel.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_status_and_unknown_chat_messages_are_ignored(connected_channel) -> None:
     status_event = _inbound_event("status")
     status_chat = _Jid("status@broadcast", "status", "broadcast")
@@ -315,6 +329,31 @@ async def test_named_group_sync_without_update_callback_still_completes(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_periodic_group_sync_survives_provider_failure(tmp_path, monkeypatch) -> None:
+    client = _FakeWhatsAppClient()
+    channel = _channel(tmp_path, client)
+    calls = 0
+    periodic_failure_seen = asyncio.Event()
+
+    async def failing_sync() -> None:
+        nonlocal calls
+        await asyncio.sleep(0)
+        calls += 1
+        if calls >= 2:
+            periodic_failure_seen.set()
+        raise OSError("provider offline")
+
+    channel.sync_group_metadata = failing_sync  # type: ignore[method-assign]
+    monkeypatch.setattr(whatsapp_channel, "GROUP_SYNC_INTERVAL", 0)
+
+    await channel.connect()
+    try:
+        await asyncio.wait_for(periodic_failure_seen.wait(), timeout=2)
+    finally:
+        await channel.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_chat_name_resolution_without_lookup_callback_returns_none(tmp_path) -> None:
     channel = _channel(tmp_path, _FakeWhatsAppClient())
 
@@ -414,6 +453,15 @@ async def test_connection_state_reconnect_and_jid_ownership_are_publicly_consist
         assert channel.is_connected() is True
     finally:
         await channel.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_before_connect_is_idempotent(tmp_path) -> None:
+    channel = _channel(tmp_path, _FakeWhatsAppClient())
+
+    await channel.disconnect()
+
+    assert channel.is_connected() is False
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.identifiers import (
@@ -166,12 +166,9 @@ async def _update_or_fallback(
     plan: _DeliveryPlan,
     ledger_id: int | None,
 ) -> UpdatingMessage | None:
-    previous = plan.previous
-    if previous is None:
-        raise RuntimeError("edit delivery requires an existing remote message")
-    update_event = getattr(plan.channel, "update_event", None)
-    if not callable(update_event):
-        raise TypeError("edit delivery requires channel update support")
+    # _delivery_plans creates EDIT plans only with both invariants satisfied.
+    previous = cast("UpdatingMessage", plan.previous)
+    update_event = plan.channel.update_event
     try:
         await update_event(plan.target_jid, previous.message_id, plan.event)
     except Exception as exc:  # noqa: BLE001 - a failed edit must fall back to a visible post.

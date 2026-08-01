@@ -265,6 +265,29 @@ async def test_existing_named_task_binding_reconciles_its_title() -> None:
     assert deps.scheduled_task_updates == [(task.id, {"derived_thread_name": "⚙️ durable task"})]
 
 
+async def test_existing_named_task_binding_keeps_matching_profile_name() -> None:
+    owner = _profile()
+    bound = _profile(
+        jid="discord:channel:scheduled-task",
+        folder="owner__thread_discord-channel-scheduled-task",
+    )
+    task = replace(
+        _task(),
+        config_job_name="vault-durable-task",
+        derived_thread_name="⚙️ durable task",
+        bound_chat_jid=bound.jid,
+        bound_group_folder=bound.folder,
+    )
+    bound = replace(bound, name="Owner/⚙️ durable task")
+    await create_task(task)
+    deps = _BindingDeps({owner.jid: owner, bound.jid: bound}, channels=[_TitleChannel()])
+
+    ensured = await ensure_scheduled_task_binding(task, deps)
+
+    assert ensured == task
+    assert deps.scheduled_task_updates == []
+
+
 async def test_task_without_workspace_owner_fails_before_execution(tmp_path) -> None:
     task = _task()
     deps = _BindingDeps({})

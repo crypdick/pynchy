@@ -8,13 +8,14 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase, make_mocked_request
 
+import pynchy.host.orchestrator.http_control as http_control
 from pynchy.config.api import ServerConfig
 from pynchy.host.orchestrator.http_control import (
     ClientAddress,
@@ -76,6 +77,17 @@ def test_default_runtime_binds_loopback_and_enables_unix_socket(
     assert runtime.remote_auth_required is False
     assert runtime.unix_socket == short_unix_socket_root / "data" / "pynchy.sock"
     assert runtime.unix_socket_bind is not None
+
+
+def test_windows_runtime_skips_unix_socket_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(http_control.os, "name", "nt")
+
+    runtime = _runtime(ServerConfig(unix_socket=None), project_root=tmp_path)
+
+    assert runtime.unix_socket is None
+    assert runtime.unix_socket_bind is None
 
 
 def test_runtime_rejects_an_overlong_unix_socket_path(tmp_path: Path) -> None:
@@ -185,6 +197,15 @@ def test_rate_limiter_resets_after_its_window() -> None:
     assert denied.allowed is False
     assert denied.retry_after_seconds == 10
     assert limiter.consume(client, now=11.0).allowed is True
+
+
+def test_rate_limiter_prunes_large_expired_window_map() -> None:
+    limiter = RequestRateLimiter(request_limit=2, window_seconds=10)
+
+    for index in range(1024):
+        assert limiter.consume(ClientAddress(str(index)), now=1.0).allowed is True
+
+    assert limiter.consume(ClientAddress("new"), now=1.0).allowed is True
 
 
 class TestRemoteControlPlanePolicy(AioHTTPTestCase):
@@ -402,6 +423,56 @@ async def test_request_without_transport_still_requires_remote_auth() -> None:
     unexpected_handler = AsyncMock(side_effect=AssertionError("request should be denied"))
 
     response = await middleware(request, unexpected_handler)
+
+    assert response.status == 401
+
+
+@pytest.mark.asyncio
+async def test_request_uses_tuple_peer_address_for_remote_auth() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host=PUBLIC_BIND_TEST_HOST,
+        port=8484,
+        unix_socket=None,
+        public_bind=True,
+        remote_auth_required=True,
+        allow_remote_deploy=True,
+        auth_token=ControlPlaneToken(TEST_TOKEN),
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    middleware = build_control_plane_middleware(runtime)
+    request = make_mocked_request("GET", "/status")
+    request._protocol.transport = MagicMock()
+    request._protocol.transport.get_extra_info.side_effect = lambda name: (
+        None if name == "socket" else ("203.0.113.7", 8484)
+    )
+
+    response = await middleware(request, AsyncMock())
+
+    assert response.status == 401
+
+
+@pytest.mark.asyncio
+async def test_request_uses_unknown_address_for_non_tuple_peer() -> None:
+    runtime = ControlPlaneRuntime(
+        bind_host=PUBLIC_BIND_TEST_HOST,
+        port=8484,
+        unix_socket=None,
+        public_bind=True,
+        remote_auth_required=True,
+        allow_remote_deploy=True,
+        auth_token=ControlPlaneToken(TEST_TOKEN),
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        audit_security_event=_discard_audit,
+    )
+    middleware = build_control_plane_middleware(runtime)
+    request = make_mocked_request("GET", "/status")
+    request._protocol.transport = MagicMock()
+    request._protocol.transport.get_extra_info.side_effect = lambda name: (
+        None if name == "socket" else "not-a-peer-tuple"
+    )
+
+    response = await middleware(request, AsyncMock())
 
     assert response.status == 401
 

@@ -70,6 +70,33 @@ async def test_resuming_waiting_runtime_keeps_it_waiting_until_global_slot_is_fr
 
 
 @pytest.mark.asyncio
+async def test_resuming_idle_runtime_at_capacity_does_not_wait(container_runtime):
+    queue = GroupQueue(
+        QueuePolicy(max_concurrent=1, max_retries=0, retry_base_seconds=0.0),
+        container_runtime,
+    )
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def process_messages(_chat_jid: str) -> TurnOutcome:
+        first_started.set()
+        await release_first.wait()
+        return TurnOutcome.COMPLETED
+
+    queue.set_process_messages_fn(process_messages)
+    queue.enqueue_message_check(_target("first@g.us", "first"))
+    await first_started.wait()
+
+    second = _target("second@g.us", "second")
+    await queue.pause_runtime_policy((second,))
+    queue.resume_runtime_policy((second.id,))
+
+    assert queue.snapshot()["_meta"]["waiting_count"] == 0
+    release_first.set()
+    await queue.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_paused_waiting_runtime_stays_deferred_after_global_slot_frees(
     container_runtime,
 ):

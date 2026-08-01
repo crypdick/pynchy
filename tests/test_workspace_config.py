@@ -498,6 +498,11 @@ async def test_reconcile_skips_workspace_without_resolved_policy():
             new_callable=AsyncMock,
             return_value=[],
         ),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.reconcile_workspace_threads",
+            new_callable=AsyncMock,
+            return_value=[object()],
+        ),
     ):
         await reconcile_workspaces({}, [], AsyncMock())
 

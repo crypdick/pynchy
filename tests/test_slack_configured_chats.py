@@ -54,6 +54,20 @@ class TestSlackConfiguredChats:
         ).messages == []
 
     @pytest.mark.asyncio
+    async def test_fetch_inbound_since_stops_after_ten_bot_only_pages(self) -> None:
+        channel = make_slack_channel()
+        app = attach_slack_app(channel)
+        app.client.conversations_history.side_effect = [
+            {"messages": [{"ts": str(index + 1), "bot_id": "B"}], "has_more": True}
+            for index in range(10)
+        ]
+
+        result = await channel.fetch_inbound_since("slack:C12345", "1970-01-01T00:00:00+00:00")
+
+        assert result.messages == []
+        assert app.client.conversations_history.await_count == 10
+
+    @pytest.mark.asyncio
     async def test_fetch_inbound_since_skips_unallowed_channel(self) -> None:
         channel = make_slack_channel()
         attach_slack_app(channel)

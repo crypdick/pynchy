@@ -480,8 +480,6 @@ class TemporalSchedulerRuntime:
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
             raise
         _state.active_runtime = self
-        if self.client is None:
-            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         bind_workflow_client(self.client)
         _update_temporal_scheduler_status(worker_running=True, last_error=None)
         logger.info(

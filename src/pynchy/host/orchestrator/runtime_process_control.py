@@ -151,9 +151,8 @@ class RuntimeProcessControl:
 
     def clean_runtime_input(self, runtime_id: RuntimeId) -> None:
         """Discard IPC input that a completed runtime did not consume."""
-        state = self._registry.get(runtime_id)
-        if state is not None:
-            self._container_runtime.clean_input_dir(state.target.folder)
+        state = self._registry.require(runtime_id)
+        self._container_runtime.clean_input_dir(state.target.folder)
 
     async def destroy_runtime_session(self, runtime_id: RuntimeId) -> None:
         """Remove the container session for a runtime, even after its process exits."""

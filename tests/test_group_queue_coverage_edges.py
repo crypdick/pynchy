@@ -9,7 +9,7 @@ import pytest
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.identifiers import RuntimeId
 from pynchy.turn_outcomes import TurnOutcome
-from tests.group_queue_support import _target
+from tests.group_queue_support import _runtime, _target
 
 pytest_plugins = ("tests.group_queue_support",)
 
@@ -163,6 +163,18 @@ async def test_clearing_pending_work_handles_known_and_unknown_runtime(container
 
 
 @pytest.mark.asyncio
+async def test_resuming_unknown_runtime_is_a_no_op(container_runtime):
+    queue = _limited_queue(container_runtime)
+
+    queue.resume_runtime_policy((RuntimeId("missing"),))
+
+    snapshot = queue.snapshot()
+    assert "missing" not in snapshot
+    assert snapshot["_meta"]["waiting_count"] == 0
+    await queue.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_message_waiter_is_skipped_during_runtime_cleanup(container_runtime):
     queue = _limited_queue(container_runtime)
     started = asyncio.Event()
@@ -270,4 +282,26 @@ async def test_process_control_delegates_destroy_for_unknown_runtime(container_r
     assert await queue.interrupt_after_tool_result(runtime_id) is False
     assert queue.has_active_run(runtime_id) is False
     await queue.stop_active_process_for_control(runtime_id)
+    await queue.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_process_control_destroys_an_idle_registered_runtime(container_runtime):
+    queue = _limited_queue(container_runtime)
+    runtime_id = _runtime("idle-runtime")
+    queue.enqueue_task(
+        _target("idle-runtime@g.us", "idle-runtime"), "idle", lambda: asyncio.sleep(0)
+    )
+    await asyncio.sleep(0.05)
+    assert queue.register_process(runtime_id, None, "idle-container") is True
+
+    await queue.stop_active_process(runtime_id)
+
+    container_runtime.destroy_session.assert_awaited_once_with("idle-runtime")
+
+    host_target = _target("host-idle@g.us", "host-idle")
+    lease = queue.acquire_host_process(host_target)
+    assert queue.register_host_process(lease, None, "host-container") is True
+    await queue.stop_active_process(host_target.id)
+    assert queue.release_host_process(lease) is False
     await queue.shutdown()

@@ -122,6 +122,12 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
             None,
             id="fenced-json",
         ),
+        pytest.param(
+            '```json\n{"decision":"proceed","reason":"Still current"}',
+            LinearPlanReviewDecision.PROCEED,
+            None,
+            id="unterminated-fence",
+        ),
         pytest.param("[]", LinearPlanReviewDecision.ERROR, None, id="non-object"),
         pytest.param(
             '{"decision":"proceed"}', LinearPlanReviewDecision.ERROR, None, id="missing-reason"

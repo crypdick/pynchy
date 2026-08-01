@@ -56,6 +56,26 @@ async def test_voice_connection_stays_receive_disabled_without_opus(
 
 
 @pytest.mark.asyncio
+async def test_voice_disconnect_without_receiver_is_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    voice_channel.release.set()
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: False)
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    voice_channel.voice_client.is_connected = lambda: False  # type: ignore[method-assign]
+    await channel.voice.disconnect()
+
+    assert voice_channel.connect_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_voice_room_with_only_bots_does_not_activate() -> None:
     channel = _configured_voice_channel()
     voice_channel = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
@@ -187,6 +207,24 @@ async def test_voice_connection_failure_does_not_activate_session() -> None:
     await channel.voice.speak("discord:voice:2", "hello")
 
     voice_channel.connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_voice_session_ignores_another_configured_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = _configured_voice_channel()
+    await _activate_voice_session(channel, monkeypatch)
+    other_room = _FakeVoiceChannel(asyncio.Event(), asyncio.Event())
+    other_room.id = 3
+    other_room.release.set()
+    monkeypatch.setattr(type(channel.voice), "_is_configured_voice_channel", lambda *_args: True)
+    monkeypatch.setattr(type(channel.voice), "_workspace_exists", lambda *_args: True)
+    monkeypatch.setattr(type(channel.voice), "_allowed_members", lambda *_args: {"42": "Alice"})
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(other_room))
+
+    assert other_room.connect_calls == 0
 
 
 @pytest.mark.asyncio

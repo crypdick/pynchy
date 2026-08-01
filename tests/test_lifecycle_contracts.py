@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# allow: file-length -- lifecycle composition contracts share one fixture boundary.
 import asyncio
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
@@ -223,8 +224,9 @@ async def test_run_app_composes_connection_context_and_dispatches_callbacks(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("binding_count", [0, 1])
 async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
-    monkeypatch,
+    monkeypatch, binding_count: int
 ) -> None:
     app = PynchyApp()
     app.plugin_manager = pluggy.PluginManager("pynchy")
@@ -239,7 +241,7 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
     monkeypatch.setattr(lifecycle.workspace_config, "get_repo_access_groups", lambda _: {"group"})
     monkeypatch.setattr(lifecycle, "reconcile_worktrees_at_startup", reconcile_worktrees)
     monkeypatch.setattr(lifecycle.workspace_config, "reconcile_workspaces", reconcile_workspaces)
-    reconcile_bindings = AsyncMock(return_value=0)
+    reconcile_bindings = AsyncMock(return_value=binding_count)
     monkeypatch.setattr(lifecycle, "get_all_tasks", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         lifecycle,
@@ -367,6 +369,55 @@ async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) ->
     )
     ensure_workspace.assert_not_awaited()
     ensure_policy.assert_called_once_with(profile.folder, conversation.workspace)
+
+
+@pytest.mark.asyncio
+async def test_linear_issue_control_rebuilds_when_binding_workspace_is_missing(
+    monkeypatch,
+) -> None:
+    app = PynchyApp()
+    conversation = _conversation()
+    control = LinearIssueControl(
+        issue_id="issue-1",
+        workspace="health",
+        parent_jid="discord:channel:health-forum",
+        account_name="linear",
+        title="[SYN-1] Restore sleep access",
+        updated_at="2026-07-31T09:00:00Z",
+    )
+    ensured = MagicMock(
+        profile=WorkspaceProfile(
+            jid="discord:thread:replacement",
+            name="Replacement",
+            folder="health__thread_replacement",
+            trigger="@Pynchy",
+        )
+    )
+    ensure_workspace = AsyncMock(return_value=ensured)
+    ensure_policy = MagicMock()
+    monkeypatch.setattr(linear_issue_controls, "apply_conversation_control_state", AsyncMock())
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "get_conversation_control_binding",
+        AsyncMock(
+            return_value=MagicMock(
+                parent_jid=control.parent_jid,
+                thread_jid="discord:thread:missing",
+                closed=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(linear_issue_controls, "ensure_conversation_workspace", ensure_workspace)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "ensure_runtime_workspace_policy_owner",
+        ensure_policy,
+    )
+
+    await linear_issue_controls.ensure_issue_control(app, control, conversation)
+
+    ensure_workspace.assert_awaited_once()
+    ensure_policy.assert_called_once_with(ensured.profile.folder, conversation.workspace)
 
 
 @pytest.mark.asyncio

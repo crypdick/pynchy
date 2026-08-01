@@ -6,7 +6,20 @@ from pynchy.plugins.channels.slack.api import (
     build_ask_user_blocks,
     extract_checkbox_values,
     extract_text_input_value,
+    split_text,
 )
+
+
+def test_split_text_emits_final_short_chunk() -> None:
+    text = "x" * 3001
+
+    assert split_text(text) == ["x" * 3000, "x"]
+
+
+def test_split_text_drops_newline_only_tail_after_boundary() -> None:
+    text = "x" * 2999 + "\n\n"
+
+    assert split_text(text) == ["x" * 2999]
 
 
 def test_ask_user_blocks_render_options_descriptions_and_question_divider() -> None:

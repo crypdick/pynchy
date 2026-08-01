@@ -281,6 +281,27 @@ async def test_source_health_reports_unreadable_and_stale_host_stores(
     assert whatsapp["reason"] == "The aggregate store has no fresh inbound event."
 
 
+@pytest.mark.asyncio
+async def test_source_health_reports_fresh_signal_store_as_ready(monkeypatch, tmp_path) -> None:
+    aggregate_root = tmp_path / "aggregate"
+    settings = make_settings(
+        data_dir=tmp_path / "pynchy-data",
+        messaging_source_health=MessagingSourceHealthConfig(data_dir=aggregate_root),
+    )
+    _configure_test_settings(monkeypatch, settings)
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
+    _create_source_database(
+        aggregate_root / "signal" / "messages.db",
+        latest_inbound_ms=now_ms,
+        collector_checked_ms=now_ms,
+    )
+
+    signal = await SourceHealthProjection.project_personal_source("signal")
+
+    assert signal["status"] == "ready"
+    assert signal["reason"] is None
+
+
 def test_source_health_requests_skip_mutation_ledger() -> None:
     assert not request_requires_idempotency_ledger("messaging_source_health")
 
@@ -321,6 +342,37 @@ async def test_reports_non_channel_connection_runtime_status(monkeypatch, tmp_pa
             "reason": None,
         }
     ]
+
+
+async def test_source_filter_deduplicates_overlapping_connection_labels(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+    settings = make_settings(
+        data_dir=tmp_path,
+        connections={
+            "first": MatrixConnectionConfig(expected_user_id="@owner:example.test"),
+            "second": MatrixConnectionConfig(expected_user_id="@owner:example.test"),
+        },
+    )
+    _configure_test_settings(monkeypatch, settings)
+
+    await dispatch(
+        {
+            "type": "messaging_source_health",
+            "request_id": "overlapping-source-request",
+            "sources": ["matrix", "first"],
+        },
+        "chat-manager",
+        False,
+        _SourceHealthDeps(),
+    )
+
+    response_path = (
+        settings.data_dir / "ipc" / "chat-manager" / "responses" / "overlapping-source-request.json"
+    )
+    sources = json.loads(response_path.read_text(encoding="utf-8"))["result"]["sources"]
+    assert [source["name"] for source in sources] == ["first", "second"]
 
 
 async def test_host_ipc_omission_preserves_complete_source_inventory(monkeypatch, tmp_path) -> None:

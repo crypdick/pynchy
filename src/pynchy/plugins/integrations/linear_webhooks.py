@@ -176,8 +176,6 @@ async def prepare_linear_webhook_event(
         )
     except (aiohttp.ClientError, LinearBoardError, LinearError, TimeoutError, ValueError) as exc:
         raise WebhookProcessingError(str(exc)) from exc
-    if event.conversation is None:
-        return event
     conversation = await resolve_linear_issue_conversation(
         event.subject_id,
         workspace,

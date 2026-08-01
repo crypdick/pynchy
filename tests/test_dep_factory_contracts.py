@@ -352,6 +352,28 @@ async def test_ipc_adapter_deploy_paths_and_periodic_agent(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_trigger_deploy_without_admin_workspace_skips_notification(
+    tmp_path: Path,
+) -> None:
+    app = PynchyApp()
+    settings = _settings(tmp_path, admin_workspace=None)
+
+    with (
+        patch.object(dep_factory, "get_settings", return_value=settings),
+        patch.object(dep_factory, "start_deploy_workflow", new_callable=AsyncMock) as start_deploy,
+        patch.object(dep_factory, "get_head_sha", return_value="head"),
+        patch.object(dep_factory, "get_deploy_config_hash", return_value="config"),
+        patch.object(
+            app.host_broadcaster, "broadcast_host_message", new_callable=AsyncMock
+        ) as broadcast,
+    ):
+        await dep_factory.make_ipc_deps(app).trigger_deploy("old")
+
+    broadcast.assert_not_awaited()
+    assert not start_deploy.await_args.args[0].chat_jid
+
+
+@pytest.mark.asyncio
 async def test_ipc_adapter_handles_missing_command_center_and_target(tmp_path: Path) -> None:
     app = PynchyApp()
     settings = _settings(tmp_path)

@@ -435,6 +435,54 @@ class TestJobReconcile:
         tasks = await get_all_tasks()
         assert tasks[0].status == "paused"
 
+    async def test_disabled_job_without_existing_task_is_ignored(self, db, monkeypatch, tmp_path):
+        self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "daily-triage": JobConfig(
+                    enabled=False,
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    prompt="Run the daily triage memo.",
+                )
+            },
+        )
+
+        await reconcile_workspaces({}, [], AsyncMock())
+
+        assert await get_all_tasks() == []
+
+    async def test_reconciling_an_unchanged_agent_job_has_no_updates(
+        self, db, monkeypatch, tmp_path
+    ):
+        self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "daily-triage": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    prompt="Run the daily triage memo.",
+                )
+            },
+        )
+        registered = {
+            "slack:CADMIN": WorkspaceProfile(
+                jid="slack:CADMIN",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        assert len(await get_all_tasks()) == 1
+
     async def test_enabled_job_resets_failures_when_reactivating_config_task(
         self, db, monkeypatch, tmp_path
     ):

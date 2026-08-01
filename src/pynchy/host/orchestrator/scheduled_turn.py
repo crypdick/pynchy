@@ -10,7 +10,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these runtime a
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves request annotations.
-from typing import Any
+from typing import Any, cast
 
 from pynchy.agent_protocol.api import (
     ContainerOutput,
@@ -65,9 +65,8 @@ class _IdleTimer:
 
     def cancel(self) -> None:
         """Cancel the timer without firing the callback."""
-        if self._handle is not None:
-            self._handle.cancel()
-            self._handle = None
+        cast("asyncio.TimerHandle", self._handle).cancel()
+        self._handle = None
 
 
 @dataclass(frozen=True)

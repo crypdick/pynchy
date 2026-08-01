@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# allow: file-length -- CalDAV service contracts share one provider fixture set.
 import json
 import os
 from contextlib import nullcontext
@@ -468,6 +469,18 @@ async def test_list_calendar_returns_events():
 
 
 @pytest.mark.asyncio
+async def test_list_calendar_skips_results_without_icalendar_components():
+    empty_event = MagicMock(icalendar_component=None)
+    fake_client, cals = _make_fake_client("meetings")
+    cals[0].date_search.return_value = [empty_event]
+
+    with patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client):
+        result = await _handle_list_calendar({"calendar": "primary"})
+
+    assert result["result"] == {"events": [], "count": 0}
+
+
+@pytest.mark.asyncio
 async def test_list_calendar_defaults_to_7_days():
     """list_calendar uses 7-day range when no dates provided."""
     fake_client, cals = _make_fake_client("meetings")
@@ -680,6 +693,7 @@ async def test_create_event_success():
 async def test_create_event_minimal():
     """create_event works with only required fields (no description/location)."""
     created_event = _make_fake_event(uid="min-uid")
+    created_event.icalendar_component = None
 
     fake_client, cals = _make_fake_client("meetings")
     cals[0].save_event.return_value = created_event
@@ -702,6 +716,25 @@ async def test_create_event_minimal():
     call_kwargs = cals[0].save_event.call_args.kwargs
     assert "description" not in call_kwargs
     assert "location" not in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_create_event_returns_no_uid_when_provider_omits_uid():
+    created_event = _make_fake_event(uid=None)
+    fake_client, cals = _make_fake_client("meetings")
+    cals[0].save_event.return_value = created_event
+
+    with patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client):
+        result = await _handle_create_event(
+            {
+                "title": "Quick Call",
+                "start": "2026-02-20T10:00:00",
+                "end": "2026-02-20T10:30:00",
+                "calendar": "primary",
+            }
+        )
+
+    assert result["result"] == {"uid": None, "status": "created"}
 
 
 @pytest.mark.asyncio

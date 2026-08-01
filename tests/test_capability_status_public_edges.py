@@ -76,6 +76,7 @@ def test_canary_report_parser_fails_closed_for_malformed_rows():
                 "not-a-mapping",
                 {"id": 123, "latest_runs": []},
                 {"id": "missing-runs", "latest_runs": "not-a-list"},
+                {"id": "empty", "latest_runs": []},
                 {"id": "failed", "latest_runs": [{"outcome": "passed"}, {"outcome": "failed"}]},
                 {"id": "cleanup", "latest_runs": [{"outcome": "cleanup_failed"}]},
                 {"id": "passed", "latest_runs": [{"outcome": "passed"}]},

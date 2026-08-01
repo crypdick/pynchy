@@ -33,7 +33,7 @@ class BoundedGitOutput:
     exceeded_limit: bool
 
 
-def run_git_bounded_stdout(  # noqa: PLR0912, PLR0915 - streaming two pipes needs interleaved limit and timeout cleanup.
+def run_git_bounded_stdout(  # noqa: PLR0912 - streaming two pipes needs interleaved limit and timeout cleanup.
     *args: str,
     max_stdout_bytes: int,
     cwd: Path | None = None,
@@ -77,8 +77,7 @@ def run_git_bounded_stdout(  # noqa: PLR0912, PLR0915 - streaming two pipes need
                     continue
                 if key.data == "stdout":
                     capture_remaining = max_stdout_bytes + 1 - len(stdout)
-                    if capture_remaining > 0:
-                        stdout.extend(chunk[:capture_remaining])
+                    stdout.extend(chunk[:capture_remaining])
                     if len(chunk) > capture_remaining or len(stdout) > max_stdout_bytes:
                         exceeded_limit = True
                         _terminate_unread_process_group(process)

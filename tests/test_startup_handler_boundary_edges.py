@@ -139,6 +139,23 @@ async def test_boot_notification_removes_malformed_deploy_warnings(tmp_path, mon
 
 
 @pytest.mark.asyncio
+async def test_boot_notification_sends_without_deploy_warnings(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        startup_handler,
+        "get_settings",
+        lambda: _Settings(tmp_path, _Notifications("admin")),
+    )
+    monkeypatch.setattr(startup_handler, "get_head_sha", lambda: "head-sha")
+    monkeypatch.setattr(startup_handler, "get_head_commit_message", lambda _length: "Boot")
+    monkeypatch.setattr(startup_handler, "is_repo_dirty", lambda: False)
+    deps = _deps({"discord:admin": _workspace("discord:admin", "admin", is_admin=True)})
+
+    await startup_handler.send_boot_notification(deps)
+
+    deps.broadcast_host_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_pending_recovery_skips_excluded_and_cron_workspaces(monkeypatch) -> None:
     excluded = _workspace("slack:excluded", "excluded")
     scheduled = _workspace("slack:scheduled", "scheduled")

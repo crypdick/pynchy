@@ -511,7 +511,7 @@ async def test_docker_mount_resolution_handles_existing_and_file_sources(tmp_pat
         type="docker",
         image="image:latest",
         port=8000,
-        volumes=[f"{existing}:/existing", f"{file_source}:/settings.json"],
+        volumes=[f"{existing}:/existing", f"{file_source}:/settings.json", "/anonymous"],
     )
     run_docker = AsyncMock(return_value=subprocess.CompletedProcess([], 0))
 
@@ -531,6 +531,7 @@ async def test_docker_mount_resolution_handles_existing_and_file_sources(tmp_pat
     assert file_source.parent.is_dir()
     assert f"{existing}:/existing" in run_docker.await_args.args
     assert f"{file_source}:/settings.json" in run_docker.await_args.args
+    assert "/anonymous" in run_docker.await_args.args
 
 
 async def test_docker_health_failure_redacts_secret_values_from_diagnostics():

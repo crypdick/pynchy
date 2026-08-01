@@ -39,8 +39,7 @@ def _hard_split(segment: str, max_size: int) -> list[str]:
         cut = max_size if cut <= 0 else cut + 1  # keep the break char with the left piece
         pieces.append(remaining[:cut])
         remaining = remaining[cut:]
-    if remaining:
-        pieces.append(remaining)
+    pieces.append(remaining)
     return pieces
 
 

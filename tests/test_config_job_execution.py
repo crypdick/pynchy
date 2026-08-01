@@ -112,6 +112,23 @@ async def test_pre_run_output_is_bounded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pre_run_prompt_omits_empty_stdout() -> None:
+    task = _task(
+        config_job_pre_run_command="scripts/inspect.py",
+        config_job_pre_run_cwd="/workspace/ops",
+    )
+    with patch(
+        "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+        AsyncMock(return_value=ShellResult(returncode=1, stdout="", stderr="")),
+    ):
+        prepared, outcome = await prepare_config_job(task)
+
+    assert outcome is None
+    assert prepared is not None
+    assert "stdout:" not in prepared.prompt
+
+
+@pytest.mark.asyncio
 async def test_pre_run_requires_a_working_directory() -> None:
     task = _task(config_job_pre_run_command="scripts/inspect.py", config_job_pre_run_cwd=None)
 

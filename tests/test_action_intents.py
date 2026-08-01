@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
@@ -18,6 +19,7 @@ from pynchy.conversation.models import (
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
+from pynchy.host.orchestrator.action_intents import action_intent_replay_response
 from pynchy.host.orchestrator.api import (
     execute_action_intent,
     prepare_action_intent,
@@ -594,3 +596,36 @@ async def test_expired_approval_closes_unexecuted_action_intent():
 
     assert replayed == expired
     assert replay == {"error": "Approval elapsed"}
+
+
+@pytest.mark.asyncio
+async def test_terminal_action_replay_uses_status_when_error_is_missing():
+    action = _transactional_action(AsyncMock())
+    intent, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id="request-terminal-replay",
+    )
+    assert intent is not None
+    assert replay is None
+
+    for status in (
+        ActionIntentStatus.DENIED,
+        ActionIntentStatus.EXPIRED,
+        ActionIntentStatus.FAILED,
+    ):
+        replayed = action_intent_replay_response(replace(intent, status=status, error=None))
+        assert replayed == {"error": f"External action {status.value}."}
+
+    for status in (
+        ActionIntentStatus.DRAFTED,
+        ActionIntentStatus.APPROVED,
+        ActionIntentStatus.CLAIMED,
+        ActionIntentStatus.EXECUTING,
+    ):
+        replayed = action_intent_replay_response(replace(intent, status=status, error=None))
+        assert replayed == {
+            "error": f"External action is already {status.value}; it was not re-executed."
+        }
