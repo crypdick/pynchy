@@ -254,10 +254,8 @@ async def _bounded_json(response: object) -> dict[str, Any]:
 
 
 def _registry_url(coordinate: PackageCoordinate) -> str:
-    if coordinate.name is None or coordinate.version is None:
-        raise RegistryMetadataError("Registry coordinate is incomplete")
-    name = quote(coordinate.name, safe="@/")
-    version = quote(coordinate.version, safe="")
+    name = quote(cast("str", coordinate.name), safe="@/")
+    version = quote(cast("str", coordinate.version), safe="")
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         return f"https://pypi.org/pypi/{name}/{version}/json"
     if coordinate.ecosystem is PackageEcosystem.NPM:
@@ -266,8 +264,6 @@ def _registry_url(coordinate: PackageCoordinate) -> str:
 
 
 def _release_time(coordinate: PackageCoordinate, payload: dict[str, Any]) -> datetime:
-    if coordinate.version is None:
-        raise RegistryMetadataError("Registry coordinate is incomplete")
     timestamp: object
     if coordinate.ecosystem is PackageEcosystem.PYPI:
         urls = payload.get("urls")

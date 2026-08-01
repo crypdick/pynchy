@@ -24,6 +24,7 @@ from pynchy.config.api import (
     restart_fingerprint,
     runtime_policy_changes,
 )
+from pynchy.config.settings_sources import hermetic_settings_sources
 from pynchy.host.orchestrator.api import (
     ConfigRefreshRuntime,
     ConfigRefreshStatus,
@@ -366,6 +367,17 @@ def test_restart_fingerprint_ignores_thread_and_scope_model_overrides(
     settings.workspaces["test"].scopes[0].model = "changed-scope-model"
 
     assert restart_fingerprint(settings) == baseline
+
+
+def test_restart_fingerprint_changes_when_a_secret_changes() -> None:
+    with hermetic_settings_sources():
+        without_secret = Settings(_env_file=None)
+        with_secret = Settings(
+            _env_file=None,
+            secrets={"anthropic_api_key": "test-key"},  # pragma: allowlist secret
+        )
+
+    assert restart_fingerprint(with_secret) != restart_fingerprint(without_secret)
 
 
 def test_runtime_policy_change_targets_only_resolved_consumers(

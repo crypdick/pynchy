@@ -173,8 +173,6 @@ async def broadcast_agent_input(
         # User messages are already visible in chat. Emit trace events for
         # observers that need the complete agent-input record.
         for msg in messages:
-            if not isinstance(msg, dict):
-                continue
             deps.emit(
                 AgentTraceEvent(
                     chat_jid=chat_jid,
@@ -193,8 +191,6 @@ async def broadcast_agent_input(
     if source.startswith("trusted:"):
         label = source.removeprefix("trusted:").title()
     for msg in messages:
-        if not isinstance(msg, dict):
-            continue
         content = msg.get("content", "")
         if len(content) > 500:
             content = content[:497] + "..."
