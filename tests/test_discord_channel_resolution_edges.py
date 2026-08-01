@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
@@ -79,6 +79,28 @@ async def test_resolve_chat_jid_prefers_a_cached_configured_channel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_skips_nonmatching_channels() -> None:
+    channel = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"123": {"channels": {"456": {"enabled": True}}}},
+        )
+    )
+    guild = _FakeDiscordGuild(
+        123,
+        "Pynchy",
+        [_FakeDiscordTextChannel(999, "other"), _FakeDiscordTextChannel(456, "general")],
+    )
+    client = MagicMock()
+    client.get_guild.return_value = guild
+    client.get_channel.return_value = None
+    channel.client = client
+
+    assert await channel.resolve_chat_jid("123.channels.456") == "discord:channel:456"
+
+
+@pytest.mark.asyncio
 async def test_resolve_chat_jid_uses_connected_client_for_numeric_direct_ref() -> None:
     channel = _channel(
         config=DiscordConnectionConfig(
@@ -98,16 +120,20 @@ async def test_resolve_chat_jid_uses_connected_client_for_numeric_direct_ref() -
 
 @pytest.mark.asyncio
 async def test_resolve_chat_jid_returns_none_for_named_direct_ref_without_client() -> None:
-    channel = _channel(
-        config=DiscordConnectionConfig(
-            bot_token_env=DISCORD_BOT_ENV,
-            dm_policy="allowlist",
-            allow_from=["alice"],
-            group_policy="disabled",
+    with patch(
+        "tests.discord_channel_support.get_chat_jids_by_name",
+        new=AsyncMock(return_value=[]),
+    ):
+        channel = _channel(
+            config=DiscordConnectionConfig(
+                bot_token_env=DISCORD_BOT_ENV,
+                dm_policy="allowlist",
+                allow_from=["alice"],
+                group_policy="disabled",
+            )
         )
-    )
 
-    assert await channel.resolve_chat_jid("direct.alice") is None
+        assert await channel.resolve_chat_jid("direct.alice") is None
 
 
 @pytest.mark.asyncio
@@ -218,6 +244,22 @@ async def test_find_thread_returns_none_when_no_active_or_archived_match_exists(
 async def test_find_thread_returns_none_without_thread_listing_support() -> None:
     class _Guild:
         pass
+
+    class _Parent:
+        id = 123
+        guild = _Guild()
+
+    channel = _channel()
+    channel.resolve_channel = AsyncMock(return_value=_Parent())  # type: ignore[method-assign]
+
+    assert await channel.find_thread("discord:channel:123", "family") is None
+
+
+@pytest.mark.asyncio
+async def test_find_thread_returns_none_without_archived_thread_listing_support() -> None:
+    class _Guild:
+        async def active_threads(self) -> list[object]:
+            return []
 
     class _Parent:
         id = 123
