@@ -595,6 +595,8 @@ class DiscordChannel:
             return None
         try:
             channel = await self.resolve_channel(jid)
+            if getattr(channel, "available_tags", None) is not None:
+                return None
             message = await cast("Any", channel).send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none(),
@@ -688,6 +690,8 @@ class DiscordChannel:
         try:
             while True:
                 channel = await self.resolve_channel(jid)
+                if getattr(channel, "available_tags", None) is not None:
+                    return
                 await channel.typing()
                 await asyncio.sleep(_TYPING_REFRESH_SECONDS)
         except asyncio.CancelledError:

@@ -17,13 +17,34 @@ else:
 
 async def send_text(channel: object, text: str) -> None:
     """Send a message in Discord-sized chunks without mentioning users."""
-    channel_like = cast("Any", channel)
+    target = channel
     for chunk in chunk_discord_text(text):
-        await channel_like.send(
-            chunk,
-            allowed_mentions=discord.AllowedMentions.none(),
-            suppress_embeds=True,
-        )
+        target, _ = await _send_chunk(target, chunk)
+
+
+async def _send_chunk(
+    channel: object,
+    content: str,
+    *,
+    view: discord.ui.View | None = None,
+) -> tuple[object, object]:
+    channel_like = cast("Any", channel)
+    kwargs: dict[str, object] = {
+        "allowed_mentions": discord.AllowedMentions.none(),
+        "suppress_embeds": True,
+    }
+    if view is not None:
+        kwargs["view"] = view
+
+    send = getattr(channel_like, "send", None)
+    if callable(send):
+        return channel, await send(content, **kwargs)
+
+    create_thread = getattr(channel_like, "create_thread", None)
+    if not callable(create_thread):
+        raise TypeError(f"{type(channel_like).__name__} object does not support sending")
+    created = await create_thread(name="Pynchy", content=content, **kwargs)
+    return getattr(created, "thread", created), getattr(created, "message", created)
 
 
 async def send_approval(
@@ -41,17 +62,7 @@ async def send_approval(
         short_id=short_id,
         content=chunks[0],
     )
-    channel_like = cast("Any", channel)
-    message = await channel_like.send(
-        chunks[0],
-        view=view,
-        allowed_mentions=discord.AllowedMentions.none(),
-        suppress_embeds=True,
-    )
+    target, message = await _send_chunk(channel, chunks[0], view=view)
     view.bind_message_id(str(message.id))
     for chunk in chunks[1:]:
-        await channel_like.send(
-            chunk,
-            allowed_mentions=discord.AllowedMentions.none(),
-            suppress_embeds=True,
-        )
+        target, _ = await _send_chunk(target, chunk)

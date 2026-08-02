@@ -14,8 +14,11 @@ data/personalization/prompts/
 │   └── my-soul.md
 ├── executors/
 │   └── research.md
-└── reviewers/
-    └── evidence.md
+├── reviewers/
+│   └── evidence.md
+└── webhooks/
+    └── linear/
+        └── comment.md
 ```
 
 - A **soul** defines stable identity, values, and communication style.
@@ -23,10 +26,12 @@ data/personalization/prompts/
   what success means. Pynchy composes the default executor with a stage-specific
   executor when the IDs differ.
 - A **reviewer** evaluates executor work in a separate agent context.
+- A **webhook** provides provider-specific instructions for incoming events.
 
 The relative path without `.md` forms the prompt ID, such as
-`souls/my-soul`. Prompt files must sit directly inside one of these three
-directories and use lowercase hyphenated filenames.
+`souls/my-soul` or `webhooks/linear/comment`. Soul, executor, and reviewer
+prompts must sit directly inside their scope directory. Webhook prompts may use
+nested lowercase hyphenated directories.
 
 Every prompt ID must remain unique across `data/defaults/prompts/` and
 `data/personalization/prompts/`. Personalized prompts never shadow public

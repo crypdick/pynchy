@@ -2,13 +2,43 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from pynchy.plugins.api import OutboundEvent, OutboundEventType
-from tests.discord_channel_support import _channel, _FakeStreamChannel
+from tests.discord_channel_support import _channel, _FakeSendChannel, _FakeStreamChannel
+
+
+@pytest.mark.asyncio
+async def test_send_event_routes_forum_root_through_post_creation() -> None:
+    class _CreatedForumPost(NamedTuple):
+        thread: _FakeSendChannel
+
+    class _Forum:
+        available_tags: list[object] = []
+
+        def __init__(self) -> None:
+            self.requests: list[dict[str, object]] = []
+            self.thread = _FakeSendChannel()
+
+        async def create_thread(self, **kwargs: object) -> _CreatedForumPost:
+            self.requests.append(kwargs)
+            return _CreatedForumPost(self.thread)
+
+    channel = _channel()
+    channel.client = object()
+    forum = _Forum()
+    channel.resolve_channel = AsyncMock(return_value=forum)  # type: ignore[method-assign]
+
+    await channel.send_event(
+        "discord:channel:1", OutboundEvent(type=OutboundEventType.RESULT, content="reply")
+    )
+
+    assert forum.requests[0]["content"] == "reply"
+    assert forum.thread.sends == []
 
 
 @pytest.mark.asyncio

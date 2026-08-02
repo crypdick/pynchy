@@ -153,13 +153,13 @@ def load_prompt_catalog(
         for path in sorted(root.rglob("*.md")):
             relative = path.relative_to(root)
             if (
-                len(relative.parts) != 2
-                or relative.parts[0] not in _PROMPT_SCOPES
+                relative.parts[0] not in _PROMPT_SCOPES
+                or (relative.parts[0] != "webhooks" and len(relative.parts) != 2)
                 or path.is_symlink()
             ):
                 raise PersonalizationError(
-                    f"Prompt files must be flat Markdown files under "
-                    f"souls/, executors/, or reviewers/: {path}"
+                    f"Prompt files must be flat under souls/, executors/, or "
+                    f"reviewers/; webhooks/ may be nested: {path}"
                 )
             prompt_id = relative.with_suffix("").as_posix()
             try:

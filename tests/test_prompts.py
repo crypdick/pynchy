@@ -48,6 +48,15 @@ class TestReadPrompts:
     def test_reads_webhook_prompt(self, paths: PersonalizationPaths):
         assert read_prompts(["webhooks/linear"], paths) == "# Linear\nWebhook content."
 
+    def test_reads_nested_webhook_prompt(self, paths: PersonalizationPaths):
+        nested = paths.default_prompts / "webhooks" / "linear"
+        nested.mkdir()
+        (nested / "comment.md").write_text("# Comment\nNested webhook content.")
+
+        assert read_prompts(["webhooks/linear/comment"], paths) == (
+            "# Comment\nNested webhook content."
+        )
+
     def test_reads_multiple_prompts(self, paths: PersonalizationPaths):
         result = read_prompts(["souls/base", "executors/admin-ops"], paths)
         assert result is not None
@@ -86,6 +95,17 @@ class TestReadPrompts:
         (nested / "prompt.md").write_text("content")
 
         with pytest.raises(PersonalizationError, match="must be flat"):
+            load_prompt_catalog(
+                default_prompts=paths.default_prompts,
+                personalized_prompts=paths.personalized_prompts,
+            )
+
+    def test_invalid_prompt_scope_fails(self, paths: PersonalizationPaths):
+        invalid_scope = paths.default_prompts / "unknown"
+        invalid_scope.mkdir()
+        (invalid_scope / "prompt.md").write_text("content")
+
+        with pytest.raises(PersonalizationError, match="webhooks/"):
             load_prompt_catalog(
                 default_prompts=paths.default_prompts,
                 personalized_prompts=paths.personalized_prompts,
