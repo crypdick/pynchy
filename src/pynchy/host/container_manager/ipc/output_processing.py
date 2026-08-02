@@ -16,6 +16,10 @@ from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 
+# Watchdog and runtime recovery can observe different files concurrently.
+# Serialize each group so a later file cannot overtake an in-flight callback.
+_output_group_locks: dict[str, asyncio.Lock] = {}
+
 
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
     try:
@@ -67,11 +71,12 @@ async def process_output_file(
     ipc_base_dir: Path,
 ) -> None:
     """Process a single output event file from a container."""
-    with claim_output_file(file_path) as claimed:
-        if not claimed:
-            return
+    async with _output_group_locks.setdefault(source_group, asyncio.Lock()):
+        with claim_output_file(file_path) as claimed:
+            if not claimed:
+                return
 
-        await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
+            await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
 
 
 async def _process_claimed_output_file(
