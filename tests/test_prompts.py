@@ -1,8 +1,4 @@
-"""Tests for layered prompt resolution.
-
-Never hard-code production prompt wording in tests. Verify loading, composition,
-selection, and validation with synthetic prompt content instead.
-"""
+"""Tests for layered prompt resolution and required prompt behavior."""
 
 from __future__ import annotations
 
@@ -17,6 +13,7 @@ from pynchy.config.api import (
     PipelineStageConfig,
     PromptConfig,
     load_prompt_catalog,
+    read_prompt,
 )
 
 
@@ -159,3 +156,13 @@ def test_prompt_scope_and_pipeline_validation() -> None:
                 PipelineStageConfig(name="interactive", executor="executors/default"),
             ]
         )
+
+
+def test_default_executor_requires_live_skill_catalog_discovery() -> None:
+    prompt = " ".join(
+        read_prompt(PromptConfig().default_executor, Path(__file__).parents[1]).split()
+    )
+
+    assert "call `search_skills` before answering" in prompt
+    assert "not memory or the existing system prompt" in prompt
+    assert "Call `request_skill_access` only when the user asks" in prompt
