@@ -566,8 +566,7 @@ class DiscordChannel:
         try:
             channel = await self.resolve_channel(jid)
         except discord.DiscordException as exc:
-            logger.warning("Discord send failed to resolve channel", jid=jid, err=str(exc))
-            return
+            raise OSError(f"Discord channel resolution failed: {exc}") from exc
         try:
             short_id = event.metadata.get("short_id")
             if event.type is OutboundEventType.APPROVAL and isinstance(short_id, str) and short_id:
@@ -575,9 +574,7 @@ class DiscordChannel:
             else:
                 await send_text(channel, rendered.text)
         except discord.Forbidden as exc:
-            logger.warning(
-                "Discord send forbidden (missing permission or DM blocked)", err=str(exc)
-            )
+            raise OSError(f"Discord send forbidden: {exc}") from exc
 
     async def post_event(self, jid: str, event: OutboundEvent) -> str | None:
         """Post a streaming preview message and return its id for in-place updates.

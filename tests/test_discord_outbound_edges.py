@@ -78,25 +78,29 @@ async def test_long_approval_content_puts_controls_only_on_the_first_chunk() -> 
 
 
 @pytest.mark.asyncio
-async def test_send_event_ignores_discord_resolution_failure() -> None:
+async def test_send_event_reports_discord_resolution_failure() -> None:
     channel = _channel()
     channel.client = object()
     channel.resolve_channel = AsyncMock(side_effect=discord.DiscordException("offline"))  # type: ignore[method-assign]
 
-    await channel.send_event(
-        "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
-    )
+    with pytest.raises(OSError, match="Discord channel resolution failed"):
+        await channel.send_event(
+            "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
+        )
 
 
 @pytest.mark.asyncio
-async def test_send_event_ignores_forbidden_destination() -> None:
+async def test_send_event_reports_forbidden_destination() -> None:
     channel = _channel()
     channel.client = object()
     destination = _FakeStreamChannel()
     channel.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
     forbidden = discord.Forbidden(MagicMock(status=403, reason="blocked"), "blocked")
 
-    with patch("pynchy.plugins.channels.discord._channel.send_text", side_effect=forbidden):
+    with (
+        patch("pynchy.plugins.channels.discord._channel.send_text", side_effect=forbidden),
+        pytest.raises(OSError, match="Discord send forbidden"),
+    ):
         await channel.send_event(
             "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
         )
