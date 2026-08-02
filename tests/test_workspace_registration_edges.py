@@ -96,6 +96,25 @@ async def test_rebind_workspace_rejects_activity_then_removes_old_registration()
 
 
 @pytest.mark.asyncio
+async def test_rebind_workspace_rejects_active_folder_move() -> None:
+    old = _profile("discord:channel:thread", folder="parent__thread_discord-channel-thread")
+    moved = _profile("discord:channel:thread", folder="scope__thread_discord-channel-thread")
+    workspaces = {old.jid: old}
+
+    with patch(
+        "pynchy.host.orchestrator.workspace_registration.rebind_workspace_profile",
+        new_callable=AsyncMock,
+    ) as persist:
+        with pytest.raises(RuntimeError, match="Cannot rebind active workspace"):
+            await rebind_workspace_runtime(moved, workspaces, _Queue(active=True))
+        persist.assert_not_awaited()
+
+        await rebind_workspace_runtime(moved, workspaces, _Queue(active=False))
+
+    assert workspaces == {moved.jid: moved}
+
+
+@pytest.mark.asyncio
 async def test_ensure_workspace_registered_handles_unparseable_and_unresolvable_chats(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

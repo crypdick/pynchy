@@ -70,6 +70,7 @@ async def rebind_workspace_runtime(
     queue: _WorkspaceActivityQueue,
 ) -> None:
     """Move one workspace to an explicitly authorized thread JID."""
+    current = workspaces.get(profile.jid)
     old_jid = next(
         (
             jid
@@ -78,8 +79,13 @@ async def rebind_workspace_runtime(
         ),
         None,
     )
-    if old_jid is not None and queue.has_activity(RuntimeId(profile.folder)):
-        raise RuntimeError(f"Cannot rebind active workspace {profile.folder!r} from {old_jid!r}")
+    active_folder: str | None
+    if current is not None and current.folder != profile.folder:
+        active_folder = current.folder
+    else:
+        active_folder = profile.folder if old_jid is not None else None
+    if active_folder is not None and queue.has_activity(RuntimeId(active_folder)):
+        raise RuntimeError(f"Cannot rebind active workspace {active_folder!r}")
     persisted_old_jid = await rebind_workspace_profile(profile)
     prior_jid = old_jid or persisted_old_jid
     if prior_jid is not None and prior_jid != profile.jid:

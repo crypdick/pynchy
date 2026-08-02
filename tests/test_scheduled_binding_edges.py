@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import configure_workspace_placement_for, make_settings
 
+from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -31,16 +33,33 @@ from pynchy.host.orchestrator.scheduled_binding import (
 from pynchy.identifiers import ChatJid, GroupFolder
 from pynchy.state import (
     create_task,
+    get_all_workspace_profiles,
     get_task_by_id,
     init_test_database,
+    rebind_workspace_profile,
     resolve_conversation,
+    set_workspace_profile,
+    set_workspace_profiles,
 )
 from tests.test_scheduled_binding import _BindingDeps, _profile, _task
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
 async def _database() -> None:
     await init_test_database()
+
+
+class _PersistedBindingDeps(_BindingDeps):
+    async def register_workspace(self, profile: WorkspaceProfile) -> None:
+        await set_workspace_profile(profile)
+        self.workspaces[profile.jid] = profile
+
+    async def rebind_workspace(self, profile: WorkspaceProfile) -> None:
+        await rebind_workspace_profile(profile)
+        self.workspaces[profile.jid] = profile
 
 
 async def test_existing_binding_with_wrong_folder_recreates_named_thread(tmp_path) -> None:
@@ -86,6 +105,49 @@ async def test_startup_reconciles_active_and_paused_automation_bindings() -> Non
         active.id,
         paused.id,
     ]
+
+
+async def test_startup_moves_a_legacy_thread_to_its_scoped_owner(tmp_path) -> None:
+    scope = "pynchy-daily-agent-failure-review"
+    configure_workspace_placement_for(
+        make_settings(
+            groups_dir=tmp_path,
+            profiles={"pynchy-dev": ProfileConfig()},
+            workspaces={
+                "pynchy": WorkspaceConfig(
+                    profiles=["pynchy-dev"],
+                    scopes=[{"workspace": scope, "profiles": ["pynchy-dev"]}],
+                )
+            },
+        )
+    )
+    owner = _profile(folder="pynchy")
+    bound = _profile(
+        jid="discord:channel:scheduled-task",
+        folder="pynchy__thread_discord-channel-scheduled-task",
+    )
+    task = replace(
+        _task(),
+        group_folder=scope,
+        chat_jid=owner.jid,
+        config_job_name="daily-agent-failure-review",
+        derived_thread_name="⚙️ daily agent failure review",
+        bound_chat_jid=bound.jid,
+        bound_group_folder=bound.folder,
+    )
+    await create_task(task)
+    await set_workspace_profiles((owner, bound))
+    deps = _PersistedBindingDeps({owner.jid: owner, bound.jid: bound})
+
+    reconciled = await reconcile_scheduled_task_bindings([task], deps)
+
+    expected_folder = f"{scope}__thread_discord-channel-scheduled-task"
+    persisted = await get_task_by_id(task.id)
+    profiles = await get_all_workspace_profiles()
+    assert reconciled == 1
+    assert persisted is not None
+    assert persisted.bound_group_folder == expected_folder
+    assert profiles[bound.jid].folder == expected_folder
 
 
 async def test_existing_binding_from_another_owner_recreates_named_thread(tmp_path) -> None:
