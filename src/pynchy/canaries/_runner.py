@@ -175,6 +175,7 @@ async def get_canary_report(*, history_limit: int = 50) -> dict[str, object]:
             "not_established_targets": sum(
                 run.outcome is CanaryOutcome.NOT_ESTABLISHED for run in latest
             ),
+            "unrun_scenarios": len(declared.keys() - latest_by_scenario.keys()),
             "unresolved_regressions": len(unresolved),
         },
         "scenarios": [
