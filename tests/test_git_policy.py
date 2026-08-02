@@ -206,6 +206,17 @@ class TestHostCreatePrFromWorktree:
         assert "recovered/agent-1" in result["message"]
         assert "recovered/agent-1" in git(git_env["origin"], "branch").stdout
 
+    def test_detached_worktree_does_not_publish(self, git_env: dict):
+        """A detached worktree has no branch that can safely back a pull request."""
+        worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
+        git(worktree, "checkout", "--detach")
+
+        result = host_create_pr_from_worktree("agent-1", git_env["repo_ctx"])
+
+        assert result["success"] is False
+        assert "detached" in result["message"]
+        assert "worktree/agent-1" not in git(git_env["origin"], "branch").stdout
+
     def test_push_failure_redacts_standalone_configured_token(self, git_env: dict):
         """A raw token in Git stderr never reaches IPC diagnostics."""
         worktree = ensure_worktree("agent-1", git_env["repo_ctx"]).path
