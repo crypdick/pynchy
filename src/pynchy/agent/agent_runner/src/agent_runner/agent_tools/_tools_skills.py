@@ -10,6 +10,7 @@ from typing import Any
 
 from mcp.types import CallToolResult, TextContent
 
+from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import tool, tool_error
 
@@ -19,6 +20,7 @@ _MAX_SKILL_CONTENT_CHARS = 40_000
 _SEARCH_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _SEARCH_SUFFIXES = ("ions", "ion", "ing")
 _MIN_SEARCH_STEM_LENGTH = 5
+_SCHEDULED_SKILL_ACCESS_TIMEOUT_SECONDS = 10
 
 
 def _skill_dirs() -> dict[str, Path]:
@@ -197,11 +199,24 @@ async def _search_skills_handle(  # noqa: RUF029 - async MCP handler contract.
     ]
 
 
-async def _current_access_result(skill_name: str) -> list[TextContent] | CallToolResult | None:
+def _scheduled_access_required(skill_name: str) -> CallToolResult:
+    return tool_error(
+        f"Scheduled skill access for '{skill_name}' requires owner approval. "
+        "No access was granted. Ask the owner to grant this skill during an interactive turn, "
+        "then rerun this scheduled task."
+    )
+
+
+async def _current_access_result(
+    skill_name: str, *, is_scheduled_task: bool
+) -> list[TextContent] | CallToolResult | None:
     """Return an existing policy result, or None when user input is needed."""
     status_response = await ipc_service_request(
         "skill_access",
         {"action": "status", "skill_name": skill_name},
+        response_timeout_seconds=(
+            _SCHEDULED_SKILL_ACCESS_TIMEOUT_SECONDS if is_scheduled_task else None
+        ),
         type_override="skill_access:policy",
     )
     status_payload = _response_payload(status_response)
@@ -210,6 +225,8 @@ async def _current_access_result(skill_name: str) -> list[TextContent] | CallToo
         return _access_granted(skill_name, persistent=True)
     if status == "denied":
         return tool_error(f"Access to '{skill_name}' is denied by this workspace profile.")
+    if is_scheduled_task:
+        return _scheduled_access_required(skill_name)
     if status not in {"available", None}:
         return tool_error(f"Unable to check access for '{skill_name}'.")
     return None
@@ -311,7 +328,10 @@ async def _request_skill_access_handle(
     if skill_name not in _skill_dirs():
         return tool_error(f"Unknown Pynchy skill: '{skill_name}'. Search the catalog first.")
 
-    if current_result := await _current_access_result(skill_name):
+    is_scheduled_task = _ipc.get_agent_tool_runtime().is_scheduled_task
+    if current_result := await _current_access_result(
+        skill_name, is_scheduled_task=is_scheduled_task
+    ):
         return current_result
     choice, persistent_status = await _ask_for_access_choice(skill_name, reason)
     return _apply_access_choice(skill_name, choice, persistent_status)
