@@ -41,6 +41,13 @@ class ThreadLookupChannel(Protocol):
 
 
 @runtime_checkable
+class ConversationExistenceChannel(Protocol):
+    """Optional channel capability for checking one provider conversation."""
+
+    async def conversation_exists(self, jid: str) -> bool: ...
+
+
+@runtime_checkable
 class ThreadParticipantChannel(Protocol):
     """Optional channel capability for adding people to a child conversation."""
 
@@ -155,6 +162,21 @@ async def find_thread(
     if channel is None:
         return None
     return await channel.find_thread(parent_jid, name)
+
+
+async def provider_conversation_exists(channels: list[Channel], jid: str) -> bool | None:
+    """Return provider presence when the owning channel can prove it."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(jid) and isinstance(candidate, ConversationExistenceChannel)
+        ),
+        None,
+    )
+    if channel is None:
+        return None
+    return await channel.conversation_exists(jid)
 
 
 async def add_thread_participants(

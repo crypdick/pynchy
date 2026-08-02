@@ -24,6 +24,7 @@ from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.pipeline_context import (
     prompt_ids_for_context as _prompt_ids_for_context,
 )
+from pynchy.host.orchestrator.threads import provider_conversation_exists
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
     resolve_display_name,
@@ -35,10 +36,7 @@ from pynchy.plugins.api import (
     Channel,  # beartype resolves workspace config annotations at runtime.
     WorkspaceSpec,
 )
-from pynchy.state.api import (
-    get_all_tasks,
-    update_task,
-)
+from pynchy.state.api import get_all_sessions, get_all_tasks, update_task
 from pynchy.workspace.api import (  # beartype resolves workspace config annotations at runtime.
     CapabilityRule,
     WorkspaceProfile,
@@ -403,6 +401,7 @@ async def reconcile_automation_jobs(
 async def _remove_orphaned_workspaces(
     specs: dict[str, WorkspaceSpec],
     workspaces: dict[str, WorkspaceProfile],
+    channels: list[Channel],
     unregister_fn: Callable[[str], Awaitable[None]] | None,
 ) -> None:
     """Remove workspace registrations in the DB but not in config.
@@ -413,14 +412,26 @@ async def _remove_orphaned_workspaces(
     if unregister_fn is None:
         return
     config_folders = {*specs, *get_settings().workspace_names()}
-    task_workspace_folders = {
-        task.group_folder for task in await get_all_tasks() if task.status in {"active", "paused"}
+    retained_tasks = [task for task in await get_all_tasks() if task.status in {"active", "paused"}]
+    task_workspace_identities = {
+        identity
+        for task in retained_tasks
+        for identity in (
+            task.group_folder,
+            task.chat_jid,
+            task.bound_group_folder,
+            task.bound_chat_jid,
+        )
+        if identity is not None
     }
+    session_workspace_folders = (await get_all_sessions()).keys()
     for jid, profile in list(workspaces.items()):
-        if profile.folder in task_workspace_folders:
-            logger.info(
-                "Retained task-owned workspace registration", folder=profile.folder, jid=jid
-            )
+        if (
+            profile.folder in task_workspace_identities
+            or jid in task_workspace_identities
+            or profile.folder in session_workspace_folders
+        ):
+            logger.info("Retained owned workspace registration", folder=profile.folder, jid=jid)
             continue
         parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
         if profile.folder in config_folders or profile.is_admin:
@@ -437,6 +448,24 @@ async def _remove_orphaned_workspaces(
             )
             continue
         if parent_folder in config_folders:
+            try:
+                exists = await provider_conversation_exists(channels, jid)
+            except Exception as exc:  # noqa: BLE001 - provider uncertainty must retain state.
+                logger.warning(
+                    "Retained workspace after provider presence check failed",
+                    folder=profile.folder,
+                    jid=jid,
+                    error=type(exc).__name__,
+                )
+                continue
+            if exists is not False:
+                continue
+            await unregister_fn(jid)
+            logger.info(
+                "Removed provider-deleted workspace registration",
+                folder=profile.folder,
+                jid=jid,
+            )
             continue
         await unregister_fn(jid)
         logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
@@ -502,6 +531,7 @@ async def reconcile_workspaces(
     await _remove_orphaned_workspaces(
         specs,
         workspaces,
+        channels,
         unregister_fn,
     )
 

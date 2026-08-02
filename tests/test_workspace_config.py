@@ -22,6 +22,7 @@ from pynchy.config.api import (
     PromptConfig,
     WorkspaceConfig,
 )
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
@@ -44,6 +45,7 @@ from pynchy.plugins.api import (
     OutboundEvent,
     WorkspaceSpec,
 )
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.workspace.api import (
     CapabilityRule,
     WorkspaceProfile,
@@ -87,6 +89,22 @@ class _FakeChannel:
 
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         return InboundFetchResult(messages=[])
+
+
+class _PresenceChannel(_FakeChannel):
+    def __init__(self, presence: dict[str, bool | Exception]) -> None:
+        self.presence = presence
+        self.checked: list[str] = []
+
+    def owns_jid(self, jid: str) -> bool:
+        return jid.startswith("discord:")
+
+    async def conversation_exists(self, jid: str) -> bool:
+        self.checked.append(jid)
+        result = self.presence[jid]
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 def _settings_with_workspaces(
@@ -573,6 +591,11 @@ async def test_reconcile_prunes_stale_routed_registration_for_runtime_recreation
             return_value=[],
         ),
         patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_sessions",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
             "pynchy.host.orchestrator.workspace_registration.set_workspace_profile",
             new_callable=AsyncMock,
         ),
@@ -585,3 +608,73 @@ async def test_reconcile_prunes_stale_routed_registration_for_runtime_recreation
         )
 
     unregister.assert_awaited_once_with(stale.jid)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_prunes_only_provider_deleted_unowned_children():
+    s = make_settings(
+        profiles={"support": ProfileConfig()},
+        workspaces={"support": WorkspaceConfig(profiles=["support"])},
+    )
+    parent = WorkspaceProfile(
+        jid="discord:channel:support",
+        name="Support",
+        folder="support",
+        trigger="@pynchy",
+    )
+
+    def child(suffix: str) -> WorkspaceProfile:
+        jid = f"discord:channel:{suffix}"
+        return WorkspaceProfile(
+            jid=jid,
+            name=f"Support/{suffix}",
+            folder=dynamic_thread_folder(parent.folder, jid),
+            trigger="@pynchy",
+        )
+
+    deleted = child("deleted")
+    live = child("live")
+    unknown = child("unknown")
+    task_owned = child("task")
+    session_owned = child("session")
+    workspaces = {
+        profile.jid: profile
+        for profile in (parent, deleted, live, unknown, task_owned, session_owned)
+    }
+    channel = _PresenceChannel(
+        {deleted.jid: False, live.jid: True, unknown.jid: OSError("offline")}
+    )
+    task = ScheduledTask(
+        id="task-owner",
+        group_folder=parent.folder,
+        chat_jid=parent.jid,
+        prompt="",
+        schedule_type="interval",
+        schedule_value="1h",
+        session_policy=SessionPolicy.CONTINUE,
+        bound_group_folder=task_owned.folder,
+        bound_chat_jid=task_owned.jid,
+    )
+    unregister = AsyncMock()
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[task],
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_sessions",
+            new_callable=AsyncMock,
+            return_value={session_owned.folder: "session-1"},
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_registration.set_workspace_profile",
+            new_callable=AsyncMock,
+        ),
+    ):
+        await reconcile_workspaces(workspaces, [channel], AsyncMock(), unregister)
+
+    unregister.assert_awaited_once_with(deleted.jid)
+    assert channel.checked == [deleted.jid, live.jid, unknown.jid]
