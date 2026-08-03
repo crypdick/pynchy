@@ -69,6 +69,12 @@ def test_append_post_work_prompt_preserves_input_and_appends_to_last_message():
     assert messages == [{"content": "Run objective", "metadata": {"source": "task"}}]
 
 
+def test_append_post_work_prompt_preserves_non_text_content():
+    messages = [{"content": ["structured", "content"]}]
+
+    assert append_post_work_prompt(messages, "[POST-WORK REFLECTION]") is messages
+
+
 TEST_INPUT = ContainerInput(
     messages=[
         {

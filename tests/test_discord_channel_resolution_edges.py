@@ -54,6 +54,17 @@ async def test_conversation_exists_probes_discord_provider() -> None:
 
 
 @pytest.mark.asyncio
+async def test_conversation_exists_probes_direct_discord_user() -> None:
+    channel = _channel()
+    client = MagicMock()
+    client.fetch_user = AsyncMock(return_value=object())
+    channel.client = client
+
+    assert await channel.conversation_exists("discord:direct:42") is True
+    client.fetch_user.assert_awaited_once_with(42)
+
+
+@pytest.mark.asyncio
 async def test_conversation_exists_reports_unknown_channel_as_deleted() -> None:
     channel = _channel()
     client = MagicMock()
