@@ -11,7 +11,6 @@ from pynchy.agent_protocol.api import (
     parse_container_output,
 )
 from pynchy.host.container_manager import session as session_manager
-from pynchy.host.container_manager.ipc.output_claims import claim_output_file
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
@@ -72,19 +71,15 @@ async def process_output_file(
 ) -> None:
     """Process a single output event file from a container."""
     async with _output_group_locks.setdefault(source_group, asyncio.Lock()):
-        with claim_output_file(file_path) as claimed:
-            if not claimed:
-                return
-
-            await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
+        await _process_output_file(file_path, source_group, ipc_base_dir)
 
 
-async def _process_claimed_output_file(
+async def _process_output_file(
     file_path: Path,
     source_group: str,
     ipc_base_dir: Path,
 ) -> None:
-    """Process an output file after this task has claimed handler delivery."""
+    """Process one serialized output file."""
     try:
         await _handle_claimed_output_file(file_path, source_group)
     except Exception:  # noqa: BLE001 - output file processing is an isolation boundary.

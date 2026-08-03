@@ -117,3 +117,32 @@ async def test_post_event_returns_none_when_discord_rejects_preview() -> None:
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_post_event_skips_forum_root_preview() -> None:
+    class _ForumRoot:
+        available_tags: list[object] = []
+
+    channel = _channel()
+    channel.client = object()
+    channel.resolve_channel = AsyncMock(return_value=_ForumRoot())  # type: ignore[method-assign]
+
+    assert (
+        await channel.post_event(
+            "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="preview")
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_event_rejects_an_unsupported_destination() -> None:
+    channel = _channel()
+    channel.client = object()
+    channel.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+
+    with pytest.raises(TypeError, match="does not support sending"):
+        await channel.send_event(
+            "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi")
+        )
