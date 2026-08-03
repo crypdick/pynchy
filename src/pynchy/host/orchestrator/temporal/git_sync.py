@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves temporal Git runtime annotations.
 )
 from dataclasses import asdict, dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn, Protocol, cast
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -47,6 +48,8 @@ HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
+_DISK_CAPACITY_STATE_KEY = "host_disk_capacity_state"
+_DISK_LOW_BYTES = 5 * 1024**3
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
@@ -137,6 +140,44 @@ def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:
     workspaces = getattr(deps, "workspaces", {})
     workspaces = workspaces() if callable(workspaces) else workspaces
     return cast("dict[str, WorkspaceProfile]", workspaces)
+
+
+class _HostNotificationDeps(Protocol):
+    async def broadcast_host_message(self, jid: str, text: str) -> None: ...
+
+
+async def _report_disk_capacity(deps: _HostNotificationDeps) -> None:
+    """Notify the Discord admin once when host disk capacity becomes critical."""
+    settings = get_settings()
+    try:
+        usage = await asyncio.to_thread(shutil.disk_usage, settings.project_root)
+    except OSError as exc:
+        logger.warning("Could not inspect host disk capacity", error=str(exc))
+        return
+
+    low = usage.free < _DISK_LOW_BYTES or usage.free / usage.total < 0.05
+    state = "low" if low else "ok"
+    previous = await get_router_state(_DISK_CAPACITY_STATE_KEY)
+    if state == previous:
+        return
+
+    if low or previous == "low":
+        chat_jid = resolve_admin_notification_jid(
+            _workspace_map(deps), settings.notifications.admin_workspace
+        )
+        if not chat_jid:
+            return
+        free_gib = usage.free / 1024**3
+        percent_free = usage.free / usage.total * 100
+        message = (
+            f"ERROR: Host disk space critically low: {free_gib:.1f} GiB free "
+            f"({percent_free:.1f}%). Free space before scheduled work continues."
+            if low
+            else f"Host disk space recovered: {free_gib:.1f} GiB free ({percent_free:.1f}%)."
+        )
+        await deps.broadcast_host_message(chat_jid, message)
+
+    await set_router_state(_DISK_CAPACITY_STATE_KEY, state)
 
 
 class _TemporalGitSyncDeps:
@@ -288,6 +329,7 @@ async def run_host_git_sync() -> str:
 
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
     settings = get_settings()
+    await _report_disk_capacity(deps)
     state = await _load_host_state()
     repo_ctx = _find_pynchy_repo_ctx(tuple(settings.repos.overrides), settings.project_root)
     result = "idle"

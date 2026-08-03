@@ -135,7 +135,7 @@ class TestAgentRunnerPreContainerHelpers:
             await handler(output)
 
         log_error.assert_called_once_with(
-            "Agent output failed",
+            "Agent reported error output",
             group="test-group",
             chat_jid="test@g.us",
             query_id="query-1",

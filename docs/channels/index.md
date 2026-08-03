@@ -86,7 +86,8 @@ bot_token_env = "DISCORD_BOT_TOKEN"
 connection = "synapse"
 ```
 
-To route boot, deploy, and shutdown notifications to a predictable admin chat,
+To route boot, deploy, shutdown, and critical disk-capacity notifications to a
+predictable admin chat,
 set its registered workspace folder:
 
 ```toml
