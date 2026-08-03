@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import (  # noqa: TC003 - beartype resolves context manager annotations.
     AsyncIterator,
@@ -37,6 +38,8 @@ _LINEAR_ATTACHMENT_MISSING = "Linear attachmentCreate response did not include a
 _LINEAR_ISSUE_NOT_FOUND = "Entity not found: Issue"
 _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
+_TRANSIENT_HTTP_STATUSES = frozenset({429, 502, 503, 504})
+_READ_RETRY_DELAYS = (0.25, 0.5)
 
 
 @runtime_checkable
@@ -82,6 +85,25 @@ class LinearClient:
         """Return the team selector paired with this client's credential."""
         return self._team_key
 
+    async def _query_once(
+        self,
+        payload: dict[str, object],
+        headers: dict[str, str],
+    ) -> tuple[int, Any | None]:
+        session = cast("Any", self._session)
+        async with session.post(self._endpoint, json=payload, headers=headers) as response:
+            status = response.status if isinstance(response.status, int) else 200
+            if status in _TRANSIENT_HTTP_STATUSES:
+                return status, None
+            try:
+                return status, await response.json()
+            except (
+                aiohttp.ContentTypeError,
+                json.JSONDecodeError,
+                UnicodeDecodeError,
+            ) as exc:
+                raise LinearError(f"Linear request failed with HTTP {status}") from exc
+
     @asynccontextmanager
     async def webhook_effect(
         self,
@@ -117,27 +139,33 @@ class LinearClient:
                 await recorder.mark_outcome_unknown(effect_id)
 
     async def query(self, query: str, **variables: object) -> dict[str, Any]:
-        payload = {"query": query, "variables": variables}
-        headers = {
+        payload: dict[str, object] = {"query": query, "variables": variables}
+        headers: dict[str, str] = {
             "Authorization": self._api_key,
             "Content-Type": "application/json",
         }
-        session = cast("Any", self._session)
-        async with session.post(self._endpoint, json=payload, headers=headers) as response:
+        read_only = query.lstrip().startswith("query")
+        for attempt in range(len(_READ_RETRY_DELAYS) + 1):  # pragma: no branch
             try:
-                body = await response.json()
-            except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-                status = response.status if isinstance(response.status, int) else 500
-                raise LinearError(f"Linear request failed with HTTP {status}") from exc
+                status, body = await self._query_once(payload, headers)
+            except (aiohttp.ClientError, TimeoutError) as exc:
+                if read_only and attempt < len(_READ_RETRY_DELAYS):
+                    await asyncio.sleep(_READ_RETRY_DELAYS[attempt])
+                    continue
+                raise LinearError("Linear request failed") from exc
+            if body is None:
+                if read_only and attempt < len(_READ_RETRY_DELAYS):
+                    await asyncio.sleep(_READ_RETRY_DELAYS[attempt])
+                    continue
+                raise LinearError(f"Linear request failed with HTTP {status}")
+            break
 
         if errors := body.get("errors"):
             messages = "; ".join(str(error.get("message", error)) for error in errors)
             raise LinearError(messages)
-        status = response.status if isinstance(response.status, int) else 200
         if not 200 <= status < 300:
-            # aiohttp's ClientResponseError retains request headers in its repr.
-            # Converting HTTP failures here prevents an uncaught traceback from
-            # printing the Linear authorization credential.
+            # Converting HTTP failures here prevents aiohttp tracebacks from
+            # rendering the Linear authorization credential.
             raise LinearError(f"Linear request failed with HTTP {status}")
         data = body.get("data")
         if not isinstance(data, dict):
