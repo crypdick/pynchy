@@ -98,7 +98,7 @@ async def set_workspace_profiles(profiles: tuple[WorkspaceProfile, ...]) -> None
 
 
 async def rebind_workspace_profile(profile: WorkspaceProfile) -> str | None:
-    """Atomically move one workspace's JID after rejecting foreign ownership."""
+    """Atomically move one workspace's JID or folder."""
     errors = profile.validate()
     if errors:
         raise ValueError(_INVALID_WORKSPACE_PROFILE_ERROR.format(errors="; ".join(errors)))
@@ -109,18 +109,27 @@ async def rebind_workspace_profile(profile: WorkspaceProfile) -> str | None:
             (profile.jid,),
         )
         jid_row = await jid_cursor.fetchone()
-        if jid_row is not None and jid_row["folder"] != profile.folder:
-            raise ValueError(
-                f"Chat JID {profile.jid!r} is already owned by workspace {jid_row['folder']!r}"
-            )
         old_cursor = await db.execute(
             "SELECT jid FROM registered_groups WHERE folder = ?",
             (profile.folder,),
         )
         old_row = await old_cursor.fetchone()
         old_jid = str(old_row["jid"]) if old_row is not None else None
+        if (
+            jid_row is not None
+            and jid_row["folder"] != profile.folder
+            and old_jid not in {None, profile.jid}
+        ):
+            raise ValueError(
+                f"Chat JID {profile.jid!r} is already owned by workspace {jid_row['folder']!r}"
+            )
         if old_jid is not None and old_jid != profile.jid:
             await db.execute("DELETE FROM registered_groups WHERE jid = ?", (old_jid,))
+        if jid_row is not None and jid_row["folder"] != profile.folder:
+            await db.execute(
+                "UPDATE registered_groups SET folder = ? WHERE jid = ?",
+                (profile.folder, profile.jid),
+            )
         await _upsert_workspace_profile(db, profile, security_data)
     return old_jid
 

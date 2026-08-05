@@ -342,7 +342,7 @@ def session_tracking_output_handler(
         ):
             # Tool output may contain secrets, so log correlation metadata only.
             logger.error(
-                "Agent output failed",
+                "Agent reported error output",
                 group=group_folder,
                 chat_jid=chat_jid,
                 query_id=output.query_id,

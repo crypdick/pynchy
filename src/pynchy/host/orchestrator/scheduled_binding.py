@@ -142,6 +142,10 @@ async def _register_bound_profile(
     deps: ScheduledBindingDeps,
     profile: WorkspaceProfile,
 ) -> None:
+    current = deps.workspaces.get(profile.jid)
+    if current is not None and current.folder != profile.folder:
+        await deps.rebind_workspace(profile)
+        return
     prior_jid = next(
         (
             jid

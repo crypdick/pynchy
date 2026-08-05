@@ -547,6 +547,19 @@ class DiscordChannel:
             channel = await client.fetch_channel(snowflake)
         return channel
 
+    async def conversation_exists(self, jid: str) -> bool:
+        """Probe Discord directly so stale cached channels cannot appear live."""
+        client = cast("Any", _require_client(self.client))
+        parsed = parse_jid(jid)
+        try:
+            if parsed.kind == "direct":
+                await client.fetch_user(int(parsed.snowflake))
+            else:
+                await client.fetch_channel(int(parsed.snowflake))
+        except discord.NotFound:
+            return False
+        return True
+
     def forget_ask_user_view(self, message_id: str) -> None:
         self._ask_user_views.pop(message_id, None)
 
@@ -566,8 +579,7 @@ class DiscordChannel:
         try:
             channel = await self.resolve_channel(jid)
         except discord.DiscordException as exc:
-            logger.warning("Discord send failed to resolve channel", jid=jid, err=str(exc))
-            return
+            raise OSError(f"Discord channel resolution failed: {exc}") from exc
         try:
             short_id = event.metadata.get("short_id")
             if event.type is OutboundEventType.APPROVAL and isinstance(short_id, str) and short_id:
@@ -575,9 +587,7 @@ class DiscordChannel:
             else:
                 await send_text(channel, rendered.text)
         except discord.Forbidden as exc:
-            logger.warning(
-                "Discord send forbidden (missing permission or DM blocked)", err=str(exc)
-            )
+            raise OSError(f"Discord send forbidden: {exc}") from exc
 
     async def post_event(self, jid: str, event: OutboundEvent) -> str | None:
         """Post a streaming preview message and return its id for in-place updates.
@@ -595,6 +605,8 @@ class DiscordChannel:
             return None
         try:
             channel = await self.resolve_channel(jid)
+            if getattr(channel, "available_tags", None) is not None:
+                return None
             message = await cast("Any", channel).send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none(),
@@ -688,6 +700,8 @@ class DiscordChannel:
         try:
             while True:
                 channel = await self.resolve_channel(jid)
+                if getattr(channel, "available_tags", None) is not None:
+                    return
                 await channel.typing()
                 await asyncio.sleep(_TYPING_REFRESH_SECONDS)
         except asyncio.CancelledError:

@@ -121,8 +121,18 @@ async def test_runner_records_evidence_and_marks_unimplemented_scenarios_not_est
         ),
         "established_targets": 1,
         "not_established_targets": len(declared_canary_scenarios()) - 1,
+        "unrun_scenarios": 0,
         "unresolved_regressions": 0,
     }
+
+
+@pytest.mark.asyncio
+async def test_report_counts_declared_scenarios_without_runs():
+    await init_test_database()
+
+    report = await get_canary_report()
+
+    assert report["summary"]["unrun_scenarios"] == len(declared_canary_scenarios())
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 from pynchy.plugins.integrations.linear import LinearClient, LinearError
@@ -30,20 +31,84 @@ def _query_client(body: object, *, status: int = 200) -> LinearClient:
 
 
 class TestLinearClientQueryEdges:
+    async def test_query_retries_transient_read_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        unavailable = MagicMock(status=503)
+        unavailable.json = AsyncMock(side_effect=AssertionError("503 body must not be parsed"))
+        success = MagicMock(status=200)
+        success.json = AsyncMock(return_value={"data": {"viewer": {"id": "viewer-1"}}})
+        session = MagicMock()
+        session.post.side_effect = [_PostContext(unavailable), _PostContext(success)]
+        sleep = AsyncMock()
+        monkeypatch.setattr("pynchy.plugins.integrations.linear_client.asyncio.sleep", sleep)
+        client = LinearClient(api_key="lin_api_test", session=session)
+
+        assert await client.query("query Viewer { viewer { id } }") == {
+            "viewer": {"id": "viewer-1"}
+        }
+        assert session.post.call_count == 2
+        sleep.assert_awaited_once()
+
+    async def test_query_does_not_retry_mutation(self):
+        response = MagicMock(status=503)
+        response.json = AsyncMock(return_value={"errors": [{"message": "unavailable"}]})
+        session = MagicMock()
+        session.post.return_value = _PostContext(response)
+        client = LinearClient(api_key="lin_api_test", session=session)
+
+        with pytest.raises(LinearError, match="HTTP 503"):
+            await client.query("mutation UpdateIssue { issueUpdate { success } }")
+
+        assert session.post.call_count == 1
+
     async def test_query_converts_malformed_response_to_linear_error(self):
-        response = MagicMock(status=502)
+        response = MagicMock(status=200)
         response.json = AsyncMock(side_effect=json.JSONDecodeError("bad", "body", 0))
         session = MagicMock()
         session.post.return_value = _PostContext(response)
         client = LinearClient(api_key="lin_api_test", session=session)
 
-        with pytest.raises(LinearError, match="HTTP 502"):
+        with pytest.raises(LinearError, match="HTTP 200"):
             await client.query("query Viewer { viewer { id } }")
+
+    async def test_query_retries_transport_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        success = MagicMock(status=200)
+        success.json = AsyncMock(return_value={"data": {"viewer": {"id": "viewer-1"}}})
+        session = MagicMock()
+        session.post.side_effect = [
+            aiohttp.ClientConnectionError("unavailable"),
+            _PostContext(success),
+        ]
+        sleep = AsyncMock()
+        monkeypatch.setattr("pynchy.plugins.integrations.linear_client.asyncio.sleep", sleep)
+        client = LinearClient(api_key="lin_api_test", session=session)
+
+        assert await client.query("query Viewer { viewer { id } }") == {
+            "viewer": {"id": "viewer-1"}
+        }
+        sleep.assert_awaited_once()
+
+    async def test_query_does_not_retry_mutation_transport_failure(self) -> None:
+        session = MagicMock()
+        session.post.side_effect = aiohttp.ClientConnectionError("unavailable")
+        client = LinearClient(api_key="lin_api_test", session=session)
+
+        with pytest.raises(LinearError, match="Linear request failed"):
+            await client.query("mutation UpdateIssue { issueUpdate { success } }")
+
+        assert session.post.call_count == 1
 
     async def test_query_rejects_non_success_http_status(self):
         client = _query_client({"data": {}}, status=503)
 
         with pytest.raises(LinearError, match="HTTP 503"):
+            await client.query("query Viewer { viewer { id } }")
+
+    async def test_query_rejects_non_transient_http_status(self):
+        client = _query_client({"data": {}}, status=400)
+
+        with pytest.raises(LinearError, match="HTTP 400"):
             await client.query("query Viewer { viewer { id } }")
 
     async def test_query_requires_a_data_object(self):

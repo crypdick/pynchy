@@ -36,6 +36,13 @@ class _ActivityDeps:
         return "skipped"
 
 
+@dataclass(frozen=True)
+class _DiskUsage:
+    total: int
+    used: int
+    free: int
+
+
 @dataclass
 class _ExplicitSessionDeps(_ActivityDeps):
     active_session: bool = True
@@ -131,6 +138,11 @@ async def test_host_git_sync_suppresses_offer_without_admin_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     broadcast = AsyncMock()
+    monkeypatch.setattr(
+        git_sync.shutil,
+        "disk_usage",
+        lambda _path: _DiskUsage(total=100 << 30, used=99 << 30, free=1 << 30),
+    )
 
     result, _deps = await _run_host_offer(
         monkeypatch,
@@ -141,6 +153,53 @@ async def test_host_git_sync_suppresses_offer_without_admin_workspace(
 
     assert result == "idle"
     broadcast.assert_not_awaited()
+
+
+async def test_host_git_sync_continues_when_disk_probe_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fail_disk_probe(_path: Path) -> _DiskUsage:
+        raise OSError("probe unavailable")
+
+    monkeypatch.setattr(git_sync.shutil, "disk_usage", fail_disk_probe)
+
+    result, _deps = await _run_host_offer(
+        monkeypatch,
+        tmp_path,
+        admin_workspace="admin",
+        broadcast_host_message=AsyncMock(),
+    )
+
+    assert result == "idle"
+
+
+async def test_host_git_sync_notifies_admin_once_when_disk_space_is_low(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        git_sync.shutil,
+        "disk_usage",
+        lambda _path: _DiskUsage(total=100 << 30, used=99 << 30, free=1 << 30),
+    )
+    broadcast = AsyncMock()
+    result, _deps = await _run_host_offer(
+        monkeypatch,
+        tmp_path,
+        admin_workspace="admin",
+        broadcast_host_message=broadcast,
+    )
+
+    assert result == "idle"
+    assert await git_sync.run_host_git_sync() == "idle"
+    disk_alerts = [
+        call.args[1] for call in broadcast.await_args_list if "disk space" in call.args[1]
+    ]
+    assert disk_alerts == [
+        (
+            "ERROR: Host disk space critically low: 1.0 GiB free (1.0%). "
+            "Free space before scheduled work continues."
+        )
+    ]
 
 
 async def test_host_git_sync_retries_when_update_offer_broadcast_fails(

@@ -47,8 +47,8 @@ CHAT_REF_MESSAGE = "chat must be connection.<platform>.<name>.chat.<chat>"
 CONFIG_NAME_MESSAGE = "config names must not be empty"
 REPO_SLUG_MESSAGE = "repo must be an owner/repo slug"
 PROMPT_NAME_MESSAGE = (
-    "prompt IDs must be souls/, executors/, reviewers/, or webhooks/ plus a lowercase "
-    "hyphenated filename"
+    "prompt IDs must use souls/, executors/, or reviewers/ with a lowercase "
+    "hyphenated filename, or webhooks/ with lowercase hyphenated path components"
 )
 MOUNT_ABSOLUTE_MESSAGE = "mount_path must be an absolute container path"
 MOUNT_POSIX_MESSAGE = "mount_path must be an absolute POSIX container path"
@@ -96,7 +96,8 @@ def _validated_repo_slug(v: str) -> RepoSlug:
 def _validated_prompt_id(v: str) -> PromptName:
     if (
         re.fullmatch(
-            r"(?:souls|executors|reviewers|webhooks)/[a-z0-9]+(?:-[a-z0-9]+)*",
+            r"(?:souls|executors|reviewers)/[a-z0-9]+(?:-[a-z0-9]+)*"
+            r"|webhooks/[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)*",
             v,
         )
         is None
