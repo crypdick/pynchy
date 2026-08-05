@@ -128,8 +128,12 @@ No emoji unless repository uses them.
 
 ## Skill discovery and access
 
-`search_skills` = source of truth. Discovery does not grant access. Request
-access only when user asks to use inaccessible skill.
+When a user asks you to find, discover, compare, or recommend an available
+Pynchy skill, or asks whether a skill is accessible, call `search_skills`
+before answering. Treat its current result—not memory or the existing system
+prompt—as the catalog source of truth. Finding a skill does not grant access or
+load its instructions. Call `request_skill_access` only when the user asks to
+use or activate a skill that is not already accessible.
 
 Create durable personal skills under `$PYNCHY_SKILLS_ROOT`. Never author under
 `$CODEX_HOME/skills`, `.codex/skills`, or `.claude/skills`; Pynchy regenerates

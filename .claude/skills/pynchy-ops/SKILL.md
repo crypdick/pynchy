@@ -51,14 +51,14 @@ docker ps -a --filter name=pynchy
 # 4. Recent errors in the dedicated error log?
 tail -n 100 "$PYNCHY_REMOTE_ROOT/logs/pynchy.error.log"
 
-# 4a. Need surrounding application context?
-tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.general.log"
+# 4a. Need surrounding application context from macOS launchd?
+tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.stdout.log"
 
 # 5. Is Slack/WhatsApp connected?
-tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.general.log" | grep -E 'Connected to|Connection closed|Slack'
+tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.stdout.log" | grep -E 'Connected to|Connection closed|Slack'
 
 # 6. Are groups loaded?
-tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.general.log" | grep groupCount
+tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.stdout.log" | grep groupCount
 ```
 
 ## Deploy & Observe
@@ -77,7 +77,7 @@ ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy deploy"
 
 # Observe (always safe)
 ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy'
-ssh "$PYNCHY_HOST" "tail -n 100 '$PYNCHY_REMOTE_ROOT/logs/pynchy.general.log'"
+ssh "$PYNCHY_HOST" "tail -n 100 '$PYNCHY_REMOTE_ROOT/logs/pynchy.stdout.log'"
 ssh "$PYNCHY_HOST" "tail -n 100 '$PYNCHY_REMOTE_ROOT/logs/pynchy.error.log'"
 ssh "$PYNCHY_HOST" 'docker ps --filter name=pynchy'
 

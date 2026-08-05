@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -34,3 +35,26 @@ async def test_stopping_typing_without_an_active_refresh_is_idempotent() -> None
     channel.client = object()
 
     await channel.set_typing("discord:channel:1", is_typing=False)
+
+
+@pytest.mark.asyncio
+async def test_set_typing_skips_forum_root() -> None:
+    class _Forum:
+        available_tags: list[object] = []
+
+        def __init__(self) -> None:
+            self.typing_calls = 0
+
+        async def typing(self) -> None:
+            self.typing_calls += 1
+
+    channel = _channel()
+    channel.client = object()
+    forum = _Forum()
+    channel.resolve_channel = AsyncMock(return_value=forum)  # type: ignore[method-assign]
+
+    await channel.set_typing("discord:channel:1", is_typing=True)
+    await asyncio.sleep(0)
+    await channel.set_typing("discord:channel:1", is_typing=False)
+
+    assert forum.typing_calls == 0

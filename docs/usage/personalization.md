@@ -191,9 +191,9 @@ sources above. Obsidian is a memory store, not a skill source.
 ## Prompts
 
 Prompt IDs select a unique Markdown file under `prompts/souls/`,
-`prompts/executors/`, or `prompts/reviewers/`. Defaults and personalization
-cannot declare the same ID. See [Prompts and pipelines](prompts.md) for prompt
-selection, pipeline files, and workspace-specific soul overrides.
+`prompts/executors/`, `prompts/reviewers/`, or `prompts/webhooks/`. Defaults and
+personalization cannot declare the same ID. See [Prompts and pipelines](prompts.md)
+for prompt selection, pipeline files, and workspace-specific soul overrides.
 
 ## Validate in CI
 

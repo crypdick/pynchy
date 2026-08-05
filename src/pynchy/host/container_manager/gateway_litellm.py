@@ -33,11 +33,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+import aiohttp
+
 from pynchy.host.container_manager.docker import (
     HealthCheckRequest,
     docker_available,
     ensure_image,
     ensure_network,
+    is_container_running,
     remove_container,
     run_docker,
     stop_container,
@@ -256,6 +259,26 @@ class LiteLLMGateway:
         # LiteLLM handles provider resolution — always expose both URLs.
         # If a provider isn't configured, litellm returns a clear error.
         return True
+
+    async def is_ready(self) -> bool:
+        """Return whether both sidecars and the proxy readiness endpoint work."""
+        litellm_running, postgres_running = await asyncio.gather(
+            is_container_running(self._litellm_container),
+            is_container_running(self._postgres_container),
+        )
+        if not litellm_running or not postgres_running:
+            return False
+        try:
+            async with (
+                aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
+                session.get(
+                    f"http://localhost:{self.port}/health/readiness",
+                    headers={"Authorization": f"Bearer {self.key}"},
+                ) as response,
+            ):
+                return response.status == 200
+        except (aiohttp.ClientError, OSError):
+            return False
 
     # ------------------------------------------------------------------
     # Env-var forwarding
