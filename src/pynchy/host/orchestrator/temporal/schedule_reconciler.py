@@ -51,9 +51,11 @@ from pynchy.host.orchestrator.temporal.workflows import (
 from pynchy.scheduling.api import (  # beartype resolves Temporal reconciler annotations at runtime.
     HostJob,
     ScheduledTask,
+    SchedulerDefinition,
     agent_task_occurrence_due_at,
     agent_task_occurrence_workflow_id,
 )
+from pynchy.state.api import register_scheduler_definition, scheduler_definition_hash
 
 _ONE_SHOT_WORKFLOW_PREFIX_BY_TYPE = {
     ScheduledAgentTaskWorkflow.__name__: "pynchy-agent-task-",
@@ -74,6 +76,7 @@ async def reconcile_temporal_schedules(
     desired_schedule_ids: set[str] = set()
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
+    await _register_evidence_definitions(tasks, host_jobs, scheduler_runtime)
     desired_once_workflow_ids = _desired_once_workflow_ids(tasks, host_jobs)
     deferred_once_task_ids = await _cancel_superseded_resumed_agent_workflows(client, tasks)
 
@@ -94,6 +97,40 @@ async def reconcile_temporal_schedules(
 
     await _cancel_stale_delayed_workflows(client, desired_once_workflow_ids)
     await _delete_stale_schedules(client, desired_schedule_ids)
+
+
+async def _register_evidence_definitions(
+    tasks: list[ScheduledTask],
+    host_jobs: list[HostJob],
+    runtime: SchedulerRuntimeConfig,
+) -> None:
+    """Persist active schedule revisions before Temporal may dispatch them."""
+    active_from = datetime.now(UTC).isoformat()
+    timezone = runtime.timezone or "UTC"
+    definitions = [
+        (f"agent-task:{task.id}", task.schedule_type, task.schedule_value) for task in tasks
+    ]
+    definitions.extend(
+        (f"host-job:{job.id}", job.schedule_type, job.schedule_value) for job in host_jobs
+    )
+    definitions.extend(
+        (f"host-cron:{name}", "cron", job.schedule)
+        for name, job in runtime.config_host_cron_jobs.items()
+    )
+    for schedule_key, schedule_type, schedule_value in definitions:
+        definition_hash = scheduler_definition_hash(
+            schedule_key, schedule_type, schedule_value, timezone
+        )
+        await register_scheduler_definition(
+            SchedulerDefinition(
+                schedule_key=schedule_key,
+                schedule_type=cast("Any", schedule_type),
+                schedule_value=schedule_value,
+                timezone=timezone,
+                active_from=active_from,
+                definition_hash=definition_hash,
+            )
+        )
 
 
 def _desired_once_workflow_ids(tasks: list[ScheduledTask], host_jobs: list[HostJob]) -> set[str]:

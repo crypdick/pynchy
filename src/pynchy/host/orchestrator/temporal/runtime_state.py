@@ -98,6 +98,17 @@ def _activity_workflow_id() -> str | None:
         return None
 
 
+def _activity_scheduled_at() -> str:
+    """Return Temporal's scheduled timestamp or the current direct-call timestamp."""
+    try:
+        scheduled_at = getattr(activity.info(), "scheduled_time", None)
+    except RuntimeError:
+        scheduled_at = None
+    if isinstance(scheduled_at, datetime):
+        return scheduled_at.astimezone(UTC).isoformat()
+    return _utc_timestamp()
+
+
 def _record_activity_result(task_id: str, result: str, error: str | None = None) -> None:
     _update_temporal_scheduler_status(
         last_workflow_id=_activity_workflow_id(),
