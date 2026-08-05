@@ -243,6 +243,15 @@ async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
         "_start_temporal_scheduler",
         lambda *_args: record("temporal:ready"),
     )
+
+    async def supervise_gateway() -> None:
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(
+        lifecycle.gateway_manager,
+        "supervise_gateway",
+        supervise_gateway,
+    )
     monkeypatch.setattr(
         app,
         "start_linear_work_item_reconciliation",

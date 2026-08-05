@@ -448,6 +448,7 @@ async def _activate_runtime_owners(
     prepared_http: http_server.PreparedHttpServer,
 ) -> None:
     """Restore durable routes and start critical pollers behind their gates."""
+    app.subsystem_tasks.add(create_background_task(gateway_manager.supervise_gateway()))
     await _start_temporal_scheduler(app)
     await app.start_linear_work_item_reconciliation()
     await http_server.recover_http_routes(prepared_http)

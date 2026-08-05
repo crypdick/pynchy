@@ -32,6 +32,7 @@ Implementation lives in:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import (  # noqa: TC003 - beartype resolves gateway runtime annotations.
     Callable,
     Mapping,
@@ -72,13 +73,17 @@ __all__ = [
     "GatewayProto",
     "LiteLLMGateway",
     "get_gateway",
+    "recover_gateway_if_unhealthy",
     "resolve_container_host",
     "start_gateway",
     "stop_gateway",
+    "supervise_gateway",
 ]
 
 _DEFAULT_CONTAINER_HOST = "host.docker.internal"
 _APPLE_CONTAINER_HOST = "192.168.64.1"
+_SUPERVISOR_INTERVAL_SECONDS = 5
+_SUPERVISOR_MAX_BACKOFF_SECONDS = 60
 _apple_container_runtime = False
 
 
@@ -372,3 +377,37 @@ async def stop_gateway() -> None:
     if gateway is not None:
         await gateway.stop()
         _set_gateway(None)
+
+
+async def recover_gateway_if_unhealthy() -> bool:
+    """Restart a lost LiteLLM gateway and restore its MCP registrations."""
+    gateway = get_gateway()
+    if not isinstance(gateway, LiteLLMGateway) or await gateway.is_ready():
+        return False
+
+    logger.warning("LiteLLM gateway unavailable; restarting owned sidecars")
+    await gateway.start()
+
+    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415 - MCP runtime exists only after LiteLLM startup.
+        get_mcp_manager,
+    )
+
+    if mcp_manager := get_mcp_manager():
+        await mcp_manager.sync()
+    logger.info("LiteLLM gateway recovered")
+    return True
+
+
+async def supervise_gateway() -> None:
+    """Keep the service-owned LiteLLM sidecars alive after external removal."""
+    backoff_seconds = 1
+    while True:
+        await asyncio.sleep(_SUPERVISOR_INTERVAL_SECONDS)
+        try:
+            await recover_gateway_if_unhealthy()
+        except Exception:  # noqa: BLE001 - recovery must keep retrying after a transient runtime failure.
+            logger.exception("LiteLLM gateway recovery failed", retry_seconds=backoff_seconds)
+            await asyncio.sleep(backoff_seconds)
+            backoff_seconds = min(backoff_seconds * 2, _SUPERVISOR_MAX_BACKOFF_SECONDS)
+        else:
+            backoff_seconds = 1
