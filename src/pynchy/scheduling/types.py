@@ -16,6 +16,67 @@ class SessionPolicy(StrEnum):
     RESET_BEFORE_RUN = "reset_before_run"
 
 
+class SchedulerEvidenceOutcome(StrEnum):
+    """Terminal and in-progress states for one logical scheduler slot."""
+
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    GATE_SKIPPED = "gate_skipped"
+    POLICY_SKIPPED = "policy_skipped"
+    MISSED = "missed"
+
+
+class SchedulerAuditClassification(StrEnum):
+    """Audit result for an expected scheduler slot."""
+
+    RUN = "run"
+    DECLARED_SKIP = "declared_skip"
+    FAILED = "failed"
+    MISSED = "missed"
+    PENDING = "pending"
+    RETENTION_GAP = "retention_gap"
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerDefinition:
+    """Versioned schedule specification that reconstructs audit slots."""
+
+    schedule_key: str
+    schedule_type: Literal["cron", "interval", "once"]
+    schedule_value: str
+    timezone: str
+    active_from: str
+    definition_hash: str
+    active_to: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerOccurrence:
+    """Durable evidence for one definition slot."""
+
+    definition_hash: str
+    scheduled_at: str
+    outcome: SchedulerEvidenceOutcome
+    dispatched_at: str | None = None
+    terminal_at: str | None = None
+    reason: str | None = None
+    workflow_id: str | None = None
+    run_id: str | None = None
+    attempts: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerAuditSlot:
+    """One expected slot and its non-passing or terminal classification."""
+
+    schedule_key: str
+    scheduled_at: str
+    classification: SchedulerAuditClassification
+    outcome: SchedulerEvidenceOutcome | None = None
+    reason: str | None = None
+
+
 @dataclass
 class ScheduledTask:
     id: str

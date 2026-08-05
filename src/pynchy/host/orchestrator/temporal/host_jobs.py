@@ -14,7 +14,12 @@ from pynchy.host.orchestrator.scheduler_deps import (
     SchedulerDependencies,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
     SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
 )
+from pynchy.host.orchestrator.temporal.evidence import (
+    record_config_host_cron_occurrence,
+    record_host_job_occurrence,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import (
+    _activity_scheduled_at,
     _activity_workflow_id,
     _record_activity_result,
     _require_scheduler_deps,
@@ -24,7 +29,8 @@ from pynchy.host.orchestrator.temporal.schedules import (
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    HostJob,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    HostJob,
+    SchedulerEvidenceOutcome,
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 
@@ -50,6 +56,7 @@ def _resolve_job_cwd(cwd: str | None, project_root: Path) -> str:
 async def run_database_host_job(job_id: str) -> str:
     """Temporal activity that runs one active database-backed host job."""
     job = await get_host_job_by_id(job_id)
+    scheduled_at = _activity_scheduled_at()
     if job is None or job.status != "active" or not job.enabled:
         logger.info("Temporal database host job skipped", job_id=job_id)
         _record_activity_result(job_id, "skipped")
@@ -61,6 +68,13 @@ async def run_database_host_job(job_id: str) -> str:
         # The workflow ID versions delayed one-shot definitions. Reconciliation
         # cancels stale runs best-effort; this guard closes the due-time race.
         logger.info("Stale Temporal database host job skipped", job_id=job_id)
+        await record_host_job_occurrence(
+            job,
+            scheduled_at=scheduled_at,
+            outcome=SchedulerEvidenceOutcome.POLICY_SKIPPED,
+            workflow_id=activity_workflow_id,
+            reason="stale_definition",
+        )
         _record_activity_result(job_id, "skipped")
         return "skipped"
 
@@ -74,8 +88,21 @@ async def run_database_host_job(job_id: str) -> str:
         with memory_context as memory_dir:
             await _run_database_host_job(job, memory_dir, scheduler_deps)
     except Exception as exc:  # allow: exception-handling; record activity failure.
+        await record_host_job_occurrence(
+            job,
+            scheduled_at=scheduled_at,
+            outcome=SchedulerEvidenceOutcome.FAILED,
+            workflow_id=activity_workflow_id,
+            reason=str(exc),
+        )
         _record_activity_result(job_id, "error", str(exc))
         raise
+    await record_host_job_occurrence(
+        job,
+        scheduled_at=scheduled_at,
+        outcome=SchedulerEvidenceOutcome.SUCCEEDED,
+        workflow_id=activity_workflow_id,
+    )
     _record_activity_result(job_id, "completed")
     return "completed"
 
@@ -85,6 +112,7 @@ async def run_config_host_cron_job(job_name: str) -> str:
     """Temporal activity that runs one enabled config-backed host cron job."""
     scheduler_deps = cast("SchedulerDependencies", _require_scheduler_deps())
     job = scheduler_deps.scheduler_runtime.config_host_cron_jobs.get(job_name)
+    scheduled_at = _activity_scheduled_at()
     if job is None:
         logger.info("Temporal config host cron job skipped", job=job_name)
         _record_activity_result(job_name, "skipped")
@@ -104,8 +132,23 @@ async def run_config_host_cron_job(job_name: str) -> str:
                 memory_dir,
             )
     except Exception as exc:  # allow: exception-handling; record activity failure.
+        await record_config_host_cron_occurrence(
+            job_name,
+            schedule_value=job.schedule,
+            scheduled_at=scheduled_at,
+            outcome=SchedulerEvidenceOutcome.FAILED,
+            workflow_id=_activity_workflow_id(),
+            reason=str(exc),
+        )
         _record_activity_result(job_name, "error", str(exc))
         raise
+    await record_config_host_cron_occurrence(
+        job_name,
+        schedule_value=job.schedule,
+        scheduled_at=scheduled_at,
+        outcome=SchedulerEvidenceOutcome.SUCCEEDED,
+        workflow_id=_activity_workflow_id(),
+    )
     _record_activity_result(job_name, "completed")
     return "completed"
 
