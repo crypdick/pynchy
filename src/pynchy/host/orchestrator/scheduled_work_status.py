@@ -9,7 +9,9 @@ from typing import Any
 from pynchy.scheduling.api import (  # type aliases evaluate at module import.
     HostJob,
     ScheduledTask,
+    ScheduledWorkHealth,
     TaskRunLog,
+    scheduled_work_attention,
 )
 
 TemporalStateReader = Callable[
@@ -34,35 +36,64 @@ async def collect_scheduled_work(
     task_logs = await asyncio.gather(
         *(get_task_logs(task.id) for task in tasks),
     )
-    task_status = [
-        {
-            "id": task.id,
-            "group": task.group_folder,
-            "schedule_type": task.schedule_type,
-            "schedule_value": task.schedule_value,
-            "status": task.status,
-            "next_run": orchestration["task", task.id]["next_run"],
-            "orchestration": orchestration["task", task.id],
-            "last_run": task.last_run,
-            "last_result": task.last_result,
-            "run_health": _task_run_health(logs),
-        }
-        for task, logs in zip(tasks, task_logs, strict=True)
-    ]
-    host_job_status = [
-        {
-            "id": job.id,
-            "name": job.name,
-            "schedule_type": job.schedule_type,
-            "schedule_value": job.schedule_value,
-            "status": job.status,
-            "enabled": job.enabled,
-            "next_run": orchestration["host_job", job.id]["next_run"],
-            "orchestration": orchestration["host_job", job.id],
-            "last_run": job.last_run,
-        }
-        for job in jobs
-    ]
+    task_status = []
+    for task, logs in zip(tasks, task_logs, strict=True):
+        run_health = _task_run_health(logs)
+        temporal_state = orchestration["task", task.id]
+        task_status.append(
+            {
+                "id": task.id,
+                "group": task.group_folder,
+                "schedule_type": task.schedule_type,
+                "schedule_value": task.schedule_value,
+                "status": task.status,
+                "next_run": temporal_state["next_run"],
+                "orchestration": temporal_state,
+                "last_run": task.last_run,
+                "last_result": task.last_result,
+                "run_health": run_health,
+                "attention": list(
+                    scheduled_work_attention(
+                        ScheduledWorkHealth(
+                            status=task.status,
+                            next_run=temporal_state["next_run"],
+                            last_run_status=run_health["last_status"],
+                            consecutive_failures=run_health["consecutive_failures"],
+                            orchestration_error=temporal_state["error"],
+                            last_result=task.last_result,
+                        )
+                    )
+                ),
+            }
+        )
+    host_job_status = []
+    for job in jobs:
+        temporal_state = orchestration["host_job", job.id]
+        host_job_status.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "schedule_type": job.schedule_type,
+                "schedule_value": job.schedule_value,
+                "status": job.status,
+                "enabled": job.enabled,
+                "next_run": temporal_state["next_run"],
+                "orchestration": temporal_state,
+                "last_run": job.last_run,
+                "attention": list(
+                    scheduled_work_attention(
+                        ScheduledWorkHealth(
+                            status=job.status,
+                            next_run=temporal_state["next_run"],
+                            last_run_status=None,
+                            consecutive_failures=0,
+                            orchestration_error=temporal_state["error"],
+                            last_result=None,
+                        )
+                    )
+                ),
+            }
+        )
     return task_status, host_job_status
 
 
