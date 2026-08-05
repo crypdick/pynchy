@@ -10,7 +10,7 @@ parent channel's workspace configuration.
    Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**.
 2. Invite it with the `bot` and `applications.commands` scopes and *View Channels*, *Send Messages*, *Send
    Messages in Threads*, *Read Message History*, *Add Reactions*, *Connect*, and
-   *Speak*. Do not grant Administrator.
+   *Speak*, and *Manage Messages*. Do not grant Administrator.
 3. Store the token in the host environment, then reference its name from
    `data/personalization/pynchy.toml`:
 
@@ -89,7 +89,9 @@ At each startup, it also adds any missing `issue`, `automation`, `planning`,
 Each managed forum post receives exactly one of those kind tags. Routed Linear
 issues use `issue`, and scheduled tasks use `automation`. Persistent workspace
 threads accept `automation`, `planning`, `testing`, or `topic`; `topic` provides
-the default.
+the default. Pynchy pins the Linear issue link in each routed issue post. For a
+Linear-backed forum, Pynchy also maintains its Linear project link in the forum
+posting guidelines without replacing other guidance.
 
 ## Capabilities
 

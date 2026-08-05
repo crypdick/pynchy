@@ -65,6 +65,8 @@ from ._voice import DiscordVoiceManager
 _TYPING_REFRESH_SECONDS = 8.0
 _DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
 _DISCORD_MESSAGE_TOO_LONG = "Discord message exceeds 2000 chars; falling back to chunked send"
+_LINEAR_ISSUE_LINK_PREFIX = "Linear issue: "
+_LINEAR_PROJECT_LINK_PREFIX = "Linear project: "
 
 
 def _require_client(client: object | None) -> object:
@@ -358,6 +360,43 @@ class DiscordChannel:
         if not callable(edit):
             raise TypeError("Discord target does not support forum post tags")
         await edit(applied_tags=[tag])
+
+    async def ensure_thread_link_pinned(self, child_jid: str, url: str) -> None:
+        """Pin one canonical Linear issue link in a managed child conversation."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        content = f"{_LINEAR_ISSUE_LINK_PREFIX}{url}"
+        pins = getattr(thread, "pins", None)
+        if callable(pins):
+            pinned_messages = await pins()
+            if any(getattr(message, "content", None) == content for message in pinned_messages):
+                return
+        send = getattr(thread, "send", None)
+        if not callable(send):
+            raise TypeError("Discord target does not support sending a pinned link")
+        message = await send(content)
+        pin = getattr(message, "pin", None)
+        if not callable(pin):
+            raise TypeError("Discord message does not support pinning")
+        await pin()
+
+    async def ensure_forum_guidelines_linked(self, parent_jid: str, url: str) -> None:
+        """Preserve forum guidance while reconciling its managed Linear project link."""
+        forum = cast("Any", await self.resolve_channel(parent_jid))
+        if getattr(forum, "available_tags", None) is None:
+            return
+        topic = getattr(forum, "topic", None)
+        existing_lines = str(topic).splitlines() if isinstance(topic, str) else []
+        lines = [
+            line for line in existing_lines if not line.startswith(_LINEAR_PROJECT_LINK_PREFIX)
+        ]
+        lines.append(f"{_LINEAR_PROJECT_LINK_PREFIX}{url}")
+        updated_topic = "\n".join(lines)
+        if topic == updated_topic:
+            return
+        edit = getattr(forum, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord forum does not support posting guidelines")
+        await edit(topic=updated_topic)
 
     async def set_thread_title(self, child_jid: str, title: str) -> None:
         """Update a child thread's visible title."""
