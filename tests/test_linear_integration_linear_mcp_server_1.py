@@ -68,6 +68,9 @@ class TestLinearMcpServer:
             payload = await response.json()
             tools = {tool["name"]: tool for tool in payload["result"]["tools"]}
             assert "state_id" not in tools["linear_create_issue"]["inputSchema"]["properties"]
+            assert tools["linear_create_issue"]["inputSchema"]["properties"]["priority"][
+                "enum"
+            ] == [0, 1, 2, 3, 4]
             todo_properties = tools["linear_create_todo"]["inputSchema"]["properties"]
             assert "status" not in todo_properties
             assert "exact_description" not in todo_properties
@@ -91,6 +94,31 @@ class TestLinearMcpServer:
                     "params": {
                         "name": "linear_create_todo",
                         "arguments": {"title": "Review docs", "priority": 5},
+                    },
+                },
+            )
+
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        assert payload["result"]["isError"] is True
+        text = payload["result"]["content"][0]["text"]
+        assert "priority must be an integer from 0 through 4" in text
+
+    async def test_ordinary_issue_rejects_invalid_priority(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        client = await start_mcp_client()
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "linear_create_issue",
+                        "arguments": {"team_id": "team-1", "title": "Issue", "priority": 5},
                     },
                 },
             )
@@ -151,6 +179,7 @@ class TestLinearMcpServer:
                                 "team_id": "team-1",
                                 "title": "Track task",
                                 "description": "Task details",
+                                "priority": 4,
                             },
                         },
                     },
@@ -170,6 +199,7 @@ class TestLinearMcpServer:
             project_id=None,
             state_id=None,
             label_ids=None,
+            priority=4,
         )
 
     @pytest.mark.action("linear.issue.read")

@@ -233,6 +233,7 @@ class TestLinearClient:
             team_id="team-1",
             title="Track tasks",
             description="Create task tracker",
+            priority=4,
         )
 
         assert result["identifier"] == "PYN-1"
@@ -242,6 +243,7 @@ class TestLinearClient:
             "teamId": "team-1",
             "title": "Track tasks",
             "description": "Create task tracker",
+            "priority": 4,
         }
 
     async def test_create_issue_omits_absent_optional_fields(self):

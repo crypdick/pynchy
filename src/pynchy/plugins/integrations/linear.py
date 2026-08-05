@@ -62,6 +62,7 @@ _LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
 _LINEAR_WORKSPACE_REQUIRED = "Workspace-scoped Linear todo tools require an MCP workspace instance"
 _LINEAR_REQUIRED_ARGUMENT = "{key} is required"
 _LINEAR_DESCRIPTION_NOT_STRING = "description must be a string"
+# NOTE: Keep docs/integrations/linear.md priority mapping aligned with this contract.
 _LINEAR_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
 
 
@@ -279,6 +280,9 @@ async def _tool_create_issue(
     label_ids = arguments.get("label_ids")
     if label_ids is not None and not isinstance(label_ids, list):
         raise LinearError(_LINEAR_LABEL_IDS_NOT_ARRAY)
+    priority = arguments.get("priority")
+    if priority is not None and (type(priority) is not int or not 0 <= priority <= 4):
+        raise LinearError(_LINEAR_PRIORITY_INVALID)
     return cast(
         "dict[str, Any]",
         await cast("Any", client).create_issue(
@@ -288,6 +292,7 @@ async def _tool_create_issue(
             project_id=arguments.get("project_id"),
             state_id=None,
             label_ids=label_ids,
+            priority=priority,
         ),
     )
 

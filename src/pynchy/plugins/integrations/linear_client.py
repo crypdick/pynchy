@@ -234,6 +234,7 @@ class LinearClient:
         project_id: str | None = None,
         state_id: str | None = None,
         label_ids: list[str] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         issue_input: dict[str, object] = {
             "teamId": team_id,
@@ -244,6 +245,7 @@ class LinearClient:
             "projectId": project_id,
             "stateId": state_id,
             "labelIds": label_ids,
+            "priority": priority,
         }
         # Linear distinguishes omitted optional create fields from explicit nulls
         # and rejects the latter with its generic "Argument Validation Error".
