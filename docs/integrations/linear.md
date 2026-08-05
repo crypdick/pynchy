@@ -364,7 +364,7 @@ The Linear MCP server provides ordinary provider tools:
 | `linear_list_teams` | Lists teams visible to the selected account. |
 | `linear_list_issues` | Lists recent issues, optionally by team. |
 | `linear_get_issue` | Gets an issue by stable Linear ID. |
-| `linear_create_issue` | Creates an ordinary issue without an approval-bearing state. |
+| `linear_create_issue` | Creates an ordinary issue without an approval-bearing state; optionally sets priority (`0` none, `1` urgent, `2` high, `3` medium, `4` low). |
 | `linear_list_todos` | Lists open items on the current workspace board. |
 | `linear_create_todo` | Creates an unapproved workspace proposal. |
 | `linear_create_attachment` | Attaches an external URL, including every pull request produced by the work, to an issue. |
