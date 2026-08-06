@@ -337,6 +337,34 @@ async def confirm_action_intent(
     )
 
 
+async def reconcile_action_intent(
+    request_id: str, *, provider_request_id: str, receipt: dict[str, Any]
+) -> ActionIntent:
+    """Confirm an unknown attempt after a provider read proves its receipt."""
+    now = _timestamp()
+    try:
+        return await _set_action_intent_status(
+            ActionIntentStatusUpdate(
+                request_id=request_id,
+                expected=(ActionIntentStatus.OUTCOME_UNKNOWN,),
+                status=ActionIntentStatus.CONFIRMED,
+                provider_request_id=provider_request_id,
+                provider_receipt=json.dumps(receipt, sort_keys=True),
+                resolved_at=now,
+            )
+        )
+    except RuntimeError:
+        existing = await get_action_intent_by_request(request_id)
+        if (
+            existing is not None
+            and existing.status is ActionIntentStatus.CONFIRMED
+            and existing.provider_request_id == provider_request_id
+            and existing.provider_receipt == receipt
+        ):
+            return existing
+        raise
+
+
 async def mark_action_intent_outcome_unknown(
     request_id: str, *, reason: str
 ) -> ActionIntent | None:
@@ -379,6 +407,7 @@ async def _set_action_intent_status(update: ActionIntentStatusUpdate) -> ActionI
             f"""
             UPDATE action_intents
             SET status = ?,
+                error = CASE WHEN ? THEN NULL ELSE error END,
                 policy_decision = COALESCE(?, policy_decision),
                 approver = COALESCE(?, approver),
                 approved_at = COALESCE(?, approved_at),
@@ -391,6 +420,7 @@ async def _set_action_intent_status(update: ActionIntentStatusUpdate) -> ActionI
             """,  # noqa: S608 - expected state placeholders are enum-controlled.
             (
                 update.status.value,
+                update.status is ActionIntentStatus.CONFIRMED,
                 update.policy_decision,
                 update.approver,
                 update.approved_at,

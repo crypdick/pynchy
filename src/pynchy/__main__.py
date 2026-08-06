@@ -19,6 +19,7 @@ import sys
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
+from contextlib import nullcontext
 from pathlib import Path
 
 from pynchy.personalization_cli import publish_personalization, validate_personalization
@@ -113,6 +114,9 @@ def _build() -> None:
     from pynchy.config.api import (  # noqa: PLC0415 - build command loads settings only when invoked.
         get_settings,
     )
+    from pynchy.plugins.runtimes.apple_build_lock import (  # noqa: PLC0415 - build command needs Apple-only lock.
+        apple_build_lock,
+    )
     from pynchy.plugins.runtimes.cleanup import (  # noqa: PLC0415 - runtime cleanup is build-command specific.
         cleanup_runtime_build_state,
         cleanup_runtime_builder,
@@ -133,20 +137,22 @@ def _build() -> None:
 
     _stdout_line(f"Building {s.container.image} with {runtime.cli}...")
     runtime.ensure_running()
-    if not cleanup_runtime_build_state(runtime):
-        _stderr_line("Error: Could not clean stale container build state")
-        sys.exit(1)
-    build_state_cleaned = False
-    try:
-        result = subprocess.run(  # noqa: S603 - runtime CLI is selected by trusted runtime detection and argv is fixed.
-            [runtime.cli, "build", "-t", s.container.image, "."],
-            cwd=str(container_dir),
-            check=False,
-        )
-    finally:
-        build_state_cleaned = cleanup_runtime_build_state(runtime)
-    if result.returncode != 0:
-        cleanup_runtime_builder(runtime)
+    lock = apple_build_lock() if runtime.cli == "container" else nullcontext()
+    with lock:
+        if not cleanup_runtime_build_state(runtime):
+            _stderr_line("Error: Could not clean stale container build state")
+            sys.exit(1)
+        build_state_cleaned = False
+        try:
+            result = subprocess.run(  # noqa: S603 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+                [runtime.cli, "build", "-t", s.container.image, "."],
+                cwd=str(container_dir),
+                check=False,
+            )
+        finally:
+            build_state_cleaned = cleanup_runtime_build_state(runtime)
+        if result.returncode != 0:
+            cleanup_runtime_builder(runtime)
     if result.returncode == 0 and not build_state_cleaned:
         _stderr_line("Error: Could not clean container build state after the build")
         sys.exit(1)

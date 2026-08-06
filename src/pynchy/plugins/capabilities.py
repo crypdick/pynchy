@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, NewType
 
+from pynchy.action_intents import ActionIntent
 from pynchy.actions.api import ActionId, ActionSpec, ActionTransport
 from pynchy.identifiers import (
     CapabilityId,  # noqa: TC001 - beartype resolves descriptor annotations at runtime.
@@ -157,6 +158,8 @@ class ActionIntentReceipt:
 
 ActionIntentDraftFactory = Callable[[dict[str, Any]], ActionIntentDraft]
 ActionIntentReceiptParser = Callable[[dict[str, Any]], ActionIntentReceipt]
+ActionIntentExecutionDataFactory = Callable[[dict[str, Any], str], dict[str, Any]]
+ActionIntentUnknownReconciler = Callable[[ActionIntent], Awaitable[ActionIntentReceipt | None]]
 
 
 @dataclass(frozen=True)
@@ -166,6 +169,16 @@ class ActionIntentContract:
     provider: str
     draft_from_request: ActionIntentDraftFactory = field(compare=False, repr=False)
     receipt_from_response: ActionIntentReceiptParser = field(compare=False, repr=False)
+    execution_data_from_request: ActionIntentExecutionDataFactory | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    reconcile_unknown: ActionIntentUnknownReconciler | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 @dataclass(frozen=True)
