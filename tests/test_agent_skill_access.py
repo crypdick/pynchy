@@ -15,7 +15,17 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.agent_tools import call_tool
+from agent_runner.agent_tools import AgentToolRuntime, call_tool, use_agent_tool_runtime
+
+
+def _scheduled_runtime(tmp_path: Path) -> AgentToolRuntime:
+    return AgentToolRuntime(
+        chat_jid="chat",
+        group_folder="group",
+        is_admin=False,
+        is_scheduled_task=True,
+        ipc_dir=tmp_path / "ipc",
+    )
 
 
 def _write_skill(root: Path, name: str, description: str = "Useful vault workflow.") -> None:
@@ -352,6 +362,99 @@ async def test_request_skill_access_returns_existing_denial_without_asking(
 
     assert result.content[0].text == "Access to 'known-skill' is denied by this workspace profile."
     assert request.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("available", "requires owner approval"),
+        ("error", "requires owner approval"),
+        (None, "requires owner approval"),
+    ],
+)
+async def test_scheduled_skill_access_requires_existing_grant(
+    tmp_path: Path, monkeypatch, status: str | None, expected: str
+) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+    response = {} if status is None else {"status": status}
+    request = AsyncMock(return_value=_response(response))
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    with use_agent_tool_runtime(_scheduled_runtime(tmp_path)):
+        result = await call_tool(
+            "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+        )
+
+    assert expected in result.content[0].text
+    assert "<skill" not in result.content[0].text
+    assert request.await_count == 1
+    assert request.await_args.kwargs["response_timeout_seconds"] == 10
+    assert request.await_args.kwargs["type_override"] == "skill_access:policy"
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+async def test_scheduled_skill_access_uses_existing_grant(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+    request = AsyncMock(return_value=_response({"status": "granted"}))
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    with use_agent_tool_runtime(_scheduled_runtime(tmp_path)):
+        result = await call_tool(
+            "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+        )
+
+    assert "Access granted" in result[0].text
+    assert request.await_count == 1
+    assert request.await_args.kwargs["response_timeout_seconds"] == 10
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+async def test_scheduled_skill_access_uses_existing_denial(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+    request = AsyncMock(return_value=_response({"status": "denied"}))
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    with use_agent_tool_runtime(_scheduled_runtime(tmp_path)):
+        result = await call_tool(
+            "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+        )
+
+    assert result.content[0].text == "Access to 'known-skill' is denied by this workspace profile."
+    assert request.await_count == 1
+    assert request.await_args.kwargs["response_timeout_seconds"] == 10
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
+async def test_scheduled_skill_access_handles_policy_timeout(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "known-skill")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+    request = AsyncMock(
+        return_value=[
+            TextContent(type="text", text="Error: Request timed out waiting for host response")
+        ]
+    )
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
+
+    with use_agent_tool_runtime(_scheduled_runtime(tmp_path)):
+        result = await call_tool(
+            "request_skill_access", {"skill_name": "known-skill", "reason": "Need it."}
+        )
+
+    assert "requires owner approval" in result.content[0].text
+    assert request.await_count == 1
+    assert request.await_args.kwargs["response_timeout_seconds"] == 10
 
 
 @pytest.mark.asyncio
