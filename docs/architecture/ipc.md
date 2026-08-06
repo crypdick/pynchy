@@ -115,6 +115,8 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 | `pause_task` | Pause a task | No (own tasks) |
 | `resume_task` | Resume a task | No (own tasks) |
 | `cancel_task` | Delete a task | No (own tasks) |
+| `task_definition` | Read one task prompt and editable metadata | No (own tasks) |
+| `update_scheduled_task` | Update one task prompt or status | No (own tasks) |
 | `register_group` | Register a new chat group | Yes |
 | `create_periodic_agent` | Create a group + task + config for a periodic agent | Yes |
 | `messaging_source_health` | Read body-free source readiness and persisted ingress freshness | No |

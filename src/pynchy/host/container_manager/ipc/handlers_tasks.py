@@ -19,8 +19,12 @@ from pynchy.host.container_manager.ipc.deps import (
     TaskHandlerDeps,
 )
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.logger import logger
+from pynchy.scheduling.api import (
+    ScheduledTask,
+)
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,123 @@ def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
         return value
     return None
+
+
+def _task_definition(task: ScheduledTask) -> dict[str, object]:
+    """Project the small task definition an authorized agent may edit."""
+    if not isinstance(task, ScheduledTask):
+        raise TypeError("scheduled task store returned an invalid task")
+    return {
+        "id": task.id,
+        "group": task.group_folder,
+        "prompt": task.prompt,
+        "schedule_type": task.schedule_type,
+        "schedule_value": task.schedule_value,
+        "session_policy": task.session_policy,
+        "status": task.status,
+        "memory_enabled": task.memory_enabled,
+    }
+
+
+def _request_id(data: dict[str, Any]) -> str | None:
+    request_id = data.get("request_id")
+    return request_id if isinstance(request_id, str) and request_id else None
+
+
+async def _authorized_editable_task(
+    store: ScheduledWorkStore,
+    task_id: object,
+    source_group: str,
+    *,
+    is_admin: bool,
+) -> ScheduledTask | None:
+    if not isinstance(task_id, str) or not task_id or task_id.startswith("host-"):
+        return None
+    task = await store.get_task_by_id(task_id)
+    if task is None or (not is_admin and task.group_folder != source_group):
+        return None
+    return task
+
+
+def _write_task_response(source_group: str, request_id: str, task: ScheduledTask | None) -> None:
+    response: dict[str, object]
+    if task is None:
+        response = {"error": "Scheduled task not found"}
+    else:
+        response = {"result": _task_definition(task)}
+    write_ipc_response(ipc_response_path(source_group, request_id), response)
+
+
+async def _handle_task_definition(
+    data: dict[str, Any],
+    source_group: str,
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
+    deps: IpcDeps,
+) -> None:
+    request_id = _request_id(data)
+    if request_id is None:
+        return
+    task = await _authorized_editable_task(
+        _scheduled_work_store(deps), data.get("task_id"), source_group, is_admin=is_admin
+    )
+    _write_task_response(source_group, request_id, task)
+
+
+def _task_update(data: dict[str, Any]) -> dict[str, str] | None:
+    allowed = {"task_id", "prompt", "status", "request_id", "type"}
+    if set(data) - allowed:
+        return None
+    updates: dict[str, str] = {}
+    prompt = data.get("prompt")
+    if prompt is not None:
+        if not isinstance(prompt, str) or not prompt.strip():
+            return None
+        updates["prompt"] = prompt
+    status = data.get("status")
+    if status is not None:
+        if status not in {"active", "paused"}:
+            return None
+        updates["status"] = status
+    return updates or None
+
+
+async def _handle_update_scheduled_task(
+    data: dict[str, Any],
+    source_group: str,
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
+    deps: IpcDeps,
+) -> None:
+    request_id = _request_id(data)
+    updates = _task_update(data)
+    if request_id is None or updates is None:
+        if request_id is not None:
+            write_ipc_response(
+                ipc_response_path(source_group, request_id),
+                {"error": "Invalid scheduled task update"},
+            )
+        return
+
+    store = _scheduled_work_store(deps)
+    task = await _authorized_editable_task(
+        store, data.get("task_id"), source_group, is_admin=is_admin
+    )
+    if task is None:
+        _write_task_response(source_group, request_id, None)
+        return
+    if task.config_job_name is not None:
+        write_ipc_response(
+            ipc_response_path(source_group, request_id),
+            {"error": "Scheduled task is managed by its automation definition"},
+        )
+        return
+    if "prompt" in updates:
+        await store.update_task(task.id, {"prompt": updates["prompt"]})
+    if updates.get("status") == "paused":
+        await store.update_task(task.id, {"status": "paused"})
+    elif updates.get("status") == "active" and task.status == "paused":
+        await store.resume_task(task.id)
+    reconciled = await store.get_task_by_id(task.id)
+    _write_task_response(source_group, request_id, reconciled)
 
 
 async def _handle_schedule_host_job(
@@ -296,3 +417,5 @@ register("schedule_host_job", _handle_schedule_host_job)
 register("pause_task", _handle_pause_task)
 register("resume_task", _handle_resume_task)
 register("cancel_task", _handle_cancel_task)
+register("task_definition", _handle_task_definition)
+register("update_scheduled_task", _handle_update_scheduled_task)
