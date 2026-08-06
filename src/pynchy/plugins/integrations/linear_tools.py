@@ -25,6 +25,20 @@ def tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "linear_search_issues",
+            "description": "Find Linear issues by case-insensitive title text.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1},
+                    "team_id": {"type": "string"},
+                    "first": {"type": "integer", "minimum": 1, "maximum": 100},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "linear_get_issue",
             "description": "Get one Linear issue by its stable id.",
             "inputSchema": {

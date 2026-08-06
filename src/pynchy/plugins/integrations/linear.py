@@ -62,6 +62,8 @@ _LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
 _LINEAR_WORKSPACE_REQUIRED = "Workspace-scoped Linear todo tools require an MCP workspace instance"
 _LINEAR_REQUIRED_ARGUMENT = "{key} is required"
 _LINEAR_DESCRIPTION_NOT_STRING = "description must be a string"
+_LINEAR_SEARCH_LIMIT_INVALID = "first must be an integer from 1 through 100"
+_LINEAR_TEAM_ID_NOT_STRING = "team_id must be a string"
 # NOTE: Keep docs/integrations/linear.md priority mapping aligned with this contract.
 _LINEAR_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
 
@@ -225,6 +227,7 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
         ] = {
             "linear_list_teams": _tool_list_teams,
             "linear_list_issues": _tool_list_issues,
+            "linear_search_issues": _tool_search_issues,
             "linear_get_issue": _tool_get_issue,
             "linear_create_issue": _tool_create_issue,
             "linear_list_todos": _tool_list_todos,
@@ -258,6 +261,27 @@ async def _tool_list_issues(
     return cast(
         "list[dict[str, Any]]",
         await cast("Any", client).list_issues(team_id=arguments.get("team_id"), first=first),
+    )
+
+
+async def _tool_search_issues(
+    client: LinearClient,
+    arguments: dict[str, Any],
+    _workspace: str | None,
+) -> list[dict[str, Any]]:
+    first = arguments.get("first", 50)
+    if type(first) is not int or not 1 <= first <= 100:
+        raise LinearError(_LINEAR_SEARCH_LIMIT_INVALID)
+    team_id = arguments.get("team_id")
+    if team_id is not None and not isinstance(team_id, str):
+        raise LinearError(_LINEAR_TEAM_ID_NOT_STRING)
+    return cast(
+        "list[dict[str, Any]]",
+        await cast("Any", client).search_issues(
+            _required_str(arguments, "query"),
+            team_id=team_id,
+            first=first,
+        ),
     )
 
 

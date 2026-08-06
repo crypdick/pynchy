@@ -110,6 +110,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="linear.workspace.round.trip",
     ),
     mcp_action(
+        "linear.issue.search",
+        "linear",
+        "Find issues by title text through the configured Linear workspace.",
+        "linear_search_issues",
+        canary="linear.workspace.round.trip",
+    ),
+    mcp_action(
         "linear.issue.read",
         "linear",
         "Read one issue from the configured Linear workspace.",

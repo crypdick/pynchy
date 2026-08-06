@@ -145,6 +145,14 @@ class _FakeLinearClient:
         assert team_id == "team-1"
         return []
 
+    async def search_issues(
+        self, query: str, *, team_id: str, first: int = 50
+    ) -> list[dict[str, object]]:
+        assert query == "Pynchy canary issue test-run"
+        assert team_id == "team-1"
+        assert first == 1
+        return [{"id": "issue-1"}]
+
     async def create_issue(self, **kwargs: object) -> dict[str, object]:
         self.created.append(kwargs)
         return {"id": "issue-1"}
@@ -187,6 +195,30 @@ async def test_linear_canary_exercises_issue_and_todo_lifecycle(monkeypatch):
     assert move_todo.await_args.kwargs["status"] == "done"
     assert client.deleted == ["issue-1", "todo-1"]
     assert all(ref.startswith("linear:") for ref in (*verified, *cleaned))
+
+
+@pytest.mark.asyncio
+async def test_linear_canary_cleans_issue_when_title_search_misses_it(monkeypatch):
+    client = _FakeLinearClient()
+    client.search_issues = AsyncMock(return_value=[])
+
+    @asynccontextmanager
+    async def client_context():
+        yield client
+
+    monkeypatch.setattr(
+        operational_canaries, "select_team", AsyncMock(return_value={"id": "team-1"})
+    )
+    scenario = LinearWorkspaceRoundTripCanary(
+        "CANARY",
+        WorkspaceContext(folder="canary-workspace", name="Canary Workspace"),
+        client_context=client_context,
+    )
+
+    with pytest.raises(operational_canaries.CanaryServiceError, match="title search"):
+        await scenario.exercise(_context("linear.workspace.round.trip"))
+
+    assert client.deleted == ["issue-1"]
 
 
 @pytest.mark.asyncio

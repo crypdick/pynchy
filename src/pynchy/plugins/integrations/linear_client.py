@@ -192,36 +192,52 @@ class LinearClient:
     ) -> list[dict[str, Any]]:
         if team_id:
             data = await self.query(
-                """
-                query ListTeamIssues($first: Int!, $teamId: ID!) {
-                  issues(first: $first, filter: { team: { id: { eq: $teamId } } }) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
+                _issue_connection_query(
+                    "ListTeamIssues",
+                    ", $teamId: ID!",
+                    ", filter: { team: { id: { eq: $teamId } } }",
+                ),
                 first=first,
                 teamId=team_id,
             )
         else:
             data = await self.query(
-                """
-                query ListIssues($first: Int!) {
-                  issues(first: $first) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
+                _issue_connection_query("ListIssues", "", ""),
                 first=first,
+            )
+        return _nodes(data, "issues")
+
+    async def search_issues(
+        self,
+        query: str,
+        *,
+        team_id: str | None = None,
+        first: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Find issues whose titles contain the requested text."""
+        if team_id:
+            data = await self.query(
+                _issue_connection_query(
+                    "SearchTeamIssues",
+                    ", $titleQuery: String!, $teamId: ID!",
+                    (
+                        ", filter: { title: { containsIgnoreCase: $titleQuery } "
+                        "team: { id: { eq: $teamId } } }"
+                    ),
+                ),
+                first=first,
+                titleQuery=query,
+                teamId=team_id,
+            )
+        else:
+            data = await self.query(
+                _issue_connection_query(
+                    "SearchIssues",
+                    ", $titleQuery: String!",
+                    ", filter: { title: { containsIgnoreCase: $titleQuery } }",
+                ),
+                first=first,
+                titleQuery=query,
             )
         return _nodes(data, "issues")
 
@@ -478,3 +494,19 @@ def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
     if not isinstance(nodes, list):
         raise LinearError(_LINEAR_NODES_MISSING.format(key=key))
     return [node for node in nodes if isinstance(node, dict)]
+
+
+def _issue_connection_query(operation: str, variable_definitions: str, issue_filter: str) -> str:
+    """Build a shared issue-connection query with a fixed response shape."""
+    return f"""
+        query {operation}($first: Int!{variable_definitions}) {{
+          issues(first: $first{issue_filter}) {{
+            nodes {{
+              id identifier title url priority createdAt updatedAt
+              state {{ id name type }}
+              team {{ id key name }}
+              project {{ id name }}
+            }}
+          }}
+        }}
+        """

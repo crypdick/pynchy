@@ -54,6 +54,10 @@ class _LinearCanaryClient(Protocol):
 
     async def list_issues(self, *, team_id: str) -> list[dict[str, Any]]: ...
 
+    async def search_issues(
+        self, query: str, *, team_id: str, first: int = 50
+    ) -> list[dict[str, Any]]: ...
+
     async def create_issue(  # noqa: PLR0913 - mirrors the built-in Linear client contract.
         self,
         *,
@@ -199,6 +203,11 @@ class LinearWorkspaceRoundTripCanary:
             )
             issue_id = _linear_issue_id(issue)
             todo_id: str | None = None
+            try:
+                await _verify_linear_title_search(client, team_id, issue_id, context.run_id)
+            except Exception:  # remove the issue when the title-search smoke check fails.
+                await _delete_linear_artifacts(client, (issue_id,))
+                raise
             try:
                 await list_workspace_todos(
                     client,
@@ -417,6 +426,17 @@ def _linear_issue_id(issue: dict[str, Any]) -> str:
     if not isinstance(issue_id, str) or not issue_id:
         raise CanaryServiceError("Linear did not return a created issue identifier")
     return issue_id
+
+
+async def _verify_linear_title_search(
+    client: _LinearCanaryClient,
+    team_id: str,
+    issue_id: str,
+    run_id: str,
+) -> None:
+    results = await client.search_issues(f"Pynchy canary issue {run_id}", team_id=team_id, first=1)
+    if not any(result.get("id") == issue_id for result in results):
+        raise CanaryServiceError("Linear title search did not return the created canary issue")
 
 
 async def _delete_linear_artifacts(

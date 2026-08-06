@@ -101,6 +101,11 @@ async def test_mcp_coerces_issue_list_limit_to_an_integer(
             {"issue_id": "issue-1", "url": "https://example.com", "title": "Link", "subtitle": 123},
             "subtitle must be a string",
         ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "team_id": 123},
+            "team_id must be a string",
+        ),
     ],
 )
 async def test_mcp_rejects_invalid_tool_arguments(
@@ -127,6 +132,7 @@ async def test_mcp_rejects_invalid_tool_arguments(
             "Workspace-scoped Linear todo tools require an MCP workspace instance",
         ),
         ("linear_get_issue", {}, None, "issue_id is required"),
+        ("linear_search_issues", {}, None, "query is required"),
     ],
 )
 async def test_mcp_rejects_missing_tool_context_or_required_values(

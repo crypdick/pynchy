@@ -126,6 +126,13 @@ class TestLinearClientResponseEdges:
         assert await client.list_issues(first=7) == [{"id": "issue-1"}]
         assert client.query.await_args.kwargs == {"first": 7}
 
+    async def test_search_issues_without_team_filter_passes_query_and_limit(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(return_value={"issues": {"nodes": [{"id": "issue-1"}]}})
+
+        assert await client.search_issues("coverage", first=7) == [{"id": "issue-1"}]
+        assert client.query.await_args.kwargs == {"first": 7, "titleQuery": "coverage"}
+
     @pytest.mark.parametrize(
         ("method", "response", "message"),
         [
@@ -215,6 +222,7 @@ class TestLinearClientResponseEdges:
         [
             ("list_teams", {}, "teams"),
             ("list_issues", {"issues": {"nodes": {}}}, "nodes"),
+            ("search_issues", {"issues": {"nodes": {}}}, "nodes"),
             ("find_issues_by_attachment_url", {}, "attachmentsForURL"),
         ],
     )
@@ -228,6 +236,8 @@ class TestLinearClientResponseEdges:
             call = client.list_teams()
         elif method == "list_issues":
             call = client.list_issues()
+        elif method == "search_issues":
+            call = client.search_issues("coverage")
         else:
             call = client.find_issues_by_attachment_url("https://example.com")
         with pytest.raises(LinearError, match=message):
