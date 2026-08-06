@@ -169,6 +169,7 @@ async def test_reconcile_materializes_active_issue_controls(monkeypatch):
                         "id": "issue-1",
                         "identifier": "SYN-1",
                         "title": "Restore sleep access",
+                        "url": "https://linear.app/acme/issue/SYN-1",
                         "updatedAt": "2026-07-31T09:00:00Z",
                     }
                 ]
@@ -187,6 +188,7 @@ async def test_reconcile_materializes_active_issue_controls(monkeypatch):
             parent_jid=root.jid,
             account_name="linear",
             title="[SYN-1] Restore sleep access",
+            url="https://linear.app/acme/issue/SYN-1",
             updated_at="2026-07-31T09:00:00Z",
         )
     )
@@ -217,6 +219,7 @@ async def test_reconcile_skips_malformed_issue_and_keeps_valid_sibling(monkeypat
                         "id": "issue-1",
                         "identifier": "SYN-1",
                         "title": "Keep this issue",
+                        "url": "https://linear.app/acme/issue/SYN-1",
                         "updatedAt": "2026-07-31T09:00:00Z",
                     },
                 ]
@@ -244,6 +247,7 @@ async def test_reconcile_continues_after_issue_control_failure(monkeypatch):
             "id": f"issue-{index}",
             "identifier": f"SYN-{index}",
             "title": f"Issue {index}",
+            "url": f"https://linear.app/acme/issue/SYN-{index}",
             "updatedAt": "2026-07-31T09:00:00Z",
         }
         for index in (1, 2)
