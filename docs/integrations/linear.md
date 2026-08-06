@@ -195,6 +195,13 @@ If the provider result is uncertain after a network failure, use
 conflict, use it only when Linear already has the intended state; it reads
 Linear and never retries the provider write.
 
+Pynchy-owned Linear comments carry an invisible request marker. When their
+create response is lost, replaying the same tool request reads a bounded set of
+issue comments and confirms the original action only if one exact marker/body
+match exists. It never sends a second comment. Comments created before this
+marker was introduced, or reads with zero or multiple matches, remain
+`OUTCOME_UNKNOWN` and require human follow-up rather than a retry.
+
 ## Receive Linear callbacks
 
 Configure one route for all managed boards:
