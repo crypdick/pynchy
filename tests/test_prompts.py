@@ -166,3 +166,15 @@ def test_default_executor_requires_live_skill_catalog_discovery() -> None:
     assert "call `search_skills` before answering" in prompt
     assert "not memory or the existing system prompt" in prompt
     assert "Call `request_skill_access` only when the user asks" in prompt
+
+
+def test_planning_executor_checkpoints_recovery_before_plan_retry() -> None:
+    prompt = " ".join(read_prompt("executors/planning", Path(__file__).parents[1]).split())
+
+    assert "PYNCHY_AUTOMATION_MEMORY_DIR" in prompt
+    assert "discovery_complete" in prompt
+    assert "submission_pending" in prompt
+    assert "submitted" in prompt
+    assert "linear_get_issue" in prompt
+    assert "before retrying `linear_submit_plan`" in prompt
+    assert "Awaiting Plan Approval" in prompt
