@@ -14,7 +14,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from conftest import make_settings
 
+from pynchy.config.api import ProfileConfig, WorkspaceConfig
 from pynchy.conversation.models import (
     ConversationSubject,
     ConversationSubjectKey,
@@ -26,17 +28,19 @@ from pynchy.host.orchestrator.http_control import (
     RequestRateLimiter,
 )
 from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.host.orchestrator.webhook_ingress import build_webhook_ingress
 from pynchy.plugins.api import (
     WebhookAuthenticationError,
+    WebhookConfigurationError,
     WebhookPayloadError,
     WebhookProcessingError,
     WebhookRoute,
 )
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
+from pynchy.plugins.integrations.github_webhook_routes import github_webhook_routes
 from pynchy.plugins.integrations.github_webhooks import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubWebhookRouteConfig,
-    github_webhook_routes,
     parse_github_webhook,
     prepare_github_webhook_event,
 )
@@ -83,6 +87,25 @@ def _payload(
             "html_url": f"https://github.com/{repository}/pull/42",
         },
         "changes": changes or {"body": {"from": "previous description"}},
+    }
+
+
+def _issue_payload(
+    *,
+    action: str = "opened",
+    changes: dict[str, object] | None = None,
+    pull_request: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "action": action,
+        "repository": {"full_name": _REPOSITORY},
+        "issue": {
+            "number": 42,
+            "pull_request": pull_request,
+            "title": "Provider prose must not reach the workspace",
+            "body": "Neither must this body.",
+        },
+        "changes": changes or {},
     }
 
 
@@ -245,13 +268,59 @@ def test_routes_bind_each_repository_to_its_workspace() -> None:
     options = GitHubPluginOptions.model_validate(
         {"webhook_routes": [{"name": "project", "workspace": "project", "repository": _REPOSITORY}]}
     )
-    routes = github_webhook_routes(options.webhook_routes)
+    routes = github_webhook_routes(
+        options.webhook_routes,
+        resolve_workspace_config=lambda _workspace: None,
+    )
 
     assert [(route.path, route.workspace) for route in routes] == [
         ("/webhooks/github/project", "project")
     ]
     assert routes[0].prepare_event is not None
     assert routes[0].routes_conversations is True
+
+
+@pytest.mark.parametrize(
+    ("profiles", "workspace", "expected"),
+    [
+        ({"repo": ProfileConfig(repo=[_REPOSITORY])}, "project", None),
+        ({"repo": ProfileConfig(repo=["Example/Project"])}, "project", None),
+        ({"repo": ProfileConfig(repo=["other/project"])}, "project", "does not attach"),
+        ({"repo": ProfileConfig(repo=[_REPOSITORY])}, "missing", "does not resolve"),
+    ],
+)
+def test_route_requires_workspace_repository_attachment(
+    profiles: dict[str, ProfileConfig],
+    workspace: str,
+    expected: str | None,
+) -> None:
+    workspaces = {"project": WorkspaceConfig(profiles=["repo"])}
+    settings = make_settings(profiles=profiles, workspaces=workspaces)
+    route = github_webhook_routes(
+        (GitHubWebhookRouteConfig(name="project", workspace=workspace, repository=_REPOSITORY),),
+        resolve_workspace_config=settings.resolved_workspace_config,
+    )[0]
+    validate = route.validate_workspace
+    assert validate is not None
+
+    error = validate(replace(_WebhookDeps().workspace, folder=workspace))
+
+    assert (expected is None and error is None) or (
+        expected is not None and expected in (error or "")
+    )
+
+
+def test_ingress_rejects_route_without_repository_attachment() -> None:
+    settings = make_settings(
+        profiles={"repo": ProfileConfig(repo=["other/project"])},
+        workspaces={"project": WorkspaceConfig(profiles=["repo"])},
+    )
+    routes = github_webhook_routes(
+        (_config(),), resolve_workspace_config=settings.resolved_workspace_config
+    )
+
+    with pytest.raises(WebhookConfigurationError, match="does not attach"):
+        build_webhook_ingress(_WebhookDeps(), routes)
 
 
 @asynccontextmanager
@@ -570,6 +639,43 @@ async def test_delivery_notifies_its_route_workspace_without_agent_run(
     receipt = await get_webhook_receipt("github", "project", _DELIVERY_ID)
     assert receipt is not None
     assert receipt.disposition == "notified"
+
+
+async def test_native_issue_delivery_notifies_without_agent_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(_route(),))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        raw_body, headers = _signed_request(_issue_payload(), "issues")
+        first_response = await client.post(
+            "/webhooks/github/project", data=raw_body, headers=headers
+        )
+        first = await first_response.json()
+        second_response = await client.post(
+            "/webhooks/github/project", data=raw_body, headers=headers
+        )
+        second = await second_response.json()
+    finally:
+        await client.close()
+
+    assert first_response.status == second_response.status == 200
+    assert first == {"status": "notified", "duplicate": False}
+    assert second == {"status": "notified", "duplicate": True}
+    assert deps.host_messages == [
+        (
+            "discord:project-channel",
+            (
+                "GitHub issue update — example/project#42: issue opened.\n"
+                "https://github.com/example/project/issues/42"
+            ),
+        )
+    ]
+    assert not deps.dispatched
+    assert not await get_all_tasks()
 
 
 async def test_merged_delivery_dispatches_one_agent_follow_up_task(

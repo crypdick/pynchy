@@ -1,14 +1,8 @@
-"""Application lifecycle — startup phases, signal handling, shutdown.
-
-Extracted from ``app.py`` to keep the orchestrator focused on state
-management and delegation.  Each function receives the ``PynchyApp``
-instance so it can access runtime state without being a method.
-
-Startup runs in five explicit phases (see :func:`run_app`).
-"""
+"""Application lifecycle — startup phases, signal handling, shutdown."""
 
 from __future__ import annotations
 
+# allow: file-length - Startup sequencing stays in one ordered lifecycle module.
 import asyncio
 import os
 import signal
@@ -71,7 +65,7 @@ from pynchy.plugins.api import (
     resolve_default_channel,
 )
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
-from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
+from pynchy.plugins.integrations.github_webhook_routes import github_webhook_routes
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
@@ -415,7 +409,9 @@ async def _prepare_and_bind_control_plane(
         dep_factory.make_http_deps(app),
         runtime=runtime,
         status_deps=dep_factory.make_status_deps(app),
-        github_webhook_routes=github_webhook_routes(github_options.webhook_routes),
+        github_webhook_routes=github_webhook_routes(
+            github_options.webhook_routes, get_settings().resolved_workspace_config
+        ),
     )
     app.set_http_runner(prepared_http.runner)
     await http_server.activate_http_server(prepared_http)

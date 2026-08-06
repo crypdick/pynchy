@@ -14,7 +14,7 @@ fit your environment.
 
 | Integration | What it does |
 |-------------|--------------|
-| [GitHub PR notifications](github.md) | Send signed pull-request events to their mapped workspace. |
+| [GitHub repository notifications](github.md) | Send signed pull-request and Issue events to their mapped workspace. |
 | [Matrix communications](matrix-gateway.md) | Route exact bridged chats into durable conversations and send approval-gated replies. |
 | [Proton Mail](proton-mail.md) | Read and send mail through a host-side MCP server. |
 | [Marketplace health](marketplace-health.md) | Read aggregate decision counts and mail-reader health without exposing marketplace content. |

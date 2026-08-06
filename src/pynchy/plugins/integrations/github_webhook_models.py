@@ -78,7 +78,7 @@ class _GitHubPullRequest(_GitHubModel):
 
 
 class _GitHubIssue(_GitHubModel):
-    number: int
+    number: int = Field(gt=0)
     pull_request: dict[str, object] | None = None
     updated_at: str | None = None
 

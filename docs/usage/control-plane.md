@@ -123,7 +123,7 @@ that taint. Routes can also emit deterministic host notifications without an age
 run. Provider input cannot bypass a subsystem's explicit authorization gates.
 
 See [Linear](../integrations/linear.md#receive-linear-callbacks) for agent-task
-callbacks and [GitHub](../integrations/github.md) for direct PR notifications.
+callbacks and [GitHub](../integrations/github.md) for direct repository notifications.
 
 ## Enable remote deployment separately
 

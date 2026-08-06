@@ -5,33 +5,25 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from collections.abc import (  # noqa: TC003 - beartype resolves parser annotations at runtime.
-    Mapping,
+from collections.abc import (
+    Mapping,  # noqa: TC003 - beartype resolves parser annotations at runtime.
 )
 from dataclasses import dataclass
 from datetime import (
     datetime,  # noqa: TC003 - beartype resolves parser annotations at runtime.
 )
-from functools import partial
 
 from pydantic import ValidationError
 
-from pynchy.plugins.api import (
-    WebhookAuthenticationError,
-    WebhookEvent,
-    WebhookPayloadError,
-    WebhookRoute,
-)
-from pynchy.plugins.integrations.github_webhook_linear import (
-    prepare_github_webhook_event,
-)
+from pynchy.plugins.api import WebhookAuthenticationError, WebhookEvent, WebhookPayloadError
+from pynchy.plugins.integrations.github_webhook_linear import prepare_github_webhook_event
 from pynchy.plugins.integrations.github_webhook_models import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubEnvelope,
     GitHubWebhookRouteConfig,
 )
 
-__all__ = ["GITHUB_MAX_WEBHOOK_BODY_BYTES"]
+__all__ = ["GITHUB_MAX_WEBHOOK_BODY_BYTES", "prepare_github_webhook_event"]
 
 _FAILURE_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
@@ -95,6 +87,10 @@ def _payload(raw_body: bytes) -> GitHubEnvelope:
 
 def _pr_url(repository: str, number: int) -> str:
     return f"https://github.com/{repository}/pull/{number}"
+
+
+def _issue_url(repository: str, number: int) -> str:
+    return f"https://github.com/{repository}/issues/{number}"
 
 
 def _ignored_event(
@@ -234,12 +230,12 @@ def _issue_comment_event(
     context: _DeliveryContext,
 ) -> WebhookEvent:
     issue = payload.issue
-    if issue is None or issue.pull_request is None:
+    if issue is None:
         return _ignored_event(
             context,
             action=payload.action,
-            subject_id=str(issue.number) if issue is not None else "issue",
-            reason="issue_comment_is_not_on_a_pull_request",
+            subject_id="issue",
+            reason="issue_comment_has_no_issue",
         )
     if payload.action not in {"created", "edited"}:
         return _ignored_event(
@@ -248,13 +244,54 @@ def _issue_comment_event(
             subject_id=str(issue.number),
             reason="issue_comment_action_is_not_configured",
         )
-    text = "new PR comment" if payload.action == "created" else "PR comment edited"
-    url = _pr_url(context.repository, issue.number)
+    if issue.pull_request is not None:
+        text = "new PR comment" if payload.action == "created" else "PR comment edited"
+        url = _pr_url(context.repository, issue.number)
+        prefix = "GitHub PR update"
+    else:
+        text = "new issue comment" if payload.action == "created" else "issue comment edited"
+        url = _issue_url(context.repository, issue.number)
+        prefix = "GitHub issue update"
     return _notification_event(
         context,
         action=payload.action,
         subject_id=str(issue.number),
-        message=f"GitHub PR update — {context.repository}#{issue.number}: {text}.\n{url}",
+        message=f"{prefix} — {context.repository}#{issue.number}: {text}.\n{url}",
+    )
+
+
+def _issue_event(payload: GitHubEnvelope, context: _DeliveryContext) -> WebhookEvent:
+    issue = payload.issue
+    if issue is None:
+        raise WebhookPayloadError("GitHub issue event has no issue")
+    if issue.pull_request is not None:
+        return _ignored_event(
+            context,
+            action=payload.action,
+            subject_id=str(issue.number),
+            reason="issues_event_is_a_pull_request",
+        )
+    if payload.action in {"opened", "reopened", "closed"}:
+        text = f"issue {payload.action}"
+    elif payload.action == "edited" and "title" in payload.changes:
+        text = "issue title updated"
+    elif payload.action == "edited" and "body" in payload.changes:
+        text = "issue description updated"
+    else:
+        return _ignored_event(
+            context,
+            action=payload.action,
+            subject_id=str(issue.number),
+            reason="issues_action_is_not_configured",
+        )
+    return _notification_event(
+        context,
+        action=payload.action,
+        subject_id=str(issue.number),
+        message=(
+            f"GitHub issue update — {context.repository}#{issue.number}: {text}.\n"
+            f"{_issue_url(context.repository, issue.number)}"
+        ),
     )
 
 
@@ -400,40 +437,20 @@ def parse_github_webhook(
         repository=config.repository,
         occurred_at=now.isoformat(),
     )
-    if event_type == "pull_request":
-        return _pull_request_event(payload, context)
-    if event_type == "issue_comment":
-        return _issue_comment_event(payload, context)
-    if event_type == "pull_request_review":
-        return _review_event(payload, context)
-    if event_type == "pull_request_review_comment":
-        return _review_comment_event(payload, context)
-    if event_type == "check_run":
-        return _check_run_event(payload, context)
+    handlers = {
+        "pull_request": _pull_request_event,
+        "issue_comment": _issue_comment_event,
+        "issues": _issue_event,
+        "pull_request_review": _review_event,
+        "pull_request_review_comment": _review_comment_event,
+        "check_run": _check_run_event,
+    }
+    handler = handlers.get(event_type)
+    if handler is not None:
+        return handler(payload, context)
     return _ignored_event(
         context,
         action=payload.action,
         subject_id=event_type,
         reason="event_type_is_not_configured",
-    )
-
-
-def github_webhook_routes(
-    configs: tuple[GitHubWebhookRouteConfig, ...],
-) -> tuple[WebhookRoute, ...]:
-    """Build explicitly mapped GitHub routes from resolved route configuration."""
-    return tuple(
-        WebhookRoute(
-            provider="github",
-            name=config.name,
-            workspace=config.workspace,
-            secret_env=config.secret_env,
-            parse=partial(parse_github_webhook, config=config),
-            max_body_bytes=config.max_body_bytes,
-            rate_limit_requests=config.rate_limit_requests,
-            rate_limit_window_seconds=config.rate_limit_window_seconds,
-            prepare_event=partial(prepare_github_webhook_event, config=config),
-            routes_conversations=True,
-        )
-        for config in configs
     )

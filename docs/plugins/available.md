@@ -38,7 +38,7 @@ installed; add the named extra without pruning existing packages with
 | `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-peekaboo) |
 | `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-cua-driver) |
 | `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../integrations/linear.md) |
-| `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
+| `github` | Webhook route | Direct read-only repository notifications | A public HTTPS endpoint plus an attached repository-to-workspace route | [GitHub repository notifications](../integrations/github.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |
 | `matrix-gateway` | Connection runtime + service handler | Routed Matrix conversations and scoped actions | Named Matrix connection and routes | [Matrix gateway](../integrations/matrix-gateway.md) |
 | `marketplace-health` | Service handler | Aggregate marketplace counts and mail-reader health | Host-owned action ledger and Proton Mail tool | [Marketplace health](../integrations/marketplace-health.md) |

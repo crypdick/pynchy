@@ -1,7 +1,7 @@
-# GitHub PR notifications
+# GitHub repository notifications
 
-The built-in GitHub webhook plugin sends pull-request updates directly to the
-mapped project workspace. Most events are concise human-visible notifications.
+The built-in GitHub webhook plugin sends pull-request and native Issue updates
+directly to the mapped project workspace. Most events are concise human-visible notifications.
 A review or single-PR check failure on a PR attached to one managed Linear issue
 wakes that issue's existing conversation and worktree for follow-up.
 A merged pull request starts an isolated agent turn so the agent can inspect
@@ -22,6 +22,16 @@ repository = "owner/project"
 secret_env = "GITHUB_PROJECT_WEBHOOK_SECRET" # pragma: allowlist secret
 ```
 
+Attach that same repository through a selected workspace profile:
+
+```toml
+[profiles.project]
+repo = ["owner/project"]
+
+[workspaces.project-workspace]
+profiles = ["project"]
+```
+
 Store the corresponding webhook secret in the host environment, not in
 `data/personalization/pynchy.toml`:
 
@@ -33,7 +43,8 @@ The route becomes `POST /webhooks/github/project`. It accepts a delivery only wh
 its `repository.full_name` exactly matches `owner/project`; a valid signature for a
 different repository still receives `400` and cannot be routed anywhere. Configure
 a separate route and secret for every project that should notify a different
-workspace.
+workspace. Repository mounts do not create public webhook endpoints. When
+workspaces share a repository, configure a deliberate route for each recipient.
 
 ## Create the GitHub webhook
 
@@ -50,7 +61,7 @@ In the repository's **Settings → Webhooks → Add webhook** form, configure:
 | Content type | `application/json` |
 | Secret | The value of `GITHUB_PROJECT_WEBHOOK_SECRET` |
 | Active | Enabled |
-| Events | Pull requests, Issue comments, Pull request reviews, Pull request review comments, and Check runs |
+| Events | Pull requests, Issues, Issue comments, Pull request reviews, Pull request review comments, and Check runs |
 
 GitHub delivers a GUID in `X-GitHub-Delivery` and a SHA-256 HMAC in
 `X-Hub-Signature-256`; Pynchy authenticates the raw bytes, deduplicates that GUID,
@@ -67,6 +78,8 @@ The plugin emits concise direct host notifications for:
 - Approved or dismissed reviews.
 - Failed check runs associated with several pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
+- Native Issues opened, reopened, closed, or edited for title or body.
+- New or edited native Issue comments.
 
 Development agents attach every pull request to the Linear issue with
 `linear_create_attachment`. For actionable submitted or edited reviews, inline
@@ -88,10 +101,12 @@ computed asynchronously. The webhook immediately reports the commit event; retai
 low-frequency read-only reconciliation if every merge-conflict transition must be
 detected even when GitHub does not include a non-mergeable state in the delivery.
 
-The plugin deliberately ignores non-PR issue comments, successful checks, checks
-that GitHub cannot associate with a PR, and event types outside the configured
-read-only scout surface. This avoids turning a project channel into a repository
-firehose.
+The plugin deliberately ignores unsupported Issue actions, successful checks,
+checks that GitHub cannot associate with a PR, and event types outside the
+configured read-only scout surface. It excludes provider title, body, labels,
+author, and comment prose. It does not poll, backfill history, start an agent,
+or write GitHub for native Issue activity. This avoids turning a project channel
+into a repository firehose.
 
 For the exact event headers, payload limits, and event availability, see GitHub's
 [webhook event documentation](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
