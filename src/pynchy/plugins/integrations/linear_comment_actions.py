@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.action_intents import (
+    ActionIntent,  # noqa: TC001 - beartype resolves runtime annotations.
+)
 from pynchy.conversation.api import parent_workspace_name
 from pynchy.plugins.api import ActionIntentDraft, ActionIntentReceipt
 from pynchy.plugins.integrations.linear_client import LinearError
@@ -62,6 +65,29 @@ def linear_comment_action_receipt(response: dict[str, Any]) -> ActionIntentRecei
     if not isinstance(comment_id, str) or not comment_id:
         raise ValueError(_RECEIPT_REQUIRED)
     return ActionIntentReceipt(provider_request_id=comment_id, receipt=comment)
+
+
+def linear_comment_execution_data(data: dict[str, Any], request_id: str) -> dict[str, Any]:
+    """Append an opaque marker only after the agent-approved body is frozen."""
+    body = _required_text(data, "body", _BODY_REQUIRED)
+    return {
+        **data,
+        "body": f"{body}\n\n<!-- pynchy-action-intent:{request_id} -->",
+    }
+
+
+async def reconcile_unknown_linear_comment(intent: ActionIntent) -> ActionIntentReceipt | None:
+    """Confirm one quarantined comment only when its request marker is unique."""
+    issue_id = _required_text(intent.payload, "issue_id", _ISSUE_ID_REQUIRED)
+    body = _required_text(intent.payload, "body", _BODY_REQUIRED)
+    expected_body = linear_comment_execution_data({"body": body}, intent.request_id)["body"]
+    async with linear_client(workspace=intent.workspace) as client:
+        comments = await client.list_issue_comments(issue_id)
+    matches = [comment for comment in comments if comment["body"] == expected_body]
+    if len(matches) != 1:
+        return None
+    comment = matches[0]
+    return ActionIntentReceipt(provider_request_id=comment["id"], receipt=comment)
 
 
 async def handle_create_comment(data: dict[str, Any]) -> dict[str, object]:

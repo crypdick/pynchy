@@ -24,6 +24,8 @@ from pynchy.plugins.integrations.linear_comment_actions import (
     handle_create_comment,
     linear_comment_action_draft,
     linear_comment_action_receipt,
+    linear_comment_execution_data,
+    reconcile_unknown_linear_comment,
 )
 from pynchy.plugins.integrations.linear_work_items import (
     handle_list_work_items,
@@ -117,6 +119,8 @@ def _descriptor(spec: _ActionSpec) -> HostActionDescriptor:
                 provider="linear",
                 draft_from_request=linear_comment_action_draft,
                 receipt_from_response=linear_comment_action_receipt,
+                execution_data_from_request=linear_comment_execution_data,
+                reconcile_unknown=reconcile_unknown_linear_comment,
             )
             if action_id == "linear.comment.create"
             else None

@@ -30,7 +30,9 @@ from pynchy.plugins.integrations.linear_client import (
     LinearError,
     LinearSelfEchoRecorder,
 )
-from pynchy.plugins.integrations.linear_comment_actions import handle_create_comment
+from pynchy.plugins.integrations.linear_comment_actions import (
+    handle_create_comment,
+)
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.state import (
