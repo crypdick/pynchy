@@ -408,7 +408,7 @@ class TestBuildContainerImage:
             result = build_container_image(tmp_path)
 
         assert result.success is True
-        assert run.call_args.kwargs["timeout"] == 180
+        assert run.call_args.kwargs["timeout"] == 240
 
     def test_skips_when_the_build_script_is_missing(self, tmp_path: Path) -> None:
         result = build_container_image(tmp_path)
