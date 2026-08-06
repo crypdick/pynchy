@@ -21,6 +21,7 @@ from pynchy.state.api import (
     get_action_intent_by_request,
     mark_action_intent_executing,
     mark_action_intent_outcome_unknown,
+    reconcile_action_intent,
 )
 
 
@@ -42,6 +43,8 @@ async def prepare_action_intent(
         return None, None
 
     existing = await get_action_intent_by_request(request_id)
+    if existing is not None and existing.status is ActionIntentStatus.OUTCOME_UNKNOWN:
+        existing = await _reconcile_unknown_action_intent(contract, existing)
     if existing is not None and existing.status not in {
         ActionIntentStatus.DRAFTED,
         ActionIntentStatus.APPROVED,
@@ -74,6 +77,33 @@ async def prepare_action_intent(
     }:
         replay_response = action_intent_replay_response(intent)
     return intent, replay_response
+
+
+async def _reconcile_unknown_action_intent(
+    contract: ActionIntentContract,
+    intent: ActionIntent,
+) -> ActionIntent:
+    """Use a provider read to settle a quarantined write without resending it."""
+    if contract.reconcile_unknown is None:
+        return intent
+    try:
+        receipt = await contract.reconcile_unknown(intent)
+    except Exception as exc:  # noqa: BLE001 - reconciliation must preserve the fail-closed outcome.
+        logger.warning(
+            "External action reconciliation failed",
+            request_id=intent.request_id,
+            action_id=intent.action_id,
+            provider=contract.provider,
+            error_type=type(exc).__name__,
+        )
+        return intent
+    if receipt is None:
+        return intent
+    return await reconcile_action_intent(
+        intent.request_id,
+        provider_request_id=receipt.provider_request_id,
+        receipt=receipt.receipt,
+    )
 
 
 def action_intent_replay_response(intent: ActionIntent) -> dict[str, Any]:
@@ -153,7 +183,12 @@ async def _record_action_intent_attempt(
     """Persist the result of one provider attempt after its durable claim."""
     contract = cast("ActionIntentContract", action.action_intent)
     try:
-        response = await action.handler(data)
+        execution_data = (
+            contract.execution_data_from_request(data, request_id)
+            if contract.execution_data_from_request is not None
+            else data
+        )
+        response = await action.handler(execution_data)
     except Exception as exc:  # noqa: BLE001 - provider call outcome cannot be proven after an exception.
         logger.warning(
             "External action provider call produced no durable receipt",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess  # noqa: S404 - test invokes a repository-owned script with a controlled environment.
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,7 +48,15 @@ def _run_build_script(
         "fi\n"
         "exit 0\n",
     )
-    _write_executable(fake_bin / "uv", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        fake_bin / "uv",
+        "#!/bin/sh\n"
+        'if [ "$1" = "run" ] && [ "$2" = "python" ]; then\n'
+        "    shift 2\n"
+        '    exec "$PYNCHY_TEST_PYTHON" "$@"\n'
+        "fi\n"
+        "exit 0\n",
+    )
     env = {
         **os.environ,
         "CONTAINER_RUNTIME": runtime,
@@ -56,6 +65,7 @@ def _run_build_script(
         "PYNCHY_TEST_FAIL_BUILD": "1" if fail_build else "0",
         "PYNCHY_TEST_PRUNE_COUNT": str(prune_count),
         "PYNCHY_TEST_RUNTIME_LOG": str(runtime_log),
+        "PYNCHY_TEST_PYTHON": sys.executable,
     }
     result = subprocess.run(  # noqa: S603 - executable is the repository-owned build script.
         [str(project_root / "src" / "pynchy" / "agent" / "build.sh")],
@@ -67,7 +77,9 @@ def _run_build_script(
     )
     return BuildScriptRun(
         result=result,
-        runtime_calls=runtime_log.read_text(encoding="utf-8").splitlines(),
+        runtime_calls=(
+            runtime_log.read_text(encoding="utf-8").splitlines() if runtime_log.exists() else []
+        ),
     )
 
 
@@ -91,7 +103,7 @@ def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
         in result.runtime_calls
     )
     assert (
-        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {mcp_dir}"
+        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {project_root}"
         in result.runtime_calls
     )
     notebook_build = (
@@ -99,6 +111,15 @@ def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
         f"{integrations_dir}"
     )
     assert notebook_build in result.runtime_calls
+
+
+def test_gdrive_dockerfile_matches_its_project_root_build_context() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    dockerfile = project_root / "src" / "pynchy" / "agent" / "mcp" / "gdrive.Dockerfile"
+
+    assert "COPY src/pynchy/agent/mcp/gdrive-wrapper.mjs /app/gdrive-wrapper.mjs" in (
+        dockerfile.read_text(encoding="utf-8")
+    )
 
 
 def test_build_script_refuses_build_when_preflight_prune_fails(tmp_path: Path) -> None:

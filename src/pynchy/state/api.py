@@ -42,6 +42,7 @@ from pynchy.state.action_intents import (
     mark_action_intent_awaiting_approval,
     mark_action_intent_executing,
     mark_action_intent_outcome_unknown,
+    reconcile_action_intent,
     recover_incomplete_action_intents,
 )
 from pynchy.state.canaries import (
@@ -311,6 +312,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "mark_action_intent_awaiting_approval",
     "mark_action_intent_executing",
     "mark_action_intent_outcome_unknown",
+    "reconcile_action_intent",
     "recover_incomplete_action_intents",
     # conversation_events
     "get_conversation_event_pointers_since",
