@@ -91,7 +91,7 @@ def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
         in result.runtime_calls
     )
     assert (
-        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {mcp_dir}"
+        f"build -t pynchy-mcp-gdrive:latest -f {mcp_dir / 'gdrive.Dockerfile'} {project_root}"
         in result.runtime_calls
     )
     notebook_build = (
@@ -99,6 +99,15 @@ def test_build_script_uses_narrow_mcp_contexts(tmp_path: Path) -> None:
         f"{integrations_dir}"
     )
     assert notebook_build in result.runtime_calls
+
+
+def test_gdrive_dockerfile_matches_its_project_root_build_context() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    dockerfile = project_root / "src" / "pynchy" / "agent" / "mcp" / "gdrive.Dockerfile"
+
+    assert "COPY src/pynchy/agent/mcp/gdrive-wrapper.mjs /app/gdrive-wrapper.mjs" in (
+        dockerfile.read_text(encoding="utf-8")
+    )
 
 
 def test_build_script_refuses_build_when_preflight_prune_fails(tmp_path: Path) -> None:
