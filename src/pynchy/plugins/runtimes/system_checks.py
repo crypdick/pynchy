@@ -6,6 +6,8 @@ import os
 import subprocess  # noqa: S404 - system checks use fixed no-shell runtime CLI argv.
 import sys
 import threading
+from collections.abc import Iterator  # noqa: TC003 - beartype validates contextmanager annotations.
+from contextlib import contextmanager
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves system-check annotations at runtime.
 )
@@ -18,6 +20,7 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     RuntimeProvider,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
+from pynchy.plugins.runtimes.apple_build_lock import apple_build_lock
 from pynchy.plugins.runtimes.cleanup import (
     OrphanReapingRuntime,
     cleanup_runtime_build_state,
@@ -101,8 +104,18 @@ def ensure_agent_image_available(*, project_root: Path, image: str) -> None:
     """
     runtime = get_runtime()
     runtime.ensure_running()
-    with _AGENT_IMAGE_LOCK:
+    with _AGENT_IMAGE_LOCK, _runtime_build_lock(runtime):
         _ensure_agent_image_available(runtime, project_root=project_root, image=image)
+
+
+@contextmanager
+def _runtime_build_lock(runtime: object) -> Iterator[None]:
+    """Lock only Apple Container, whose builder is shared between processes."""
+    if getattr(runtime, "cli", "") == "container":
+        with apple_build_lock():
+            yield
+    else:
+        yield
 
 
 def _orphan_reaping_runtime(runtime: object) -> OrphanReapingRuntime | None:
@@ -123,11 +136,11 @@ def ensure_container_system_running(
     """Verify the container runtime and clean up stale agent resources."""
     runtime = get_runtime()
     runtime.ensure_running()
-    cleanup_runtime_build_state(runtime)
-
-    if os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
-        with _AGENT_IMAGE_LOCK:
-            _ensure_agent_image_available(runtime, project_root=project_root, image=image)
+    with _runtime_build_lock(runtime):
+        cleanup_runtime_build_state(runtime)
+        if os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
+            with _AGENT_IMAGE_LOCK:
+                _ensure_agent_image_available(runtime, project_root=project_root, image=image)
 
     if orphan_reaper := _orphan_reaping_runtime(runtime):
         reap_orphaned_agent_containers(

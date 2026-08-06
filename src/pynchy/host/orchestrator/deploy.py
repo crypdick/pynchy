@@ -25,6 +25,7 @@ from pynchy.logger import logger
 from pynchy.state import api as pynchy_state
 
 _CONTAINER_BUILD_TIMEOUT_SECONDS = 180
+_APPLE_BUILD_LOCK_TIMEOUT_SECONDS = 60
 
 
 @dataclass
@@ -124,15 +125,15 @@ def build_container_image(
         logger.warning("Container rebuild requested but build.sh not found")
         return BuildResult(success=True, skipped=True)
 
-    # A build that exceeds this limit signals a problem. Check whether its build
-    # context is bundling unnecessary files before increasing the timeout.
+    # Apple builds may wait for another Pynchy build to leave the shared
+    # builder, then retain their full 180-second execution budget.
     logger.info("Rebuilding container image...")
     result = subprocess.run(  # noqa: S603 - executable is the repo-local build.sh path and no shell is used.
         [str(build_script)],
         cwd=str(project_root / "src" / "pynchy" / "agent"),
         capture_output=True,
         text=True,
-        timeout=timeout,
+        timeout=timeout + _APPLE_BUILD_LOCK_TIMEOUT_SECONDS,
         check=False,
     )
     if result.returncode != 0:

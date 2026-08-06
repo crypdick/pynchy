@@ -23,6 +23,12 @@ else
     exit 1
 fi
 
+# Apple Container has one BuildKit builder per host user, shared by cron,
+# deploys, and worktrees. Keep prune/build/EXIT cleanup in one ownership span.
+if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_APPLE_BUILD_LOCK_HELD:-}" != "1" ]; then
+    exec uv run python -m pynchy.plugins.runtimes.apple_build_lock --exec "$0" "$@"
+fi
+
 cleanup_runtime_build_state() {
     local cleanup_failed=0
 
