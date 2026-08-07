@@ -230,10 +230,22 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
 ) -> None:
     app = PynchyApp()
     app.plugin_manager = pluggy.PluginManager("pynchy")
-    app.workspaces = {"slack:C123": _workspace()}
+    root = WorkspaceProfile(
+        jid="discord:channel:project",
+        name="Project",
+        folder="group",
+        trigger="always",
+    )
+    app.workspaces = {root.jid: root}
     settings = make_settings()
     runtimes = [_ConnectionRuntime("runtime")]
-    boards = {"group": lifecycle.LinearWorkspaceBoard(team={}, project={}, states={})}
+    boards = {
+        "group": lifecycle.LinearWorkspaceBoard(
+            team={},
+            project={"url": "https://linear.app/acme/project/pynchy"},
+            states={},
+        )
+    }
     reconcile_worktrees = MagicMock()
     reconcile_workspaces = AsyncMock()
     _patch_run_app_tail(monkeypatch, app, settings)
@@ -253,6 +265,8 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
         "reconcile_linear_boards",
         AsyncMock(return_value=boards),
     )
+    ensure_guidelines = AsyncMock()
+    monkeypatch.setattr(linear_issue_controls, "ensure_forum_guidelines", ensure_guidelines)
     monkeypatch.setattr(lifecycle, "load_connection_runtimes", MagicMock(return_value=runtimes))
     monkeypatch.setattr(lifecycle, "_start_runtime_owners", AsyncMock())
 
@@ -267,6 +281,7 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
         rebind_fn=app.rebind_workspace,
     )
     reconcile_bindings.assert_awaited_once_with([], app)
+    ensure_guidelines.assert_awaited_once_with(app, boards)
     assert app.connection_runtime_owner.runtimes() == tuple(runtimes)
 
 
@@ -276,6 +291,7 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
     conversation = _conversation()
     ensured = MagicMock()
     ensured.profile.folder = "health__thread_conversation-1"
+    ensured.control.binding.thread_jid = "discord:thread:issue-1"
     apply_state = AsyncMock(return_value=True)
     monkeypatch.setattr(
         linear_issue_controls,
@@ -294,17 +310,20 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
         ensure_workspace,
     )
     ensure_policy = MagicMock()
+    ensure_link = AsyncMock()
     monkeypatch.setattr(
         linear_issue_controls,
         "ensure_runtime_workspace_policy_owner",
         ensure_policy,
     )
+    monkeypatch.setattr(linear_issue_controls, "ensure_thread_link_pinned", ensure_link)
     control = LinearIssueControl(
         issue_id="issue-1",
         workspace="health",
         parent_jid="discord:channel:health-forum",
         account_name="linear",
         title="[SYN-1] Restore sleep access",
+        url="https://linear.app/acme/issue/SYN-1",
         updated_at="2026-07-31T09:00:00Z",
     )
 
@@ -321,6 +340,9 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
     assert request.title == control.title
     assert request.kind == "issue"
     ensure_policy.assert_called_once_with(ensured.profile.folder, "health")
+    ensure_link.assert_awaited_once_with(
+        app.channels, ensured.control.binding.thread_jid, control.url
+    )
 
 
 @pytest.mark.asyncio
@@ -333,6 +355,7 @@ async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) ->
         parent_jid="discord:channel:health-forum",
         account_name="linear",
         title="[SYN-1] Restore sleep access",
+        url="https://linear.app/acme/issue/SYN-1",
         updated_at="2026-07-31T09:00:00Z",
     )
     profile = WorkspaceProfile(
@@ -347,6 +370,7 @@ async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) ->
     apply_state = AsyncMock(return_value=True)
     ensure_workspace = AsyncMock()
     ensure_policy = MagicMock()
+    ensure_link = AsyncMock()
     monkeypatch.setattr(linear_issue_controls, "apply_conversation_control_state", apply_state)
     monkeypatch.setattr(
         linear_issue_controls,
@@ -359,6 +383,7 @@ async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) ->
         "ensure_runtime_workspace_policy_owner",
         ensure_policy,
     )
+    monkeypatch.setattr(linear_issue_controls, "ensure_thread_link_pinned", ensure_link)
 
     await linear_issue_controls.ensure_issue_control(app, control, conversation)
 
@@ -369,6 +394,7 @@ async def test_linear_issue_control_reuses_matching_open_binding(monkeypatch) ->
     )
     ensure_workspace.assert_not_awaited()
     ensure_policy.assert_called_once_with(profile.folder, conversation.workspace)
+    ensure_link.assert_awaited_once_with(app.channels, profile.jid, control.url)
 
 
 @pytest.mark.asyncio
@@ -383,6 +409,7 @@ async def test_linear_issue_control_rebuilds_when_binding_workspace_is_missing(
         parent_jid="discord:channel:health-forum",
         account_name="linear",
         title="[SYN-1] Restore sleep access",
+        url="https://linear.app/acme/issue/SYN-1",
         updated_at="2026-07-31T09:00:00Z",
     )
     ensured = MagicMock(
@@ -393,8 +420,10 @@ async def test_linear_issue_control_rebuilds_when_binding_workspace_is_missing(
             trigger="@Pynchy",
         )
     )
+    ensured.control.binding.thread_jid = "discord:thread:replacement"
     ensure_workspace = AsyncMock(return_value=ensured)
     ensure_policy = MagicMock()
+    ensure_link = AsyncMock()
     monkeypatch.setattr(linear_issue_controls, "apply_conversation_control_state", AsyncMock())
     monkeypatch.setattr(
         linear_issue_controls,
@@ -413,11 +442,15 @@ async def test_linear_issue_control_rebuilds_when_binding_workspace_is_missing(
         "ensure_runtime_workspace_policy_owner",
         ensure_policy,
     )
+    monkeypatch.setattr(linear_issue_controls, "ensure_thread_link_pinned", ensure_link)
 
     await linear_issue_controls.ensure_issue_control(app, control, conversation)
 
     ensure_workspace.assert_awaited_once()
     ensure_policy.assert_called_once_with(ensured.profile.folder, conversation.workspace)
+    ensure_link.assert_awaited_once_with(
+        app.channels, ensured.control.binding.thread_jid, control.url
+    )
 
 
 @pytest.mark.asyncio

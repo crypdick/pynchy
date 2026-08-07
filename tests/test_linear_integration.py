@@ -233,6 +233,7 @@ class TestLinearClient:
             team_id="team-1",
             title="Track tasks",
             description="Create task tracker",
+            priority=4,
         )
 
         assert result["identifier"] == "PYN-1"
@@ -242,6 +243,7 @@ class TestLinearClient:
             "teamId": "team-1",
             "title": "Track tasks",
             "description": "Create task tracker",
+            "priority": 4,
         }
 
     async def test_create_issue_omits_absent_optional_fields(self):
@@ -286,6 +288,40 @@ class TestLinearClient:
             "issue_id": "issue-1",
             "body": "Validation passed.",
         }
+
+    async def test_list_issue_comments_normalizes_provider_evidence(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(
+            return_value={
+                "issue": {
+                    "comments": {
+                        "nodes": [
+                            {
+                                "id": "comment-1",
+                                "body": "Validation passed.",
+                                "createdAt": "2026-07-25T17:00:00Z",
+                                "updatedAt": "2026-07-25T17:00:00Z",
+                                "issue": {"id": "issue-1"},
+                            }
+                        ]
+                    }
+                }
+            }
+        )
+
+        comments = await client.list_issue_comments("issue-1")
+
+        assert comments == [
+            {
+                "id": "comment-1",
+                "body": "Validation passed.",
+                "createdAt": "2026-07-25T17:00:00Z",
+                "updatedAt": "2026-07-25T17:00:00Z",
+                "issue": {"id": "issue-1"},
+                "issueId": "issue-1",
+            }
+        ]
+        assert client.query.await_args.kwargs == {"issue_id": "issue-1", "first": 100}
 
     async def test_create_attachment_returns_visible_issue_attachment(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())

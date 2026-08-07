@@ -95,6 +95,7 @@ class LinearIssueControl:
     parent_jid: str
     account_name: str
     title: str
+    url: str
     updated_at: str
 
 
@@ -196,6 +197,7 @@ def _issue_control(
     issue_id = issue.get("id")
     identifier = issue.get("identifier")
     title = issue.get("title")
+    url = issue.get("url")
     updated_at = issue.get("updatedAt")
     if (
         not isinstance(issue_id, str)
@@ -204,6 +206,8 @@ def _issue_control(
         or not identifier.strip()
         or not isinstance(title, str)
         or not title.strip()
+        or not isinstance(url, str)
+        or not url.strip()
         or not isinstance(updated_at, str)
         or not updated_at.strip()
     ):
@@ -214,6 +218,7 @@ def _issue_control(
         parent_jid=workspace.jid,
         account_name=workspace.account.name,
         title=f"[{identifier}] {title}",
+        url=url,
         updated_at=updated_at,
     )
 

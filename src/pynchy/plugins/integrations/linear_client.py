@@ -234,6 +234,7 @@ class LinearClient:
         project_id: str | None = None,
         state_id: str | None = None,
         label_ids: list[str] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         issue_input: dict[str, object] = {
             "teamId": team_id,
@@ -244,6 +245,7 @@ class LinearClient:
             "projectId": project_id,
             "stateId": state_id,
             "labelIds": label_ids,
+            "priority": priority,
         }
         # Linear distinguishes omitted optional create fields from explicit nulls
         # and rejects the latter with its generic "Argument Validation Error".
@@ -295,6 +297,32 @@ class LinearClient:
         if not isinstance(issue, dict):
             raise LinearError("Linear issue response was not an object")
         return issue
+
+    async def list_issue_comments(self, issue_id: str, *, first: int = 100) -> list[dict[str, Any]]:
+        """Return a bounded comment read for one issue reconciliation attempt."""
+        data = await self.query(
+            """
+            query ListIssueComments($issue_id: String!, $first: Int!) {
+              issue(id: $issue_id) {
+                comments(first: $first) {
+                  nodes { id body createdAt updatedAt issue { id } }
+                }
+              }
+            }
+            """,
+            issue_id=issue_id,
+            first=first,
+        )
+        issue = data.get("issue")
+        if not isinstance(issue, dict):
+            raise LinearError("Linear issue response was not an object")
+        comments = issue.get("comments")
+        if not isinstance(comments, dict):
+            raise LinearError("Linear issue response did not include comments")
+        nodes = comments.get("nodes")
+        if not isinstance(nodes, list):
+            raise LinearError("Linear issue response did not include comments.nodes")
+        return [normalize_comment_create_response(comment, issue_id) for comment in nodes]
 
     async def create_comment(self, issue_id: str, body: str) -> dict[str, Any]:
         """Add an ordinary comment and retain its exact provider revision evidence."""

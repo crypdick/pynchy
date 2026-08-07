@@ -12,6 +12,10 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
+from pynchy.host.orchestrator.threads import (
+    ensure_forum_guidelines_linked,
+    ensure_thread_link_pinned,
+)
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.identifiers import ChatJid, GroupFolder
 from pynchy.state.api import (
@@ -45,7 +49,22 @@ class LinearIssueControlLike(Protocol):
     def title(self) -> str: ...
 
     @property
+    def url(self) -> str: ...
+
+    @property
     def updated_at(self) -> str: ...
+
+
+async def ensure_forum_guidelines(app: PynchyApp, boards: dict[str, Any]) -> None:
+    """Link each Linear board's Discord forum to its managed project."""
+    for workspace, board in boards.items():
+        project_url = board.project.get("url")
+        root = next(
+            (profile for profile in app.workspaces.values() if profile.folder == workspace),
+            None,
+        )
+        if root is not None and isinstance(project_url, str) and project_url:
+            await ensure_forum_guidelines_linked(app.channels, root.jid, project_url)
 
 
 async def ensure_issue_control(
@@ -64,6 +83,7 @@ async def ensure_issue_control(
         profile = app.workspaces.get(binding.thread_jid)
         if profile is not None:
             ensure_runtime_workspace_policy_owner(profile.folder, conversation.workspace)
+            await ensure_thread_link_pinned(app.channels, binding.thread_jid, control.url)
             return
     ensured = await ensure_conversation_workspace(
         ConversationWorkspaceContext(
@@ -84,3 +104,4 @@ async def ensure_issue_control(
         ),
     )
     ensure_runtime_workspace_policy_owner(ensured.profile.folder, conversation.workspace)
+    await ensure_thread_link_pinned(app.channels, ensured.control.binding.thread_jid, control.url)

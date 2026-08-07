@@ -37,6 +37,7 @@ from pynchy.host.orchestrator import (
     dep_factory,
     http_server,
     job_sources,
+    linear_issue_controls,
     plugin_configuration,
     routed_workspace_policy,
     service_installer,
@@ -97,12 +98,11 @@ from pynchy.state.connection import StateRuntimeConfig
 # ---------------------------------------------------------------------------
 
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
-_PLUGIN_MANAGER_NOT_INITIALIZED = "phase 1 (_initialize_core) must run before {phase}"
 
 
 def _require_plugin_manager(app: PynchyApp, phase: str) -> pluggy.PluginManager:
     if app.plugin_manager is None:
-        raise RuntimeError(_PLUGIN_MANAGER_NOT_INITIALIZED.format(phase=phase))
+        raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
     return app.plugin_manager
 
 
@@ -350,6 +350,7 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     linear_boards = await reconcile_linear_boards(
         app.workspaces.values(), app.ensure_linear_issue_control
     )
+    await linear_issue_controls.ensure_forum_guidelines(app, linear_boards)
 
     plugin_manager = _require_plugin_manager(app, "_reconcile_state")
     app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))

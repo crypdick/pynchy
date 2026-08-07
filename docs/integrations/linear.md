@@ -195,6 +195,13 @@ If the provider result is uncertain after a network failure, use
 conflict, use it only when Linear already has the intended state; it reads
 Linear and never retries the provider write.
 
+Pynchy-owned Linear comments carry an invisible request marker. When their
+create response is lost, replaying the same tool request reads a bounded set of
+issue comments and confirms the original action only if one exact marker/body
+match exists. It never sends a second comment. Comments created before this
+marker was introduced, or reads with zero or multiple matches, remain
+`OUTCOME_UNKNOWN` and require human follow-up rather than a retry.
+
 ## Receive Linear callbacks
 
 Configure one route for all managed boards:
@@ -364,7 +371,7 @@ The Linear MCP server provides ordinary provider tools:
 | `linear_list_teams` | Lists teams visible to the selected account. |
 | `linear_list_issues` | Lists recent issues, optionally by team. |
 | `linear_get_issue` | Gets an issue by stable Linear ID. |
-| `linear_create_issue` | Creates an ordinary issue without an approval-bearing state. |
+| `linear_create_issue` | Creates an ordinary issue without an approval-bearing state; optionally sets priority (`0` none, `1` urgent, `2` high, `3` medium, `4` low). |
 | `linear_list_todos` | Lists open items on the current workspace board. |
 | `linear_create_todo` | Creates an unapproved workspace proposal. |
 | `linear_create_attachment` | Attaches an external URL, including every pull request produced by the work, to an issue. |

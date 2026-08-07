@@ -80,6 +80,20 @@ class ThreadTitleChannel(Protocol):
 
 
 @runtime_checkable
+class ThreadPinnedLinkChannel(Protocol):
+    """Optional channel capability for pinning one canonical thread link."""
+
+    async def ensure_thread_link_pinned(self, child_jid: str, url: str) -> None: ...
+
+
+@runtime_checkable
+class ForumGuidelinesChannel(Protocol):
+    """Optional channel capability for reconciling a forum's managed guidelines."""
+
+    async def ensure_forum_guidelines_linked(self, parent_jid: str, url: str) -> None: ...
+
+
+@runtime_checkable
 class _ThreadTitleOwner(Protocol):
     def owns_jid(self, jid: str) -> bool: ...
 
@@ -253,6 +267,42 @@ async def set_thread_title(
     )
     if channel is not None:
         await channel.set_thread_title(child_jid, title)
+
+
+async def ensure_thread_link_pinned(
+    channels: Sequence[_ThreadTitleOwner],
+    child_jid: str,
+    url: str,
+) -> None:
+    """Pin one managed link when the child channel supports pinned links."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(child_jid) and isinstance(candidate, ThreadPinnedLinkChannel)
+        ),
+        None,
+    )
+    if channel is not None:
+        await channel.ensure_thread_link_pinned(child_jid, url)
+
+
+async def ensure_forum_guidelines_linked(
+    channels: Sequence[_ThreadTitleOwner],
+    parent_jid: str,
+    url: str,
+) -> None:
+    """Reconcile a managed forum-project link when the channel supports it."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(parent_jid) and isinstance(candidate, ForumGuidelinesChannel)
+        ),
+        None,
+    )
+    if channel is not None:
+        await channel.ensure_forum_guidelines_linked(parent_jid, url)
 
 
 async def ensure_thread(  # noqa: PLR0913 - one entry point owns all thread creation options.

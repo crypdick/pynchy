@@ -5,7 +5,7 @@ description = "Pynchy container agent runner — executes Claude Agent SDK insid
 requires-python = ">=3.13"
 dependencies = [
     "claude-agent-sdk>=0.2.128",
-    "mcp>=1.26.0",
+    "mcp>=1.28.1",
     "openai-agents>=0.19.2",
     "watchdog>=4.0.0",
 ]

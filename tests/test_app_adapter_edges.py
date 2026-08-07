@@ -129,6 +129,7 @@ async def test_application_ensures_linear_issue_control(
         parent_jid="discord:channel:project",
         account_name="linear",
         title="Issue",
+        url="https://linear.app/acme/issue/PYN-1",
         updated_at="2026-08-01T00:00:00Z",
     )
     conversation = object()

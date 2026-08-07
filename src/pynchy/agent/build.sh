@@ -23,6 +23,12 @@ else
     exit 1
 fi
 
+# Apple Container has one BuildKit builder per host user, shared by cron,
+# deploys, and worktrees. Keep prune/build/EXIT cleanup in one ownership span.
+if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_APPLE_BUILD_LOCK_HELD:-}" != "1" ]; then
+    exec uv run python -m pynchy.plugins.runtimes.apple_build_lock --exec "$0" "$@"
+fi
+
 cleanup_runtime_build_state() {
     local cleanup_failed=0
 
@@ -181,7 +187,11 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
         mcp_image="pynchy-mcp-${base}:${TAG}"
         mcp_fingerprint=""
         mcp_context="$MCP_DIR"
-        if [ "$base" = "notebook" ]; then
+        if [ "$base" = "gdrive" ]; then
+            # The on-demand MCP lifecycle builds local Dockerfiles from the
+            # repository root, so gdrive must use that same COPY context.
+            mcp_context="$PROJECT_ROOT"
+        elif [ "$base" = "notebook" ]; then
             mcp_context="$PROJECT_ROOT/src/pynchy/plugins/integrations"
         fi
         if [ "$RUNTIME" = "container" ]; then

@@ -45,6 +45,13 @@ def tool_specs() -> list[dict[str, Any]]:
                     "description": {"type": "string"},
                     "project_id": {"type": "string"},
                     "label_ids": {"type": "array", "items": {"type": "string"}},
+                    "priority": {
+                        "type": "integer",
+                        "enum": [0, 1, 2, 3, 4],
+                        "description": (
+                            "Linear priority: 0 none, 1 urgent, 2 high, 3 medium, 4 low."
+                        ),
+                    },
                 },
                 "required": ["team_id", "title"],
                 "additionalProperties": False,

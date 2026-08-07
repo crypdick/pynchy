@@ -10,6 +10,71 @@ from tests.discord_channel_support import _channel
 
 
 @pytest.mark.asyncio
+async def test_pins_one_linear_issue_link_without_duplicates():
+    class _Message:
+        def __init__(self, content: str) -> None:
+            self.content = content
+            self.pinned = False
+
+        async def pin(self) -> None:
+            self.pinned = True
+
+    class _Thread:
+        def __init__(self) -> None:
+            self.sent: list[_Message] = []
+
+        async def pins(self) -> list[_Message]:
+            return [message for message in self.sent if message.pinned]
+
+        async def send(self, content: str) -> _Message:
+            message = _Message(content)
+            self.sent.append(message)
+            return message
+
+    ch = _channel()
+    thread = _Thread()
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await ch.ensure_thread_link_pinned("discord:channel:456", "https://linear.app/acme/issue/PYN-1")
+    await ch.ensure_thread_link_pinned("discord:channel:456", "https://linear.app/acme/issue/PYN-1")
+
+    assert [message.content for message in thread.sent] == [
+        "Linear issue: https://linear.app/acme/issue/PYN-1"
+    ]
+    assert thread.sent[0].pinned is True
+
+
+@pytest.mark.asyncio
+async def test_forum_guidelines_keep_operator_text_and_replace_project_link():
+    class _Forum:
+        available_tags: list[object] = []
+
+        def __init__(self) -> None:
+            self.topic = "Use clear titles.\nLinear project: https://linear.app/acme/project/old"
+            self.edits: list[str] = []
+
+        async def edit(self, *, topic: str) -> None:
+            self.topic = topic
+            self.edits.append(topic)
+
+    ch = _channel()
+    forum = _Forum()
+    ch.resolve_channel = AsyncMock(return_value=forum)  # type: ignore[method-assign]
+
+    await ch.ensure_forum_guidelines_linked(
+        "discord:channel:123", "https://linear.app/acme/project/current"
+    )
+    await ch.ensure_forum_guidelines_linked(
+        "discord:channel:123", "https://linear.app/acme/project/current"
+    )
+
+    assert (
+        forum.topic == "Use clear titles.\nLinear project: https://linear.app/acme/project/current"
+    )
+    assert forum.edits == [forum.topic]
+
+
+@pytest.mark.asyncio
 async def test_thread_kind_resolves_parent_and_rejects_missing_forum_tag():
     ch = _channel()
     thread = MagicMock()
