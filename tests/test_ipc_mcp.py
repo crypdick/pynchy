@@ -706,6 +706,8 @@ class TestListToolsVisibility:
             "send_message",
             "messaging_source_health",
             "list_tasks",
+            "get_scheduled_task",
+            "update_scheduled_task",
             "pause_task",
             "resume_task",
             "cancel_task",

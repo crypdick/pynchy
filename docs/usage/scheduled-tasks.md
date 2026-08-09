@@ -383,17 +383,31 @@ active and retries during the next configuration poll.
 
 ## MCP Tools
 
-`list_tasks` reports the durable configured and routed work visible to the caller. Create recurring work by committing an automation file instead of asking an agent to create a database row. For a lasting change, update the automation file or the owning Linear work item; those sources reconcile their task state.
+`list_tasks` reports the durable configured and routed work visible to the caller without revealing task prompts. Create recurring work by committing an automation file instead of asking an agent to create a database row. For a lasting change to an automation-backed task, update the automation file or the owning Linear work item; those sources reconcile their task state.
 
 | Tool | Purpose |
 |------|---------|
 | `list_tasks` | Show visible configured and routed work |
+| `get_scheduled_task` | Read one visible persisted task's prompt and editable metadata |
+| `update_scheduled_task` | Update a visible persisted task's prompt or active/paused status |
 | `pause_task` | Pause a visible task projection |
 | `resume_task` | Resume a visible task projection |
 | `cancel_task` | Cancel a visible task projection |
 | `send_message` | Send a message to the group (agent tasks only) |
 | `list_todos` | List pending todo items (or all items with `include_done: true`) |
 | `complete_todo` | Mark a todo item as done by ID |
+
+`get_scheduled_task` and `update_scheduled_task` expose only agent tasks. A
+non-admin workspace can access only tasks it owns; an admin can access agent
+tasks across workspaces. Missing and unauthorized task IDs return the same
+not-found result. Host jobs stay outside this surface because their commands
+and working directories need host-level authority.
+
+The update tool accepts only a non-empty prompt and `active` or `paused`
+status. It preserves schedule, task ID, workspace binding, and task-owned
+automation memory. Resuming uses the normal task resume path, preserving
+one-shot and failure-window behavior. Automation-backed tasks reject direct
+updates because their automation definition remains the source of truth.
 
 ## Schedule Types
 
