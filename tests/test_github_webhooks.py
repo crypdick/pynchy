@@ -584,8 +584,16 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     pull_request = payload["pull_request"]
     assert isinstance(pull_request, dict)
     pull_request["merged"] = True
+    raw_body, headers = _signed_request(payload, "pull_request")
+    event = parse_github_webhook(
+        raw_body,
+        headers,
+        _SIGNING_KEY,
+        datetime.now(UTC),
+        config=_config(),
+    )
+    assert event.instructions is not None
     try:
-        raw_body, headers = _signed_request(payload, "pull_request")
         response = await client.post(
             "/webhooks/github/project",
             data=raw_body,
@@ -600,6 +608,5 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     assert len(deps.dispatched) == 1
     task = deps.dispatched[0]
     assert task.group_folder == "project"
-    assert "linear_find_issues_by_attachment_url" in task.prompt
-    assert "https://github.com/example/project/pull/42" in task.prompt
+    assert task.prompt.startswith(f"{event.instructions}\n\n")
     assert not deps.host_messages

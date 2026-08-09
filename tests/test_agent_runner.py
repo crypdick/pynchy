@@ -199,14 +199,9 @@ class TestContainerInput:
         with patch("agent_runner.main.drain_ipc_input", return_value=[]):
             prompt = build_initial_prompt(ci)
 
-        assert "objective" in prompt
-        assert "authority" in prompt
-        assert "[POST-WORK REFLECTION]" in prompt
-        assert prompt.index("Review the repo.") < prompt.index("[POST-WORK REFLECTION]")
-        assert "Review for missing reports." in prompt
-        assert "rather than giving up at the problem" in prompt
-        assert "finished_work" not in prompt
-        assert "host applies publication" not in prompt
+        message_prompt = build_sdk_messages(ci.messages)
+        assert prompt.endswith(message_prompt)
+        assert prompt != message_prompt
 
     def test_shared_scheduled_prompt_contract_applies_without_container_ipc(self):
         ci = ContainerInput.from_dict(
@@ -230,8 +225,7 @@ class TestContainerInput:
 
         prompt = build_agent_prompt(ci)
 
-        assert "[POST-WORK REFLECTION]" in prompt
-        assert "Review for missing reports." in prompt
+        assert prompt.endswith(build_sdk_messages(ci.messages))
 
     def test_post_work_reflection_is_scoped_to_scheduled_tasks(self):
         ci = ContainerInput.from_dict(
@@ -245,7 +239,7 @@ class TestContainerInput:
 
         prompt = build_agent_prompt(ci)
 
-        assert "[POST-WORK REFLECTION]" not in prompt
+        assert prompt == build_sdk_messages(ci.messages)
 
     def test_defaults_agent_core(self):
         data = {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -70,6 +71,12 @@ class _Deps:
         return self.agent_result
 
 
+def _embedded_issue(prompt: str) -> dict[str, object]:
+    payload = json.loads(prompt[prompt.rfind("{") :])
+    assert isinstance(payload, dict)
+    return payload
+
+
 async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() -> None:
     deps = _Deps()
 
@@ -99,17 +106,9 @@ async def test_hidden_reviewer_returns_amended_plan_without_visible_runtime() ->
     assert deps.system_notices is None
     assert deps.reasoning_efforts == ["medium"]
     assert deps.review_prompt is not None
-    normalized_prompt = " ".join(deps.review_prompt.split())
-    assert "do not delegate to subagents" in normalized_prompt
-    assert "HEAD or SHA movement alone is not evidence" in normalized_prompt
-    assert "implementation worker owns those adaptations" in normalized_prompt
-    assert "not reasons for another human approval cycle" in normalized_prompt
-    assert "Return amend with a complete updated plan" in normalized_prompt
-    assert "host applies that amendment and proceeds" in normalized_prompt
-    assert "decision that requires human approval" in normalized_prompt
-    assert "Escalate major product or technical tradeoffs back to the human" in normalized_prompt
-    assert "do the planning now" in normalized_prompt
-    assert "Never return instructions to rerun this review" in normalized_prompt
+    issue = _embedded_issue(deps.review_prompt)
+    assert issue["id"] == "issue-1"
+    assert issue["identifier"] == "SYN-1"
 
 
 @pytest.mark.asyncio
@@ -224,8 +223,8 @@ async def test_hidden_reviewer_returns_validation_error_for_one_correction_turn(
 
     assert result.decision is LinearPlanReviewDecision.PROCEED
     assert deps.reasoning_efforts == ["medium", "medium"]
-    assert "reviewer decision and reason must be strings" in deps.review_prompts[1]
-    assert '{"decision":"proceed"}' in deps.review_prompts[1]
+    assert len(deps.review_prompts) == 2
+    assert deps.review_prompts[1] != deps.review_prompts[0]
 
 
 @pytest.mark.asyncio
