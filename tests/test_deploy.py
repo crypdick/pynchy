@@ -330,7 +330,8 @@ class TestRollbackDeployCheckout:
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
-        assert "Deploy complete" in continuation["resume_prompt"]
+        assert isinstance(continuation["resume_prompt"], str)
+        assert continuation["resume_prompt"]
 
     async def test_in_flight_turn_snapshot_written_to_continuation(self, deploy_dir: Path):
         """The deploy file includes diagnostic metadata for actual running work."""

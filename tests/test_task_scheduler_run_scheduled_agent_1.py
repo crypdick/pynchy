@@ -329,7 +329,7 @@ class TestRunScheduledAgent:
         resumed_run = mock_deps.agent_runs[-1]
         assert resumed_run["turn_id"] == original_turn_id
         assert resumed_run["input_source"] == "scheduled_task"
-        assert "continue the unfinished job" in resumed_run["messages"][0]["content"]
+        assert sample_task.prompt in resumed_run["messages"][0]["content"]
         assert await get_in_flight_turn_for_task(sample_task.id) is None
 
     @pytest.mark.asyncio

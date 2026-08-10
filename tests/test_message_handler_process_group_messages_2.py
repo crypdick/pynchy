@@ -353,8 +353,10 @@ class TestProcessGroupMessages:
         assert len(recovered_messages) == 1
         recovery_prompt = recovered_messages[0]
         assert recovery_prompt["metadata"]["interrupted_turn_id"] == original_turn_id
-        assert "continue the unfinished job" in recovery_prompt["content"]
-        assert "Do not repeat it" in recovery_prompt["content"]
+        assert recovery_prompt["content"]
+        original_input = checkpoint.input_messages[0]["content"]
+        assert isinstance(original_input, str)
+        assert recovery_prompt["content"].endswith(f"User: {original_input}")
         assert (
             await get_in_flight_turn_for_chat(
                 jid,

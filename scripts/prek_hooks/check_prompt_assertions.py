@@ -7,11 +7,26 @@ import sys
 from pathlib import Path
 
 
+def _is_prompt_name(name: str) -> bool:
+    return name in {"prompt", "instructions"} or name.endswith(("_prompt", "_instructions"))
+
+
 def _is_prompt_value(node: ast.expr) -> bool:
     if isinstance(node, ast.Name):
-        return node.id == "prompt" or node.id.endswith("_prompt")
+        return _is_prompt_name(node.id)
     if isinstance(node, ast.Attribute):
-        return node.attr == "prompt" or node.attr.endswith("_prompt")
+        return _is_prompt_name(node.attr)
+    if isinstance(node, ast.Subscript):
+        if _is_prompt_value(node.value):
+            return True
+        key = node.slice
+        return (
+            isinstance(key, ast.Constant)
+            and isinstance(key.value, str)
+            and _is_prompt_name(key.value)
+        )
+    if isinstance(node, ast.BoolOp):
+        return any(_is_prompt_value(value) for value in node.values)
     return False
 
 
@@ -24,7 +39,7 @@ def find_prompt_assertions(source: str) -> list[int]:
         if isinstance(node, ast.Assert)
         and isinstance(node.test, ast.Compare)
         and len(node.test.ops) == 1
-        and isinstance(node.test.ops[0], ast.In)
+        and isinstance(node.test.ops[0], (ast.In, ast.NotIn))
         and isinstance(node.test.left, ast.Constant)
         and isinstance(node.test.left.value, str)
         and len(node.test.comparators) == 1

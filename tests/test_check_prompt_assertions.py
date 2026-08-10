@@ -10,10 +10,15 @@ def test_reports_literal_membership_assertions_for_prompt_values() -> None:
             'assert "literal" in system_prompt',
             'assert "literal" in task.prompt',
             'assert "literal" in review_prompt',
+            'assert "literal" not in prompt',
+            'assert "literal" in task["prompt"]',
+            'assert "literal" not in continuation["resume_prompt"]',
+            'assert "literal" in recovery_prompt["content"]',
+            'assert "literal" in (event.instructions or "")',
         )
     )
 
-    assert find_prompt_assertions(source) == [1, 2, 3, 4]
+    assert find_prompt_assertions(source) == list(range(1, 10))
 
 
 def test_allows_dynamic_or_non_prompt_assertions() -> None:
@@ -24,6 +29,7 @@ def test_allows_dynamic_or_non_prompt_assertions() -> None:
             'assert f"{expected}" in prompt',
             'assert "literal" in request_text',
             'assert "literal" in prompts[0]',
+            'assert "literal" in response["content"]',
         )
     )
 
