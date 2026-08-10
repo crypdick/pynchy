@@ -163,7 +163,7 @@ class TestAutoRollback:
         terminate.assert_called_once_with()
 
         updated = json.loads(cont_path.read_text())
-        assert "ROLLBACK" in updated["resume_prompt"]
+        assert updated["resume_prompt"].startswith("ROLLBACK:")
         assert not updated["previous_commit_sha"]  # prevents loop
         assert updated["rolled_back"] is True
 
