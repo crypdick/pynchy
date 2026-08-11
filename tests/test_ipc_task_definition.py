@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from conftest import init_test_database, make_settings
 
+from pynchy.host.container_manager.ipc.deps import ScheduledWorkStore
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.orchestrator.app import PynchyApp
@@ -187,6 +190,124 @@ async def test_update_rejects_automation_managed_task(monkeypatch, tmp_path) -> 
     managed_task = await get_task_by_id("managed-task")
     assert managed_task is not None
     assert managed_task.prompt == "managed source prompt"
+
+
+async def test_task_definition_rejects_host_jobs_and_missing_request_id(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    await _seed_tasks()
+
+    host_response = await _dispatch(
+        tmp_path,
+        {"type": "task_definition", "request_id": "read-host", "task_id": "host-job"},
+        group="review",
+        admin=True,
+    )
+    await dispatch(
+        {"type": "task_definition", "task_id": "own-task"},
+        "review",
+        False,
+        make_ipc_deps(PynchyApp()),
+    )
+
+    assert host_response == {"error": "Scheduled task not found"}
+    assert not (tmp_path / "ipc" / "review" / "responses" / "None.json").exists()
+
+
+async def test_update_rejects_empty_values_and_missing_request_id(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    await _seed_tasks()
+
+    blank_prompt = await _dispatch(
+        tmp_path,
+        {
+            "type": "update_scheduled_task",
+            "request_id": "blank-prompt",
+            "task_id": "own-task",
+            "prompt": " ",
+        },
+        group="review",
+        admin=False,
+    )
+    invalid_status = await _dispatch(
+        tmp_path,
+        {
+            "type": "update_scheduled_task",
+            "request_id": "invalid-status",
+            "task_id": "own-task",
+            "status": "finished",
+        },
+        group="review",
+        admin=False,
+    )
+    await dispatch(
+        {"type": "update_scheduled_task", "task_id": "own-task", "prompt": "new prompt"},
+        "review",
+        False,
+        make_ipc_deps(PynchyApp()),
+    )
+
+    assert blank_prompt == {"error": "Invalid scheduled task update"}
+    assert invalid_status == {"error": "Invalid scheduled task update"}
+    assert not (tmp_path / "ipc" / "review" / "responses" / "None.json").exists()
+
+
+async def test_update_pauses_active_task_and_leaves_active_task_active(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    await _seed_tasks()
+
+    active = await _dispatch(
+        tmp_path,
+        {
+            "type": "update_scheduled_task",
+            "request_id": "keep-active",
+            "task_id": "own-task",
+            "status": "active",
+        },
+        group="review",
+        admin=False,
+    )
+    paused = await _dispatch(
+        tmp_path,
+        {
+            "type": "update_scheduled_task",
+            "request_id": "pause-own",
+            "task_id": "own-task",
+            "status": "paused",
+        },
+        group="review",
+        admin=False,
+    )
+
+    assert active["result"]["status"] == "active"
+    assert paused["result"]["status"] == "paused"
+
+
+async def test_task_definition_fails_closed_for_invalid_store_result(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    deps = make_ipc_deps(PynchyApp())
+
+    store = MagicMock(spec=ScheduledWorkStore)
+    store.get_task_by_id = AsyncMock(return_value=object())
+    monkeypatch.setattr(deps, "scheduled_work_store", lambda: store)
+
+    with (
+        pytest.warns(UserWarning, match="violates type hint"),
+        pytest.raises(TypeError, match="scheduled task store returned an invalid task"),
+    ):
+        await dispatch(
+            {"type": "task_definition", "request_id": "invalid-store", "task_id": "own-task"},
+            "review",
+            True,
+            deps,
+        )
 
 
 def test_task_definition_read_skips_ledger_but_update_uses_it() -> None:
