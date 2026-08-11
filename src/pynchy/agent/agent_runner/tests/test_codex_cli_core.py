@@ -360,6 +360,15 @@ def test_query_sends_system_prompt_to_codex_stdin(tmp_path, monkeypatch):
     assert proc.stdin.writes == [b"Follow the local Pynchy prompts.\n\nUser message:\nhello\n"]
 
 
+def test_resumed_query_does_not_repeat_system_prompt_in_user_input(tmp_path, monkeypatch):
+    core = _started_core(tmp_path, monkeypatch, session_id="codex:thread-019c6e27")
+    proc = _FakeProc()
+
+    _events, _spawn = _run_public_query(core, proc)
+
+    assert proc.stdin.writes == [b"hello\n"]
+
+
 def test_stream_event_maps_thread_started_and_exposes_session_id():
     core = _core()
 
