@@ -507,6 +507,8 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             )
 
         has_active_session = session_manager.has_active_session
+
+        wake_worktree_conflict = app.start_interactive_turn
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
         pending_question_store = staticmethod(_PendingQuestionStore)
@@ -768,6 +770,9 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
 
         def has_active_session(self, group_folder: str) -> bool:
             return session_manager.has_active_session(group_folder)
+
+        async def wake_worktree_conflict(self, jid: str) -> None:
+            await app.start_interactive_turn(jid)
 
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces

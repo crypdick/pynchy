@@ -201,6 +201,13 @@ class _TemporalGitSyncDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         await self._deps.broadcast_system_notice(jid, text)
 
+    async def wake_worktree_conflict(self, jid: str) -> None:
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - avoids temporal activity/scheduler import cycle.
+            start_interactive_message_workflow,
+        )
+
+        await start_interactive_message_workflow(jid)
+
     def has_active_session(self, group_folder: str) -> bool:
         if hasattr(self._deps, "has_active_session"):
             return bool(self._deps.has_active_session(group_folder))
