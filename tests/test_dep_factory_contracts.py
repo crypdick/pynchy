@@ -145,15 +145,9 @@ async def test_http_adapter_delegates_workspace_and_session_operations(tmp_path:
     app.unregister_workspace = AsyncMock()
     app.rebind_workspace = AsyncMock()
     app.bind_routed_session = AsyncMock()
-    app.queue.clear_pending_tasks = lambda _runtime: None
-    app.queue.clear_pending_messages = lambda _runtime: None
-    app.queue.stop_active_process_for_control = AsyncMock()
+    app.retire_workspace_runtime = AsyncMock()
 
-    with (
-        patch.object(dep_factory, "get_settings", return_value=settings),
-        patch.object(dep_factory, "destroy_session", new_callable=AsyncMock) as destroy,
-        patch.object(dep_factory, "clear_session", new_callable=AsyncMock) as clear,
-    ):
+    with patch.object(dep_factory, "get_settings", return_value=settings):
         deps = dep_factory.make_http_deps(app)
         await deps.register_workspace(profile)
         await deps.unregister_workspace(profile.jid)
@@ -165,8 +159,36 @@ async def test_http_adapter_delegates_workspace_and_session_operations(tmp_path:
     app.unregister_workspace.assert_awaited_once_with(profile.jid)
     app.rebind_workspace.assert_awaited_once_with(profile)
     app.bind_routed_session.assert_awaited_once_with("project", "session-2")
+    app.retire_workspace_runtime.assert_awaited_once_with("project")
+
+
+@pytest.mark.asyncio
+async def test_app_runtime_retirement_clears_state_before_artifact_cleanup(tmp_path: Path) -> None:
+    app = PynchyApp()
+    app.sessions["project"] = "session-1"
+    app.queue.clear_pending_tasks = MagicMock()
+    app.queue.clear_pending_messages = MagicMock()
+    app.queue.stop_active_process_for_control = AsyncMock()
+    settings = _settings(tmp_path)
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=settings),
+        patch("pynchy.host.orchestrator.app.destroy_session", new_callable=AsyncMock) as destroy,
+        patch("pynchy.host.orchestrator.app.clear_session", new_callable=AsyncMock) as clear,
+        patch("pynchy.host.orchestrator.app.cleanup_workspace_artifacts") as cleanup,
+    ):
+        await app.retire_workspace_runtime("project")
+
     destroy.assert_awaited_once_with("project")
     clear.assert_awaited_once_with("project")
+    cleanup.assert_called_once_with(
+        "project",
+        data_dir=settings.data_dir,
+        groups_dir=settings.groups_dir,
+        worktrees_dir=settings.worktrees_dir,
+        git=dep_factory.run_git,
+    )
+    assert "project" not in app.sessions
     assert "project" in app.session_cleared
 
 

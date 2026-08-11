@@ -591,7 +591,12 @@ async def test_reconcile_prunes_stale_routed_registration_for_runtime_recreation
             return_value=[],
         ),
         patch(
-            "pynchy.host.orchestrator.workspace_config.get_all_sessions",
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_sessions",
             new_callable=AsyncMock,
             return_value={},
         ),
@@ -642,7 +647,12 @@ async def test_reconcile_prunes_only_provider_deleted_unowned_children():
         for profile in (parent, deleted, live, unknown, task_owned, session_owned)
     }
     channel = _PresenceChannel(
-        {deleted.jid: False, live.jid: True, unknown.jid: OSError("offline")}
+        {
+            deleted.jid: False,
+            live.jid: True,
+            unknown.jid: OSError("offline"),
+            session_owned.jid: True,
+        }
     )
     task = ScheduledTask(
         id="task-owner",
@@ -656,6 +666,7 @@ async def test_reconcile_prunes_only_provider_deleted_unowned_children():
         bound_chat_jid=task_owned.jid,
     )
     unregister = AsyncMock()
+    retire = AsyncMock()
 
     with (
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s),
@@ -665,7 +676,12 @@ async def test_reconcile_prunes_only_provider_deleted_unowned_children():
             return_value=[task],
         ),
         patch(
-            "pynchy.host.orchestrator.workspace_config.get_all_sessions",
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[task],
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_sessions",
             new_callable=AsyncMock,
             return_value={session_owned.folder: "session-1"},
         ),
@@ -674,7 +690,14 @@ async def test_reconcile_prunes_only_provider_deleted_unowned_children():
             new_callable=AsyncMock,
         ),
     ):
-        await reconcile_workspaces(workspaces, [channel], AsyncMock(), unregister)
+        await reconcile_workspaces(
+            workspaces,
+            [channel],
+            AsyncMock(),
+            unregister,
+            retire_fn=retire,
+        )
 
     unregister.assert_awaited_once_with(deleted.jid)
-    assert channel.checked == [deleted.jid, live.jid, unknown.jid]
+    retire.assert_awaited_once_with(deleted.folder)
+    assert channel.checked == [deleted.jid, live.jid, unknown.jid, session_owned.jid]

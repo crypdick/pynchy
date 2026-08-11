@@ -11,18 +11,19 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import NullChannel, init_test_database, make_settings
 
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     dynamic_thread_folder,
     reconcile_workspaces,
 )
+from pynchy.identifiers import GroupFolder, SessionId
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
 )
-from pynchy.state import create_task, get_all_tasks
+from pynchy.state import create_task, get_all_tasks, set_session
 from pynchy.workspace.api import WorkspaceProfile
 from tests.workspace_reconcile_support import (
     _FakePM,
@@ -30,6 +31,14 @@ from tests.workspace_reconcile_support import (
     _WorkspaceSpecHooks,
     _write_workspace_yaml,
 )
+
+
+class _ArchivedChannel(NullChannel):
+    def owns_jid(self, jid: str) -> bool:
+        return jid.startswith("discord:")
+
+    async def conversation_exists(self, jid: str) -> bool:
+        return False
 
 
 class TestReconcileWorkspaces:
@@ -364,3 +373,32 @@ class TestReconcileWorkspaces:
 
         tasks = await get_all_tasks()
         assert tasks == []
+
+    async def test_archived_child_session_does_not_block_retirement(self, db, groups_dir):
+        _write_workspace_yaml(groups_dir, "support", {})
+        parent = WorkspaceProfile(
+            jid="discord:channel:support",
+            name="Support",
+            folder="support",
+            trigger="@pynchy",
+        )
+        archived = WorkspaceProfile(
+            jid="discord:channel:archived",
+            name="Support/Archived",
+            folder=dynamic_thread_folder(parent.folder, "discord:channel:archived"),
+            trigger="@pynchy",
+        )
+        await set_session(GroupFolder(archived.folder), SessionId("session-1"))
+        unregister = AsyncMock()
+        retire = AsyncMock()
+
+        await reconcile_workspaces(
+            {parent.jid: parent, archived.jid: archived},
+            [_ArchivedChannel()],
+            AsyncMock(),
+            unregister,
+            retire_fn=retire,
+        )
+
+        retire.assert_awaited_once_with(archived.folder)
+        unregister.assert_awaited_once_with(archived.jid)

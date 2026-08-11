@@ -277,6 +277,10 @@ from pynchy.host.orchestrator.temporal.git_sync import (
     configure_temporal_git_sync_runtime,
 )
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
+from pynchy.host.orchestrator.workspace_artifacts import (
+    cleanup_startup_workspace_artifacts,
+    cleanup_workspace_artifacts,
+)
 from pynchy.host.orchestrator.workspace_config import (
     WorkspaceConfigRuntime,
     configure_workspace_config_runtime,
@@ -340,6 +344,7 @@ from pynchy.scheduling.api import (
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
     clear_runtime_session_references_batch,
+    clear_session,
     delete_workspace_profile,
     get_all_chats,
     get_all_sessions,
@@ -1292,6 +1297,12 @@ class PynchyApp(ThreadRouting):
         self._shutting_down = True
         return True
 
+    def require_plugin_manager(self, phase: str) -> pluggy.PluginManager:
+        """Return composed plugins or fail with the startup phase that raced."""
+        if self.plugin_manager is None:
+            raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
+        return self.plugin_manager
+
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
         from pynchy.config.api import (  # noqa: PLC0415 - composition root selects the validator.
@@ -1754,6 +1765,43 @@ class PynchyApp(ThreadRouting):
         """Remove an orphaned workspace registration."""
         self.workspaces.pop(jid, None)
         await delete_workspace_profile(jid)
+
+    async def retire_workspace_runtime(self, folder: str) -> None:
+        """Stop one retired workspace and reclaim its safe filesystem artifacts."""
+        runtime_id = RuntimeId(folder)
+        self.queue.clear_pending_tasks(runtime_id)
+        self.queue.clear_pending_messages(runtime_id)
+        await self.queue.stop_active_process_for_control(runtime_id)
+        self.queue.clear_pending_messages(runtime_id)
+        await destroy_session(folder)
+        self.sessions.pop(folder, None)
+        self.session_cleared.add(folder)
+        await clear_session(GroupFolder(folder))
+        settings = get_settings()
+        await asyncio.to_thread(
+            cleanup_workspace_artifacts,
+            folder,
+            data_dir=settings.data_dir,
+            groups_dir=settings.groups_dir,
+            worktrees_dir=settings.worktrees_dir,
+            git=run_git,
+        )
+
+    async def reclaim_orphaned_workspace_artifacts(
+        self,
+        tasks: Sequence[ScheduledTask],
+    ) -> None:
+        """Reclaim dynamic workspace artifacts with no durable runtime owner."""
+        settings = get_settings()
+        await cleanup_startup_workspace_artifacts(
+            self.workspaces.values(),
+            tasks,
+            self.active_worktree_folders(),
+            data_dir=settings.data_dir,
+            groups_dir=settings.groups_dir,
+            worktrees_dir=settings.worktrees_dir,
+            git=run_git,
+        )
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
