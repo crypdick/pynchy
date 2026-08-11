@@ -17,7 +17,9 @@ from pynchy.config.api import (
 )
 from pynchy.host.orchestrator.threads import (
     create_thread,
+    ensure_forum_guidelines_linked,
     ensure_thread,
+    ensure_thread_link_pinned,
     find_thread,
     set_thread_closed,
     supports_thread_creation,
@@ -95,6 +97,19 @@ class _EmptyThreadChannel(_ThreadChannel):
         return ""
 
 
+class _ManagedLinkChannel(_ThreadChannel):
+    def __init__(self) -> None:
+        super().__init__()
+        self.pinned_links: list[tuple[str, str]] = []
+        self.guideline_links: list[tuple[str, str]] = []
+
+    async def ensure_thread_link_pinned(self, child_jid: str, url: str) -> None:
+        self.pinned_links.append((child_jid, url))
+
+    async def ensure_forum_guidelines_linked(self, parent_jid: str, url: str) -> None:
+        self.guideline_links.append((parent_jid, url))
+
+
 def _parent() -> WorkspaceProfile:
     return WorkspaceProfile(
         jid="discord:channel:relationships",
@@ -123,6 +138,40 @@ async def test_thread_capabilities_fail_closed_without_provider_support() -> Non
 async def test_thread_creation_rejects_provider_without_a_child_jid() -> None:
     with pytest.raises(RuntimeError, match="no JID"):
         await create_thread([_EmptyThreadChannel()], "discord:channel:relationships", "family")
+
+
+@pytest.mark.asyncio
+async def test_thread_metadata_links_route_only_to_the_owning_capable_channel() -> None:
+    channel = _ManagedLinkChannel()
+
+    await ensure_thread_link_pinned(
+        [channel], "discord:channel:family", "https://linear.app/acme/issue/PYN-1"
+    )
+    await ensure_forum_guidelines_linked(
+        [channel], "discord:channel:relationships", "https://linear.app/acme/project/pynchy"
+    )
+
+    assert channel.pinned_links == [
+        ("discord:channel:family", "https://linear.app/acme/issue/PYN-1")
+    ]
+    assert channel.guideline_links == [
+        ("discord:channel:relationships", "https://linear.app/acme/project/pynchy")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_thread_metadata_links_ignore_unowned_children() -> None:
+    channel = _ManagedLinkChannel()
+
+    await ensure_thread_link_pinned(
+        [channel], "slack:thread:family", "https://linear.app/acme/issue/PYN-1"
+    )
+    await ensure_forum_guidelines_linked(
+        [channel], "slack:C123", "https://linear.app/acme/project/pynchy"
+    )
+
+    assert channel.pinned_links == []
+    assert channel.guideline_links == []
 
 
 @pytest.mark.asyncio

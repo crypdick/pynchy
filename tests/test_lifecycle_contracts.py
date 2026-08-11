@@ -124,6 +124,33 @@ def _conversation() -> Conversation:
     )
 
 
+@pytest.mark.asyncio
+async def test_linear_forum_guidelines_link_only_configured_workspace(monkeypatch) -> None:
+    app = PynchyApp()
+    root = WorkspaceProfile(
+        jid="discord:channel:health-forum",
+        name="Health",
+        folder="health",
+        trigger="@Pynchy",
+    )
+    app.workspaces[root.jid] = root
+    ensure_link = AsyncMock()
+    monkeypatch.setattr(linear_issue_controls, "ensure_forum_guidelines_linked", ensure_link)
+
+    await linear_issue_controls.ensure_forum_guidelines(
+        app,
+        {
+            "health": MagicMock(project={"url": "https://linear.app/acme/project/health"}),
+            "missing": MagicMock(project={"url": "https://linear.app/acme/project/missing"}),
+            "invalid": MagicMock(project={"url": None}),
+        },
+    )
+
+    ensure_link.assert_awaited_once_with(
+        app.channels, root.jid, "https://linear.app/acme/project/health"
+    )
+
+
 def _patch_run_app_tail(monkeypatch, app: PynchyApp, settings: object) -> AsyncMock:
     loop = asyncio.get_running_loop()
     monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
