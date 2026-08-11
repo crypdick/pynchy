@@ -19,8 +19,6 @@ from collections.abc import (
 from pathlib import Path  # beartype resolves lifecycle annotations.
 from typing import Any
 
-import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
-
 import pynchy.plugins.speech.api as speech_plugins
 import pynchy.plugins.tunnels.api as tunnel_plugins
 from pynchy.async_tasks import create_background_task
@@ -98,12 +96,6 @@ from pynchy.state.connection import StateRuntimeConfig
 # ---------------------------------------------------------------------------
 
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
-
-
-def _require_plugin_manager(app: PynchyApp, phase: str) -> pluggy.PluginManager:
-    if app.plugin_manager is None:
-        raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
-    return app.plugin_manager
 
 
 def _start_shutdown_watchdog() -> object:
@@ -304,7 +296,7 @@ async def _setup_channels(app: PynchyApp) -> None:
         },
         whatsapp_connections=whatsapp_connections,
     )
-    plugin_manager = _require_plugin_manager(app, "_setup_channels")
+    plugin_manager = app.require_plugin_manager("_setup_channels")
     app.channels = load_channels(plugin_manager, context)
     for ch in app.channels:
         missing = startup_handler.validate_plugin_credentials(ch)
@@ -341,18 +333,22 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
         rebind_fn=app.rebind_workspace,
+        retire_fn=app.retire_workspace_runtime,
     )
 
-    scheduled_bindings = await reconcile_scheduled_task_bindings(await get_all_tasks(), app)
+    tasks = await get_all_tasks()
+    scheduled_bindings = await reconcile_scheduled_task_bindings(tasks, app)
     if scheduled_bindings:
         logger.info("Scheduled task bindings reconciled", count=scheduled_bindings)
+
+    await app.reclaim_orphaned_workspace_artifacts(tasks)
 
     linear_boards = await reconcile_linear_boards(
         app.workspaces.values(), app.ensure_linear_issue_control
     )
     await linear_issue_controls.ensure_forum_guidelines(app, linear_boards)
 
-    plugin_manager = _require_plugin_manager(app, "_reconcile_state")
+    plugin_manager = app.require_plugin_manager("_reconcile_state")
     app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))
 
     return dict(linear_boards)
@@ -389,7 +385,7 @@ async def _prepare_and_bind_control_plane(
     app: PynchyApp,
 ) -> http_server.PreparedHttpServer:
     """Prepare route callbacks and prove the gated listener can bind."""
-    plugin_manager = _require_plugin_manager(app, "_prepare_and_bind_control_plane")
+    plugin_manager = app.require_plugin_manager("_prepare_and_bind_control_plane")
     tunnel_plugins.check_tunnels(plugin_manager)
     status.record_start_time()
     settings = get_settings()

@@ -332,7 +332,10 @@ another typed terminal state closes the routed conversation and retires its
 session, task, workflow, and in-flight turn. A nonterminal state that no longer
 authorizes the execution cancels only that execution's work, preserving the
 conversation and provider session for a later authorized attempt.
-Both paths preserve the managed worktree and its artifacts.
+Both paths retire ephemeral workspace artifacts. A clean worktree checkout gets
+removed while its branch remains available for a later reopen. Dirty or untracked
+work or user workspace files block cleanup so unfinished work stays recoverable. See
+[Worktree isolation](../usage/worktrees.md#worktree-isolation).
 
 Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
 `Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear

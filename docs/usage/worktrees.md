@@ -13,6 +13,15 @@ nested worktree virtual environments after 24 hours without use. Worktrees with
 a running turn or live container session stay protected. This cleanup is scoped
 to `data/worktrees/`; it never removes the host or project virtual environment.
 
+**Retired thread cleanup:** When a provider reports that a dynamic thread was
+deleted or archived, Pynchy stops its runtime and removes its worktree checkout,
+session home, IPC files, generated environment, approvals, and group directory.
+The Git branch remains, so reopening the thread can reattach committed work.
+Dirty or untracked work blocks the entire cleanup and produces a warning instead
+of losing unfinished work. Files outside the host-owned `logs/` directory in
+the group workspace block cleanup the same way. Startup also reclaims orphaned
+dynamic-thread artifacts left by an interrupted or older cleanup path.
+
 ## Routed Host Workspaces
 
 Static direct-host workspaces, and direct-host workspaces without a selected

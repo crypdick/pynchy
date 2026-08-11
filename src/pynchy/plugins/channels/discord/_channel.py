@@ -587,17 +587,17 @@ class DiscordChannel:
         return channel
 
     async def conversation_exists(self, jid: str) -> bool:
-        """Probe Discord directly so stale cached channels cannot appear live."""
+        """Probe Discord directly so deleted or archived threads cannot appear live."""
         client = cast("Any", _require_client(self.client))
         parsed = parse_jid(jid)
         try:
             if parsed.kind == "direct":
                 await client.fetch_user(int(parsed.snowflake))
             else:
-                await client.fetch_channel(int(parsed.snowflake))
+                channel = await client.fetch_channel(int(parsed.snowflake))
         except discord.NotFound:
             return False
-        return True
+        return parsed.kind == "direct" or not bool(getattr(channel, "archived", False))
 
     def forget_ask_user_view(self, message_id: str) -> None:
         self._ask_user_views.pop(message_id, None)

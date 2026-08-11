@@ -54,6 +54,17 @@ async def test_conversation_exists_probes_discord_provider() -> None:
 
 
 @pytest.mark.asyncio
+async def test_conversation_exists_treats_archived_thread_as_retired() -> None:
+    channel = _channel()
+    archived = MagicMock(archived=True)
+    client = MagicMock()
+    client.fetch_channel = AsyncMock(return_value=archived)
+    channel.client = client
+
+    assert await channel.conversation_exists("discord:channel:42") is False
+
+
+@pytest.mark.asyncio
 async def test_conversation_exists_probes_direct_discord_user() -> None:
     channel = _channel()
     client = MagicMock()
