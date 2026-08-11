@@ -162,10 +162,12 @@ from pynchy.state.messages import (
     get_messaging_stats,
     get_new_messages,
     mark_message_as_host,
+    message_cursor,
     message_exists,
     prune_messages_by_sender,
     store_message,
     store_message_direct,
+    upgrade_message_cursor,
 )
 from pynchy.state.outbound import (
     OutboundDelivery,
@@ -380,11 +382,13 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_messages_since",
     "get_messaging_stats",
     "get_new_messages",
+    "message_cursor",
     "message_exists",
     "mark_message_as_host",
     "prune_messages_by_sender",
     "store_message",
     "store_message_direct",
+    "upgrade_message_cursor",
     # tasks
     "cancel_task_and_checkpoint",
     "create_task",

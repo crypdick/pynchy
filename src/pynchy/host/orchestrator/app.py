@@ -251,6 +251,7 @@ from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.messaging.ask_user_handler import AskUserRuntimeOperations
+from pynchy.host.orchestrator.messaging.cursor import monotonic_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # beartype resolves method annotations.
     ApprovalRuntimeOperations,
     CommandMatcher,
@@ -360,6 +361,7 @@ from pynchy.state.api import (
     store_message,
     store_message_direct,
     update_task,
+    upgrade_message_cursor,
 )
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
     TurnOutcome,
@@ -1335,14 +1337,14 @@ class PynchyApp(ThreadRouting):
 
     def routing_cursor(self, chat_jid: str) -> str:
         """Return the cursor for fetching messages during routing."""
-        return max(
+        return monotonic_cursor(
             self.last_agent_timestamp.get(chat_jid, ""),
             self._dispatched_through.get(chat_jid, ""),
         )
 
     def mark_dispatched(self, chat_jid: str, timestamp: str) -> None:
         """Record the furthest message timestamp dispatched to an active container."""
-        self._dispatched_through[chat_jid] = max(
+        self._dispatched_through[chat_jid] = monotonic_cursor(
             self._dispatched_through.get(chat_jid, ""),
             timestamp,
         )
@@ -1367,6 +1369,10 @@ class PynchyApp(ThreadRouting):
         self.sessions = await get_all_sessions()
 
         self.workspaces = await get_all_workspace_profiles()
+        workspace_jids = list(self.workspaces)
+        self.last_timestamp = await upgrade_message_cursor(workspace_jids, self.last_timestamp)
+        for chat_jid, cursor in self.last_agent_timestamp.items():
+            self.last_agent_timestamp[chat_jid] = await upgrade_message_cursor([chat_jid], cursor)
 
         logger.info(
             "State loaded",

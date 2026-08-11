@@ -6,7 +6,7 @@ import asyncio
 
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn
 from pynchy.host.orchestrator.messaging import approval_handler, commands
-from pynchy.host.orchestrator.messaging.cursor import advance_cursor
+from pynchy.host.orchestrator.messaging.cursor import advance_cursor, monotonic_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves control annotations.
     MessageHandlerDeps,
 )
@@ -22,6 +22,7 @@ from pynchy.state.api import (
     finalize_in_flight_pause,
     get_messages_since,
     mark_message_as_host,
+    message_cursor,
     message_exists,
     request_in_flight_turn_control,
 )
@@ -46,19 +47,19 @@ async def _consume_checkpoint_control(
         turn = await consume_in_flight_control_message(
             message.id,
             chat_jid,
-            message.timestamp,
+            message_cursor(message),
             deps.last_agent_timestamp,
             requested_state,
         )
-        deps.last_agent_timestamp[chat_jid] = max(
+        deps.last_agent_timestamp[chat_jid] = monotonic_cursor(
             deps.last_agent_timestamp.get(chat_jid, ""),
-            message.timestamp,
+            message_cursor(message),
         )
     else:
         # Synthetic callers do not have a persisted channel message. Production
         # intake always takes the atomic branch above.
         turn = await request_in_flight_turn_control(chat_jid, requested_state)
-        await advance_cursor(deps, chat_jid, message.timestamp)
+        await advance_cursor(deps, chat_jid, message_cursor(message))
     message.message_type = "host"
     message.metadata = {
         key: value
@@ -127,7 +128,7 @@ async def _intercept_checkpoint_command(
     await deps.handle_context_reset(
         chat_jid,
         group,
-        message.timestamp,
+        message_cursor(message),
         source_message=message,
     )
     if turn is not None and not had_active_run:
@@ -158,14 +159,14 @@ async def intercept_special_command(
         await deps.handle_end_session(
             chat_jid,
             group,
-            message.timestamp,
+            message_cursor(message),
             source_message=message,
         )
         logger.info("End session", group=group.name)
         return True
 
     if commands.is_redeploy(deps.command_matcher, content, message.metadata):
-        await advance_cursor(deps, chat_jid, message.timestamp)
+        await advance_cursor(deps, chat_jid, message_cursor(message))
         await deps.trigger_manual_redeploy(chat_jid, source_message=message)
         return True
 
@@ -182,7 +183,7 @@ async def intercept_special_command(
         return False
 
     if advance_command_cursor:
-        await advance_cursor(deps, chat_jid, message.timestamp)
+        await advance_cursor(deps, chat_jid, message_cursor(message))
     return True
 
 
@@ -358,7 +359,7 @@ async def should_skip_batch(
         for message in missed_messages
     ):
         await execute_deferred_host_controls(deps, chat_jid, group, missed_messages)
-        await advance_cursor(deps, chat_jid, missed_messages[-1].timestamp)
+        await advance_cursor(deps, chat_jid, message_cursor(missed_messages[-1]))
         return True
     if missed_messages[-1].message_type == "host":
         return False

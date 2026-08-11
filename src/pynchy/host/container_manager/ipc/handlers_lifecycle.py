@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from collections.abc import (
     Awaitable,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
@@ -14,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
 from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 
+from pynchy.atomic_json import write_json_atomic
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
@@ -244,14 +244,13 @@ async def _handle_reset_context(
         reset_dir = get_settings().data_dir / "ipc" / group_folder
         reset_dir.mkdir(parents=True, exist_ok=True)
         reset_file = reset_dir / "reset_prompt.json"
-        reset_file.write_text(
-            json.dumps(
-                {
-                    "message": message,
-                    "chatJid": chat_jid,
-                    "needsDirtyRepoCheck": True,
-                }
-            )
+        write_json_atomic(
+            reset_file,
+            {
+                "message": message,
+                "chatJid": chat_jid,
+                "needsDirtyRepoCheck": True,
+            },
         )
 
     deps.enqueue_message_check(chat_jid)

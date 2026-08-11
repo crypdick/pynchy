@@ -38,6 +38,7 @@ from pynchy.state import (
     get_in_flight_turn,
     init_test_database,
     store_message,
+    upgrade_message_cursor,
 )
 from tests.message_handler_support import (
     _make_deps,
@@ -179,7 +180,7 @@ class TestInterceptSpecialCommand:
         assert checkpoint.session_id == "provider-thread"
         history = await get_chat_history(jid)
         assert next(message for message in history if message.id == msg.id).message_type == "host"
-        assert deps.last_agent_timestamp[jid] == msg.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor([jid], msg.timestamp)
         deps.queue.stop_active_process_for_control.assert_awaited_once_with(RuntimeId(group.folder))
         deps.queue.destroy_runtime_session.assert_awaited_once_with(RuntimeId(group.folder))
         deps.send_reaction_to_channels.assert_awaited_once_with(jid, msg.id, msg.sender, "⏸️")

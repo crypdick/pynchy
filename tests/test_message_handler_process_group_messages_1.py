@@ -53,6 +53,7 @@ from pynchy.state import (
     get_conversation_delivery,
     init_test_database,
     store_message,
+    upgrade_message_cursor,
 )
 from pynchy.state import get_messages_since as get_stored_messages_since
 from pynchy.turn_outcomes import TurnOutcome
@@ -320,7 +321,9 @@ class TestProcessGroupMessages:
         history = await get_chat_history(jid)
         consumed = next(message for message in history if message.id == approval.id)
         assert consumed.message_type == "host"
-        assert deps.last_agent_timestamp[jid] == approval.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], approval.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_active_inline_approval_completes_after_external_claim_succeeds(
@@ -375,7 +378,9 @@ class TestProcessGroupMessages:
         delivery = await get_conversation_delivery(identity)
         assert delivery is not None
         assert delivery.status is ConversationDeliveryStatus.COMPLETED
-        assert deps.last_agent_timestamp[jid] == approval.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], approval.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_active_inline_approval_survives_clean_external_retry(
@@ -442,7 +447,9 @@ class TestProcessGroupMessages:
         assert retried_delivery.status is ConversationDeliveryStatus.COMPLETED
         retried_messages = deps.run_agent.await_args.args[2]
         assert [message["content"] for message in retried_messages] == [external.content]
-        assert deps.last_agent_timestamp[jid] == approval.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], approval.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_active_approval_is_removed_before_follow_up_is_forwarded(
@@ -509,7 +516,9 @@ class TestProcessGroupMessages:
         delivery = await get_conversation_delivery(identity)
         assert delivery is not None
         assert delivery.status is ConversationDeliveryStatus.COMPLETED
-        assert deps.last_agent_timestamp[jid] == follow_up.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], follow_up.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_late_approval_waits_for_turn_finalization_without_duplicate_delivery(
@@ -574,7 +583,9 @@ class TestProcessGroupMessages:
         delivery = await get_conversation_delivery(identity)
         assert delivery is not None
         assert delivery.status is ConversationDeliveryStatus.COMPLETED
-        assert deps.last_agent_timestamp[jid] == approval.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], approval.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_polling_and_recovery_queue_cannot_execute_same_approval_twice(

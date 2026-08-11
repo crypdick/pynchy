@@ -45,6 +45,7 @@ from pynchy.state.api import (
     get_messages_since,
     get_new_messages,
     get_oldest_resumable_turn_for_group,
+    message_cursor,
 )
 from pynchy.workspace.api import (  # beartype resolves inbound routing annotations at runtime.
     RuntimeTarget,
@@ -247,7 +248,7 @@ async def _intercept_host_control_batch(
             )
             intercepted = True
         elif active_turn is not None:
-            mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
+            mark_dispatched(deps, group_jid, message_cursor(all_pending[-1]))
             if not remaining_agent_input:
                 logger.info(
                     "route_trace",
@@ -281,7 +282,7 @@ async def _execute_deferred_controls_without_agent(
     for message in messages:
         if (message.metadata or {}).get("deferred_host_control") is True:
             await intercept_special_command(deps, group_jid, group, message)
-    await advance_cursor(deps, group_jid, messages[-1].timestamp)
+    await advance_cursor(deps, group_jid, message_cursor(messages[-1]))
 
 
 async def _route_pending_messages(
@@ -357,7 +358,7 @@ async def _forward_to_active_container(
     )
     last_msg = all_pending[-1]
     await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "🦀")
-    mark_dispatched(deps, group_jid, last_msg.timestamp)
+    mark_dispatched(deps, group_jid, message_cursor(last_msg))
 
 
 async def _start_new_interactive_turn(
@@ -453,12 +454,6 @@ async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:
     if messages:
         logger.info("New messages", count=len(messages))
 
-        # Advance "seen" cursor immediately
-        deps.last_timestamp = new_timestamp
-        logger.info("message_loop_trace", step="save_state_start")
-        await deps.save_state()
-        logger.info("message_loop_trace", step="save_state_done")
-
         # Group by chat JID and route each group independently
         messages_by_group: dict[str, list[NewMessage]] = {}
         for msg in messages:
@@ -478,6 +473,13 @@ async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:
                     step="route_done",
                     group=group.name,
                 )
+
+        # Commit the batch only after every known group reached its durable
+        # routing boundary. A routing failure leaves the batch visible to retry.
+        deps.last_timestamp = new_timestamp
+        logger.info("message_loop_trace", step="save_state_start")
+        await deps.save_state()
+        logger.info("message_loop_trace", step="save_state_done")
 
 
 async def start_message_loop(
