@@ -29,7 +29,7 @@ jobs:
       - name: Check semantic action coverage
         run: uv run python scripts/prek_hooks/check_action_coverage.py
       - name: Run Python tests
-        run: uv run pytest
+        run: uv run pytest --cov=pynchy --cov-report=term-missing
       - name: Install agent-runner test dependencies
         run: uv sync --project src/pynchy/agent/agent_runner --locked --all-groups
       - name: Run agent-runner tests
