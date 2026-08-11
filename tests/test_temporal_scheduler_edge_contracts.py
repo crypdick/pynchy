@@ -271,8 +271,41 @@ async def test_stale_scheduler_exit_does_not_clear_newer_active_runtime(
         await first.__aexit__(None, None, None)
         temporal_scheduler.publish_scheduler_config(replacement)
         assert second.scheduler_config is replacement
+        assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is True
+        assert await temporal_scheduler.run_scheduled_canaries() == "disabled"
     finally:
         await second.__aexit__(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_failed_scheduler_replacement_preserves_active_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock(spec=WorkflowControlClient)
+
+    class _WorkerContext:
+        async def __aenter__(self) -> _WorkerContext:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    connect = AsyncMock(return_value=client)
+    monkeypatch.setattr(temporal_scheduler.Client, "connect", connect)
+    monkeypatch.setattr(temporal_scheduler, "Worker", lambda *_args, **_kwargs: _WorkerContext())
+    active = _runtime()
+    replacement = _runtime()
+
+    await active.__aenter__()  # noqa: PLC2801 - test overlapping runtime ownership.
+    connect.side_effect = RuntimeError("replacement unavailable")
+    try:
+        with pytest.raises(RuntimeError, match="replacement unavailable"):
+            await replacement.__aenter__()  # noqa: PLC2801 - exercise failed replacement cleanup.
+
+        assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is True
+        assert await temporal_scheduler.run_scheduled_canaries() == "disabled"
+    finally:
+        await active.__aexit__(None, None, None)
 
 
 @pytest.mark.asyncio

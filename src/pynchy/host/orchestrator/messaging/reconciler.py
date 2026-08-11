@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from pynchy.host.orchestrator.messaging.sender import outbound_delivery_lock
 from pynchy.identifiers import (
     ChannelName,
     ChatJid,
@@ -289,27 +290,31 @@ async def _retry_outbound(
     ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
 ) -> tuple[str, int, str | None]:
     """Retry pending outbound deliveries and report an exhausted failure."""
-    pending = await get_pending_outbound(ChannelName(ch.name), ChatJid(canonical_jid))
-    new_outbound_cursor = outbound_cursor
-    retried = 0
-    failure = None
-    for row in pending:
-        try:
-            new_outbound_cursor = await _deliver_pending_outbound_row(
-                ch,
-                target_jid,
-                row,
-                new_outbound_cursor,
-            )
-        except Exception as exc:  # noqa: BLE001 - outbound retry is best-effort and stops after the first delivery failure.
-            logger.warning(
-                "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
-            )
-            await mark_delivery_error(row.ledger_id, ch.name, str(exc))
-            failure = f"outbound retry: {type(exc).__name__}: {exc}"
-            break  # preserve ordering — don't skip ahead
-        else:
-            retried += 1
+    async with outbound_delivery_lock(canonical_jid):
+        pending = await get_pending_outbound(ChannelName(ch.name), ChatJid(canonical_jid))
+        new_outbound_cursor = outbound_cursor
+        retried = 0
+        failure = None
+        for row in pending:
+            try:
+                new_outbound_cursor = await _deliver_pending_outbound_row(
+                    ch,
+                    target_jid,
+                    row,
+                    new_outbound_cursor,
+                )
+            except Exception as exc:  # noqa: BLE001 - outbound retry is best-effort and stops after the first delivery failure.
+                logger.warning(
+                    "outbound retry failed",
+                    channel=ch.name,
+                    ledger_id=row.ledger_id,
+                    error=str(exc),
+                )
+                await mark_delivery_error(row.ledger_id, ch.name, str(exc))
+                failure = f"outbound retry: {type(exc).__name__}: {exc}"
+                break  # preserve ordering — don't skip ahead
+            else:
+                retried += 1
     return new_outbound_cursor, retried, failure
 
 

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
-from pynchy.plugins.api import NewMessage
+from pynchy.host.orchestrator.messaging.sender import broadcast, finalize_stream_or_broadcast
+from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.state import (
     get_channel_cursor,
     get_pending_outbound,
@@ -102,6 +105,90 @@ async def test_reconciler_does_not_move_outbound_cursor_backwards():
     await reconcile_all_channels(deps)
 
     assert await get_channel_cursor("slack", "group@g.us", "outbound") == "9999-01-01"
+
+
+@pytest.mark.usefixtures("_db")
+@pytest.mark.asyncio
+async def test_reconciler_does_not_duplicate_an_outbound_send_in_progress():
+    first_send_started = asyncio.Event()
+    finish_first_send = asyncio.Event()
+    ch = _make_channel()
+
+    async def send_event(*_args: object) -> None:
+        if ch.send_event.await_count == 1:
+            first_send_started.set()
+            await finish_first_send.wait()
+
+    ch.send_event.side_effect = send_event
+    deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
+    broadcast_task = asyncio.create_task(
+        broadcast(
+            deps,
+            "group@g.us",
+            OutboundEvent(type=OutboundEventType.TEXT, content="send once"),
+        )
+    )
+    await first_send_started.wait()
+    reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+
+    try:
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(reconcile_task), timeout=0.1)
+        assert ch.send_event.await_count == 1
+    finally:
+        finish_first_send.set()
+        await asyncio.gather(broadcast_task, reconcile_task, return_exceptions=True)
+
+    assert ch.send_event.await_count == 1
+
+
+@pytest.mark.usefixtures("_db")
+@pytest.mark.asyncio
+async def test_interrupted_stream_finalization_retries_the_existing_message():
+    update_started = asyncio.Event()
+    never_finish = asyncio.Event()
+    ch = _make_channel()
+
+    async def update_event(*_args: object) -> None:
+        update_started.set()
+        await never_finish.wait()
+
+    ch.update_event = update_event
+    deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
+    finalization = asyncio.create_task(
+        finalize_stream_or_broadcast(
+            deps,
+            "group@g.us",
+            OutboundEvent(type=OutboundEventType.RESULT, content="final answer"),
+            {"slack": "stream-message-1"},
+        )
+    )
+    await update_started.wait()
+    finalization.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await finalization
+
+    [pending] = await get_pending_outbound("slack", "group@g.us")
+    assert pending.operation is OutboundDeliveryOperation.EDIT
+    assert pending.remote_message_id == "stream-message-1"
+
+
+@pytest.mark.usefixtures("_db")
+@pytest.mark.asyncio
+async def test_broadcast_keeps_a_retry_for_a_disconnected_channel():
+    ch = _make_channel(connected=False)
+    deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
+
+    delivered = await broadcast(
+        deps,
+        "group@g.us",
+        OutboundEvent(type=OutboundEventType.RESULT, content="deliver after reconnect"),
+    )
+
+    assert delivered is False
+    ch.send_event.assert_not_awaited()
+    [pending] = await get_pending_outbound("slack", "group@g.us")
+    assert pending.content == "deliver after reconnect"
 
 
 @pytest.mark.usefixtures("_db")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
@@ -294,6 +295,64 @@ class TestApprovalBoundaryEdges:
         assert response == {
             "result": {"decision": "allow", "guarded_action_id": "security-approval"}
         }
+
+    @pytest.mark.asyncio
+    async def test_concurrent_decision_processing_executes_approved_ipc_once(
+        self, ipc_dir: Path, settings
+    ):
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "concurrent-approval",
+            "test_operation",
+            {},
+            handler_type="ipc",
+        )
+        decision_file = _write_decision(ipc_dir, "grp", "concurrent-approval", approved=True)
+        dispatch_started = asyncio.Event()
+        duplicate_dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def dispatch(*_args, **_kwargs):
+            if dispatch_started.is_set():
+                duplicate_dispatch_started.set()
+            else:
+                dispatch_started.set()
+            await release_dispatch.wait()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
+                return_value=SecurityGate(WorkspaceSecurity()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                settings.data_dir / "ipc",
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.registry.dispatch",
+                new=AsyncMock(side_effect=dispatch),
+            ) as approved_dispatch,
+        ):
+            first = asyncio.create_task(
+                process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
+            )
+            await dispatch_started.wait()
+            second = asyncio.create_task(
+                process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
+            )
+            try:
+                await asyncio.wait_for(second, timeout=0.1)
+                assert not duplicate_dispatch_started.is_set()
+            finally:
+                release_dispatch.set()
+                await asyncio.gather(first, second, return_exceptions=True)
+
+        approved_dispatch.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_policy_disappearance_after_validation_fails_closed(
