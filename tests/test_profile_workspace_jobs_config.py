@@ -177,11 +177,6 @@ def test_scheduler_rejects_non_positive_polling_intervals(interval: dict[str, in
         SchedulerConfig(**interval)
 
 
-def test_scheduler_evidence_retention_covers_audit_lookback() -> None:
-    with pytest.raises(ValidationError, match="evidence retention must cover"):
-        SchedulerConfig(audit_lookback_days=8, evidence_retention_days=7)
-
-
 def test_enabled_canary_requires_a_target_profile() -> None:
     with pytest.raises(ValidationError, match="target_profile is required"):
         CanaryConfig(enabled=True, target_profile=" ")

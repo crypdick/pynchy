@@ -94,9 +94,6 @@ class SchedulerRuntimeConfig:
     canary_scenario_ids: tuple[str, ...]
     external_repo_sync_slugs: tuple[str, ...]
     config_host_cron_jobs: dict[str, ConfigHostCronJob]
-    audit_lookback_days: int = 7
-    evidence_retention_days: int = 8
-    missed_occurrence_grace_seconds: int = 300
 
 
 @dataclass

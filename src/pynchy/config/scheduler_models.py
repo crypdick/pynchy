@@ -49,30 +49,15 @@ class SchedulerConfig(_StrictModel):
     temporal_task_queue: str = "pynchy-scheduler"
     git_sync_interval_seconds: int = 300
     channel_reconciliation_interval_seconds: int = 300
-    audit_lookback_days: int = 7
-    evidence_retention_days: int = 8
-    missed_occurrence_grace_seconds: int = 300
     # Operators approve repository revisions unless they explicitly retain automatic deployment.
     auto_deploy: bool = False
 
-    @field_validator(
-        "git_sync_interval_seconds",
-        "channel_reconciliation_interval_seconds",
-        "audit_lookback_days",
-        "evidence_retention_days",
-        "missed_occurrence_grace_seconds",
-    )
+    @field_validator("git_sync_interval_seconds", "channel_reconciliation_interval_seconds")
     @classmethod
     def validate_interval_seconds(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("scheduler intervals must be positive")
         return v
-
-    @model_validator(mode="after")
-    def validate_evidence_retention(self) -> SchedulerConfig:
-        if self.evidence_retention_days < self.audit_lookback_days:
-            raise ValueError("scheduler evidence retention must cover the audit lookback")
-        return self
 
 
 class CanaryConfig(_StrictModel):

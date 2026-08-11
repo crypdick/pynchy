@@ -183,14 +183,6 @@ from pynchy.state.runtime_session_recovery import (
     clear_runtime_session_references,
     clear_runtime_session_references_batch,
 )
-from pynchy.state.scheduler_evidence import (
-    audit_scheduler_evidence,
-    get_scheduler_occurrences,
-    prune_scheduler_evidence,
-    record_scheduler_occurrence,
-    register_scheduler_definition,
-    scheduler_definition_hash,
-)
 from pynchy.state.security_context import load_recent_security_context
 from pynchy.state.sessions import (
     SessionSecurityTaint,
@@ -291,12 +283,6 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_recent_canary_runs",
     "get_unresolved_canary_regressions",
     "record_canary_run",
-    "audit_scheduler_evidence",
-    "get_scheduler_occurrences",
-    "prune_scheduler_evidence",
-    "record_scheduler_occurrence",
-    "register_scheduler_definition",
-    "scheduler_definition_hash",
     # action_intents
     "ActionIntentCreateRequest",
     "action_intent_to_dict",

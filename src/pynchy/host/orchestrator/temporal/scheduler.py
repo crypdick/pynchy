@@ -50,7 +50,6 @@ from pynchy.host.orchestrator.temporal.deploy import (
     deploy_workflow_id,
     run_deploy,
 )
-from pynchy.host.orchestrator.temporal.evidence import record_task_occurrence
 from pynchy.host.orchestrator.temporal.git_sync import (
     run_external_git_sync,
     run_host_git_sync,
@@ -76,7 +75,6 @@ from pynchy.host.orchestrator.temporal.linear_work_items import (
     run_linear_work_item_reconciliation,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
-    _activity_scheduled_at,
     _activity_workflow_id,
     _record_activity_result,
     _require_scheduler_deps,
@@ -132,8 +130,7 @@ from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this a
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    ScheduledTask,
-    SchedulerEvidenceOutcome,
+    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.state.api import (
     claim_deployment,
@@ -142,9 +139,8 @@ from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
     get_task_by_id,
-    get_task_run_logs,
 )
-from pynchy.turn_outcomes import (
+from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves nested activity annotations.
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
@@ -304,7 +300,6 @@ def scheduler_workflow_runner() -> WorkflowRunner:
 async def run_scheduled_agent_task(task_id: str) -> str:
     """Temporal activity that runs one active scheduled agent task."""
     task = await get_task_by_id(task_id)
-    scheduled_at = _activity_scheduled_at()
     if task is None or task.status != "active":
         logger.info("Temporal scheduled task skipped", task_id=task_id)
         _record_activity_result(task_id, "skipped")
@@ -317,13 +312,6 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         # runnable. The immutable workflow ID is the version token, so a
         # mismatched execution cannot run the row's current definition.
         logger.info("Stale Temporal scheduled task skipped", task_id=task_id)
-        await record_task_occurrence(
-            task,
-            scheduled_at=scheduled_at,
-            outcome=SchedulerEvidenceOutcome.POLICY_SKIPPED,
-            workflow_id=activity_workflow_id,
-            reason="stale_definition",
-        )
         _record_activity_result(task_id, "skipped")
         return "skipped"
 
@@ -331,42 +319,11 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         completed = await _run_bound_scheduled_agent_task(task)
     except ScheduledTaskTerminalError:
         logger.info("Terminal conversation scheduled task skipped", task_id=task_id)
-        await record_task_occurrence(
-            task,
-            scheduled_at=scheduled_at,
-            outcome=SchedulerEvidenceOutcome.POLICY_SKIPPED,
-            workflow_id=activity_workflow_id,
-            reason="terminal_conversation",
-        )
         _record_activity_result(task_id, "skipped")
         return "skipped"
     except Exception as exc:  # allow: exception-handling; record activity failure.
-        await record_task_occurrence(
-            task,
-            scheduled_at=scheduled_at,
-            outcome=SchedulerEvidenceOutcome.FAILED,
-            workflow_id=activity_workflow_id,
-            reason=str(exc),
-        )
         _record_activity_result(task_id, "error", str(exc))
         raise
-    outcome = (
-        SchedulerEvidenceOutcome.SUCCEEDED
-        if completed is TurnOutcome.COMPLETED
-        else SchedulerEvidenceOutcome.POLICY_SKIPPED
-    )
-    reason = None if outcome is SchedulerEvidenceOutcome.SUCCEEDED else completed.value
-    logs = await get_task_run_logs(task.id, limit=1)
-    if logs and logs[0].result == "Skipped: wakeAgent=false":
-        outcome = SchedulerEvidenceOutcome.GATE_SKIPPED
-        reason = "wakeAgent=false"
-    await record_task_occurrence(
-        task,
-        scheduled_at=scheduled_at,
-        outcome=outcome,
-        workflow_id=activity_workflow_id,
-        reason=reason,
-    )
     return settle_turn_activity(
         task_id,
         completed,

@@ -31,7 +31,6 @@ from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
 )
-from pynchy.state.api import init_test_database
 
 if TYPE_CHECKING:
     from pynchy.canary_contracts import (
@@ -42,12 +41,6 @@ if TYPE_CHECKING:
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"
-
-
-@pytest.fixture(autouse=True)
-async def _scheduler_state_database() -> None:
-    """Temporal reconciliation now persists scheduler evidence in SQLite."""
-    await init_test_database()
 
 
 def _scheduler_runtime(

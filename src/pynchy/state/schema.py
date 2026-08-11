@@ -7,7 +7,6 @@ import aiosqlite  # noqa: TC002 - beartype resolves database annotations at runt
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
 from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
 from pynchy.state.in_flight_turn_schema import IN_FLIGHT_TURN_SCHEMA
-from pynchy.state.scheduler_evidence_schema import SCHEDULER_EVIDENCE_SCHEMA
 from pynchy.state.task_schema import TASK_SCHEMA
 
 _FOREIGN_KEY_VIOLATION_ERROR = "SQLite foreign-key violation remains"
@@ -230,7 +229,6 @@ CREATE TABLE IF NOT EXISTS registered_groups (
 );
 """
     + IN_FLIGHT_TURN_SCHEMA
-    + SCHEDULER_EVIDENCE_SCHEMA
     + EXTERNAL_ROUTING_SCHEMA
     + ACTION_INTENT_SCHEMA
 )

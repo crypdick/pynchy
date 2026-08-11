@@ -252,27 +252,8 @@ temporal_namespace = "default"
 temporal_task_queue = "pynchy-scheduler"
 git_sync_interval_seconds = 300
 channel_reconciliation_interval_seconds = 300
-audit_lookback_days = 7
-evidence_retention_days = 8
-missed_occurrence_grace_seconds = 300
 auto_deploy = false
 ```
-
-### Scheduler audit evidence
-
-Pynchy keeps compact SQLite evidence for scheduled agent tasks and host jobs.
-Temporal continues to dispatch work; the local ledger records the logical
-occurrence and its terminal result so a seven-day audit does not depend on
-Temporal history retention.
-
-`audit_lookback_days` sets the default audit range. `evidence_retention_days`
-must cover that range and keeps storage bounded. `missed_occurrence_grace_seconds`
-defines when an expected unclaimed occurrence becomes a miss.
-
-An audit classifies every expected slot as a completed run, declared skip,
-failure, miss, pending occurrence, or retention gap. A retention gap covers
-evidence before ledger rollout or evidence pruned after its retention window;
-it never counts as a healthy run.
 
 When `auto_deploy` stays `false` (the default), Pynchy detects a newer repository
 revision without changing the local checkout. It posts an update prompt to the
