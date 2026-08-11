@@ -20,6 +20,7 @@ def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
                 type="docker",
                 image="pynchy-mcp-gdrive:latest",
                 dockerfile="src/pynchy/agent/mcp/gdrive.Dockerfile",
+                build_context="src/pynchy/agent/mcp",
                 port=3100,
                 transport="streamable_http",
             ),
@@ -29,8 +30,8 @@ def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
 ```
 
 `McpServerConfig` supports `docker`, `script`, `stdio`, and `url` servers,
-plus image, Dockerfile, command, arguments, ports, transport, idle timeout,
-environment, and volume fields. `stdio` wraps a trusted host command in a
+plus image, Dockerfile, build context, command, arguments, ports, transport,
+idle timeout, environment, and volume fields. `stdio` wraps a trusted host command in a
 loopback HTTP bridge. Optional `ServiceTrustConfig` declares the template's
 trust defaults separately from its runtime configuration. Users create
 instances through their tool configuration. That tool owns credential

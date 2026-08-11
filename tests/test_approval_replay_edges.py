@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -22,6 +23,7 @@ from pynchy.workspace.api import WorkspaceSecurity
 
 
 def _context(**overrides: object) -> ApprovalDecisionContext:
+    now = datetime.now(UTC).isoformat()
     values: dict[str, object] = {
         "request_id": "request",
         "source_group": "group",
@@ -30,7 +32,7 @@ def _context(**overrides: object) -> ApprovalDecisionContext:
         "request_data": {},
         "approved": True,
         "approver": "operator",
-        "approved_at": "2026-07-29T00:00:00+00:00",
+        "approved_at": now,
         "handler_type": "ipc",
         "action": None,
         "gate": None,
@@ -39,7 +41,7 @@ def _context(**overrides: object) -> ApprovalDecisionContext:
         "origin_conversation_id": None,
         "action_payload": None,
         "action_payload_sha256": None,
-        "requested_at": "2026-07-29T00:00:00+00:00",
+        "requested_at": now,
         "expires_after_seconds": 300,
     }
     values.update(overrides)

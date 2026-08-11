@@ -7,6 +7,12 @@ from editing the same files.
 
 **Sync behavior:** Existing worktrees use best-effort `git fetch` + `git merge`, never `git reset --hard`. A service restart kills all running containers, so agents may leave uncommitted work in their worktree. That state is preserved and reported via system notices so the agent can resume cleanly.
 
+**Virtual environment retention:** Pynchy records actual worktree use by updating
+each `.venv` directory's modification time. The host Git sync removes root and
+nested worktree virtual environments after 24 hours without use. Worktrees with
+a running turn or live container session stay protected. This cleanup is scoped
+to `data/worktrees/`; it never removes the host or project virtual environment.
+
 ## Routed Host Workspaces
 
 Static direct-host workspaces, and direct-host workspaces without a selected

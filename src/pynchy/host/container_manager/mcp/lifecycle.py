@@ -543,8 +543,8 @@ async def _ensure_mcp_image(config: McpServerConfig, project_root_path: Path) ->
         if result.returncode == 0:
             return
         # Build from local Dockerfile
-        project_root = str(project_root_path)
         dockerfile_path = str(project_root_path / config.dockerfile)
+        build_context = str(project_root_path / config.build_context)
         logger.info(
             "Building MCP image from local Dockerfile",
             image=image,
@@ -553,7 +553,7 @@ async def _ensure_mcp_image(config: McpServerConfig, project_root_path: Path) ->
         await run_docker(
             "build", "-t", image,
             "-f", dockerfile_path,
-            project_root,
+            build_context,
             command_timeout_seconds=300,
         )  # fmt: skip
         logger.info("MCP image built", image=image)

@@ -8,18 +8,8 @@
     <string>com.pynchy.temporal</string>
     <key>ProgramArguments</key>
     <array>
+        <string>$PYNCHY_PROJECT_ROOT/scripts/run_temporal.sh</string>
         <string>/opt/homebrew/bin/temporal</string>
-        <string>server</string>
-        <string>start-dev</string>
-        <string>--ip</string>
-        <string>127.0.0.1</string>
-        <string>--port</string>
-        <string>7233</string>
-        <string>--headless</string>
-        <string>--db-filename</string>
-        <string>$PYNCHY_PROJECT_ROOT/data/temporal.db</string>
-        <string>--log-level</string>
-        <string>warn</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$PYNCHY_PROJECT_ROOT</string>

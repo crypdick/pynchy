@@ -31,9 +31,13 @@ class _ActivityDeps:
     workspaces: dict[str, WorkspaceProfile]
     broadcast_host_message: AsyncMock
     broadcast_system_notice: AsyncMock
+    active_folders: frozenset[str] = frozenset()
 
     def sync_personalization(self, _project_root: Path) -> str:
         return "skipped"
+
+    def active_worktree_folders(self) -> set[str]:
+        return set(self.active_folders)
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,7 @@ async def _run_host_offer(
     admin_workspace: str | None,
     broadcast_host_message: AsyncMock,
     offer_update: AsyncMock | None = None,
+    active_folders: frozenset[str] = frozenset(),
 ) -> tuple[str, _ActivityDeps]:
     await init_test_database()
     applied = DeployRevision("deployed-sha", "config")
@@ -90,6 +95,7 @@ async def _run_host_offer(
         workspaces={workspace.jid: workspace},
         broadcast_host_message=broadcast_host_message,
         broadcast_system_notice=AsyncMock(),
+        active_folders=active_folders,
     )
     if offer_update is not None:
         deps.offer_update = offer_update
@@ -199,6 +205,44 @@ async def test_host_git_sync_notifies_admin_once_when_disk_space_is_low(
             "ERROR: Host disk space critically low: 1.0 GiB free (1.0%). "
             "Free space before scheduled work continues."
         )
+    ]
+
+
+async def test_host_git_sync_prunes_worktree_venvs_once_per_day(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pruned: list[tuple[Path, set[str]]] = []
+    monkeypatch.setattr(
+        git_sync,
+        "prune_stale_worktree_venvs",
+        lambda root, *, active_folders: pruned.append((root, active_folders)) or [],
+    )
+
+    result, _deps = await _run_host_offer(
+        monkeypatch,
+        tmp_path,
+        admin_workspace="admin",
+        broadcast_host_message=AsyncMock(),
+        active_folders=frozenset({"busy"}),
+    )
+
+    assert result == "idle"
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert pruned == [(tmp_path / "data" / "worktrees", {"busy"})]
+
+    await set_router_state("worktree_venv_gc_last_run", "not-a-timestamp")
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert pruned == [
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
+    ]
+
+    await set_router_state("worktree_venv_gc_last_run", "2026-08-11T00:00:00")
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert pruned == [
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
     ]
 
 

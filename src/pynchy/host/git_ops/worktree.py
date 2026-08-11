@@ -37,6 +37,7 @@ from pynchy.host.git_ops.utils import (
     git_env_with_token,
     run_git,
 )
+from pynchy.host.git_ops.worktree_venv import mark_worktree_used
 from pynchy.logger import logger
 
 _GIT_FETCH_FAILED = "git fetch failed: {stderr}"
@@ -79,7 +80,9 @@ def _safe_rebase(target_branch: str, *, cwd: Path) -> bool:
     return True
 
 
-def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
+def ensure_worktree(
+    group_folder: str, repo_ctx: RepoContext, *, mark_used: bool = True
+) -> WorktreeResult:
     """Ensure a git worktree exists for the given group.
 
     When absent: creates from origin/{main}. Raises WorktreeError on failure.
@@ -122,9 +125,15 @@ def ensure_worktree(group_folder: str, repo_ctx: RepoContext) -> WorktreeResult:
             shutil.rmtree(worktree_path)
             # Fall through to create path below
         else:
-            return _sync_existing_worktree(worktree_path, group_folder, main_branch, repo_ctx)
+            result = _sync_existing_worktree(worktree_path, group_folder, main_branch, repo_ctx)
+            if mark_used:
+                mark_worktree_used(result.path)
+            return result
 
-    return _create_new_worktree(worktree_path, group_folder, branch_name, main_branch, repo_ctx)
+    result = _create_new_worktree(worktree_path, group_folder, branch_name, main_branch, repo_ctx)
+    if mark_used:
+        mark_worktree_used(result.path)
+    return result
 
 
 def resolve_routed_host_worktree_cwd(
@@ -377,7 +386,7 @@ def _prepare_repo_for_startup(
 def _ensure_startup_worktrees(slug: str, folders: list[str], repo_ctx: RepoContext) -> None:
     for folder in folders:
         try:
-            ensure_worktree(folder, repo_ctx)
+            ensure_worktree(folder, repo_ctx, mark_used=False)
         except WorktreeError:
             logger.warning("Failed to create worktree at startup", group=folder, slug=slug)
 
