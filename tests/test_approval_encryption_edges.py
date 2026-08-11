@@ -103,13 +103,13 @@ class TestEncryptedPendingApproval:
         root = _approval_root(tmp_path)
         key = Fernet.generate_key()
 
-        def another_process_wrote_key(_path: str, _flags: int, _mode: int) -> int:
+        def another_process_wrote_key(_path: Path) -> int:
             (root / "approval-payload.key").write_bytes(key)
             raise FileExistsError
 
         with (
             patch.object(approval, "_approval_root", root),
-            patch.object(approval.os, "open", side_effect=another_process_wrote_key),
+            patch.object(approval, "_open_payload_key", side_effect=another_process_wrote_key),
         ):
             approval.create_pending_approval(
                 "raced", "tool", "group", "chat@g.us", {"body": "payload"}

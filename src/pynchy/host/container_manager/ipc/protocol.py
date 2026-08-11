@@ -35,6 +35,7 @@ NON_EMPTY_STRING_MESSAGE = "{label} must be a non-empty string"
 STRING_OR_NULL_MESSAGE = "{label} must be a string or null"
 PAYLOAD_OBJECT_MESSAGE = "IPC request envelope payload must be an object"
 INVALID_SIGNAL_TYPE_MESSAGE = "Not a valid signal type: {signal_type!r}"
+UNSAFE_REQUEST_ID_MESSAGE = "IPC request envelope request_id must be a safe path component"
 
 # Tier 1: Signal-only IPC types (no payload crosses the boundary)
 SIGNAL_TYPES = frozenset(
@@ -143,10 +144,7 @@ class IpcRequestEnvelope:
         _require_envelope_fields(data)
         schema_version = _envelope_schema_version(data["schema_version"])
         kind = _request_kind(data["kind"])
-        request_id = _required_string_field(
-            "IPC request envelope request_id",
-            data["request_id"],
-        )
+        request_id = validate_request_id(data["request_id"])
         source_group = GroupFolder(
             _required_string_field(
                 "IPC request envelope source_group",
@@ -237,6 +235,21 @@ def _request_kind(value: object) -> str:
     if not _is_known_request_kind(kind):
         raise ValueError(UNKNOWN_REQUEST_KIND_MESSAGE.format(kind=kind))
     return kind
+
+
+def validate_request_id(value: object) -> str:
+    """Return one bounded request ID that cannot escape its response directory."""
+    # NOTE: Update docs/architecture/ipc.md "Requests" if this contract changes.
+    request_id = _required_string_field("IPC request envelope request_id", value)
+    if (
+        request_id in {".", ".."}
+        or "/" in request_id
+        or "\\" in request_id
+        or not request_id.isprintable()
+        or len(request_id.encode()) > 128
+    ):
+        raise ValueError(UNSAFE_REQUEST_ID_MESSAGE)
+    return request_id
 
 
 def _required_string_field(label: str, value: object) -> str:

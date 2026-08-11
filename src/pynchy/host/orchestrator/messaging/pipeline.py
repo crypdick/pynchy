@@ -17,7 +17,11 @@ from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.conversation.api import ConversationClaimId, new_turn_id
 from pynchy.event_bus import AgentActivityEvent
 from pynchy.host.orchestrator.messaging import approval_handler, commands
-from pynchy.host.orchestrator.messaging.cursor import advance_cursor, complete_turn_with_cursor
+from pynchy.host.orchestrator.messaging.cursor import (
+    advance_cursor,
+    complete_turn_with_cursor,
+    monotonic_cursor,
+)
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.host.orchestrator.messaging.host_controls import (
@@ -49,6 +53,7 @@ from pynchy.plugins.api import (
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_messages_since,
+    message_cursor,
     release_in_flight_turn_claim,
 )
 from pynchy.turn_outcomes import (
@@ -137,7 +142,7 @@ async def _announce_processing_start(
     # Mark dispatched (in-memory only).  last_agent_timestamp stays at its pre-run value
     # until the container finishes — on an unexpected kill the DB retains the pre-run
     # value so recover_pending_messages can re-find the boundary message on restart.
-    _mark_dispatched(deps, chat_jid, missed_messages[-1].timestamp)
+    _mark_dispatched(deps, chat_jid, message_cursor(missed_messages[-1]))
 
     logger.info(
         "Processing messages",
@@ -195,9 +200,9 @@ async def _finalize_cursor_and_retry(
         # host controls use this same in-memory boundary without persisting a
         # cursor ahead of an unfinished routed delivery claim.
         dispatched = request.deps.pop_dispatched(
-            request.chat_jid, request.missed_messages[-1].timestamp
+            request.chat_jid, message_cursor(request.missed_messages[-1])
         )
-        final_cursor = max(request.missed_messages[-1].timestamp, dispatched)
+        final_cursor = monotonic_cursor(message_cursor(request.missed_messages[-1]), dispatched)
 
         if request.missing_terminal_result:
             # Keep the routed claim and dispatch marker with the durable
@@ -223,8 +228,9 @@ async def _finalize_cursor_and_retry(
                 request.chat_jid,
                 final_cursor,
             )
-            final_cursor = max(final_cursor, late_dispatched)
-            if final_cursor > request.deps.last_agent_timestamp.get(request.chat_jid, ""):
+            final_cursor = monotonic_cursor(final_cursor, late_dispatched)
+            previous = request.deps.last_agent_timestamp.get(request.chat_jid, "")
+            if monotonic_cursor(previous, final_cursor) != previous:
                 await advance_cursor(request.deps, request.chat_jid, final_cursor)
 
     if request.missing_terminal_result:
@@ -279,18 +285,18 @@ async def _continue_after_host_turn(
         async with turn_boundary_lock(request.chat_jid):
             request.deps.pop_dispatched(
                 request.chat_jid,
-                request.missed_messages[-1].timestamp,
+                message_cursor(request.missed_messages[-1]),
             )
             await complete_turn_with_cursor(
                 request.deps,
                 request.chat_jid,
-                request.missed_messages[-1].timestamp,
+                message_cursor(request.missed_messages[-1]),
                 request.turn_id,
                 conversation_claim_id=request.conversation_claim_id,
             )
             request.deps.pop_dispatched(
                 request.chat_jid,
-                request.missed_messages[-1].timestamp,
+                message_cursor(request.missed_messages[-1]),
             )
         await _execute_deferred_host_controls(
             request.deps,
@@ -335,7 +341,7 @@ async def _begin_interactive_message_turn(
             work_kind=InFlightWorkKind.INTERACTIVE,
             input_messages=messages,
             input_start_cursor=since_timestamp,
-            input_end_cursor=missed_messages[-1].timestamp,
+            input_end_cursor=message_cursor(missed_messages[-1]),
             conversation_claim_id=_conversation_claim_for_batch(missed_messages),
             input_source=_input_source_for_batch(missed_messages),
         )
