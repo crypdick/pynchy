@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 from pynchy.host.git_ops.api import mark_worktree_used, prune_stale_worktree_venvs
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
+
+    import pytest
 
 _DAY_SECONDS = 24 * 60 * 60
 
@@ -84,3 +87,52 @@ def test_prune_leaves_symlinked_venv_untouched(tmp_path: Path) -> None:
     assert prune_stale_worktree_venvs(worktrees, active_folders=set(), now=now) == []
     assert venv.is_symlink()
     assert target.is_dir()
+
+
+def test_retention_errors_do_not_abort_other_worktrees(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    now = time.time()
+    worktrees = tmp_path / "worktrees"
+    mark_error = _worktree(worktrees, "mark-error")
+    scan_error = _worktree(worktrees, "scan-error")
+    delete_error = _worktree(worktrees, "delete-error")
+    venv = delete_error / ".venv"
+    venv.mkdir()
+    _old(venv, now=now)
+    path_type = type(worktrees)
+    original_rglob = path_type.rglob
+
+    def rglob(path: Path, pattern: str) -> Iterator[Path]:
+        if path in {mark_error, scan_error}:
+            raise OSError("unreadable")
+        return original_rglob(path, pattern)
+
+    def fail_remove(_path: Path) -> None:
+        raise OSError("busy")
+
+    monkeypatch.setattr(path_type, "rglob", rglob)
+    monkeypatch.setattr("pynchy.host.git_ops.worktree_venv.shutil.rmtree", fail_remove)
+
+    mark_worktree_used(mark_error)
+
+    assert prune_stale_worktree_venvs(worktrees, active_folders=set(), now=now) == []
+    assert venv.is_dir()
+
+
+def test_prune_handles_unreadable_worktree_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir()
+    path_type = type(worktrees)
+    original_iterdir = path_type.iterdir
+
+    def iterdir(path: Path) -> Iterator[Path]:
+        if path == worktrees:
+            raise OSError("unreadable")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(path_type, "iterdir", iterdir)
+
+    assert prune_stale_worktree_venvs(worktrees, active_folders=set()) == []

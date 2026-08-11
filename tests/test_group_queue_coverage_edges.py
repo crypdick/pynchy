@@ -22,6 +22,26 @@ def _limited_queue(container_runtime) -> GroupQueue:
 
 
 @pytest.mark.asyncio
+async def test_active_folders_reports_running_targets(container_runtime):
+    queue = _limited_queue(container_runtime)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def run() -> None:
+        started.set()
+        await release.wait()
+
+    queue.enqueue_task(_target("active@g.us", "active"), "active", run)
+    await started.wait()
+
+    assert queue.active_folders() == {"active"}
+
+    release.set()
+    await asyncio.sleep(0.05)
+    await queue.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_global_limit_defers_task_until_active_runtime_finishes(container_runtime):
     queue = _limited_queue(container_runtime)
     first_started = asyncio.Event()

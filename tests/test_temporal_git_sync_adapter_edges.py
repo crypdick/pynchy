@@ -230,6 +230,21 @@ async def test_host_git_sync_prunes_worktree_venvs_once_per_day(
     assert await git_sync.run_host_git_sync() == "idle"
     assert pruned == [(tmp_path / "data" / "worktrees", {"busy"})]
 
+    await set_router_state("worktree_venv_gc_last_run", "not-a-timestamp")
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert pruned == [
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
+    ]
+
+    await set_router_state("worktree_venv_gc_last_run", "2026-08-11T00:00:00")
+    assert await git_sync.run_host_git_sync() == "idle"
+    assert pruned == [
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
+        (tmp_path / "data" / "worktrees", {"busy"}),
+    ]
+
 
 async def test_host_git_sync_retries_when_update_offer_broadcast_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

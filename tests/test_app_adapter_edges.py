@@ -107,6 +107,16 @@ def test_application_reports_no_live_session_when_runtime_is_absent(
     assert app.ask_user_runtime_operations.has_live_session("chat") is False
 
 
+def test_application_protects_queued_and_live_worktrees(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = PynchyApp()
+    monkeypatch.setattr(app.queue, "active_folders", lambda: {"queued"})
+    monkeypatch.setattr(app_module, "active_session_group_folders", lambda: {"live"})
+
+    assert app.active_worktree_folders() == {"queued", "live"}
+
+
 async def test_application_run_delegates_to_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
