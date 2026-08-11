@@ -14,7 +14,9 @@ proceeds fire-and-forget — the same behaviour as before the ledger existed.
 
 from __future__ import annotations
 
+from asyncio import Lock
 from typing import Protocol, runtime_checkable
+from weakref import WeakValueDictionary
 
 from pynchy.identifiers import (
     ChannelName,
@@ -26,6 +28,7 @@ from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves contract ann
     OutboundEvent,
 )
 from pynchy.state import api as state
+from pynchy.state.api import OutboundDelivery, OutboundDeliveryOperation
 
 
 @runtime_checkable
@@ -34,6 +37,18 @@ class BusDeps(Protocol):
 
     @property
     def channels(self) -> list[Channel]: ...
+
+
+_outbound_delivery_locks: WeakValueDictionary[str, Lock] = WeakValueDictionary()
+
+
+def outbound_delivery_lock(chat_jid: str) -> Lock:
+    """Serialize ledger-backed provider sends for one chat in this host process."""
+    lock = _outbound_delivery_locks.get(chat_jid)
+    if lock is None:
+        lock = Lock()
+        _outbound_delivery_locks[chat_jid] = lock
+    return lock
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +68,27 @@ async def _record_to_ledger(
     try:
         return await state.record_outbound(
             ChatJid(chat_jid), text, source, [ChannelName(c) for c in channel_names]
+        )
+    except Exception:  # noqa: BLE001 - outbound ledger write is best-effort and must not block delivery.
+        logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
+        return None
+
+
+async def _record_delivery_mutations(
+    chat_jid: str,
+    text: str,
+    source: str,
+    deliveries: list[OutboundDelivery],
+) -> int | None:
+    """Record retry semantics for explicit provider mutations."""
+    if not deliveries:
+        return None
+    try:
+        return await state.record_outbound_deliveries(
+            ChatJid(chat_jid),
+            text,
+            source,
+            deliveries,
         )
     except Exception:  # noqa: BLE001 - outbound ledger write is best-effort and must not block delivery.
         logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
@@ -90,13 +126,10 @@ def _resolve_send_targets(
 ) -> list[tuple[Channel, str]]:
     """Resolve which channels should receive an outbound event.
 
-    Returns ``(channel, target_jid)`` pairs for connected channels that own
-    the JID.
+    Returns ``(channel, target_jid)`` pairs for channels that own the JID.
     """
     targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:
-        if not ch.is_connected():
-            continue
         if skip_channel and ch.name == skip_channel:
             continue
         target_jid = resolve_target_jid(chat_jid, ch)
@@ -153,22 +186,28 @@ async def broadcast(  # noqa: PLR0913 - outbound bus keeps the full routing/broa
         (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
     )
 
-    targets = _resolve_send_targets(deps, chat_jid, skip_channel=skip_channel)
-
-    # Record to outbound ledger (best-effort) — store the text content
-    ledger_id = await _record_to_ledger(
-        chat_jid, event.content, source, [ch.name for ch, _ in targets]
+    owned_targets = _resolve_send_targets(
+        deps,
+        chat_jid,
+        skip_channel=skip_channel,
     )
+    targets = [(ch, target_jid) for ch, target_jid in owned_targets if ch.is_connected()]
 
-    delivered = False
-    for ch, target_jid in targets:
-        try:
-            await ch.send_event(target_jid, event)
-            await _mark_success(ledger_id, ch.name)
-            delivered = True
-        except caught as exc:
-            logger.warning("Channel send failed", channel=ch.name, err=str(exc))
-            await _mark_error(ledger_id, ch.name, str(exc))
+    async with outbound_delivery_lock(chat_jid):
+        # Record to outbound ledger (best-effort) — store the text content
+        ledger_id = await _record_to_ledger(
+            chat_jid, event.content, source, [ch.name for ch, _ in owned_targets]
+        )
+
+        delivered = False
+        for ch, target_jid in targets:
+            try:
+                await ch.send_event(target_jid, event)
+                await _mark_success(ledger_id, ch.name)
+                delivered = True
+            except caught as exc:
+                logger.warning("Channel send failed", channel=ch.name, err=str(exc))
+                await _mark_error(ledger_id, ch.name, str(exc))
     return delivered
 
 
@@ -207,16 +246,36 @@ async def finalize_stream_or_broadcast(
         )
 
     caught = _caught_errors(suppress_errors=suppress_errors)
-    send_targets = _resolve_send_targets(deps, chat_jid)
+    owned_send_targets = _resolve_send_targets(deps, chat_jid)
     stream_targets = _resolve_stream_targets(deps, chat_jid, stream_message_ids)
     stream_target_names = {ch.name for ch, _, _ in stream_targets}
-    send_targets = [(ch, jid) for ch, jid in send_targets if ch.name not in stream_target_names]
-    send_target_names = {ch.name for ch, _ in send_targets}
+    owned_send_targets = [
+        (ch, jid) for ch, jid in owned_send_targets if ch.name not in stream_target_names
+    ]
+    send_targets = [(ch, jid) for ch, jid in owned_send_targets if ch.is_connected()]
 
-    all_target_names = sorted(stream_target_names | send_target_names)
-    ledger_id = await _record_to_ledger(chat_jid, event.content, "agent", all_target_names)
-    updated = await _deliver_stream_targets(stream_targets, event, ledger_id, caught)
-    sent = await _deliver_send_targets(send_targets, event, ledger_id, caught)
+    async with outbound_delivery_lock(chat_jid):
+        ledger_id = await _record_delivery_mutations(
+            chat_jid,
+            event.content,
+            "agent",
+            [
+                *[
+                    OutboundDelivery(
+                        channel_name=ChannelName(ch.name),
+                        operation=OutboundDeliveryOperation.EDIT,
+                        remote_message_id=message_id,
+                    )
+                    for ch, message_id, _ in stream_targets
+                ],
+                *[
+                    OutboundDelivery(channel_name=ChannelName(ch.name))
+                    for ch, _ in owned_send_targets
+                ],
+            ],
+        )
+        updated = await _deliver_stream_targets(stream_targets, event, ledger_id, caught)
+        sent = await _deliver_send_targets(send_targets, event, ledger_id, caught)
     return updated or sent
 
 

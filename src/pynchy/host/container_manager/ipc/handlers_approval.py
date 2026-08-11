@@ -50,6 +50,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves approval replay dependencies at runtime.
 )
+from pynchy.host.container_manager.ipc.file_claims import claim_ipc_file, release_ipc_file
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.approval_binding import approval_binding_error
@@ -112,16 +113,8 @@ def _read_json_file(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _path_exists(path: Path) -> bool:
-    return path.exists()
-
-
 def _paths_match(first: Path, second: Path) -> bool:
     return first.resolve() == second.resolve()
-
-
-def _unlink_missing_ok(path: Path) -> None:
-    path.unlink(missing_ok=True)
 
 
 def _unlink_all_missing_ok(*paths: Path) -> None:
@@ -129,16 +122,27 @@ def _unlink_all_missing_ok(*paths: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-state case has distinct cleanup semantics.
+async def process_approval_decision(
     decision_file: Path, source_group: str, *, deps: IpcDeps | None = None
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
+    if not claim_ipc_file(decision_file):
+        return
+    try:
+        await _process_claimed_approval_decision(decision_file, source_group, deps=deps)
+    finally:
+        release_ipc_file(decision_file)
+
+
+async def _process_claimed_approval_decision(  # noqa: PLR0911 - each invalid durable-state case has distinct cleanup semantics.
+    decision_file: Path, source_group: str, *, deps: IpcDeps | None = None
+) -> None:
     try:
         raw_decision = await asyncio.to_thread(_read_json_file, decision_file)
         decision = _ApprovalDecision.parse(raw_decision)
     except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         logger.error("Rejected invalid decision file", path=str(decision_file), err=str(exc))
-        await asyncio.to_thread(_unlink_missing_ok, decision_file)
+        await asyncio.to_thread(decision_file.unlink, missing_ok=True)
         return
 
     s = get_settings()
@@ -152,15 +156,15 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
             path=str(decision_file),
             expected_path=str(expected_decision_file),
         )
-        await asyncio.to_thread(_unlink_missing_ok, decision_file)
+        await asyncio.to_thread(decision_file.unlink, missing_ok=True)
         return
 
     # Find the corresponding pending approval
     pending_file = approval_group_dir / "pending_approvals" / f"{decision.request_id}.json"
 
-    if not await asyncio.to_thread(_path_exists, pending_file):
+    if not await asyncio.to_thread(pending_file.exists):
         logger.warning("No pending approval for decision", request_id=decision.request_id)
-        await asyncio.to_thread(_unlink_missing_ok, decision_file)
+        await asyncio.to_thread(decision_file.unlink, missing_ok=True)
         return
 
     try:
@@ -183,7 +187,7 @@ async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-sta
             request_id=decision.request_id,
             source_group=source_group,
         )
-        await asyncio.to_thread(_unlink_missing_ok, decision_file)
+        await asyncio.to_thread(decision_file.unlink, missing_ok=True)
         return
 
     binding_error = approval_binding_error(

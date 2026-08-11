@@ -153,6 +153,24 @@ async def test_finalize_with_stream_updates_event():
 
 
 @pytest.mark.asyncio
+async def test_finalize_keeps_delivery_successful_when_ledger_write_fails(monkeypatch):
+    ch = _make_channel("slack")
+    ch.update_event = AsyncMock()
+    deps = _make_deps([ch])
+    monkeypatch.setattr(
+        sender.state,
+        "record_outbound_deliveries",
+        AsyncMock(side_effect=RuntimeError("ledger unavailable")),
+    )
+    event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
+
+    delivered = await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"})
+
+    assert delivered is True
+    ch.update_event.assert_awaited_once_with("slack:C123", "msg-123", event)
+
+
+@pytest.mark.asyncio
 async def test_finalize_stream_update_failure_falls_back_to_send():
     ch = _make_channel("slack")
     ch.update_event = AsyncMock(side_effect=Exception("update failed"))

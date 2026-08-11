@@ -121,6 +121,7 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
                 "Output handler callback failed",
                 group=source_group,
             )
+            return
 
     if is_query_done_pulse(output) and _signal_query_done(source_group, output.query_id):
         logger.info(

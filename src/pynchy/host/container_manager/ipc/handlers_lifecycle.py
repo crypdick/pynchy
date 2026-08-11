@@ -223,17 +223,25 @@ def _publication_patch_context(
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
-    chat_jid = data.get("chatJid", "")
+    chat_jid = data.get("chatJid")
     message = data.get("message", "")
     group_folder = data.get("groupFolder", source_group)
+    target_group = deps.workspaces().get(chat_jid) if isinstance(chat_jid, str) else None
 
-    if not chat_jid:
+    if (
+        not isinstance(chat_jid, str)
+        or target_group is None
+        or target_group.folder != group_folder
+        or (not is_admin and group_folder != source_group)
+    ):
         logger.warning(
-            "Invalid reset_context request: missing chatJid",
+            "Unauthorized reset_context target",
             source_group=source_group,
+            target_group=group_folder,
+            chat_jid=chat_jid,
         )
         return
 

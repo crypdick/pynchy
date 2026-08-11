@@ -39,6 +39,26 @@ async def test_patch_editor_file_lifecycle(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_patch_editor_resolves_relative_paths_from_agent_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    process_root = tmp_path / "workspace"
+    repo_root = tmp_path / "repo"
+    process_root.mkdir()
+    repo_root.mkdir()
+    monkeypatch.chdir(process_root)
+    editor = ContainerPatchEditor(cwd=str(repo_root))
+
+    result = await editor.create_file(
+        ApplyPatchOperation(type="create_file", path="src/example.py", diff="+content")
+    )
+
+    assert result.status == "completed"
+    assert (repo_root / "src/example.py").read_text(encoding="utf-8") == "content"
+    assert not (process_root / "src/example.py").exists()
+
+
+@pytest.mark.asyncio
 async def test_patch_editor_missing_update_returns_failed(tmp_path: Path) -> None:
     editor = ContainerPatchEditor()
 
