@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
-from conftest import NullChannel, make_settings
+from conftest import NullChannel, configure_skill_activation_for, make_settings
 
 from pynchy import state
 from pynchy.agent_protocol.api import (
@@ -108,6 +108,7 @@ def _patch_test_settings(tmp_path: Path):
         groups_dir=tmp_path / "groups",
         data_dir=tmp_path / "data",
     )
+    configure_skill_activation_for(s)
     with contextlib.ExitStack() as stack:
         # Patch docker_rm_force which spawns a real subprocess to remove
         # containers — would hang in the test environment. Patch each import
