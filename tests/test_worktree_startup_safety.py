@@ -141,7 +141,7 @@ def test_startup_continues_when_one_worktree_cannot_be_created(tmp_path: Path) -
         ) as ensure,
     ):
         reconcile_worktrees_at_startup({"owner/repo": ["group"]})
-    ensure.assert_called_once_with("group", repo_context)
+    ensure.assert_called_once_with("group", repo_context, mark_used=False)
 
 
 def test_startup_rebase_handles_missing_branch_and_divergence_failure(tmp_path: Path) -> None:

@@ -286,6 +286,10 @@ class GroupQueue:
     def has_active_host_process(self, group_folder: str) -> bool:
         return self._processes.has_active_host_process(group_folder)
 
+    def active_folders(self) -> set[str]:
+        """Return folders whose runtime currently owns an execution slot."""
+        return {state.target.folder for state in self._registry.values() if state.active}
+
     def snapshot(self) -> dict[str, dict[str, object]]:
         """Return a read-only snapshot of queue state for status reporting.
 

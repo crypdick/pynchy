@@ -143,6 +143,7 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.container_manager.session import (
     SessionDiedError,
+    active_session_group_folders,
     create_session,
     destroy_all_sessions,
     destroy_session,
@@ -177,6 +178,7 @@ from pynchy.host.git_ops.api import (
     needs_container_rebuild,
     needs_deploy,
     probe_origin_main_sha,
+    prune_stale_worktree_venvs,
     read_managed_feature_patch,
     redact_git_diagnostic,
     repo_container_path,
@@ -536,6 +538,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             last_notified_sha=last_notified_sha,
             needs_deploy=needs_deploy,
             probe_origin_main_sha=probe_origin_main_sha,
+            prune_stale_worktree_venvs=prune_stale_worktree_venvs,
             refresh_host_config=refresh_host_config,
         )
     )
@@ -1769,6 +1772,10 @@ class PynchyApp(ThreadRouting):
     def repo_is_dirty(self) -> bool:
         """Return the host checkout's source-control cleanliness."""
         return is_repo_dirty()
+
+    def active_worktree_folders(self) -> set[str]:
+        """Return worktree folders protected by running execution or a live session."""
+        return self.queue.active_folders() | active_session_group_folders()
 
     def new_learning_run_summary(self) -> learning_capture.LearningRunSummary:
         """Create the per-turn evidence buffer for best-effort learning."""
