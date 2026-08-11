@@ -157,9 +157,15 @@ async def publication_metadata(  # noqa: PLR0911 - each validation error is user
     slug = _BRANCH_SLUG.sub("-", title.lower()).strip("-")[:60]
     if not slug:
         return "Publication blocked: PR title cannot form a branch name."
+    pr_body = body.strip()
+    resolves = f"Resolves {execution.linear_issue_identifier}"
+    if resolves.casefold() not in pr_body.casefold():
+        pr_body = f"{pr_body}\n\n{resolves}"
+    if len(pr_body.encode()) > 64 * 1024:
+        return "Publication blocked: PR body with Linear resolve link exceeds 64 KiB."
     return (
         title.strip(),
-        body.strip(),
+        pr_body,
         f"{identifier.group('team').lower()}/{identifier.group('number')}/{slug}",
     )
 

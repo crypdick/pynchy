@@ -7,14 +7,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
-    groups:
-      all-uv-dependencies:
-        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
-    groups:
-      all-github-actions:
-        patterns: ["*"]
