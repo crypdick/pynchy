@@ -23,6 +23,7 @@ dangerous_writes = false
 runtime = "docker"
 image = "pynchy-mcp-gcal:latest"
 dockerfile = "src/pynchy/agent/mcp/gcal.Dockerfile"
+build_context = "src/pynchy/agent/mcp"
 port = 3200
 transport = "streamable_http"
 volumes = ["data/chrome-profiles/mycompany:/home/chrome"]

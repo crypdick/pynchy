@@ -245,6 +245,7 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
         type="docker",
         image="local/notebook:latest",
         dockerfile="src/Dockerfile",
+        build_context="src/context",
         port=8000,
     )
     run_docker = AsyncMock(
@@ -264,7 +265,7 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
         "local/notebook:latest",
         "-f",
         "/project/src/Dockerfile",
-        "/project",
+        "/project/src/context",
     )
 
 

@@ -89,6 +89,8 @@ class McpServerConfig(BaseModel):
     # "src/pynchy/agent/mcp/notebook.Dockerfile"). When set, the MCP manager builds
     # the image locally instead of pulling from a registry.
     dockerfile: str | None = None
+    # Relative Docker build context. Defaults to the project root.
+    build_context: str = "."
     # Additional ports to publish beyond the primary MCP port (e.g., JupyterLab on 8888).
     extra_ports: list[int] = []
 
