@@ -296,11 +296,16 @@ launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.pynchy.temporal.pl
 launchctl kickstart "gui/$(id -u)/com.pynchy.temporal"
 ```
 
+The launcher waits for Temporal health, then updates the `default` namespace to
+eight days (`691200s`) on every start. The update is idempotent. It keeps the
+server as its child, so unloading the LaunchAgent stops both processes.
+
 Useful checks:
 
 ```bash
 launchctl print "gui/$(id -u)/com.pynchy.temporal"
 temporal operator cluster health --address 127.0.0.1:7233
+temporal operator namespace describe --address 127.0.0.1:7233 --namespace default
 lsof -nP -iTCP:7233 -sTCP:LISTEN
 tail -n 100 ~/Library/Logs/pynchy/temporal.err.log
 ```
