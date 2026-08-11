@@ -21,7 +21,6 @@ _ATTENTION_VALUES = [
     "scheduler_error",
     "failure_shaped_result",
 ]
-_ATTENTION_SET = frozenset(_ATTENTION_VALUES)
 TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "$defs": {
@@ -170,7 +169,7 @@ def _mapping(value: object, field: str) -> dict[str, Any]:
 def _attention(value: object) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(reason, str) for reason in value):
         raise TaskStatusFormatError("attention must be an array of safe reason codes")
-    if any(reason not in _ATTENTION_SET for reason in value):
+    if any(reason not in _ATTENTION_VALUES for reason in value):
         raise TaskStatusFormatError("attention contains an unknown reason code")
     if len(value) != len(set(value)):
         raise TaskStatusFormatError("attention must not contain duplicate reason codes")

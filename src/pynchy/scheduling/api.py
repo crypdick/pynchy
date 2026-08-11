@@ -1,10 +1,6 @@
 """Curated durable-scheduling API."""
 
-from pynchy.scheduling.health import (
-    ScheduledWorkAttention,
-    ScheduledWorkHealth,
-    scheduled_work_attention,
-)
+from pynchy.scheduling.health import scheduled_work_attention
 from pynchy.scheduling.types import (
     HostJob,
     ScheduledTask,
@@ -19,8 +15,6 @@ from pynchy.scheduling.types import (
 __all__ = [
     "HostJob",
     "ScheduledTask",
-    "ScheduledWorkAttention",
-    "ScheduledWorkHealth",
     "SessionPolicy",
     "TaskRunLog",
     "agent_task_occurrence_due_at",

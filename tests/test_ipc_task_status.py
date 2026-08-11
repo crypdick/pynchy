@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 from unittest.mock import AsyncMock
@@ -33,7 +32,7 @@ def _orchestration_states(
             "next_run": "2026-07-22T04:00:00+00:00" if task.status == "active" else None,
             "schedule_id": f"schedule-{task.id}" if task.status == "active" else None,
             "workflow_id": None,
-            "error": None,
+            "error": "private Temporal error" if task.id == "own-task" else None,
         }
     for job in jobs:
         states["host_job", job.id] = {
@@ -132,41 +131,16 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
     assert [task["id"] for task in result["tasks"]] == ["own-task"]
     assert result["tasks"][0]["last_result"] == "Blocked: missing provider credential"
     assert result["tasks"][0]["run_health"]["consecutive_failures"] == 1
-    assert result["tasks"][0]["attention"] == ["recent_failure", "failure_shaped_result"]
-    assert result["tasks"][0]["next_run"] == "2026-07-22T04:00:00+00:00"
-    assert result["host_jobs"] == []
-    assert "private own prompt" not in response_text
-    assert "private foreign prompt" not in response_text
-    assert "private-command" not in response_text
-
-
-async def test_status_attention_marks_scheduler_errors_without_exposing_error_text(
-    monkeypatch, tmp_path
-) -> None:
-    await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
-    states = _orchestration_states
-
-    async def stale_error(tasks, jobs, address, namespace):
-        await asyncio.sleep(0)
-        result = states(tasks, jobs, address, namespace)
-        result["task", "own-task"]["error"] = "private Temporal error"
-        return result
-
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
-        stale_error,
-    )
-    await _seed_scheduled_work()
-
-    response_text = await _request_status(tmp_path, source_group="review", is_admin=False)
-    result = json.loads(response_text)["result"]
-
     assert result["tasks"][0]["attention"] == [
         "recent_failure",
         "scheduler_error",
         "failure_shaped_result",
     ]
+    assert result["tasks"][0]["next_run"] == "2026-07-22T04:00:00+00:00"
+    assert result["host_jobs"] == []
+    assert "private own prompt" not in response_text
+    assert "private foreign prompt" not in response_text
+    assert "private-command" not in response_text
 
 
 async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) -> None:

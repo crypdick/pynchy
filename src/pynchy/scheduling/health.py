@@ -1,26 +1,6 @@
 """Semantic health classification for scheduled-work status projections."""
 
-from __future__ import annotations
-
 import re
-from dataclasses import dataclass
-
-ScheduledWorkAttention = tuple[
-    str, ...
-]  # Stable reason codes safe to expose outside the host process.
-
-
-@dataclass(frozen=True)
-class ScheduledWorkHealth:
-    """Host evidence for one scheduled-work definition."""
-
-    status: str
-    next_run: str | None
-    last_run_status: str | None
-    consecutive_failures: int
-    orchestration_error: str | None
-    last_result: str | None
-
 
 _NEGATED_FAILURE = re.compile(
     r"\b(?:"
@@ -56,18 +36,25 @@ _FAILURE_PATTERNS = tuple(
 )
 
 
-def scheduled_work_attention(health: ScheduledWorkHealth) -> ScheduledWorkAttention:
+def scheduled_work_attention(
+    *,
+    status: str,
+    next_run: str | None,
+    consecutive_failures: int = 0,
+    orchestration_error: str | None = None,
+    last_result: str | None = None,
+) -> tuple[str, ...]:
     """Return ordered, non-sensitive reasons requiring scheduler attention."""
     reasons: list[str] = []
-    if health.status == "paused":
+    if status == "paused":
         reasons.append("paused")
-    if health.status == "active" and not health.next_run:
+    if status == "active" and not next_run:
         reasons.append("missing_next_run")
-    if health.last_run_status == "error" or health.consecutive_failures > 0:
+    if consecutive_failures > 0:
         reasons.append("recent_failure")
-    if health.orchestration_error:
+    if orchestration_error:
         reasons.append("scheduler_error")
-    if _failure_shaped(health.last_result):
+    if _failure_shaped(last_result):
         reasons.append("failure_shaped_result")
     return tuple(reasons)
 

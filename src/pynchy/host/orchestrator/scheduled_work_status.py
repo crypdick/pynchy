@@ -9,7 +9,6 @@ from typing import Any
 from pynchy.scheduling.api import (  # type aliases evaluate at module import.
     HostJob,
     ScheduledTask,
-    ScheduledWorkHealth,
     TaskRunLog,
     scheduled_work_attention,
 )
@@ -54,14 +53,11 @@ async def collect_scheduled_work(
                 "run_health": run_health,
                 "attention": list(
                     scheduled_work_attention(
-                        ScheduledWorkHealth(
-                            status=task.status,
-                            next_run=temporal_state["next_run"],
-                            last_run_status=run_health["last_status"],
-                            consecutive_failures=run_health["consecutive_failures"],
-                            orchestration_error=temporal_state["error"],
-                            last_result=task.last_result,
-                        )
+                        status=task.status,
+                        next_run=temporal_state["next_run"],
+                        consecutive_failures=run_health["consecutive_failures"],
+                        orchestration_error=temporal_state["error"],
+                        last_result=task.last_result,
                     )
                 ),
             }
@@ -82,14 +78,9 @@ async def collect_scheduled_work(
                 "last_run": job.last_run,
                 "attention": list(
                     scheduled_work_attention(
-                        ScheduledWorkHealth(
-                            status=job.status,
-                            next_run=temporal_state["next_run"],
-                            last_run_status=None,
-                            consecutive_failures=0,
-                            orchestration_error=temporal_state["error"],
-                            last_result=None,
-                        )
+                        status=job.status,
+                        next_run=temporal_state["next_run"],
+                        orchestration_error=temporal_state["error"],
                     )
                 ),
             }
