@@ -192,6 +192,32 @@ async def test_app_runtime_retirement_clears_state_before_artifact_cleanup(tmp_p
     assert "project" in app.session_cleared
 
 
+@pytest.mark.asyncio
+async def test_app_reclaims_unowned_workspace_artifacts_at_startup(tmp_path: Path) -> None:
+    app = PynchyApp()
+    settings = _settings(tmp_path)
+    folder = "project__thread_discord-channel-orphan"
+    artifact = settings.data_dir / "sessions" / folder
+    artifact.mkdir(parents=True)
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_sessions",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_in_flight_turns",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await app.reclaim_orphaned_workspace_artifacts([])
+
+    assert not artifact.exists()
+
+
 def test_http_capability_adapter_projects_config_and_policy(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     with patch.object(dep_factory, "get_settings", return_value=settings):
