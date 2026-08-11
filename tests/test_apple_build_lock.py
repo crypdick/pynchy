@@ -95,7 +95,7 @@ def test_cli_reports_busy_lock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
         "pynchy.plugins.runtimes.apple_build_lock.fcntl.flock",
         lambda *_args: (_ for _ in ()).throw(BlockingIOError),
     )
-    monotonic = iter((0, 61))
+    monotonic = iter((0, 0, 0, 61))
     monkeypatch.setattr(
         "pynchy.plugins.runtimes.apple_build_lock.time.monotonic", monotonic.__next__
     )
