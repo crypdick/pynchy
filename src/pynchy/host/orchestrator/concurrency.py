@@ -12,6 +12,7 @@ from collections import deque
 from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations at runtime.
     Awaitable,
     Callable,
+    Coroutine,
 )
 from dataclasses import dataclass
 from typing import TypeVar
@@ -64,7 +65,13 @@ class GroupQueue:
         self._process_messages_fn: Callable[[str], Awaitable[TurnOutcome]] | None = None
         self._policy_paused: set[RuntimeId] = set()
         self._policy_boundaries: dict[RuntimeId, asyncio.Event] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._shutting_down = False
+
+    def _start_background_task(self, coro: Coroutine[object, object, None], *, name: str) -> None:
+        task = create_background_task(coro, name=name)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     def set_process_messages_fn(self, fn: Callable[[str], Awaitable[TurnOutcome]]) -> None:
         """Register the callback that processes pending messages for a group."""
@@ -110,7 +117,7 @@ class GroupQueue:
         state.active = True
         state.pending_messages = False
         self._active_count += 1
-        create_background_task(
+        self._start_background_task(
             self._run_for_runtime(target.id, "messages"),
             name=f"process-messages-{target.id[:20]}",
         )
@@ -178,7 +185,7 @@ class GroupQueue:
         state.active_is_task = True
         state.active_task = task
         self._active_count += 1
-        create_background_task(
+        self._start_background_task(
             self._run_task(target.id, task),
             name=f"run-task-{task.id[:20]}",
         )
@@ -512,11 +519,9 @@ class GroupQueue:
 
         async def _retry() -> None:
             await asyncio.sleep(delay)
-            current = self._registry.get(runtime_id)
-            if not self._shutting_down and current is not None:
-                self.enqueue_message_check(current.target)
+            self.enqueue_message_check(state.target)
 
-        create_background_task(_retry(), name=f"retry-{runtime_id[:20]}")
+        self._start_background_task(_retry(), name=f"retry-{runtime_id[:20]}")
 
     def _start_next_pending(self, runtime_id: RuntimeId) -> bool:
         """Try to start the next pending item for *runtime_id*.
@@ -533,7 +538,7 @@ class GroupQueue:
             state.active_is_task = False
             state.pending_messages = False
             self._active_count += 1
-            create_background_task(
+            self._start_background_task(
                 self._run_for_runtime(runtime_id, "drain"),
                 name=f"drain-messages-{runtime_id[:20]}",
             )
@@ -545,7 +550,7 @@ class GroupQueue:
             state.active_is_task = True
             state.active_task = task
             self._active_count += 1
-            create_background_task(
+            self._start_background_task(
                 self._run_task(runtime_id, task),
                 name=f"drain-task-{task.id[:20]}",
             )
@@ -581,3 +586,7 @@ class GroupQueue:
             self._cancel_pending_tasks(state)
             state.cancel_message_waiters()
         await self._processes.shutdown(active_count=self._active_count)
+        tasks = tuple(self._background_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
