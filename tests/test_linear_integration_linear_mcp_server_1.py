@@ -46,6 +46,7 @@ class TestLinearMcpServer:
             assert names == {
                 "linear_list_teams",
                 "linear_list_issues",
+                "linear_search_issues",
                 "linear_get_issue",
                 "linear_create_issue",
                 "linear_list_todos",
@@ -179,6 +180,7 @@ class TestLinearMcpServer:
                                 "team_id": "team-1",
                                 "title": "Track task",
                                 "description": "Task details",
+                                "label_ids": ["label-1"],
                                 "priority": 4,
                             },
                         },
@@ -198,7 +200,7 @@ class TestLinearMcpServer:
             description="Task details",
             project_id=None,
             state_id=None,
-            label_ids=None,
+            label_ids=["label-1"],
             priority=4,
         )
 
@@ -426,6 +428,35 @@ class TestLinearMcpServer:
             {"id": "issue-1", "title": "Coverage"}
         ]
         fake_client.list_issues.assert_awaited_once_with(team_id="team-1", first=7)
+
+    @pytest.mark.action("linear.issue.search")
+    async def test_mcp_searches_issues_with_the_requested_title_and_limit(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.search_issues = AsyncMock(return_value=[{"id": "issue-1", "title": "Coverage"}])
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_search_issues",
+                            "arguments": {"query": "coverage", "team_id": "team-1", "first": 7},
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"]) == [
+            {"id": "issue-1", "title": "Coverage"}
+        ]
+        fake_client.search_issues.assert_awaited_once_with("coverage", team_id="team-1", first=7)
 
     @pytest.mark.action("linear.todo.list")
     async def test_mcp_lists_workspace_todos_with_the_server_workspace(self, monkeypatch):

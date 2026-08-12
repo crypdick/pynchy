@@ -2,10 +2,195 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
+
+_LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
+_LINEAR_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
 
 
-def tool_specs() -> list[dict[str, Any]]:
+class UnknownLinearToolError(ValueError):
+    """Requested Linear MCP tool is not registered."""
+
+
+class LinearToolArgumentsError(ValueError):
+    """Linear MCP arguments are not a JSON object."""
+
+
+class _StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListTeamsArguments(_StrictModel):
+    """Arguments for team listing."""
+
+
+class ListIssuesArguments(_StrictModel):
+    team_id: str | None = None
+    first: int = Field(default=50, ge=1, le=100)
+
+
+class SearchIssuesArguments(ListIssuesArguments):
+    query: str = Field(min_length=1)
+
+
+class GetIssueArguments(_StrictModel):
+    issue_id: str = Field(min_length=1)
+
+
+class CreateIssueArguments(_StrictModel):
+    team_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    description: str | None = None
+    project_id: str | None = None
+    label_ids: list[str] | None = None
+    priority: int | None = None
+
+    @field_validator("label_ids", mode="before")
+    @classmethod
+    def _validate_label_ids(cls, value: object) -> object:
+        if value is not None and not isinstance(value, list):
+            raise ValueError(_LINEAR_LABEL_IDS_NOT_ARRAY)
+        return value
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _validate_priority(cls, value: object) -> object:
+        return _priority(value)
+
+
+class ListTodosArguments(_StrictModel):
+    include_done: bool = False
+
+
+class CreateTodoArguments(_StrictModel):
+    title: str = Field(min_length=1)
+    description: str | None = None
+    priority: int | None = None
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _validate_priority(cls, value: object) -> object:
+        return _priority(value)
+
+
+class CreateAttachmentArguments(_StrictModel):
+    issue_id: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    subtitle: str | None = None
+
+
+class FindIssuesByAttachmentUrlArguments(_StrictModel):
+    url: str = Field(min_length=1)
+
+
+class ListTeamsCall(_StrictModel):
+    name: Literal["linear_list_teams"]
+    arguments: ListTeamsArguments = Field(default_factory=ListTeamsArguments)
+
+
+class ListIssuesCall(_StrictModel):
+    name: Literal["linear_list_issues"]
+    arguments: ListIssuesArguments = Field(default_factory=ListIssuesArguments)
+
+
+class SearchIssuesCall(_StrictModel):
+    name: Literal["linear_search_issues"]
+    arguments: SearchIssuesArguments
+
+
+class GetIssueCall(_StrictModel):
+    name: Literal["linear_get_issue"]
+    arguments: GetIssueArguments
+
+
+class CreateIssueCall(_StrictModel):
+    name: Literal["linear_create_issue"]
+    arguments: CreateIssueArguments
+
+
+class ListTodosCall(_StrictModel):
+    name: Literal["linear_list_todos"]
+    arguments: ListTodosArguments = Field(default_factory=ListTodosArguments)
+
+
+class CreateTodoCall(_StrictModel):
+    name: Literal["linear_create_todo"]
+    arguments: CreateTodoArguments
+
+
+class CreateAttachmentCall(_StrictModel):
+    name: Literal["linear_create_attachment"]
+    arguments: CreateAttachmentArguments
+
+
+class FindIssuesByAttachmentUrlCall(_StrictModel):
+    name: Literal["linear_find_issues_by_attachment_url"]
+    arguments: FindIssuesByAttachmentUrlArguments
+
+
+type LinearToolCall = Annotated[
+    ListTeamsCall
+    | ListIssuesCall
+    | SearchIssuesCall
+    | GetIssueCall
+    | CreateIssueCall
+    | ListTodosCall
+    | CreateTodoCall
+    | CreateAttachmentCall
+    | FindIssuesByAttachmentUrlCall,
+    Field(discriminator="name"),
+]
+_TOOL_CALL_ADAPTER: TypeAdapter[LinearToolCall] = TypeAdapter(LinearToolCall)
+_TOOL_NAMES = frozenset(
+    {
+        "linear_list_teams",
+        "linear_list_issues",
+        "linear_search_issues",
+        "linear_get_issue",
+        "linear_create_issue",
+        "linear_list_todos",
+        "linear_create_todo",
+        "linear_create_attachment",
+        "linear_find_issues_by_attachment_url",
+    }
+)
+
+
+class _ToolCallEnvelope(_StrictModel):
+    name: str
+    arguments: object = Field(default_factory=dict)
+
+
+def parse_tool_call(params: object) -> LinearToolCall:
+    """Parse untrusted MCP parameters into one semantic tool call."""
+    try:
+        envelope = _ToolCallEnvelope.model_validate(params)
+    except ValidationError as exc:
+        raise LinearToolArgumentsError(_validation_error_message(exc)) from None
+    if envelope.name not in _TOOL_NAMES:
+        raise UnknownLinearToolError(envelope.name)
+    if not isinstance(envelope.arguments, dict):
+        raise LinearToolArgumentsError("Tool arguments must be an object")
+    try:
+        return _TOOL_CALL_ADAPTER.validate_python(
+            {"name": envelope.name, "arguments": envelope.arguments}
+        )
+    except ValidationError as exc:
+        raise LinearToolArgumentsError(_validation_error_message(exc)) from None
+
+
+def tool_specs() -> list[dict[str, object]]:
+    # NOTE: Keep docs/integrations/linear.md § Use Linear tools aligned with this list.
     return [
         {
             "name": "linear_list_teams",
@@ -21,6 +206,20 @@ def tool_specs() -> list[dict[str, Any]]:
                     "team_id": {"type": "string"},
                     "first": {"type": "integer", "minimum": 1, "maximum": 100},
                 },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "linear_search_issues",
+            "description": "Find Linear issues by case-insensitive title text.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1},
+                    "team_id": {"type": "string"},
+                    "first": {"type": "integer", "minimum": 1, "maximum": 100},
+                },
+                "required": ["query"],
                 "additionalProperties": False,
             },
         },
@@ -123,3 +322,25 @@ def tool_specs() -> list[dict[str, Any]]:
             },
         },
     ]
+
+
+def _priority(value: object) -> object:
+    if value is not None and (type(value) is not int or not 0 <= value <= 4):
+        raise ValueError(_LINEAR_PRIORITY_INVALID)
+    return value
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    error = exc.errors()[0]
+    location = error["loc"]
+    field = str(location[-1]) if location else "arguments"
+    error_type = str(error["type"])
+    if error_type == "missing":
+        return f"{field} is required"
+    if error_type == "extra_forbidden":
+        return f"unexpected arguments: {field}"
+    if field == "first":
+        return "first must be an integer from 1 through 100"
+    if error_type == "string_type":
+        return f"{field} must be a string"
+    return str(exc)

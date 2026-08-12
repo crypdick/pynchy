@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import aiohttp
 
@@ -29,6 +29,9 @@ from pynchy.plugins.integrations.api import (
     move_workspace_todo,
     select_team,
 )
+
+if TYPE_CHECKING:
+    from pynchy.plugins.integrations.linear_connections import LinearIssueSummary
 
 _CANARY_EVENT_DURATION = timedelta(minutes=1)
 _CANARY_EVENT_LEAD_TIME = timedelta(minutes=10)
@@ -52,7 +55,11 @@ class _LinearCanaryClient(Protocol):
 
     async def list_teams(self) -> list[dict[str, Any]]: ...
 
-    async def list_issues(self, *, team_id: str) -> list[dict[str, Any]]: ...
+    async def list_issues(self, *, team_id: str) -> list[LinearIssueSummary]: ...
+
+    async def search_issues(
+        self, query: str, *, team_id: str, first: int = 50
+    ) -> list[LinearIssueSummary]: ...
 
     async def create_issue(  # noqa: PLR0913 - mirrors the built-in Linear client contract.
         self,
@@ -200,6 +207,11 @@ class LinearWorkspaceRoundTripCanary:
             issue_id = _linear_issue_id(issue)
             todo_id: str | None = None
             try:
+                await _verify_linear_title_search(client, team_id, issue_id, context.run_id)
+            except Exception:  # remove the issue when the title-search smoke check fails.
+                await _delete_linear_artifacts(client, (issue_id,))
+                raise
+            try:
                 await list_workspace_todos(
                     client,
                     self._workspace,
@@ -223,8 +235,6 @@ class LinearWorkspaceRoundTripCanary:
             except Exception:  # remove any issue created before an incomplete canary exercise.
                 await _delete_linear_artifacts(client, (issue_id, todo_id))
                 raise
-            if todo_id is None:
-                raise CanaryServiceError("Linear did not return a created canary todo identifier")
         return CanaryExercise(
             artifact=_LinearArtifact(issue_id, todo_id),
             evidence_refs=(
@@ -417,6 +427,17 @@ def _linear_issue_id(issue: dict[str, Any]) -> str:
     if not isinstance(issue_id, str) or not issue_id:
         raise CanaryServiceError("Linear did not return a created issue identifier")
     return issue_id
+
+
+async def _verify_linear_title_search(
+    client: _LinearCanaryClient,
+    team_id: str,
+    issue_id: str,
+    run_id: str,
+) -> None:
+    results = await client.search_issues(f"Pynchy canary issue {run_id}", team_id=team_id, first=1)
+    if not any(result.get("id") == issue_id for result in results):
+        raise CanaryServiceError("Linear title search did not return the created canary issue")
 
 
 async def _delete_linear_artifacts(

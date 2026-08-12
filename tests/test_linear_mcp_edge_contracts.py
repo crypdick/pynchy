@@ -13,7 +13,7 @@ from pynchy.workspace.api import WorkspaceProfile
 
 
 async def _call(
-    params: dict[str, object],
+    params: object,
     *,
     method: str = "tools/call",
     workspace: str | None = None,
@@ -61,6 +61,28 @@ async def test_mcp_rejects_non_object_tool_arguments(monkeypatch: pytest.MonkeyP
     assert "Tool arguments must be an object" in _error_text(response)
 
 
+async def test_mcp_rejects_non_object_tool_params(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+
+    response = await _call(["invalid"])
+
+    result = response["result"]
+    assert isinstance(result, dict)
+    assert result["isError"] is True
+
+
+async def test_mcp_rejects_invalid_json_rpc_request():
+    client = TestClient(TestServer(build_app()))
+    await client.start_server()
+    try:
+        response = await client.post("/mcp", json={"id": 1, "method": "tools/list"})
+        payload = await response.json()
+    finally:
+        await client.close()
+
+    assert payload["error"]["code"] == -32600
+
+
 async def test_mcp_reports_unknown_tool(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
 
@@ -101,6 +123,21 @@ async def test_mcp_coerces_issue_list_limit_to_an_integer(
             {"issue_id": "issue-1", "url": "https://example.com", "title": "Link", "subtitle": 123},
             "subtitle must be a string",
         ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "team_id": 123},
+            "team_id must be a string",
+        ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "unexpected": True},
+            "unexpected arguments: unexpected",
+        ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "first": 0},
+            "first must be an integer from 1 through 100",
+        ),
     ],
 )
 async def test_mcp_rejects_invalid_tool_arguments(
@@ -127,6 +164,7 @@ async def test_mcp_rejects_invalid_tool_arguments(
             "Workspace-scoped Linear todo tools require an MCP workspace instance",
         ),
         ("linear_get_issue", {}, None, "issue_id is required"),
+        ("linear_search_issues", {}, None, "query is required"),
     ],
 )
 async def test_mcp_rejects_missing_tool_context_or_required_values(

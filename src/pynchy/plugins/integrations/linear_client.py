@@ -12,6 +12,11 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 import aiohttp
 
+from pynchy.plugins.integrations.linear_connections import (
+    LinearIssueSummary,
+    issue_connection_nodes,
+    issue_connection_query,
+)
 from pynchy.plugins.integrations.linear_errors import LinearError
 from pynchy.plugins.integrations.linear_mutation_effects import (
     LinearSelfEchoRecorder,
@@ -189,41 +194,44 @@ class LinearClient:
         *,
         team_id: str | None = None,
         first: int = 50,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LinearIssueSummary]:
+        return await self._query_issues(team_id=team_id, first=first)
+
+    async def search_issues(
+        self,
+        query: str,
+        *,
+        team_id: str | None = None,
+        first: int = 50,
+    ) -> list[LinearIssueSummary]:
+        """Find issues whose titles contain the requested text."""
+        return await self._query_issues(title_query=query, team_id=team_id, first=first)
+
+    async def _query_issues(
+        self,
+        *,
+        title_query: str | None = None,
+        team_id: str | None = None,
+        first: int,
+    ) -> list[LinearIssueSummary]:
+        variable_definitions = ""
+        filters: list[str] = []
+        variables: dict[str, object] = {"first": first}
+        if title_query is not None:
+            variable_definitions += ", $titleQuery: String!"
+            filters.append("title: { containsIgnoreCase: $titleQuery }")
+            variables["titleQuery"] = title_query
         if team_id:
-            data = await self.query(
-                """
-                query ListTeamIssues($first: Int!, $teamId: ID!) {
-                  issues(first: $first, filter: { team: { id: { eq: $teamId } } }) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
-                first=first,
-                teamId=team_id,
-            )
-        else:
-            data = await self.query(
-                """
-                query ListIssues($first: Int!) {
-                  issues(first: $first) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
-                first=first,
-            )
-        return _nodes(data, "issues")
+            variable_definitions += ", $teamId: ID!"
+            filters.append("team: { id: { eq: $teamId } }")
+            variables["teamId"] = team_id
+        issue_filter = f", filter: {{ {' '.join(filters)} }}" if filters else ""
+        operation = "SearchIssues" if title_query is not None else "ListIssues"
+        data = await self.query(
+            issue_connection_query(operation, variable_definitions, issue_filter),
+            **variables,
+        )
+        return issue_connection_nodes(data)
 
     async def create_issue(  # noqa: PLR0913 - Linear issue creation follows the API field set.
         self,
