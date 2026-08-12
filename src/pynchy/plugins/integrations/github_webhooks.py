@@ -250,11 +250,16 @@ def _issue_comment_event(
         )
     text = "new PR comment" if payload.action == "created" else "PR comment edited"
     url = _pr_url(context.repository, issue.number)
-    return _notification_event(
+    message = f"GitHub PR update — {context.repository}#{issue.number}: {text}.\n{url}"
+    return _actionable_pr_event(
         context,
         action=payload.action,
-        subject_id=str(issue.number),
-        message=f"GitHub PR update — {context.repository}#{issue.number}: {text}.\n{url}",
+        number=issue.number,
+        instructions=_REVIEW_INSTRUCTIONS,
+        details={
+            "event": "issue_comment",
+            "fallback_host_message": message,
+        },
     )
 
 

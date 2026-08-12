@@ -258,13 +258,20 @@ async def _linear_client_context(client: object):
     yield client
 
 
-async def test_actionable_review_routes_to_linked_linear_conversation(
+@pytest.mark.parametrize("event_type", ["issue_comment", "pull_request_review"])
+async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
     monkeypatch: pytest.MonkeyPatch,
+    event_type: str,
 ) -> None:
     now = datetime.now(UTC)
-    payload = _payload(action="submitted", changes={})
-    payload["review"] = {"state": "commented"}
-    raw_body, headers = _signed_request(payload, "pull_request_review")
+    if event_type == "issue_comment":
+        payload = _payload(action="created", changes={})
+        payload.pop("pull_request")
+        payload["issue"] = {"number": 42, "pull_request": {}}
+    else:
+        payload = _payload(action="submitted", changes={})
+        payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, event_type)
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.return_value = [{"issue": {"id": "issue-1"}}]
