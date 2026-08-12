@@ -2,8 +2,9 @@
 
 The built-in GitHub webhook plugin sends pull-request updates directly to the
 mapped project workspace. Most events are concise human-visible notifications.
-A review or single-PR check failure on a PR attached to one managed Linear issue
-wakes that issue's existing conversation and worktree for follow-up.
+A top-level comment, review, inline review comment, or single-PR check failure on
+a PR attached to one managed Linear issue wakes that issue's existing conversation
+and worktree for follow-up.
 A merged pull request starts an isolated agent turn so the agent can inspect
 the linked work and exercise judgment about Follow-ups. The webhook itself
 doesn't create another worktree or mutate GitHub or Linear. A route binds one GitHub
@@ -63,20 +64,20 @@ limit—GitHub will not deliver payloads larger than that maximum.
 The plugin emits concise direct host notifications for:
 
 - New commits, PR lifecycle updates, title changes, and description changes.
-- New or edited PR conversation comments.
 - Approved or dismissed reviews.
 - Failed check runs associated with several pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
 
 Development agents attach every pull request to the Linear issue with
-`linear_create_attachment`. For actionable submitted or edited reviews, inline
-review comments, and a failed check associated with one PR, the webhook resolves
-that exact attachment. One matching issue on the route's workspace receives the
-event in its canonical Linear conversation. The agent fetches current review
-details, triages them, applies warranted changes in the existing worktree, and
-runs local CI. It doesn't rerun GitHub CI, merge, or deploy solely because of
-the event. Missing, ambiguous, off-board, or unconfigured Linear links fall back
-to a direct workspace notification instead of creating a separate agent turn.
+`linear_create_attachment`. For new or edited top-level PR comments, actionable
+submitted or edited reviews, inline review comments, and a failed check associated
+with one PR, the webhook resolves that exact attachment. One matching issue on the
+route's workspace receives the event in its canonical Linear conversation. The
+agent fetches current review details, triages them, applies warranted changes in
+the existing worktree, and runs local CI. It doesn't rerun GitHub CI, merge, or
+deploy solely because of the event. Missing, ambiguous, off-board, or unconfigured
+Linear links fall back to a direct workspace notification instead of creating a
+separate agent turn.
 
 A merged-PR event starts an isolated agent turn, which resolves the URL with
 `linear_find_issues_by_attachment_url`, inspects the linked work and runtime

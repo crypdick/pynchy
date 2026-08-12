@@ -69,6 +69,7 @@ async def prepare_github_webhook_event(  # noqa: PLR0911 - each branch preserves
     if (
         event.event_type
         not in {
+            "issue_comment",
             "pull_request_review",
             "pull_request_review_comment",
             "check_run",
