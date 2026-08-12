@@ -191,8 +191,8 @@ class CodexCLIAgentCore:
         return args
 
     def _build_stdin(self, prompt: str) -> bytes:
-        """Build the raw stdin prompt for ``codex exec -``."""
-        if not self.config.system_prompt_append:
+        """Build the raw stdin prompt for one Codex turn."""
+        if self._session_id or not self.config.system_prompt_append:
             return (prompt + "\n").encode()
         return (f"{self.config.system_prompt_append}\n\nUser message:\n{prompt}\n").encode()
 

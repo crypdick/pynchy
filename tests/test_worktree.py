@@ -226,44 +226,20 @@ class TestEnsureWorktree:
         with pytest.raises(WorktreeError, match="git fetch failed"):
             ensure_worktree("broken-group", repo_ctx)
 
-    def test_broken_worktree_gets_recreated(self, git_env: dict):
-        """Corrupted .git file → worktree is deleted and recreated."""
+    def test_broken_worktree_preserves_uncommitted_files(self, git_env: dict):
+        """Corrupted Git metadata must not erase unfinished agent work."""
         repo_ctx = git_env["repo_ctx"]
         result1 = ensure_worktree("code-improver", repo_ctx)
         wt_path = result1.path
 
-        # Corrupt the .git file (simulates stale gitdir from a rename)
+        (wt_path / "wip.txt").write_text("uncommitted work")
         git_file = wt_path / ".git"
         git_file.write_text("gitdir: /nonexistent/path/.git/worktrees/old-name\n")
 
-        # Should detect broken state, delete, and recreate
-        result2 = ensure_worktree("code-improver", repo_ctx)
-        assert result2.path == wt_path
-        assert result2.path.exists()
-        assert (result2.path / "README.md").read_text() == "initial"
+        with pytest.raises(WorktreeError, match="recover it manually"):
+            ensure_worktree("code-improver", repo_ctx)
 
-        # Verify it's a valid git repo now
-        status = _git(wt_path, "status")
-        assert status.returncode == 0
-
-    def test_broken_worktree_with_uncommitted_files_logs_warning(self, git_env: dict, caplog):
-        """Broken worktree with leftover files still gets recreated."""
-        repo_ctx = git_env["repo_ctx"]
-        result1 = ensure_worktree("code-improver", repo_ctx)
-        wt_path = result1.path
-
-        # Add uncommitted files, then corrupt
-        (wt_path / "wip.txt").write_text("uncommitted work")
-        git_file = wt_path / ".git"
-        git_file.write_text("gitdir: /nonexistent/path\n")
-
-        # Should recreate — broken repo means uncommitted work is unrecoverable
-        result2 = ensure_worktree("code-improver", repo_ctx)
-        assert result2.path.exists()
-        assert (result2.path / "README.md").read_text() == "initial"
-        # WIP file is gone (worktree was recreated from scratch)
-        assert not (wt_path / "wip.txt").exists()
-        assert "Broken worktree detected, recreating" in caplog.text
+        assert (wt_path / "wip.txt").read_text() == "uncommitted work"
 
     def test_reattaches_existing_branch_when_worktree_directory_is_missing(self, git_env: dict):
         """A removed child directory must not erase committed recovery work."""
@@ -527,6 +503,30 @@ class TestRoutedHostWorktrees:
 
 
 class TestReconcileWorktreesAtStartup:
+    def test_preserves_an_agent_rebase_already_in_progress(self, git_env: dict):
+        """Startup must not abort conflict resolution owned by an agent."""
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+        worktree = ensure_worktree("code-improver", repo_ctx).path
+
+        (worktree / "README.md").write_text("agent change")
+        _git(worktree, "add", "README.md")
+        _git(worktree, "commit", "-m", "agent change")
+        (project / "README.md").write_text("main change")
+        _git(project, "add", "README.md")
+        _git(project, "commit", "-m", "main change")
+
+        with pytest.raises(subprocess.CalledProcessError):
+            _git(worktree, "rebase", "main")
+        (worktree / "README.md").write_text("agent conflict resolution")
+        _git(worktree, "add", "README.md")
+
+        with patch("pynchy.host.git_ops.repo.get_repo_context", return_value=repo_ctx):
+            reconcile_worktrees_at_startup(repo_groups={"owner/pynchy": []})
+
+        assert (worktree / "README.md").read_text() == "agent conflict resolution"
+        assert "agent conflict resolution" in _git(worktree, "diff", "--cached").stdout
+
     def test_rebases_diverged_worktree(self, git_env: dict):
         """Diverged worktree branch is rebased onto main at startup."""
         project = git_env["project"]

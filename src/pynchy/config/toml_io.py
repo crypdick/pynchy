@@ -16,6 +16,7 @@ from typing import Any
 
 import tomlkit
 
+from pynchy.atomic_json import write_text_atomic
 from pynchy.config.personalization import (
     SETTINGS_FILENAME,
     load_layered_settings_mapping,
@@ -51,5 +52,5 @@ def mutate_config_toml(path: Path, mutate: Callable[[Any], None]) -> Settings:
         )
     else:
         settings = parse_settings_toml(rendered)
-    path.write_text(rendered, encoding="utf-8")
+    write_text_atomic(path, rendered)
     return settings

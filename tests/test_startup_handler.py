@@ -115,6 +115,11 @@ class TestValidatePluginCredentials:
 class TestAutoRollback:
     """Tests for auto_rollback — rolls back to previous commit on startup failure."""
 
+    @pytest.fixture(autouse=True)
+    def _clean_checkout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(startup_handler, "is_repo_dirty", lambda: False)
+        monkeypatch.setattr(startup_handler, "get_head_sha", lambda: "prev-sha-1")
+
     @pytest.mark.asyncio
     async def test_skips_when_file_unreadable(self, tmp_path):
         """Should return early when continuation file can't be read."""
@@ -149,6 +154,7 @@ class TestAutoRollback:
 
         class FakeResult:
             returncode = 0
+            stdout = ""
             stderr = ""
 
         with (
@@ -159,11 +165,14 @@ class TestAutoRollback:
         ):
             await auto_rollback(cont_path, RuntimeError("startup failed"))
 
-        mock_git.assert_called_once_with("reset", "--hard", "prev-sha-1")
+        assert [call.args for call in mock_git.call_args_list] == [
+            ("status", "--porcelain", "--untracked-files=normal"),
+            ("reset", "--hard", "prev-sha-1"),
+        ]
         terminate.assert_called_once_with()
 
         updated = json.loads(cont_path.read_text())
-        assert "ROLLBACK" in updated["resume_prompt"]
+        assert updated["resume_prompt"].startswith("ROLLBACK:")
         assert not updated["previous_commit_sha"]  # prevents loop
         assert updated["rolled_back"] is True
 
@@ -230,6 +239,7 @@ class TestAutoRollback:
 
         class FakeResult:
             returncode = 0
+            stdout = ""
             stderr = ""
 
         monkeypatch.setattr(startup_handler, "run_git", lambda *_args: FakeResult())
@@ -263,6 +273,7 @@ class TestAutoRollback:
 
         class FakeResult:
             returncode = 0
+            stdout = ""
             stderr = ""
 
         monkeypatch.setattr(startup_handler, "run_git", lambda *_args: FakeResult())

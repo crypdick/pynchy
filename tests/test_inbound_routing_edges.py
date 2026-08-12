@@ -197,6 +197,24 @@ async def test_loop_continues_after_poll_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_routing_failure_does_not_advance_seen_cursor() -> None:
+    jid = "group@g.us"
+    deps = _make_deps(groups={jid: _make_group()})
+    deps.filter_allowed_messages.side_effect = RuntimeError("routing failed")
+    message = _make_message(chat_jid=jid)
+
+    with patch(
+        f"{_PR}.get_new_messages",
+        new_callable=AsyncMock,
+        return_value=([message], "poll"),
+    ):
+        await _run_loop_once(deps)
+
+    assert not deps.last_timestamp
+    deps.save_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_deferred_control_is_executed_without_starting_agent() -> None:
     jid = "group@g.us"
     group = _make_group()

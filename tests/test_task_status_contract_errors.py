@@ -58,6 +58,7 @@ async def test_list_tasks_rejects_malformed_host_projection(
         "next_run": None,
         "orchestration": {"state": "scheduled", "error": None},
         "run_health": {"last_status": "success", "consecutive_failures": 0},
+        "health_reasons": ["missing_next_run"],
     }
     host_job = {
         "id": "job-1",
@@ -68,6 +69,7 @@ async def test_list_tasks_rejects_malformed_host_projection(
         "enabled": True,
         "next_run": None,
         "orchestration": {"state": "scheduled", "error": None},
+        "health_reasons": ["missing_next_run"],
     }
     status: object = {"tasks": [task], "host_jobs": [host_job]}
     raw_status = ""
@@ -125,6 +127,7 @@ async def test_list_tasks_omits_blank_evidence_and_marks_host_attention(
                 "last_result": "   ",
                 "orchestration": {"state": "scheduled", "error": None},
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
+                "health_reasons": [],
             }
         ],
         "host_jobs": [
@@ -137,6 +140,7 @@ async def test_list_tasks_omits_blank_evidence_and_marks_host_attention(
                 "enabled": True,
                 "next_run": None,
                 "orchestration": {"state": "scheduled", "error": None},
+                "health_reasons": ["paused"],
             }
         ],
     }
@@ -150,4 +154,4 @@ async def test_list_tasks_omits_blank_evidence_and_marks_host_attention(
 
     payload = result[1]
     assert "last_result" not in payload["tasks"][0]
-    assert payload["host_jobs"][0]["attention"] == ["paused"]
+    assert payload["host_jobs"][0]["health_reasons"] == ["paused"]

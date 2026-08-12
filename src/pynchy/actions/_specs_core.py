@@ -35,6 +35,18 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="calendar.round.trip",
     ),
     agent_action("task.list", "agent-tools", "List scheduled tasks.", "list_tasks"),
+    agent_action(
+        "task.read",
+        "agent-tools",
+        "Read one scheduled task's editable definition.",
+        "get_scheduled_task",
+    ),
+    agent_action(
+        "task.update",
+        "agent-tools",
+        "Update a scheduled task prompt or status.",
+        "update_scheduled_task",
+    ),
     agent_action("task.pause", "agent-tools", "Pause a scheduled task.", "pause_task"),
     agent_action("task.resume", "agent-tools", "Resume a scheduled task.", "resume_task"),
     agent_action("task.cancel", "agent-tools", "Cancel a scheduled task.", "cancel_task"),

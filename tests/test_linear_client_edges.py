@@ -119,6 +119,23 @@ class TestLinearClientQueryEdges:
 
 
 class TestLinearClientResponseEdges:
+    @pytest.mark.parametrize(
+        ("response", "message"),
+        [
+            ({"issue": None}, "not an object"),
+            ({"issue": {"comments": None}}, "did not include comments"),
+            ({"issue": {"comments": {"nodes": None}}}, "comments.nodes"),
+        ],
+    )
+    async def test_list_issue_comments_rejects_incomplete_provider_responses(
+        self, response: dict[str, object], message: str
+    ) -> None:
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(return_value=response)
+
+        with pytest.raises(LinearError, match=message):
+            await client.list_issue_comments("issue-1")
+
     async def test_list_issues_without_team_filter_passes_first_to_query(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         client.query = AsyncMock(return_value={"issues": {"nodes": [{"id": "issue-1"}]}})

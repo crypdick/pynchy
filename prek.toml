@@ -162,6 +162,14 @@ types = ["python"]
 files = "(^tests/|/tests/)"
 
 [[repos.hooks]]
+id = "check-prompt-assertions"
+name = "Ban hard-coded prompt assertions in tests"
+entry = "uv run python scripts/prek_hooks/check_prompt_assertions.py"
+language = "system"
+types = ["python"]
+files = "(^tests/|/tests/)"
+
+[[repos.hooks]]
 id = "deptry-host"
 name = "Check host dependency declarations"
 entry = "uv run deptry src/pynchy"

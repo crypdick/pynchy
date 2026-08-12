@@ -10,9 +10,7 @@ ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves git sync helper signatures at runtime.
-)
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
@@ -38,6 +36,8 @@ class WorktreeNotifyDeps(Protocol):
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
 
+    async def wake_worktree_conflict(self, jid: str) -> None: ...
+
     def has_active_session(self, group_folder: str) -> bool: ...
 
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
@@ -49,6 +49,7 @@ class WorktreeNotifyDeps(Protocol):
 last_notified_sha: dict[str, str] = {}
 
 type _NotifyFn = Callable[[str, str], Awaitable[None]]
+type _WakeFn = Callable[[str], Awaitable[None]]
 
 
 def build_rebase_notice(worktree_path: Path, old_head: str, commit_count: int) -> str:
@@ -126,6 +127,16 @@ def _behind_commit_count(
     return behind_n or 0
 
 
+def _has_unresolved_rebase(worktree_path: Path) -> bool:
+    """Return whether Git still records a rebase for this linked worktree."""
+    for state_dir in ("rebase-merge", "rebase-apply"):
+        result = run_git("rev-parse", "--git-path", state_dir, cwd=worktree_path)
+        state_path = result.stdout.strip()
+        if result.returncode == 0 and state_path and Path(state_path).exists():
+            return True
+    return False
+
+
 async def _notify_dirty_worktree(
     *,
     notify: _NotifyFn,
@@ -143,6 +154,7 @@ async def _rebase_and_notify(  # noqa: PLR0913 - local notification helper keeps
     *,
     conflict_notify: _NotifyFn,
     success_notify: _NotifyFn | None,
+    wake_conflict: _WakeFn | None,
     jid: str,
     group_folder: str,
     entry: Path,
@@ -153,6 +165,8 @@ async def _rebase_and_notify(  # noqa: PLR0913 - local notification helper keeps
     rebase = run_git("rebase", main_branch, cwd=entry)
     if rebase.returncode != 0:
         await conflict_notify(jid, _conflicted_rebase_notice())
+        if wake_conflict:
+            await wake_conflict(jid)
         logger.warning(
             "Worktree rebase conflict during broadcast",
             group=group_folder,
@@ -213,6 +227,10 @@ async def host_notify_worktree_updates(
         if behind_count == 0:
             continue  # up to date or can't check
 
+        if _has_unresolved_rebase(entry):
+            logger.info("Skipped unresolved worktree rebase", group=group_folder)
+            continue
+
         notify = _notify_fn(deps, group_folder)
 
         status = run_git("status", "--porcelain", cwd=entry)
@@ -228,6 +246,9 @@ async def host_notify_worktree_updates(
         await _rebase_and_notify(
             conflict_notify=notify,
             success_notify=clean_rebase_notify,
+            wake_conflict=(
+                deps.wake_worktree_conflict if deps.has_active_session(group_folder) else None
+            ),
             jid=jid,
             group_folder=group_folder,
             entry=entry,

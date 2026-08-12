@@ -675,15 +675,38 @@ async def test_deploy_restores_dirty_stash_before_returning() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deploy_stops_when_dirty_stash_cannot_be_restored() -> None:
+    deps = MockHttpDeps()
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),  # fetch
+        _cp(stdout=" M local.txt\n"),  # stash
+        _cp(),  # rebase
+        _cp(returncode=1, stderr="conflict"),  # stash pop
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        response = await client.post("/deploy")
+        assert response.status == 409
+        assert await response.json() == {"error": "failed to restore local changes"}
+    finally:
+        await client.close()
+
+    deps.deploy_operations.start_deploy_workflow.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_deploy_rolls_back_when_import_validation_fails(tmp_path: Path) -> None:
     deps = MockHttpDeps()
     deps.data_dir = tmp_path
     deps.project_root = tmp_path
-    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha", "old-sha"]
     deps.deploy_operations.run_git.side_effect = [
         _cp(),  # fetch
         _cp(stdout="No local changes"),  # stash
         _cp(),  # rebase
+        _cp(),  # dirty-status check
         _cp(),  # reset --hard
     ]
     runtime = replace(_runtime(), allow_remote_deploy=True)
@@ -713,6 +736,77 @@ async def test_deploy_rolls_back_when_import_validation_fails(tmp_path: Path) ->
     ]
 
 
+@pytest.mark.asyncio
+async def test_deploy_validates_restored_changes_and_preserves_them_on_rollback(
+    tmp_path: Path,
+) -> None:
+    deps = MockHttpDeps()
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha", "old-sha"]
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),  # fetch
+        _cp(stdout=" M local.txt\n"),  # stash
+        _cp(),  # rebase
+        _cp(),  # restore original stash before validation
+        _cp(stdout=" M local.txt\n"),  # rollback dirty-status check
+        _cp(stdout="Saved working directory"),  # protect local changes again
+        _cp(),  # reset --hard
+        _cp(),  # restore protected local changes
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.subprocess.run",
+            return_value=_cp(returncode=1, stderr="import failed"),
+        ):
+            response = await client.post("/deploy")
+        assert response.status == 422
+    finally:
+        await client.close()
+
+    assert [call.args for call in deps.deploy_operations.run_git.call_args_list[-5:]] == [
+        ("stash", "pop"),
+        ("status", "--porcelain", "--untracked-files=normal"),
+        ("stash", "push", "--include-untracked"),
+        ("reset", "--hard", "old-sha"),
+        ("stash", "pop"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_deploy_reports_import_rollback_failure(tmp_path: Path) -> None:
+    deps = MockHttpDeps()
+    deps.data_dir = tmp_path
+    deps.project_root = tmp_path
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.run_git.side_effect = [
+        _cp(),  # fetch
+        _cp(stdout="No local changes"),  # stash
+        _cp(),  # rebase
+        _cp(),  # dirty-status check
+        _cp(returncode=1, stderr="reset failed"),
+    ]
+    runtime = replace(_runtime(), allow_remote_deploy=True)
+    client = TestClient(TestServer(create_http_app(deps, runtime=runtime)))
+    await client.start_server()
+    try:
+        with patch(
+            "pynchy.host.orchestrator.http_server.subprocess.run",
+            return_value=_cp(returncode=1, stderr="import failed"),
+        ):
+            response = await client.post("/deploy")
+        assert response.status == 500
+        assert await response.json() == {
+            "error": "import validation failed",
+            "rollback_failed": True,
+        }
+    finally:
+        await client.close()
+
+
 async def test_deploy_import_validation_failure_without_admin_notification(
     tmp_path: Path,
 ) -> None:
@@ -720,10 +814,11 @@ async def test_deploy_import_validation_failure_without_admin_notification(
     deps._admin_jid = ""
     deps.data_dir = tmp_path
     deps.project_root = tmp_path
-    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha"]
+    deps.deploy_operations.get_head_sha.side_effect = ["old-sha", "new-sha", "old-sha"]
     deps.deploy_operations.run_git.side_effect = [
         _cp(),
         _cp(stdout="No local changes"),
+        _cp(),
         _cp(),
         _cp(),
     ]

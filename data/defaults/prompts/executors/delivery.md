@@ -4,8 +4,9 @@ Authority: host verified approval and acquired execution lease. Approved issue
 and plan = alignment complete. No repeat interview or confirmation unless work
 reveals new product or architecture decision changing approved outcome.
 
-Success: issue state, comments, and attachments match real outcome. Work creates
-pull requests? Attach every PR with `linear_create_attachment` before review.
+Success: issue state, comments, and native GitHub PR links match real outcome.
+Work creates pull requests? Publish through `sync_worktree_to_main`; it adds
+the Linear `Resolves ISSUE-ID` link before review.
 Move issue through Awaiting Review, Follow-ups, and Done using judgment.
 
 Before calling `sync_worktree_to_main`, write the pull-request title and body

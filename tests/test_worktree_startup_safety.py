@@ -47,6 +47,7 @@ def _reconcile(
     *,
     folders: list[str] | None = None,
     git_runner: object | None = None,
+    discovered_token: str | None = None,
 ) -> None:
     git_patch = (
         patch("pynchy.host.git_ops.worktree.run_git", side_effect=git_runner)
@@ -66,11 +67,22 @@ def _reconcile(
             "pynchy.host.git_ops.worktree.repo_manager.ensure_repo_cloned",
             return_value=True,
         ),
-        patch("pynchy.host.git_ops.worktree.repo_manager.get_repo_token", return_value=None),
+        patch(
+            "pynchy.host.git_ops.worktree.repo_manager.get_repo_token",
+            return_value=discovered_token,
+        ),
         patch("pynchy.host.git_ops.worktree.install_repo_hooks"),
         git_patch,
     ):
         reconcile_worktrees_at_startup({"owner/repo": folders or []})
+
+
+def test_startup_accepts_a_discovered_repository_token(tmp_path: Path, caplog) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+
+    _reconcile(repo_context, runtime, discovered_token=tmp_path.name)
+
+    assert "No git token for repo" not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -141,7 +153,7 @@ def test_startup_continues_when_one_worktree_cannot_be_created(tmp_path: Path) -
         ) as ensure,
     ):
         reconcile_worktrees_at_startup({"owner/repo": ["group"]})
-    ensure.assert_called_once_with("group", repo_context)
+    ensure.assert_called_once_with("group", repo_context, mark_used=False)
 
 
 def test_startup_rebase_handles_missing_branch_and_divergence_failure(tmp_path: Path) -> None:
@@ -224,6 +236,7 @@ def test_startup_rebase_aborts_a_conflicting_rebase(tmp_path: Path) -> None:
             "pynchy.host.git_ops.worktree.run_git",
             side_effect=[
                 subprocess.CompletedProcess([], 0),
+                subprocess.CompletedProcess([], 0, str(tmp_path / "git-dir")),
                 subprocess.CompletedProcess([], 1, "", "conflict"),
                 subprocess.CompletedProcess([], 0),
             ],
@@ -236,8 +249,44 @@ def test_startup_rebase_aborts_a_conflicting_rebase(tmp_path: Path) -> None:
 
     assert [call.args[:2] for call in run_git.call_args_list] == [
         ("worktree", "prune"),
+        ("rev-parse", "--absolute-git-dir"),
         ("rebase", "main"),
         ("rebase", "--abort"),
+    ]
+
+
+def test_startup_rebase_stops_when_git_directory_is_unavailable(tmp_path: Path) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+    repo_context.worktrees_dir.mkdir(parents=True)
+    (repo_context.worktrees_dir / "diverged").mkdir()
+    with (
+        patch("pynchy.host.git_ops.worktree._runtime.runtime", runtime),
+        patch(
+            "pynchy.host.git_ops.worktree.repo_manager.get_repo_context",
+            return_value=repo_context,
+        ),
+        patch(
+            "pynchy.host.git_ops.worktree.repo_manager.ensure_repo_cloned",
+            return_value=True,
+        ),
+        patch("pynchy.host.git_ops.worktree.repo_manager.get_repo_token", return_value=None),
+        patch("pynchy.host.git_ops.worktree.install_repo_hooks"),
+        patch(
+            "pynchy.host.git_ops.worktree.run_git",
+            side_effect=[
+                subprocess.CompletedProcess([], 0),
+                subprocess.CompletedProcess([], 1, "", "not a worktree"),
+            ],
+        ) as run_git,
+        patch("pynchy.host.git_ops.worktree.detect_main_branch", return_value="main"),
+        patch("pynchy.host.git_ops.worktree._branch_exists", return_value=True),
+        patch("pynchy.host.git_ops.worktree._worktree_divergence", return_value=(1, 1)),
+    ):
+        reconcile_worktrees_at_startup({"owner/repo": []})
+
+    assert [call.args[:2] for call in run_git.call_args_list] == [
+        ("worktree", "prune"),
+        ("rev-parse", "--absolute-git-dir"),
     ]
 
 

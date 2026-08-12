@@ -37,7 +37,6 @@ from pynchy.host.container_manager.security.gate import (
     build_workspace_security,
     evaluate_host_action_policy,
 )
-from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops.api import (
     # beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
@@ -101,9 +100,8 @@ from pynchy.host.orchestrator.terminal_task_retirement import (
     retire_conversation_tasks,
     retire_provider_work_item_execution,
 )
-from pynchy.identifiers import (  # beartype resolves dependency adapter annotations at runtime.
+from pynchy.identifiers import (  # noqa: TC001 - beartype resolves nested adapter annotations.
     GroupFolder,
-    RuntimeId,
     SessionId,
 )
 from pynchy.ipc_snapshots import write_groups_snapshot as _write_groups_snapshot
@@ -124,7 +122,6 @@ from pynchy.scheduling.api import (  # beartype resolves dependency adapter anno
 )
 from pynchy.state.api import (
     approve_action_intent,
-    clear_session,
     complete_conversation_delivery,
     conversation_control_state_matches,
     create_host_job,
@@ -456,15 +453,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
         async def retire_conversation_runtime(self, folder: GroupFolder) -> None:
             """Stop local-only routed work without invoking Linear reset behavior."""
-            runtime_id = RuntimeId(folder)
-            app.queue.clear_pending_tasks(runtime_id)
-            app.queue.clear_pending_messages(runtime_id)
-            await app.queue.stop_active_process_for_control(runtime_id)
-            app.queue.clear_pending_messages(runtime_id)
-            await destroy_session(folder)
-            app.sessions.pop(folder, None)
-            app.session_cleared.add(folder)
-            await clear_session(folder)
+            await app.retire_workspace_runtime(folder)
 
         retire_conversation_tasks = staticmethod(retire_conversation_tasks)
 
@@ -518,6 +507,8 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             )
 
         has_active_session = session_manager.has_active_session
+
+        wake_worktree_conflict = app.start_interactive_turn
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
         pending_question_store = staticmethod(_PendingQuestionStore)
@@ -779,6 +770,9 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
 
         def has_active_session(self, group_folder: str) -> bool:
             return session_manager.has_active_session(group_folder)
+
+        async def wake_worktree_conflict(self, jid: str) -> None:
+            await app.start_interactive_turn(jid)
 
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces

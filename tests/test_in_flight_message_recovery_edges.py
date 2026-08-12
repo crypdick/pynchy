@@ -161,10 +161,13 @@ def test_resume_message_preserves_user_text_and_excludes_checkpoint_guidance() -
     messages = semantic_resume_messages(turn)
 
     assert message["metadata"]["source"] == "pause_continuation"
-    assert "Sender: original" in message["content"]
-    assert "Original request for reference:\nSender: original" in message["content"]
-    assert "Do not repeat it" in message["content"]
-    assert messages[1:] == [{"content": "new guidance", "metadata": {"checkpoint_guidance": True}}]
+    original = turn.input_messages[0]["content"]
+    guidance = turn.input_messages[-1]["content"]
+    assert isinstance(original, str)
+    assert isinstance(guidance, str)
+    assert original in message["content"]
+    assert message["content"].endswith(f"Sender: {original}")
+    assert messages[1:] == [{"content": guidance, "metadata": {"checkpoint_guidance": True}}]
 
 
 @pytest.mark.asyncio

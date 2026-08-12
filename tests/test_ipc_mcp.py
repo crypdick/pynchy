@@ -229,6 +229,12 @@ class TestListTasks:
                         "last_status": "error",
                         "consecutive_failures": 2,
                     },
+                    "health_reasons": [
+                        "paused",
+                        "recent_failure",
+                        "scheduler_error",
+                        "failure_shaped_result",
+                    ],
                 }
             ],
             "host_jobs": [
@@ -241,6 +247,7 @@ class TestListTasks:
                     "enabled": True,
                     "next_run": "2026-07-23T08:00:00+00:00",
                     "orchestration": {"state": "scheduled", "error": None},
+                    "health_reasons": [],
                 }
             ],
         }
@@ -269,7 +276,7 @@ class TestListTasks:
         assert task["last_result"] == "Blocked: provider unavailable"
         assert task["consecutive_failures"] == 2
         assert task["orchestration_error"] == "Temporal unavailable"
-        assert task["attention"] == [
+        assert task["health_reasons"] == [
             "paused",
             "recent_failure",
             "scheduler_error",
@@ -296,6 +303,7 @@ class TestListTasks:
                 "next_run": "2026-07-23T16:00:00+00:00",
                 "last_result": f"result-{index} " + ("x" * 1000),
                 "orchestration": {"state": "scheduled", "error": None},
+                "health_reasons": [],
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
             }
             for index in range(47)
@@ -330,6 +338,7 @@ class TestListTasks:
                 "next_run": "2026-07-23T16:00:00+00:00",
                 "last_result": "Completed",
                 "orchestration": {"state": "scheduled", "error": None},
+                "health_reasons": [],
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
             }
             for index in range(65)
@@ -344,6 +353,7 @@ class TestListTasks:
                 "enabled": True,
                 "next_run": "2026-07-23T08:00:00+00:00",
                 "orchestration": {"state": "scheduled", "error": None},
+                "health_reasons": [],
             }
             for index in range(33)
         ]
@@ -379,21 +389,8 @@ class TestListTasks:
         assert "max_host_job_rows" not in payload["coverage"]
 
     @pytest.mark.asyncio
-    async def test_failure_attention_handles_negation_and_operational_phrases(self, monkeypatch):
-        results = [
-            "Completed with 0 failures and no errors",
-            "Completed without any errors",
-            "No errors or failures",
-            "No failed checks",
-            "Unable to authenticate; login required",
-            "Missing credentials",
-            "Permission denied",
-            "Connection refused",
-            "Rate limited by provider",
-            "Integration is not configured",
-            "Forbidden",
-            "Needs setup",
-        ]
+    async def test_preserves_host_owned_failure_attention(self, monkeypatch):
+        results = ["Completed with 0 failures and no errors", "Missing credentials"]
         tasks = [
             {
                 "id": f"task-{index}",
@@ -405,6 +402,7 @@ class TestListTasks:
                 "last_result": result,
                 "orchestration": {"state": "scheduled", "error": None},
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
+                "health_reasons": [] if index == 0 else ["failure_shaped_result"],
             }
             for index, result in enumerate(results)
         ]
@@ -429,10 +427,8 @@ class TestListTasks:
 
         assert result.structuredContent is not None
         structured_tasks = result.structuredContent["tasks"]
-        for task in structured_tasks[:4]:
-            assert "attention" not in task
-        for task in structured_tasks[4:]:
-            assert task["attention"] == ["failure_shaped_result"]
+        assert structured_tasks[0]["health_reasons"] == []
+        assert structured_tasks[1]["health_reasons"] == ["failure_shaped_result"]
 
     @pytest.mark.asyncio
     async def test_list_tasks_declares_its_structured_output_schema(self):
@@ -706,6 +702,8 @@ class TestListToolsVisibility:
             "send_message",
             "messaging_source_health",
             "list_tasks",
+            "get_scheduled_task",
+            "update_scheduled_task",
             "pause_task",
             "resume_task",
             "cancel_task",

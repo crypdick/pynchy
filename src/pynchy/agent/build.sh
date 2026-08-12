@@ -187,11 +187,7 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
         mcp_image="pynchy-mcp-${base}:${TAG}"
         mcp_fingerprint=""
         mcp_context="$MCP_DIR"
-        if [ "$base" = "gdrive" ]; then
-            # The on-demand MCP lifecycle builds local Dockerfiles from the
-            # repository root, so gdrive must use that same COPY context.
-            mcp_context="$PROJECT_ROOT"
-        elif [ "$base" = "notebook" ]; then
+        if [ "$base" = "notebook" ]; then
             mcp_context="$PROJECT_ROOT/src/pynchy/plugins/integrations"
         fi
         if [ "$RUNTIME" = "container" ]; then

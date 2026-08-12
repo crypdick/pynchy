@@ -70,6 +70,8 @@ def container_runtime() -> ContainerRuntimeOperations:
 
 
 @pytest.fixture
-def queue(container_runtime: ContainerRuntimeOperations):
+async def queue(container_runtime: ContainerRuntimeOperations):
     with _patch_settings(max_concurrent=2):
-        yield GroupQueue(_queue_policy(), container_runtime)
+        runtime_queue = GroupQueue(_queue_policy(), container_runtime)
+        yield runtime_queue
+        await runtime_queue.shutdown()

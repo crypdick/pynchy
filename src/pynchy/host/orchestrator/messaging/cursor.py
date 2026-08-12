@@ -22,9 +22,23 @@ class CursorDeps(Protocol):
     async def save_state(self) -> None: ...
 
 
-def _monotonic_cursor(previous: str, current: str) -> str:
-    if not previous:
-        return current
+def _sequence(cursor: str) -> int | None:
+    if not cursor.startswith("sequence:"):
+        return None
+    value = cursor.removeprefix("sequence:")
+    return int(value) if value.isdecimal() else None
+
+
+def monotonic_cursor(previous: str, current: str) -> str:
+    """Return the later provider-time or local-sequence cursor."""
+    if not previous or not current:
+        return current or previous
+    previous_sequence = _sequence(previous)
+    current_sequence = _sequence(current)
+    if previous_sequence is not None or current_sequence is not None:
+        if previous_sequence is not None and current_sequence is not None:
+            return previous if previous_sequence > current_sequence else current
+        return current if current_sequence is not None else previous
     try:
         previous_time = datetime.fromisoformat(previous)
         current_time = datetime.fromisoformat(current)
@@ -61,7 +75,7 @@ async def complete_turn_with_cursor(
 ) -> ConversationDeliveryCompletion | None:
     """Atomically persist a monotonic cursor, turn, and optional routed delivery."""
     previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
-    deps.last_agent_timestamp[chat_jid] = _monotonic_cursor(previous_cursor, new_cursor)
+    deps.last_agent_timestamp[chat_jid] = monotonic_cursor(previous_cursor, new_cursor)
     try:
         completed = await complete_in_flight_turn(
             turn_id,

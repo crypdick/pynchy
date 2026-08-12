@@ -18,6 +18,7 @@ from typing import Any, cast
 from pynchy.identifiers import (
     ChatJid,
     GroupFolder,
+    validate_request_id,
 )
 from pynchy.workspace.api import ContainerConfig
 
@@ -53,6 +54,7 @@ TIER2_TYPES = frozenset(
         "create_periodic_agent",
         "messaging_source_health",
         "task_status",
+        "task_definition",
         # Persistent learned-skill decisions use a host-only user approval record.
         "skill_access:policy",
         # Lifecycle: still carries data, will be reviewed later
@@ -63,6 +65,7 @@ TIER2_TYPES = frozenset(
         "pause_task",
         "resume_task",
         "cancel_task",
+        "update_scheduled_task",
         # Service requests (policy-gated, Step 2)
         "service:list_calendar",
         "service:create_event",
@@ -88,7 +91,7 @@ READ_ONLY_REQUEST_PREFIXES = (
     "service:recall_",
     "skill_access:",
 )
-READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health", "task_status"})
+READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health", "task_status", "task_definition"})
 
 
 def validate_signal(data: dict[str, Any]) -> str | None:
@@ -141,10 +144,7 @@ class IpcRequestEnvelope:
         _require_envelope_fields(data)
         schema_version = _envelope_schema_version(data["schema_version"])
         kind = _request_kind(data["kind"])
-        request_id = _required_string_field(
-            "IPC request envelope request_id",
-            data["request_id"],
-        )
+        request_id = validate_request_id(data["request_id"])
         source_group = GroupFolder(
             _required_string_field(
                 "IPC request envelope source_group",

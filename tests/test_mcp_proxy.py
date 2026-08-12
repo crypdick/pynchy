@@ -170,6 +170,24 @@ class TestMcpProxyRouting:
         finally:
             await client.close()
 
+    async def test_proxy_404_instance_not_assigned_to_workspace(self):
+        """A workspace must not reach another workspace's MCP credentials."""
+        create_gate("other-ws", 1000.0, WorkspaceSecurity(services={"browser": _SAFE_TRUST}))
+        app = create_proxy_app(
+            {"browser": "http://localhost:9999/mcp"},
+            authorize_instance=lambda workspace, instance: (
+                workspace == "test-ws" and instance == "browser"
+            ),
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post("/mcp/other-ws/1000.0/browser", json={})
+            assert resp.status == 404
+        finally:
+            await client.close()
+
     async def test_proxy_403_no_gate(self):
         """Proxy should return 403 when no SecurityGate exists for the session."""
         app = create_proxy_app({"browser": "http://localhost:9999/mcp"})

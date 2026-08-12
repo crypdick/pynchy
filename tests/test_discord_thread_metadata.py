@@ -75,6 +75,49 @@ async def test_forum_guidelines_keep_operator_text_and_replace_project_link():
 
 
 @pytest.mark.asyncio
+async def test_thread_metadata_rejects_targets_that_cannot_persist_it():
+    ch = _channel()
+
+    ch.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+    with pytest.raises(TypeError, match="sending a pinned link"):
+        await ch.ensure_thread_link_pinned(
+            "discord:channel:456", "https://linear.app/acme/issue/PYN-1"
+        )
+
+    forum = MagicMock(available_tags=[])
+    forum.edit = None
+    ch.resolve_channel = AsyncMock(return_value=forum)  # type: ignore[method-assign]
+    with pytest.raises(TypeError, match="posting guidelines"):
+        await ch.ensure_forum_guidelines_linked(
+            "discord:channel:123", "https://linear.app/acme/project/current"
+        )
+
+
+@pytest.mark.asyncio
+async def test_thread_link_requires_a_pinnable_discord_message():
+    ch = _channel()
+    thread = MagicMock()
+    thread.pins = AsyncMock(return_value=[])
+    thread.send = AsyncMock(return_value=object())
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    with pytest.raises(TypeError, match="does not support pinning"):
+        await ch.ensure_thread_link_pinned(
+            "discord:channel:456", "https://linear.app/acme/issue/PYN-1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_forum_guidelines_ignore_non_forum_channels():
+    ch = _channel()
+    ch.resolve_channel = AsyncMock(return_value=object())  # type: ignore[method-assign]
+
+    await ch.ensure_forum_guidelines_linked(
+        "discord:channel:123", "https://linear.app/acme/project/current"
+    )
+
+
+@pytest.mark.asyncio
 async def test_thread_kind_resolves_parent_and_rejects_missing_forum_tag():
     ch = _channel()
     thread = MagicMock()

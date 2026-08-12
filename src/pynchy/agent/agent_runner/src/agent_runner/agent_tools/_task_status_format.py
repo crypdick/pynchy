@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 TASK_STATUS_SCHEMA_VERSION = "pynchy.scheduled_work_status.v1"
@@ -15,7 +14,7 @@ _SCHEDULE_CHARS = 128
 _STATUS_CHARS = 32
 _TIMESTAMP_CHARS = 64
 
-_ATTENTION_VALUES = [
+_HEALTH_REASON_VALUES = [
     "paused",
     "missing_next_run",
     "recent_failure",
@@ -25,9 +24,9 @@ _ATTENTION_VALUES = [
 TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "$defs": {
-        "attention": {
+        "health_reasons": {
             "type": "array",
-            "items": {"type": "string", "enum": _ATTENTION_VALUES},
+            "items": {"type": "string", "enum": _HEALTH_REASON_VALUES},
         },
         "task": {
             "type": "object",
@@ -39,6 +38,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "status",
                 "next_run",
                 "orchestration_state",
+                "health_reasons",
             ],
             "properties": {
                 "id": {"type": "string", "maxLength": _IDENTIFIER_CHARS},
@@ -55,7 +55,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "escalation_reason": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
                 "orchestration_state": {"type": "string", "maxLength": _STATUS_CHARS},
                 "orchestration_error": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
-                "attention": {"$ref": "#/$defs/attention"},
+                "health_reasons": {"$ref": "#/$defs/health_reasons"},
             },
             "additionalProperties": False,
         },
@@ -70,6 +70,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "enabled",
                 "next_run",
                 "orchestration_state",
+                "health_reasons",
             ],
             "properties": {
                 "id": {"type": "string", "maxLength": _IDENTIFIER_CHARS},
@@ -82,7 +83,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "last_run": {"type": "string", "maxLength": _TIMESTAMP_CHARS},
                 "orchestration_state": {"type": "string", "maxLength": _STATUS_CHARS},
                 "orchestration_error": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
-                "attention": {"$ref": "#/$defs/attention"},
+                "health_reasons": {"$ref": "#/$defs/health_reasons"},
             },
             "additionalProperties": False,
         },
@@ -121,39 +122,6 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
     },
     "additionalProperties": False,
 }
-
-_NEGATED_FAILURE = re.compile(
-    r"\b(?:"
-    r"(?:no|zero|0)\s+(?:errors?|failures?|blockers?)"
-    r"(?:\s+(?:or|and)\s+(?:errors?|failures?|blockers?))*"
-    r"|no\s+failed\s+\w+"
-    r"|not\s+(?:blocked|failed|failing)"
-    r"|without\s+(?:any\s+)?(?:errors?|failures?|blockers?)"
-    r"(?:\s+(?:or|and)\s+(?:errors?|failures?|blockers?))*"
-    r")\b",
-    re.IGNORECASE,
-)
-_FAILURE_PATTERNS = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"\bblocked\b",
-        r"\berrors?\b",
-        r"\bfail(?:ed|ure|ures|ing)?\b",
-        r"\b(?:unable|unavailable)\b",
-        r"\bcould not\b",
-        r"\bmissing\s+(?:a\s+)?(?:credentials?|token|api[ -]?key|secret)\b",
-        r"\bpermission denied\b",
-        r"\bforbidden\b",
-        r"\blogin required\b",
-        r"\bconnection refused\b",
-        r"\bnot configured\b",
-        r"\bneeds? setup\b",
-        r"\brate[ -]?limit(?:ed|ing)?\b",
-        r"\bunauthorized\b",
-        r"\btim(?:e|ed) out\b",
-        r"\btimeout\b",
-    )
-)
 
 
 class TaskStatusFormatError(ValueError):
@@ -198,26 +166,16 @@ def _mapping(value: object, field: str) -> dict[str, Any]:
     return value
 
 
-def _failure_shaped(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-    text = _NEGATED_FAILURE.sub("", value)
-    return any(pattern.search(text) for pattern in _FAILURE_PATTERNS)
-
-
-def _attention_reasons(result: dict[str, Any], *, last_result: object = None) -> list[str]:
-    reasons = []
-    if result["status"] == "paused":
-        reasons.append("paused")
-    if result["status"] == "active" and not result["next_run"]:
-        reasons.append("missing_next_run")
-    if result.get("last_run_status") == "error" or result.get("consecutive_failures", 0) > 0:
-        reasons.append("recent_failure")
-    if result.get("orchestration_error"):
-        reasons.append("scheduler_error")
-    if _failure_shaped(last_result):
-        reasons.append("failure_shaped_result")
-    return reasons
+def _health_reasons(value: object) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(reason, str) for reason in value):
+        raise TaskStatusFormatError("health_reasons must be an array of safe reason codes")
+    if any(reason not in _HEALTH_REASON_VALUES for reason in value):
+        raise TaskStatusFormatError("health_reasons contains an unknown reason code")
+    if len(value) != len(set(value)):
+        raise TaskStatusFormatError("health_reasons must not contain duplicate reason codes")
+    if value != sorted(value, key=_HEALTH_REASON_VALUES.index):
+        raise TaskStatusFormatError("health_reasons must use stable order")
+    return value
 
 
 def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
@@ -234,6 +192,7 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         "status": _required_string(task, "status", limit=_STATUS_CHARS),
         "next_run": _optional_string(task.get("next_run"), "next_run", limit=_TIMESTAMP_CHARS),
         "orchestration_state": _required_string(orchestration, "state", limit=_STATUS_CHARS),
+        "health_reasons": _health_reasons(task.get("health_reasons")),
     }
     optional_fields = {
         "last_run": _optional_string(task.get("last_run"), "last_run", limit=_TIMESTAMP_CHARS),
@@ -250,8 +209,6 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         del result["last_run_status"]
     if failures:
         result["consecutive_failures"] = failures
-    if attention := _attention_reasons(result, last_result=task.get("last_result")):
-        result["attention"] = attention
     return result
 
 
@@ -269,14 +226,13 @@ def _compact_host_job(job: dict[str, Any]) -> dict[str, Any]:
         "enabled": enabled,
         "next_run": _optional_string(job.get("next_run"), "next_run", limit=_TIMESTAMP_CHARS),
         "orchestration_state": _required_string(orchestration, "state", limit=_STATUS_CHARS),
+        "health_reasons": _health_reasons(job.get("health_reasons")),
     }
     optional_fields = {
         "last_run": _optional_string(job.get("last_run"), "last_run", limit=_TIMESTAMP_CHARS),
         "orchestration_error": _bounded_evidence(orchestration.get("error")),
     }
     result.update({key: value for key, value in optional_fields.items() if value is not None})
-    if attention := _attention_reasons(result):
-        result["attention"] = attention
     return result
 
 

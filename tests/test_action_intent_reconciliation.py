@@ -72,3 +72,72 @@ async def test_unknown_action_replay_reconciles_without_a_second_provider_write(
         receipt={"event_id": "$reconciled", "room_id": "!room:test"},
     )
     assert repeated.status is ActionIntentStatus.CONFIRMED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reconciler", [None, AsyncMock(return_value=None)])
+async def test_unknown_action_replay_stays_quarantined_without_a_provider_receipt(reconciler):
+    """A missing reconciliation receipt must never permit another provider write."""
+    handler = AsyncMock(return_value={"error": "provider response was lost"})
+    action = _transactional_action(handler)
+    assert action.action_intent is not None
+    action = replace(
+        action,
+        action_intent=replace(action.action_intent, reconcile_unknown=reconciler),
+    )
+    request_id = "request-reconcile-no-receipt"
+    await _prepared_approved_intent(action, request_id)
+
+    await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        request_id=request_id,
+    )
+    intent, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id=request_id,
+    )
+
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.OUTCOME_UNKNOWN
+    assert replay == {
+        "error": "External action outcome is unknown; reconcile the provider before retrying."
+    }
+    handler.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unknown_action_replay_survives_reconciliation_read_failure():
+    handler = AsyncMock(return_value={"error": "provider response was lost"})
+    action = _transactional_action(handler)
+    assert action.action_intent is not None
+    reconciler = AsyncMock(side_effect=RuntimeError("provider unavailable"))
+    action = replace(
+        action,
+        action_intent=replace(action.action_intent, reconcile_unknown=reconciler),
+    )
+    request_id = "request-reconcile-read-failure"
+    await _prepared_approved_intent(action, request_id)
+    await execute_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        request_id=request_id,
+    )
+
+    intent, replay = await prepare_action_intent(
+        action,
+        {"room_id": "!room:test", "body": "private payload"},
+        workspace="test-workspace",
+        chat_jid="test@g.us",
+        request_id=request_id,
+    )
+
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.OUTCOME_UNKNOWN
+    assert replay == {
+        "error": "External action outcome is unknown; reconcile the provider before retrying."
+    }
+    reconciler.assert_awaited_once()

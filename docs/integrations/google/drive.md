@@ -22,6 +22,7 @@ dangerous_writes = false
 runtime = "docker"
 image = "pynchy-mcp-gdrive:latest"
 dockerfile = "src/pynchy/agent/mcp/gdrive.Dockerfile"
+build_context = "src/pynchy/agent/mcp"
 port = 3100
 transport = "streamable_http"
 env = { GDRIVE_OAUTH_PATH = "/home/chrome/gcp-oauth.keys.json" }

@@ -531,8 +531,7 @@ class TestOutputFileErrors:
 
         assert not file_path.exists()
 
-    async def test_handler_exception_does_not_prevent_file_deletion(self, tmp_path: Path):
-        """If the output handler raises, the file should still be deleted."""
+    async def test_handler_exception_keeps_file_for_runtime_retry(self, tmp_path: Path):
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
             ipc_dir,
@@ -544,16 +543,17 @@ class TestOutputFileErrors:
             },
         )
 
-        handler = AsyncMock(side_effect=RuntimeError("handler boom"))
+        handler = AsyncMock(side_effect=[RuntimeError("handler boom"), None])
         with patch(
             "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
+            assert file_path.exists()
+            await process_output_file(file_path, "test-group", ipc_dir)
 
-        # File should be deleted even though handler raised
         assert not file_path.exists()
-        # Should NOT be in errors/ — the handler failure is non-fatal
+        assert handler.await_count == 2
         assert not (ipc_dir / "errors").exists()
 
     async def test_multiple_output_files_processed_in_order(self, tmp_path: Path):

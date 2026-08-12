@@ -25,6 +25,8 @@ from pathlib import (
 )
 from typing import Any, cast
 
+from pynchy.atomic_json import write_json_atomic
+from pynchy.identifiers import validate_request_id
 from pynchy.logger import logger
 
 # How long before a pending question expires (seconds).
@@ -89,10 +91,9 @@ def create_pending_question(  # noqa: PLR0913 - file-backed pending-question pay
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
-    filepath = pending_dir / f"{request_id}.json"
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(data, indent=2))
-    temp_path.rename(filepath)
+    safe_request_id = validate_request_id(request_id)
+    filepath = pending_dir / f"{safe_request_id}.json"
+    write_json_atomic(filepath, data, indent=2)
 
     logger.info(
         "Pending question created",
@@ -105,6 +106,10 @@ def create_pending_question(  # noqa: PLR0913 - file-backed pending-question pay
 
 def find_pending_question(request_id: str) -> dict[str, Any] | None:
     """Find a pending question by exact request_id, searching across all groups."""
+    try:
+        safe_request_id = validate_request_id(request_id)
+    except ValueError:
+        return None
     ipc_dir = _configured_ipc_base_dir()
     if not ipc_dir.exists():
         return None
@@ -112,7 +117,7 @@ def find_pending_question(request_id: str) -> dict[str, Any] | None:
     for group_dir in ipc_dir.iterdir():
         if not group_dir.is_dir() or group_dir.name == "errors":
             continue
-        filepath = group_dir / "pending_questions" / f"{request_id}.json"
+        filepath = group_dir / "pending_questions" / f"{safe_request_id}.json"
         if filepath.exists():
             try:
                 return cast("dict[str, Any]", json.loads(filepath.read_text()))
@@ -155,7 +160,8 @@ def find_pending_for_jid(chat_jid: str) -> dict[str, Any] | None:
 def resolve_pending_question(request_id: str, source_group: str) -> None:
     """Delete the pending question file once the question is answered."""
     pending_dir = _pending_questions_dir(source_group)
-    filepath = pending_dir / f"{request_id}.json"
+    safe_request_id = validate_request_id(request_id)
+    filepath = pending_dir / f"{safe_request_id}.json"
     if filepath.exists():
         filepath.unlink()
         logger.info(
@@ -178,7 +184,8 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
     Uses atomic write (tmp+rename) to avoid partial reads.
     """
     pending_dir = _pending_questions_dir(source_group)
-    filepath = pending_dir / f"{request_id}.json"
+    safe_request_id = validate_request_id(request_id)
+    filepath = pending_dir / f"{safe_request_id}.json"
 
     if not filepath.exists():
         logger.warning(
@@ -200,9 +207,7 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
 
     data["message_id"] = message_id
 
-    temp_path = filepath.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(data, indent=2))
-    temp_path.rename(filepath)
+    write_json_atomic(filepath, data, indent=2)
 
     logger.info(
         "Pending question message_id updated",

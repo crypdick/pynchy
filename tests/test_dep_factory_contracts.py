@@ -145,15 +145,9 @@ async def test_http_adapter_delegates_workspace_and_session_operations(tmp_path:
     app.unregister_workspace = AsyncMock()
     app.rebind_workspace = AsyncMock()
     app.bind_routed_session = AsyncMock()
-    app.queue.clear_pending_tasks = lambda _runtime: None
-    app.queue.clear_pending_messages = lambda _runtime: None
-    app.queue.stop_active_process_for_control = AsyncMock()
+    app.retire_workspace_runtime = AsyncMock()
 
-    with (
-        patch.object(dep_factory, "get_settings", return_value=settings),
-        patch.object(dep_factory, "destroy_session", new_callable=AsyncMock) as destroy,
-        patch.object(dep_factory, "clear_session", new_callable=AsyncMock) as clear,
-    ):
+    with patch.object(dep_factory, "get_settings", return_value=settings):
         deps = dep_factory.make_http_deps(app)
         await deps.register_workspace(profile)
         await deps.unregister_workspace(profile.jid)
@@ -165,9 +159,63 @@ async def test_http_adapter_delegates_workspace_and_session_operations(tmp_path:
     app.unregister_workspace.assert_awaited_once_with(profile.jid)
     app.rebind_workspace.assert_awaited_once_with(profile)
     app.bind_routed_session.assert_awaited_once_with("project", "session-2")
+    app.retire_workspace_runtime.assert_awaited_once_with("project")
+
+
+@pytest.mark.asyncio
+async def test_app_runtime_retirement_clears_state_before_artifact_cleanup(tmp_path: Path) -> None:
+    app = PynchyApp()
+    app.sessions["project"] = "session-1"
+    app.queue.clear_pending_tasks = MagicMock()
+    app.queue.clear_pending_messages = MagicMock()
+    app.queue.stop_active_process_for_control = AsyncMock()
+    settings = _settings(tmp_path)
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=settings),
+        patch("pynchy.host.orchestrator.app.destroy_session", new_callable=AsyncMock) as destroy,
+        patch("pynchy.host.orchestrator.app.clear_session", new_callable=AsyncMock) as clear,
+        patch("pynchy.host.orchestrator.app.cleanup_workspace_artifacts") as cleanup,
+    ):
+        await app.retire_workspace_runtime("project")
+
     destroy.assert_awaited_once_with("project")
     clear.assert_awaited_once_with("project")
+    cleanup.assert_called_once_with(
+        "project",
+        data_dir=settings.data_dir,
+        groups_dir=settings.groups_dir,
+        worktrees_dir=settings.worktrees_dir,
+        git=dep_factory.run_git,
+    )
+    assert "project" not in app.sessions
     assert "project" in app.session_cleared
+
+
+@pytest.mark.asyncio
+async def test_app_reclaims_unowned_workspace_artifacts_at_startup(tmp_path: Path) -> None:
+    app = PynchyApp()
+    settings = _settings(tmp_path)
+    folder = "project__thread_discord-channel-orphan"
+    artifact = settings.data_dir / "sessions" / folder
+    artifact.mkdir(parents=True)
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_all_sessions",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_artifacts.get_in_flight_turns",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+    ):
+        await app.reclaim_orphaned_workspace_artifacts([])
+
+    assert not artifact.exists()
 
 
 def test_http_capability_adapter_projects_config_and_policy(tmp_path: Path) -> None:
@@ -461,8 +509,10 @@ async def test_status_adapter_reports_queue_gateway_container_and_counts(tmp_pat
             assert await deps.get_container_state("agent") == "not_found"
 
 
-def test_git_sync_adapter_delegates_live_app_state() -> None:
+@pytest.mark.asyncio
+async def test_git_sync_adapter_delegates_live_app_state() -> None:
     app = PynchyApp()
+    app.start_interactive_turn = AsyncMock()
     profile = _workspace("project", is_admin=False)
     app.workspaces[profile.jid] = profile
     app.sessions["project"] = "session-1"
@@ -471,3 +521,5 @@ def test_git_sync_adapter_delegates_live_app_state() -> None:
     assert deps.workspaces() is app.workspaces
     assert deps.has_active_session("project") is True
     assert deps.has_active_session("missing") is False
+    await deps.wake_worktree_conflict(profile.jid)
+    app.start_interactive_turn.assert_awaited_once_with(profile.jid)

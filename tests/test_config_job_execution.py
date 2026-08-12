@@ -108,7 +108,7 @@ async def test_pre_run_output_is_bounded() -> None:
 
     assert outcome is None
     assert prepared is not None
-    assert "pre-run output truncated" in prepared.prompt
+    assert len(prepared.prompt) < len(task.prompt) + 13_000
 
 
 @pytest.mark.asyncio
@@ -125,7 +125,7 @@ async def test_pre_run_prompt_omits_empty_stdout() -> None:
 
     assert outcome is None
     assert prepared is not None
-    assert "stdout:" not in prepared.prompt
+    assert prepared.prompt.count("\n") == task.prompt.count("\n") + 4
 
 
 @pytest.mark.asyncio

@@ -143,6 +143,7 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.container_manager.session import (
     SessionDiedError,
+    active_session_group_folders,
     create_session,
     destroy_all_sessions,
     destroy_session,
@@ -177,6 +178,7 @@ from pynchy.host.git_ops.api import (
     needs_container_rebuild,
     needs_deploy,
     probe_origin_main_sha,
+    prune_stale_worktree_venvs,
     read_managed_feature_patch,
     redact_git_diagnostic,
     repo_container_path,
@@ -249,6 +251,7 @@ from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.messaging.ask_user_handler import AskUserRuntimeOperations
+from pynchy.host.orchestrator.messaging.cursor import monotonic_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # beartype resolves method annotations.
     ApprovalRuntimeOperations,
     CommandMatcher,
@@ -274,6 +277,10 @@ from pynchy.host.orchestrator.temporal.git_sync import (
     configure_temporal_git_sync_runtime,
 )
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
+from pynchy.host.orchestrator.workspace_artifacts import (
+    cleanup_startup_workspace_artifacts,
+    cleanup_workspace_artifacts,
+)
 from pynchy.host.orchestrator.workspace_config import (
     WorkspaceConfigRuntime,
     configure_workspace_config_runtime,
@@ -337,6 +344,7 @@ from pynchy.scheduling.api import (
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
     clear_runtime_session_references_batch,
+    clear_session,
     delete_workspace_profile,
     get_all_chats,
     get_all_sessions,
@@ -358,6 +366,7 @@ from pynchy.state.api import (
     store_message,
     store_message_direct,
     update_task,
+    upgrade_message_cursor,
 )
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
     TurnOutcome,
@@ -536,6 +545,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             last_notified_sha=last_notified_sha,
             needs_deploy=needs_deploy,
             probe_origin_main_sha=probe_origin_main_sha,
+            prune_stale_worktree_venvs=prune_stale_worktree_venvs,
             refresh_host_config=refresh_host_config,
         )
     )
@@ -1287,6 +1297,12 @@ class PynchyApp(ThreadRouting):
         self._shutting_down = True
         return True
 
+    def require_plugin_manager(self, phase: str) -> pluggy.PluginManager:
+        """Return composed plugins or fail with the startup phase that raced."""
+        if self.plugin_manager is None:
+            raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
+        return self.plugin_manager
+
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
         from pynchy.config.api import (  # noqa: PLC0415 - composition root selects the validator.
@@ -1332,14 +1348,14 @@ class PynchyApp(ThreadRouting):
 
     def routing_cursor(self, chat_jid: str) -> str:
         """Return the cursor for fetching messages during routing."""
-        return max(
+        return monotonic_cursor(
             self.last_agent_timestamp.get(chat_jid, ""),
             self._dispatched_through.get(chat_jid, ""),
         )
 
     def mark_dispatched(self, chat_jid: str, timestamp: str) -> None:
         """Record the furthest message timestamp dispatched to an active container."""
-        self._dispatched_through[chat_jid] = max(
+        self._dispatched_through[chat_jid] = monotonic_cursor(
             self._dispatched_through.get(chat_jid, ""),
             timestamp,
         )
@@ -1364,6 +1380,10 @@ class PynchyApp(ThreadRouting):
         self.sessions = await get_all_sessions()
 
         self.workspaces = await get_all_workspace_profiles()
+        workspace_jids = list(self.workspaces)
+        self.last_timestamp = await upgrade_message_cursor(workspace_jids, self.last_timestamp)
+        for chat_jid, cursor in self.last_agent_timestamp.items():
+            self.last_agent_timestamp[chat_jid] = await upgrade_message_cursor([chat_jid], cursor)
 
         logger.info(
             "State loaded",
@@ -1746,6 +1766,43 @@ class PynchyApp(ThreadRouting):
         self.workspaces.pop(jid, None)
         await delete_workspace_profile(jid)
 
+    async def retire_workspace_runtime(self, folder: str) -> None:
+        """Stop one retired workspace and reclaim its safe filesystem artifacts."""
+        runtime_id = RuntimeId(folder)
+        self.queue.clear_pending_tasks(runtime_id)
+        self.queue.clear_pending_messages(runtime_id)
+        await self.queue.stop_active_process_for_control(runtime_id)
+        self.queue.clear_pending_messages(runtime_id)
+        await destroy_session(folder)
+        self.sessions.pop(folder, None)
+        self.session_cleared.add(folder)
+        await clear_session(GroupFolder(folder))
+        settings = get_settings()
+        await asyncio.to_thread(
+            cleanup_workspace_artifacts,
+            folder,
+            data_dir=settings.data_dir,
+            groups_dir=settings.groups_dir,
+            worktrees_dir=settings.worktrees_dir,
+            git=run_git,
+        )
+
+    async def reclaim_orphaned_workspace_artifacts(
+        self,
+        tasks: Sequence[ScheduledTask],
+    ) -> None:
+        """Reclaim dynamic workspace artifacts with no durable runtime owner."""
+        settings = get_settings()
+        await cleanup_startup_workspace_artifacts(
+            self.workspaces.values(),
+            tasks,
+            self.active_worktree_folders(),
+            data_dir=settings.data_dir,
+            groups_dir=settings.groups_dir,
+            worktrees_dir=settings.worktrees_dir,
+            git=run_git,
+        )
+
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
         return available_workspace_groups(
@@ -1769,6 +1826,10 @@ class PynchyApp(ThreadRouting):
     def repo_is_dirty(self) -> bool:
         """Return the host checkout's source-control cleanliness."""
         return is_repo_dirty()
+
+    def active_worktree_folders(self) -> set[str]:
+        """Return worktree folders protected by running execution or a live session."""
+        return self.queue.active_folders() | active_session_group_folders()
 
     def new_learning_run_summary(self) -> learning_capture.LearningRunSummary:
         """Create the per-turn evidence buffer for best-effort learning."""

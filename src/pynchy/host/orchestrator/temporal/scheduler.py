@@ -476,8 +476,12 @@ class TemporalSchedulerRuntime:
             await self._worker_stack.enter_async_context(self._worker)
         except BaseException as exc:  # allow: exception-handling; startup cleanup then re-raise.
             await self._worker_stack.aclose()
-            bind_scheduler_deps(None)
-            _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
+            current_runtime = _state.active_runtime
+            bind_scheduler_deps(current_runtime.deps if current_runtime is not None else None)
+            _update_temporal_scheduler_status(
+                worker_running=current_runtime is not None,
+                last_error=str(exc),
+            )
             raise
         _state.active_runtime = self
         bind_workflow_client(self.client)
@@ -497,10 +501,11 @@ class TemporalSchedulerRuntime:
         _tb: TracebackType | None,
     ) -> None:
         await self._worker_stack.aclose()
+        if _state.active_runtime is not self:
+            return
         bind_scheduler_deps(None)
         unbind_workflow_client(self.client)
-        if _state.active_runtime is self:
-            _state.active_runtime = None
+        _state.active_runtime = None
         _update_temporal_scheduler_status(worker_running=False)
 
     async def start_scheduled_agent_task(self, task: ScheduledTask) -> None:

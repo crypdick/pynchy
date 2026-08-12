@@ -37,6 +37,7 @@ from pynchy.plugins.api import NewMessage
 from pynchy.state.api import (
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,
+    message_cursor,
     release_in_flight_turn_claim,
     resume_paused_in_flight_turn,
 )
@@ -98,13 +99,13 @@ async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcom
     resumed = await resume_paused_in_flight_turn(
         turn.turn_id,
         request.messages,
-        request.missed_messages[-1].timestamp,
+        message_cursor(request.missed_messages[-1]),
         claim=not is_scheduled,
     )
     if resumed is None:
         return TurnOutcome.COMPLETED
 
-    mark_dispatched(deps, request.chat_jid, request.missed_messages[-1].timestamp)
+    mark_dispatched(deps, request.chat_jid, message_cursor(request.missed_messages[-1]))
     if is_scheduled:
         await deps.start_interrupted_turn(resumed.turn_id, request.group.folder)
         return TurnOutcome.COMPLETED

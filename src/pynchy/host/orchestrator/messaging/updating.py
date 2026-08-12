@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Protocol, cast, runtime_checkable
 
-from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
+from pynchy.host.orchestrator.messaging.sender import outbound_delivery_lock, resolve_target_jid
 from pynchy.identifiers import (
     ChannelName,
     ChatJid,
@@ -65,15 +65,16 @@ async def deliver_updating_event(
     accumulated content is posted separately and that message becomes the edit
     anchor when the channel returns an ID.
     """
-    plans = _delivery_plans(deps, chat_jid, delta_event, messages)
-    ledger_ids = await _record_deliveries(chat_jid, source, plans)
-    next_messages = dict(messages)
-    for plan, ledger_id in zip(plans, ledger_ids, strict=True):
-        result = await _deliver_plan(plan, ledger_id)
-        if result is None:
-            next_messages.pop(plan.channel.name, None)
-        else:
-            next_messages[plan.channel.name] = result
+    async with outbound_delivery_lock(chat_jid):
+        plans = _delivery_plans(deps, chat_jid, delta_event, messages)
+        ledger_ids = await _record_deliveries(chat_jid, source, plans)
+        next_messages = dict(messages)
+        for plan, ledger_id in zip(plans, ledger_ids, strict=True):
+            result = await _deliver_plan(plan, ledger_id)
+            if result is None:
+                next_messages.pop(plan.channel.name, None)
+            else:
+                next_messages[plan.channel.name] = result
     return next_messages
 
 

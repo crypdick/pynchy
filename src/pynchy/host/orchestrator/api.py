@@ -47,6 +47,10 @@ from pynchy.host.orchestrator.scheduled_binding import (
     ensure_scheduled_task_conversation_open,
 )
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent
+from pynchy.host.orchestrator.workspace_artifacts import (
+    cleanup_orphaned_workspace_artifacts,
+    cleanup_workspace_artifacts,
+)
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
     load_resolved_config,
@@ -117,6 +121,8 @@ __all__ = [
     "SessionManager",
     "TextFormatter",
     "build_container_image",
+    "cleanup_orphaned_workspace_artifacts",
+    "cleanup_workspace_artifacts",
     "configure_config_refresh_runtime",
     "dispatch_interrupted_turn",
     "ensure_conversation_workspace",

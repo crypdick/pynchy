@@ -83,6 +83,7 @@ from pynchy.host.git_ops.worktree_sync import (
     host_sync_worktree,
     resolve_git_policy,
 )
+from pynchy.host.git_ops.worktree_venv import mark_worktree_used, prune_stale_worktree_venvs
 
 check_local_head_drift = _check_local_head_drift
 find_pynchy_repo_ctx = _find_pynchy_repo_ctx
@@ -165,9 +166,11 @@ __all__ = [
     "install_repo_hooks",
     "is_repo_dirty",
     "last_notified_sha",
+    "mark_worktree_used",
     "needs_container_rebuild",
     "needs_deploy",
     "probe_origin_main_sha",
+    "prune_stale_worktree_venvs",
     "push_local_commits",
     "read_managed_feature_patch",
     "reconcile_worktrees_at_startup",

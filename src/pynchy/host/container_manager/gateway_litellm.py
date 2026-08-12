@@ -41,6 +41,7 @@ from pynchy.host.container_manager.docker import (
     ensure_image,
     ensure_network,
     is_container_running,
+    redacted_container_logs,
     remove_container,
     run_docker,
     stop_container,
@@ -429,7 +430,10 @@ class LiteLLMGateway:
                     self._postgres_container,
                     check=False,
                 )
-                logger.error("PostgreSQL container exited", logs=logs.stdout[-2000:])
+                logger.error(
+                    "PostgreSQL container exited",
+                    logs=redacted_container_logs(logs, limit=2000),
+                )
                 msg = "PostgreSQL container failed to start — check logs above"
                 raise RuntimeError(msg)
 

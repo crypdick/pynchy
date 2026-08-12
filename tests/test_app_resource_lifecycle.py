@@ -162,6 +162,15 @@ def test_application_dispatch_cursor_preserves_the_furthest_in_flight_message() 
     assert app.routing_cursor("chat") == "2026-07-28T10:00:00Z"
 
 
+def test_application_dispatch_sequence_cursor_uses_numeric_order() -> None:
+    app = PynchyApp()
+
+    app.mark_dispatched("chat", "sequence:10")
+    app.mark_dispatched("chat", "sequence:9")
+
+    assert app.routing_cursor("chat") == "sequence:10"
+
+
 def test_application_exposes_update_offer_git_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -195,6 +195,49 @@ async def test_docker_wait_healthy_reports_an_exited_container(
 
 
 @pytest.mark.asyncio
+async def test_docker_wait_healthy_redacts_exited_container_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(docker, "is_container_running", AsyncMock(return_value=False))
+    raw_secret = "".join(("visible", "-runtime-value"))
+    monkeypatch.setattr(
+        docker,
+        "run_docker",
+        AsyncMock(return_value=_result(stdout=f"api_key={raw_secret}")),
+    )
+    error = MagicMock()
+    monkeypatch.setattr(docker.logger, "error", error)
+
+    with pytest.raises(RuntimeError, match="failed to start"):
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name="stopped-container",
+                url="http://127.0.0.1:9/health",
+                health_timeout_seconds=1.0,
+            )
+        )
+
+    assert raw_secret not in error.call_args.kwargs["logs"]
+
+
+def test_container_log_redaction_happens_before_tail_truncation() -> None:
+    raw_secret = "".join(("visible", "-runtime-value"))
+    result = _result(stdout=f"api_key={raw_secret}")
+
+    logs = docker.redacted_container_logs(result, limit=len(raw_secret) - 1)
+
+    assert raw_secret[-10:] not in logs
+
+
+def test_container_log_redaction_covers_bare_token_key() -> None:
+    raw_secret = "".join(("visible", "-runtime-value"))
+
+    logs = docker.redacted_container_logs(_result(stdout=f"token={raw_secret}"), limit=2000)
+
+    assert raw_secret not in logs
+
+
+@pytest.mark.asyncio
 async def test_docker_wait_healthy_reports_a_process_exit() -> None:
     process = subprocess.Popen.__new__(subprocess.Popen)
     process.poll = MagicMock(return_value=1)

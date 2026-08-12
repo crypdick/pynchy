@@ -271,8 +271,6 @@ class TestContainerInputAgentCoreConfig:
             TEST_GROUP.folder: WorkspaceConfig(profiles=["multi-repo"]),
         }
         deps = _AgentRunnerDeps()
-        remove_proc = FakeProcess()
-        remove_proc.close(code=1)
         proc = FakeProcess()
         session = MagicMock()
         runtime = MagicMock(cli="docker")
@@ -343,10 +341,6 @@ class TestContainerInputAgentCoreConfig:
                 return_value=runtime,
             ),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
-            patch(
-                "pynchy.host.container_manager.orchestrator.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=[remove_proc, proc]),
-            ),
             patch(
                 "pynchy.host.orchestrator.agent_runner._await_query",
                 new=AsyncMock(return_value="success"),

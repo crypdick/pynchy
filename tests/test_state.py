@@ -25,7 +25,9 @@ from pynchy.state import (
     set_router_state,
     set_session,
     store_chat_metadata,
+    store_message,
     update_task,
+    upgrade_message_cursor,
 )
 from tests.state_support import (
     _store,
@@ -73,6 +75,126 @@ class TestStoreMessage:
         messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
         assert not messages[0].content
+
+    async def test_message_cursors_follow_local_ingestion_order(self):
+        timestamp = "2024-01-01T00:00:01.000Z"
+        await _store_message_row(
+            _store(
+                message_id="first",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="first",
+                timestamp=timestamp,
+            )
+        )
+        first_batch, cursor = await get_new_messages(["group@g.us"], "")
+        assert [message.id for message in first_batch] == ["first"]
+
+        for message_id, delayed_timestamp in (
+            ("same-second", timestamp),
+            ("delayed", "2023-12-31T23:59:59.000Z"),
+        ):
+            await _store_message_row(
+                _store(
+                    message_id=message_id,
+                    chat_jid="group@g.us",
+                    sender="alice",
+                    sender_name="Alice",
+                    content=message_id,
+                    timestamp=delayed_timestamp,
+                )
+            )
+
+        new_batch, _ = await get_new_messages(["group@g.us"], cursor)
+        pending = await get_messages_since("group@g.us", cursor)
+
+        assert [message.id for message in new_batch] == ["same-second", "delayed"]
+        assert [message.id for message in pending] == ["same-second", "delayed"]
+
+    async def test_duplicate_store_keeps_original_ingestion_position(self):
+        message = _store(
+            message_id="duplicate",
+            chat_jid="group@g.us",
+            sender="alice",
+            sender_name="Alice",
+            content="first",
+            timestamp="2024-01-01T00:00:01.000Z",
+        )
+        await store_message(message)
+        _, cursor = await get_new_messages([message.chat_jid], "")
+
+        message.content = "updated"
+        message.timestamp = "2024-01-01T00:00:02.000Z"
+        await store_message(message)
+
+        new_batch, _ = await get_new_messages([message.chat_jid], cursor)
+        assert not new_batch
+
+    async def test_legacy_cursor_upgrade_tracks_delayed_messages(self):
+        timestamp = "2024-01-01T00:00:01.000Z"
+        await _store_message_row(
+            _store(
+                message_id="processed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="processed",
+                timestamp=timestamp,
+            )
+        )
+        cursor = await upgrade_message_cursor(["group@g.us"], timestamp)
+        await _store_message_row(
+            _store(
+                message_id="delayed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="delayed",
+                timestamp="2023-12-31T23:59:59.000Z",
+            )
+        )
+
+        pending = await get_messages_since("group@g.us", cursor)
+        assert [message.id for message in pending] == ["delayed"]
+
+    async def test_legacy_cursor_upgrade_recovers_already_stranded_delayed_messages(self):
+        timestamp = "2024-01-01T00:00:01.000Z"
+        await _store_message_row(
+            _store(
+                message_id="processed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="processed",
+                timestamp=timestamp,
+            )
+        )
+        await _store_message_row(
+            _store(
+                message_id="already-delayed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="delayed",
+                timestamp="2023-12-31T23:59:59.000Z",
+            )
+        )
+        await _store_message_row(
+            _store(
+                message_id="same-timestamp",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="same timestamp",
+                timestamp=timestamp,
+            )
+        )
+
+        cursor = await upgrade_message_cursor(["group@g.us"], timestamp)
+
+        pending = await get_messages_since("group@g.us", cursor)
+        assert [message.id for message in pending] == ["already-delayed", "same-timestamp"]
 
     async def test_stores_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
@@ -233,7 +355,9 @@ class TestGetNewMessages:
             "2024-01-01T00:00:00.000Z",
         )
         assert len(messages) == 3
-        assert new_ts == "2024-01-01T00:00:04.000Z"
+        replay, replay_cursor = await get_new_messages(["group1@g.us", "group2@g.us"], new_ts)
+        assert not replay
+        assert replay_cursor == new_ts
 
     async def test_filters_by_timestamp(self):
         messages, _ = await get_new_messages(

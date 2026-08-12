@@ -63,3 +63,19 @@ def test_control_and_response_files_use_the_same_configured_root(tmp_path) -> No
     assert not (tmp_path / "project" / "input" / "_close").read_text()
     assert response_path == tmp_path / "project" / "responses" / "request-1.json"
     assert json.loads(response_path.read_text()) == {"result": {"ok": True}}
+
+
+def test_close_sentinel_replaces_symlink_without_following_it(tmp_path) -> None:
+    configure_ipc_base_dir(tmp_path)
+    input_dir = tmp_path / "project" / "input"
+    input_dir.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.write_text("untouched")
+    sentinel = input_dir / "_close"
+    sentinel.symlink_to(outside)
+
+    write_ipc_close_sentinel("project")
+
+    assert outside.read_text() == "untouched"
+    assert not sentinel.is_symlink()
+    assert not sentinel.read_text()

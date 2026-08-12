@@ -124,6 +124,33 @@ def _conversation() -> Conversation:
     )
 
 
+@pytest.mark.asyncio
+async def test_linear_forum_guidelines_link_only_configured_workspace(monkeypatch) -> None:
+    app = PynchyApp()
+    root = WorkspaceProfile(
+        jid="discord:channel:health-forum",
+        name="Health",
+        folder="health",
+        trigger="@Pynchy",
+    )
+    app.workspaces[root.jid] = root
+    ensure_link = AsyncMock()
+    monkeypatch.setattr(linear_issue_controls, "ensure_forum_guidelines_linked", ensure_link)
+
+    await linear_issue_controls.ensure_forum_guidelines(
+        app,
+        {
+            "health": MagicMock(project={"url": "https://linear.app/acme/project/health"}),
+            "missing": MagicMock(project={"url": "https://linear.app/acme/project/missing"}),
+            "invalid": MagicMock(project={"url": None}),
+        },
+    )
+
+    ensure_link.assert_awaited_once_with(
+        app.channels, root.jid, "https://linear.app/acme/project/health"
+    )
+
+
 def _patch_run_app_tail(monkeypatch, app: PynchyApp, settings: object) -> AsyncMock:
     loop = asyncio.get_running_loop()
     monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
@@ -253,6 +280,8 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
     monkeypatch.setattr(lifecycle.workspace_config, "get_repo_access_groups", lambda _: {"group"})
     monkeypatch.setattr(lifecycle, "reconcile_worktrees_at_startup", reconcile_worktrees)
     monkeypatch.setattr(lifecycle.workspace_config, "reconcile_workspaces", reconcile_workspaces)
+    cleanup_artifacts = AsyncMock()
+    monkeypatch.setattr(app, "reclaim_orphaned_workspace_artifacts", cleanup_artifacts)
     reconcile_bindings = AsyncMock(return_value=binding_count)
     monkeypatch.setattr(lifecycle, "get_all_tasks", AsyncMock(return_value=[]))
     monkeypatch.setattr(
@@ -279,8 +308,10 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
         rebind_fn=app.rebind_workspace,
+        retire_fn=app.retire_workspace_runtime,
     )
     reconcile_bindings.assert_awaited_once_with([], app)
+    cleanup_artifacts.assert_awaited_once_with([])
     ensure_guidelines.assert_awaited_once_with(app, boards)
     assert app.connection_runtime_owner.runtimes() == tuple(runtimes)
 

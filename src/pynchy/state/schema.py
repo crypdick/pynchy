@@ -34,6 +34,18 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
 CREATE INDEX IF NOT EXISTS idx_messages_by_chat ON messages(chat_jid, timestamp);
+-- NOTE: Update docs/architecture/message-types.md "Database Schema" if this changes.
+CREATE TABLE IF NOT EXISTS message_ingestion_order (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    chat_jid TEXT NOT NULL,
+    UNIQUE (message_id, chat_jid),
+    FOREIGN KEY (message_id, chat_jid) REFERENCES messages(id, chat_jid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_message_ingestion_by_chat
+ON message_ingestion_order(chat_jid, sequence);
+INSERT OR IGNORE INTO message_ingestion_order (message_id, chat_jid)
+SELECT id, chat_jid FROM messages ORDER BY rowid;
 
 """
     + TASK_SCHEMA

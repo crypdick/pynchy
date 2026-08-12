@@ -31,6 +31,7 @@ class NotebookServerPlugin:
                     type="docker",
                     image="pynchy-mcp-notebook:latest",
                     dockerfile="src/pynchy/agent/mcp/notebook.Dockerfile",
+                    build_context="src/pynchy/plugins/integrations",
                     args=["--workspace-dir", "/workspace"],
                     port=8460,
                     extra_ports=[8888],

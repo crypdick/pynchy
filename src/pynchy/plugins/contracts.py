@@ -89,6 +89,7 @@ class NewMessage:
     is_from_me: bool | None = None
     message_type: str = "user"
     metadata: dict[str, Any] | None = None
+    local_sequence: int | None = None
 
 
 class OutboundEventType(Enum):

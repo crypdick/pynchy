@@ -81,6 +81,7 @@ from pynchy.host.git_ops.api import (
     last_notified_sha,
     needs_deploy,
     probe_origin_main_sha,
+    prune_stale_worktree_venvs,
     read_managed_feature_patch,
     redact_git_diagnostic,
     resolve_managed_feature_publication,
@@ -564,6 +565,7 @@ def reset_settings(monkeypatch):
                 last_notified_sha=last_notified_sha,
                 needs_deploy=needs_deploy,
                 probe_origin_main_sha=probe_origin_main_sha,
+                prune_stale_worktree_venvs=prune_stale_worktree_venvs,
                 refresh_host_config=AsyncMock(
                     side_effect=lambda config_hash: orchestrator_api.ConfigRefreshResult(
                         orchestrator_api.ConfigRefreshStatus.UNCHANGED,

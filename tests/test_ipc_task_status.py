@@ -32,7 +32,7 @@ def _orchestration_states(
             "next_run": "2026-07-22T04:00:00+00:00" if task.status == "active" else None,
             "schedule_id": f"schedule-{task.id}" if task.status == "active" else None,
             "workflow_id": None,
-            "error": None,
+            "error": "private Temporal error" if task.id == "own-task" else None,
         }
     for job in jobs:
         states["host_job", job.id] = {
@@ -131,6 +131,11 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
     assert [task["id"] for task in result["tasks"]] == ["own-task"]
     assert result["tasks"][0]["last_result"] == "Blocked: missing provider credential"
     assert result["tasks"][0]["run_health"]["consecutive_failures"] == 1
+    assert result["tasks"][0]["health_reasons"] == [
+        "recent_failure",
+        "scheduler_error",
+        "failure_shaped_result",
+    ]
     assert result["tasks"][0]["next_run"] == "2026-07-22T04:00:00+00:00"
     assert result["host_jobs"] == []
     assert "private own prompt" not in response_text
@@ -169,6 +174,7 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
                 "error": None,
             },
             "last_run": None,
+            "health_reasons": [],
         }
     ]
     assert result["coverage"]["task_prompts_included"] is False

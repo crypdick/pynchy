@@ -10,6 +10,7 @@ from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves temporal Git runtime annotations.
 )
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, cast
 
@@ -50,6 +51,8 @@ _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 _DISK_CAPACITY_STATE_KEY = "host_disk_capacity_state"
 _DISK_LOW_BYTES = 5 * 1024**3
+_WORKTREE_VENV_GC_STATE_KEY = "worktree_venv_gc_last_run"
+_WORKTREE_VENV_GC_INTERVAL = timedelta(days=1)
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
@@ -72,6 +75,7 @@ class TemporalGitSyncRuntime:
     last_notified_sha: dict[str, str]
     needs_deploy: Callable[[str, str], bool]
     probe_origin_main_sha: Callable[..., Any]
+    prune_stale_worktree_venvs: Callable[..., list[Path]]
     refresh_host_config: Callable[[str], Any]
 
 
@@ -90,6 +94,7 @@ _runtime = TemporalGitSyncRuntime(
     last_notified_sha={},
     needs_deploy=_unconfigured_runtime,
     probe_origin_main_sha=_unconfigured_runtime,
+    prune_stale_worktree_venvs=_unconfigured_runtime,
     refresh_host_config=_unconfigured_runtime,
 )
 
@@ -101,6 +106,7 @@ def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None
     global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global host_update_main_result, check_origin_drift  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global probe_origin_main_sha, last_notified_sha, needs_deploy, refresh_host_config  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global prune_stale_worktree_venvs  # noqa: PLW0603 - composition owns this source-control port.
     _runtime = runtime
     get_settings = runtime.get_settings
     _check_local_head_drift = runtime.check_local_head_drift
@@ -114,6 +120,7 @@ def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None
     host_update_main_result = runtime.host_update_main_result
     check_origin_drift = runtime.check_origin_drift
     probe_origin_main_sha = runtime.probe_origin_main_sha
+    prune_stale_worktree_venvs = runtime.prune_stale_worktree_venvs
     last_notified_sha = runtime.last_notified_sha
     needs_deploy = runtime.needs_deploy
     refresh_host_config = runtime.refresh_host_config
@@ -131,6 +138,7 @@ host_notify_worktree_updates: Callable[..., Any] = _unconfigured_runtime
 host_update_main_result: Callable[..., Any] = _unconfigured_runtime
 check_origin_drift: Callable[..., Any] = _unconfigured_runtime
 probe_origin_main_sha: Callable[..., Any] = _unconfigured_runtime
+prune_stale_worktree_venvs: Callable[..., list[Path]] = _unconfigured_runtime
 last_notified_sha: dict[str, str] = {}
 needs_deploy: Callable[[str, str], bool] = _unconfigured_runtime
 refresh_host_config: Callable[[str], Any] = _unconfigured_runtime
@@ -193,6 +201,13 @@ class _TemporalGitSyncDeps:
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
         await self._deps.broadcast_system_notice(jid, text)
 
+    async def wake_worktree_conflict(self, jid: str) -> None:
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415 - avoids temporal activity/scheduler import cycle.
+            start_interactive_message_workflow,
+        )
+
+        await start_interactive_message_workflow(jid)
+
     def has_active_session(self, group_folder: str) -> bool:
         if hasattr(self._deps, "has_active_session"):
             return bool(self._deps.has_active_session(group_folder))
@@ -204,6 +219,10 @@ class _TemporalGitSyncDeps:
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return _workspace_map(self._deps)
+
+    def active_worktree_folders(self) -> set[str]:
+        getter = getattr(self._deps, "active_worktree_folders", None)
+        return set(getter()) if callable(getter) else set()
 
     def sync_personalization(self, project_root: Path) -> str:
         return self._deps.sync_personalization(project_root)
@@ -307,6 +326,26 @@ async def _save_host_state(state: HostSyncState) -> None:
     await set_router_state(HOST_STATE_KEY, json.dumps(asdict(state)))
 
 
+async def _prune_stale_venvs(deps: _TemporalGitSyncDeps) -> None:
+    """Run managed-worktree venv retention at most once per day."""
+    now = datetime.now(UTC)
+    last_run = await get_router_state(_WORKTREE_VENV_GC_STATE_KEY)
+    if last_run:
+        try:
+            last_run_at = datetime.fromisoformat(last_run)
+            if last_run_at.tzinfo is not None and now - last_run_at < _WORKTREE_VENV_GC_INTERVAL:
+                return
+        except ValueError:
+            logger.warning("Corrupt worktree venv GC state, running cleanup")
+    settings = get_settings()
+    await asyncio.to_thread(
+        prune_stale_worktree_venvs,
+        settings.worktrees_dir,
+        active_folders=deps.active_worktree_folders(),
+    )
+    await set_router_state(_WORKTREE_VENV_GC_STATE_KEY, now.isoformat())
+
+
 def _local_code_awaits_approval(state: HostSyncState, *, auto_deploy: bool) -> bool:
     return bool(
         not auto_deploy
@@ -329,6 +368,7 @@ async def run_host_git_sync() -> str:
 
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
     settings = get_settings()
+    await _prune_stale_venvs(deps)
     await _report_disk_capacity(deps)
     state = await _load_host_state()
     repo_ctx = _find_pynchy_repo_ctx(tuple(settings.repos.overrides), settings.project_root)

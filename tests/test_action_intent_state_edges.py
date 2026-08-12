@@ -16,6 +16,7 @@ from pynchy.state import (
     init_test_database,
     list_action_intents,
     mark_action_intent_awaiting_approval,
+    reconcile_action_intent,
 )
 
 
@@ -112,4 +113,25 @@ async def test_status_update_fails_if_intent_disappears_after_commit() -> None:
         await mark_action_intent_awaiting_approval(
             "request-disappears",
             policy_decision="approved",
+        )
+
+
+async def test_reconcile_rejects_a_conflicting_concurrent_receipt() -> None:
+    await create_action_intent(_request("request-reconcile-conflict"))
+
+    with (
+        patch(
+            "pynchy.state.action_intents._set_action_intent_status",
+            new=AsyncMock(side_effect=RuntimeError("state changed")),
+        ),
+        patch(
+            "pynchy.state.action_intents.get_action_intent_by_request",
+            new=AsyncMock(return_value=None),
+        ),
+        pytest.raises(RuntimeError, match="state changed"),
+    ):
+        await reconcile_action_intent(
+            "request-reconcile-conflict",
+            provider_request_id="provider-1",
+            receipt={"event_id": "provider-1"},
         )

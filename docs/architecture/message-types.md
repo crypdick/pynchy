@@ -45,6 +45,14 @@ CREATE TABLE messages (
     PRIMARY KEY (id, chat_jid)
 );
 
+CREATE TABLE message_ingestion_order (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    chat_jid TEXT NOT NULL,
+    UNIQUE (message_id, chat_jid),
+    FOREIGN KEY (message_id, chat_jid) REFERENCES messages(id, chat_jid) ON DELETE CASCADE
+);
+
 CREATE INDEX idx_messages_by_chat ON messages(chat_jid, timestamp);
 ```
 
@@ -92,7 +100,7 @@ await store_message_direct(
 from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
 
 # Retrieve messages from DB
-messages = await get_messages_since(chat_jid, since_timestamp)
+messages = await get_messages_since(chat_jid, durable_cursor)
 
 # Convert to SDK format (filters out host messages)
 sdk_messages = format_messages_for_sdk(messages)

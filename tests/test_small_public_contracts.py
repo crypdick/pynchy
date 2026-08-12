@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -349,7 +350,7 @@ async def test_linear_planning_admission_keeps_trusted_source_unfenced(monkeypat
 
     assert task is not None
     assert task.input_source == "trusted:linear:ready_for_planning"
-    assert "untrusted_external_content" not in task.prompt
+    assert json.loads(task.prompt)["issue_id"] == issue.id
 
 
 @pytest.mark.asyncio

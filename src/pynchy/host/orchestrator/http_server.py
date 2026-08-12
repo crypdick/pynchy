@@ -27,6 +27,7 @@ from pynchy.host.orchestrator.capability_status import (
     collect_capability_status,
     resolve_workspace_capabilities,
 )
+from pynchy.host.orchestrator.deploy import rollback_checkout
 from pynchy.host.orchestrator.http_control import (
     ControlPlaneRuntime,
     build_control_plane_middleware,
@@ -181,14 +182,15 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             "Please reconcile the incoming changes into your local clone, push, then redeploy.",
         )
 
-    # Restore stashed files regardless of rebase outcome
-    if stashed:
-        operations.run_git("stash", "pop")
-
     new_sha = operations.get_head_sha()
     has_new_code = new_sha != old_sha
 
-    # 4. Validate import (only when the pull changed HEAD)
+    if stashed:
+        restore = operations.run_git("stash", "pop")
+        if restore.returncode != 0:
+            return web.json_response({"error": "failed to restore local changes"}, status=409)
+
+    # 4. Validate the checkout that will actually restart.
     if has_new_code:
         validate = await asyncio.to_thread(
             subprocess.run,
@@ -200,7 +202,17 @@ async def _handle_deploy(request: web.Request) -> web.Response:
         if validate.returncode != 0:
             err = validate.stderr.strip()[-300:]
             logger.error("Deploy validation failed, rolling back", error=err)
-            operations.run_git("reset", "--hard", old_sha)
+            rollback = rollback_checkout(
+                old_sha,
+                get_head_sha=operations.get_head_sha,
+                run_git=operations.run_git,
+            )
+            if not rollback.success:
+                logger.error("Deploy import rollback failed", error=rollback.error)
+                return web.json_response(
+                    {"error": "import validation failed", "rollback_failed": True},
+                    status=500,
+                )
             chat_jid = deps.admin_chat_jid()
             if chat_jid:
                 msg = f"Deploy failed — import validation error, rolled back to {old_sha[:8]}."

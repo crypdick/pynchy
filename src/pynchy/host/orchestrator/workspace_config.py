@@ -18,13 +18,16 @@ from typing import Any, NoReturn, cast
 import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
+from pynchy.atomic_json import write_text_atomic
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.pipeline_context import (
     prompt_ids_for_context as _prompt_ids_for_context,
 )
-from pynchy.host.orchestrator.threads import provider_conversation_exists
+from pynchy.host.orchestrator.workspace_artifacts import (
+    remove_orphaned_workspace_registrations,
+)
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
     resolve_display_name,
@@ -36,7 +39,7 @@ from pynchy.plugins.api import (
     Channel,  # beartype resolves workspace config annotations at runtime.
     WorkspaceSpec,
 )
-from pynchy.state.api import get_all_sessions, get_all_tasks, update_task
+from pynchy.state.api import get_all_tasks, update_task
 from pynchy.workspace.api import (  # beartype resolves workspace config annotations at runtime.
     CapabilityRule,
     WorkspaceProfile,
@@ -398,85 +401,13 @@ async def reconcile_automation_jobs(
     await _pause_orphaned_tasks(desired_job_task_ids)
 
 
-async def _remove_orphaned_workspaces(
-    specs: dict[str, WorkspaceSpec],
-    workspaces: dict[str, WorkspaceProfile],
-    channels: list[Channel],
-    unregister_fn: Callable[[str], Awaitable[None]] | None,
-) -> None:
-    """Remove workspace registrations in the DB but not in config.
-
-    Admin workspaces are created dynamically at first boot without a config entry,
-    so they remain exempt.
-    """
-    if unregister_fn is None:
-        return
-    config_folders = {*specs, *get_settings().workspace_names()}
-    retained_tasks = [task for task in await get_all_tasks() if task.status in {"active", "paused"}]
-    task_workspace_identities = {
-        identity
-        for task in retained_tasks
-        for identity in (
-            task.group_folder,
-            task.chat_jid,
-            task.bound_group_folder,
-            task.bound_chat_jid,
-        )
-        if identity is not None
-    }
-    session_workspace_folders = (await get_all_sessions()).keys()
-    for jid, profile in list(workspaces.items()):
-        if (
-            profile.folder in task_workspace_identities
-            or jid in task_workspace_identities
-            or profile.folder in session_workspace_folders
-        ):
-            logger.info("Retained owned workspace registration", folder=profile.folder, jid=jid)
-            continue
-        parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
-        if profile.folder in config_folders or profile.is_admin:
-            continue
-        if (
-            conversation_id_from_folder(profile.folder) is not None
-            and profile.folder not in _runtime_restrictions
-        ):
-            await unregister_fn(jid)
-            logger.info(
-                "Removed stale routed workspace registration",
-                folder=profile.folder,
-                jid=jid,
-            )
-            continue
-        if parent_folder in config_folders:
-            try:
-                exists = await provider_conversation_exists(channels, jid)
-            except Exception as exc:  # noqa: BLE001 - provider uncertainty must retain state.
-                logger.warning(
-                    "Retained workspace after provider presence check failed",
-                    folder=profile.folder,
-                    jid=jid,
-                    error=type(exc).__name__,
-                )
-                continue
-            if exists is not False:
-                continue
-            await unregister_fn(jid)
-            logger.info(
-                "Removed provider-deleted workspace registration",
-                folder=profile.folder,
-                jid=jid,
-            )
-            continue
-        await unregister_fn(jid)
-        logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
-
-
-async def reconcile_workspaces(
+async def reconcile_workspaces(  # noqa: PLR0913 - lifecycle cleanup joins existing registration callbacks.
     workspaces: dict[str, WorkspaceProfile],
     channels: list[Channel],
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     unregister_fn: Callable[[str], Awaitable[None]] | None = None,
     rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None = None,
+    retire_fn: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
     """Ensure workspace state matches personalized desired state.
 
@@ -528,12 +459,15 @@ async def reconcile_workspaces(
         logger.info("Workspace child threads reconciled", count=len(thread_actions))
 
     await reconcile_automation_jobs(workspaces, s)
-    await _remove_orphaned_workspaces(
-        specs,
-        workspaces,
-        channels,
-        unregister_fn,
-    )
+    if unregister_fn is not None:
+        await remove_orphaned_workspace_registrations(
+            {*specs, *get_settings().workspace_names()},
+            set(_runtime_restrictions),
+            workspaces,
+            channels,
+            unregister_fn,
+            retire_fn,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +492,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     for key, value in data.items():
         workspace_table.add(key, value)
     doc.add("workspace", workspace_table)
-    workspace_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text_atomic(workspace_path, tomlkit.dumps(doc))
     reset_settings()
 
 
@@ -602,6 +536,6 @@ def add_job_to_toml(job_name: str, config: JobConfig) -> None:
     for key, value in config.model_dump(exclude_none=True, exclude_defaults=True).items():
         job_table.add(key, value)
     doc.add("job", job_table)
-    automation_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text_atomic(automation_path, tomlkit.dumps(doc))
 
     reset_settings()

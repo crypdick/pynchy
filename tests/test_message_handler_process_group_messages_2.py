@@ -40,6 +40,7 @@ from pynchy.state import (
     init_test_database,
     prepare_in_flight_turn_recovery,
     store_message,
+    upgrade_message_cursor,
 )
 from pynchy.turn_outcomes import TurnOutcome
 from tests.message_handler_support import (
@@ -247,7 +248,9 @@ class TestProcessGroupMessages:
         assert completed is not None
         assert completed.status is ConversationDeliveryStatus.COMPLETED
         assert deps.run_agent.await_args.kwargs["input_source"] == "external:matrix"
-        assert deps.last_agent_timestamp[jid] == external.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], external.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_finalization_exception_preserves_routed_claim_for_resume(self, tmp_path):
@@ -293,7 +296,9 @@ class TestProcessGroupMessages:
         completed = await get_conversation_delivery(identity)
         assert completed is not None
         assert completed.status is ConversationDeliveryStatus.COMPLETED
-        assert deps.last_agent_timestamp[jid] == external.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], external.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_restart_semantically_resumes_partial_turn_without_replaying_input(
@@ -353,8 +358,10 @@ class TestProcessGroupMessages:
         assert len(recovered_messages) == 1
         recovery_prompt = recovered_messages[0]
         assert recovery_prompt["metadata"]["interrupted_turn_id"] == original_turn_id
-        assert "continue the unfinished job" in recovery_prompt["content"]
-        assert "Do not repeat it" in recovery_prompt["content"]
+        assert recovery_prompt["content"]
+        original_input = checkpoint.input_messages[0]["content"]
+        assert isinstance(original_input, str)
+        assert recovery_prompt["content"].endswith(f"User: {original_input}")
         assert (
             await get_in_flight_turn_for_chat(
                 jid,
@@ -453,8 +460,12 @@ class TestProcessGroupMessages:
         assert checkpoint is not None
         assert checkpoint.control_state is CheckpointControlState.PAUSED
         assert checkpoint.claimed_at is None
-        assert checkpoint.input_end_cursor == original.timestamp
-        assert deps.last_agent_timestamp[jid] == pause.timestamp
+        assert checkpoint.input_end_cursor == await upgrade_message_cursor(
+            [jid], original.timestamp
+        )
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], pause.timestamp
+        )
         assert deps.broadcast_host_message.await_args_list == [
             call(jid, "⏸️"),
         ]
@@ -511,7 +522,9 @@ class TestProcessGroupMessages:
         assert resumed_messages[1]["content"] == guidance.content
         assert resumed_messages[1]["metadata"]["checkpoint_guidance"] is True
         assert await get_in_flight_turn("turn-paused-resume") is None
-        assert deps.last_agent_timestamp[jid] == guidance.timestamp
+        assert deps.last_agent_timestamp[jid] == await upgrade_message_cursor(
+            [jid], guidance.timestamp
+        )
 
     @pytest.mark.asyncio
     async def test_reply_reactivates_frozen_scheduled_occurrence(self, tmp_path):
@@ -565,7 +578,9 @@ class TestProcessGroupMessages:
         assert checkpoint.control_state is CheckpointControlState.ACTIVE
         assert checkpoint.claimed_at is None
         assert checkpoint.session_id == "scheduled-provider-thread"
-        assert checkpoint.input_end_cursor == guidance.timestamp
+        assert checkpoint.input_end_cursor == await upgrade_message_cursor(
+            [jid], guidance.timestamp
+        )
         assert checkpoint.input_messages[-1]["content"] == guidance.content
 
     @pytest.mark.asyncio

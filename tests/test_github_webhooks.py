@@ -145,7 +145,7 @@ def test_merged_pull_request_starts_an_agent_follow_up_turn() -> None:
 
     assert event.action == "merged"
     assert event.host_message is None
-    assert "linear_find_issues_by_attachment_url" in (event.instructions or "")
+    assert event.instructions
     assert event.external_context == {
         "repository": "example/project",
         "pull_request_number": 42,
@@ -167,8 +167,7 @@ def test_ci_failure_maps_to_actionable_local_follow_up() -> None:
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
     assert event.host_message is None
-    assert "local CI" in (event.instructions or "")
-    assert "Do not rerun GitHub CI" in (event.instructions or "")
+    assert event.instructions
     assert event.external_context is not None
     assert event.external_context["pull_request_url"] == (
         "https://github.com/example/project/pull/42"
@@ -185,7 +184,7 @@ def test_changes_requested_review_maps_to_actionable_follow_up() -> None:
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
     assert event.host_message is None
-    assert "unresolved review details" in (event.instructions or "")
+    assert event.instructions
     assert event.external_context is not None
     assert event.external_context["event"] == "pull_request_review"
 
@@ -259,13 +258,20 @@ async def _linear_client_context(client: object):
     yield client
 
 
-async def test_actionable_review_routes_to_linked_linear_conversation(
+@pytest.mark.parametrize("event_type", ["issue_comment", "pull_request_review"])
+async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
     monkeypatch: pytest.MonkeyPatch,
+    event_type: str,
 ) -> None:
     now = datetime.now(UTC)
-    payload = _payload(action="submitted", changes={})
-    payload["review"] = {"state": "commented"}
-    raw_body, headers = _signed_request(payload, "pull_request_review")
+    if event_type == "issue_comment":
+        payload = _payload(action="created", changes={})
+        payload.pop("pull_request")
+        payload["issue"] = {"number": 42, "pull_request": {}}
+    else:
+        payload = _payload(action="submitted", changes={})
+        payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, event_type)
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.return_value = [{"issue": {"id": "issue-1"}}]
@@ -584,8 +590,16 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     pull_request = payload["pull_request"]
     assert isinstance(pull_request, dict)
     pull_request["merged"] = True
+    raw_body, headers = _signed_request(payload, "pull_request")
+    event = parse_github_webhook(
+        raw_body,
+        headers,
+        _SIGNING_KEY,
+        datetime.now(UTC),
+        config=_config(),
+    )
+    assert event.instructions is not None
     try:
-        raw_body, headers = _signed_request(payload, "pull_request")
         response = await client.post(
             "/webhooks/github/project",
             data=raw_body,
@@ -600,6 +614,5 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     assert len(deps.dispatched) == 1
     task = deps.dispatched[0]
     assert task.group_folder == "project"
-    assert "linear_find_issues_by_attachment_url" in task.prompt
-    assert "https://github.com/example/project/pull/42" in task.prompt
+    assert task.prompt.startswith(f"{event.instructions}\n\n")
     assert not deps.host_messages

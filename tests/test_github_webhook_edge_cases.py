@@ -156,7 +156,8 @@ def test_issue_comment_events_distinguish_pr_comments_and_ignored_actions() -> N
     pr_comment.pop("pull_request")
     pr_comment["issue"] = {"number": 42, "pull_request": {}}
     event = _parse(pr_comment, "issue_comment")
-    assert "new PR comment" in (event.host_message or "")
+    assert event.instructions is not None
+    assert event.external_context is not None
 
     ignored = dict(pr_comment, action="deleted")
     event = _parse(ignored, "issue_comment")

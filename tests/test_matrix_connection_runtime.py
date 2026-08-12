@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -584,7 +585,8 @@ async def test_background_poller_recovers_after_unexpected_provider_exception() 
     @dataclass
     class _RecoveringGateway(_StubGateway):
         calls: int = 0
-        recovered: bool = False
+        recovery_started: threading.Event = field(default_factory=threading.Event)
+        allow_recovery: threading.Event = field(default_factory=threading.Event)
 
         def sync(self, *, since: str | None, room_ids: tuple[str, ...]) -> MatrixSyncBatch:
             self.calls += 1
@@ -592,22 +594,28 @@ async def test_background_poller_recovers_after_unexpected_provider_exception() 
                 return _batch("cursor-1")
             if self.calls == 2:
                 raise TypeError("corrupt provider response")
-            self.recovered = True
+            self.recovery_started.set()
+            self.allow_recovery.wait()
             return _batch(f"cursor-{self.calls}")
 
     gateway = _RecoveringGateway([], _portal())
     harness = await _harness()
     runtime = _runtime(gateway, interval=0.01)
 
-    await runtime.start(harness.context())
-    for _ in range(100):
-        if gateway.recovered:
-            break
-        await asyncio.sleep(0.01)
+    try:
+        await runtime.start(harness.context())
+        assert await asyncio.to_thread(gateway.recovery_started.wait, 1)
+        assert runtime.is_ready() is False
+        gateway.allow_recovery.set()
+        for _ in range(100):
+            if runtime.is_ready():
+                break
+            await asyncio.sleep(0.01)
 
-    assert gateway.recovered is True
-    assert runtime.is_ready() is True
-    await runtime.close()
+        assert runtime.is_ready() is True
+    finally:
+        gateway.allow_recovery.set()
+        await runtime.close()
 
 
 def test_runtime_rejects_connection_without_an_enabled_route() -> None:

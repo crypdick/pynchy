@@ -96,11 +96,38 @@ class TestCreatePendingQuestion:
         pending_dir = ipc_dir / "grp" / "pending_questions"
         assert not list(pending_dir.glob("*.tmp"))
 
+    def test_rejects_request_id_that_escapes_pending_directory(
+        self, ipc_dir: Path, settings
+    ) -> None:
+        victim = ipc_dir / "victim.json"
+        victim.write_text("keep me")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
+            ),
+            pytest.raises(ValueError, match="safe path component"),
+        ):
+            create_pending_question(
+                request_id="../../victim",
+                source_group="grp",
+                chat_jid="slack:C1",
+                channel_name="slack",
+                session_id="sess-1",
+                questions=[],
+            )
+
+        assert victim.read_text() == "keep me"
+
 
 # -- find_pending_question -----------------------------------------------------
 
 
 class TestFindPendingQuestion:
+    def test_returns_none_for_unsafe_request_id(self):
+        assert find_pending_question("../../victim") is None
+
     def test_requires_configured_ipc_root(self):
         with (
             patch(
@@ -237,6 +264,23 @@ class TestResolvePendingQuestion:
             settings.data_dir / "ipc",
         ):
             resolve_pending_question("ghost", "grp")  # should not raise
+
+    def test_rejects_request_id_that_escapes_pending_directory(
+        self, ipc_dir: Path, settings
+    ) -> None:
+        victim = ipc_dir / "victim.json"
+        victim.write_text("keep me")
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.pending_questions._ipc_base_dir",
+                settings.data_dir / "ipc",
+            ),
+            pytest.raises(ValueError, match="safe path component"),
+        ):
+            resolve_pending_question("../../victim", "grp")
+
+        assert victim.read_text() == "keep me"
 
 
 # -- update_message_id ---------------------------------------------------------

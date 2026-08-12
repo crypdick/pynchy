@@ -16,7 +16,8 @@ import time
 from pathlib import Path  # noqa: TC003 - beartype resolves IPC write signatures at runtime.
 from typing import Any
 
-from pynchy.atomic_json import write_json_atomic
+from pynchy.atomic_json import write_json_atomic, write_text_atomic
+from pynchy.host.container_manager.ipc.protocol import validate_request_id
 
 _ipc_base_dir: Path | None = None
 
@@ -68,7 +69,7 @@ def write_ipc_message(
 def write_ipc_close_sentinel(group_folder: str) -> None:
     """Write the ``_close`` sentinel to signal a container to wind down."""
     input_dir = _ipc_input_dir(group_folder)
-    (input_dir / "_close").write_text("")
+    write_text_atomic(input_dir / "_close", "")
 
 
 def ipc_response_path(source_group: str, request_id: str) -> Path:
@@ -77,7 +78,8 @@ def ipc_response_path(source_group: str, request_id: str) -> Path:
     Single source of truth — used by service handlers, approval handlers,
     and the approval sweep.
     """
-    return _configured_ipc_base_dir() / source_group / "responses" / f"{request_id}.json"
+    safe_request_id = validate_request_id(request_id)
+    return _configured_ipc_base_dir() / source_group / "responses" / f"{safe_request_id}.json"
 
 
 def write_ipc_response(path: Path, data: dict[str, Any]) -> None:

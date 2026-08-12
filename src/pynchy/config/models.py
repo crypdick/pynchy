@@ -601,6 +601,7 @@ class McpToolConfig(_StrictModel):
     runtime: Literal["docker", "url", "script", "stdio"] = "docker"
     image: str | None = None
     dockerfile: str | None = None
+    build_context: str = "."
     extra_ports: list[int] = []
     command: str | None = None
     args: list[str] = []

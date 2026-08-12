@@ -620,6 +620,7 @@ class TestMergedMcpServers:
                 type="docker",
                 image="pynchy-mcp-gdrive:latest",
                 dockerfile="src/pynchy/agent/mcp/gdrive.Dockerfile",
+                build_context="src/pynchy/agent/mcp",
                 port=3100,
                 transport="streamable_http",
                 env={"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
@@ -649,6 +650,7 @@ class TestMergedMcpServers:
         merged = merged_mcp_servers(settings, plugin_servers)
 
         assert merged["gdrive"].dockerfile == "src/pynchy/agent/mcp/gdrive.Dockerfile"
+        assert merged["gdrive"].build_context == "src/pynchy/agent/mcp"
         assert merged["gdrive"].port == 3000
         assert merged["gdrive"].env == {
             "GDRIVE_CREDENTIALS_PATH": "/gdrive-server/credentials.json"

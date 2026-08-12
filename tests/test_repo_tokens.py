@@ -570,6 +570,13 @@ class TestGitEnvWithToken:
 
 
 class TestCheckTokenExpiry:
+    def test_keeps_token_out_of_process_arguments(self):
+        with patch("subprocess.run", return_value=_fail()) as run:
+            check_token_expiry(REPO_SLUG, SCOPED_CREDENTIAL)
+
+        assert SCOPED_CREDENTIAL not in " ".join(run.call_args.args[0])
+        assert run.call_args.kwargs["env"]["GH_TOKEN"] == SCOPED_CREDENTIAL
+
     def test_warns_on_near_expiry(self):
         """Logs warning when token expires within 30 days."""
         soon = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=15)

@@ -200,14 +200,15 @@ async def test_hidden_learning_review_runs_reviewer_with_a_scoped_workspace(tmp_
         return "success"
 
     run_agent = AsyncMock(side_effect=successful_agent)
-    result = await run_learning_review(_packet(), run_agent, _reviewer_prompt())
+    packet = _packet()
+    result = await run_learning_review(packet, run_agent, _reviewer_prompt())
 
     assert result == "completed"
     workspace, reviewer_jid, messages = run_agent.await_args.args
     assert workspace.jid == reviewer_jid == "learning-review:deep-work"
     assert workspace.folder == "learning-review-deep-work"
     assert [message["role"] for message in messages] == ["user"]
-    assert "remember the workflow" in messages[0]["content"]
+    assert packet.messages[0]["content"] in messages[0]["content"]
     assert run_agent.await_args.kwargs["input_source"] == "hidden_learning_review"
 
 

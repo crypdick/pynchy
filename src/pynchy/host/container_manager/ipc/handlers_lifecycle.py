@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from collections.abc import (
     Awaitable,  # noqa: TC003 - beartype resolves lifecycle runtime annotations.
@@ -14,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves lifecycle settings annotations.
 from typing import Any, NoReturn, Protocol, cast, runtime_checkable
 
+from pynchy.atomic_json import write_json_atomic
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001 - beartype resolves handler signatures at runtime.
 )
@@ -157,9 +157,15 @@ async def publication_metadata(  # noqa: PLR0911 - each validation error is user
     slug = _BRANCH_SLUG.sub("-", title.lower()).strip("-")[:60]
     if not slug:
         return "Publication blocked: PR title cannot form a branch name."
+    pr_body = body.strip()
+    resolves = f"Resolves {execution.linear_issue_identifier}"
+    if resolves.casefold() not in pr_body.casefold():
+        pr_body = f"{pr_body}\n\n{resolves}"
+    if len(pr_body.encode()) > 64 * 1024:
+        return "Publication blocked: PR body with Linear resolve link exceeds 64 KiB."
     return (
         title.strip(),
-        body.strip(),
+        pr_body,
         f"{identifier.group('team').lower()}/{identifier.group('number')}/{slug}",
     )
 
@@ -217,17 +223,25 @@ def _publication_patch_context(
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
+    is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
-    chat_jid = data.get("chatJid", "")
+    chat_jid = data.get("chatJid")
     message = data.get("message", "")
     group_folder = data.get("groupFolder", source_group)
+    target_group = deps.workspaces().get(chat_jid) if isinstance(chat_jid, str) else None
 
-    if not chat_jid:
+    if (
+        not isinstance(chat_jid, str)
+        or target_group is None
+        or target_group.folder != group_folder
+        or (not is_admin and group_folder != source_group)
+    ):
         logger.warning(
-            "Invalid reset_context request: missing chatJid",
+            "Unauthorized reset_context target",
             source_group=source_group,
+            target_group=group_folder,
+            chat_jid=chat_jid,
         )
         return
 
@@ -238,14 +252,13 @@ async def _handle_reset_context(
         reset_dir = get_settings().data_dir / "ipc" / group_folder
         reset_dir.mkdir(parents=True, exist_ok=True)
         reset_file = reset_dir / "reset_prompt.json"
-        reset_file.write_text(
-            json.dumps(
-                {
-                    "message": message,
-                    "chatJid": chat_jid,
-                    "needsDirtyRepoCheck": True,
-                }
-            )
+        write_json_atomic(
+            reset_file,
+            {
+                "message": message,
+                "chatJid": chat_jid,
+                "needsDirtyRepoCheck": True,
+            },
         )
 
     deps.enqueue_message_check(chat_jid)

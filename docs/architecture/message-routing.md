@@ -70,6 +70,10 @@ records the original input boundary, work type, conversation session, and whethe
 reached the user. It also records the original input provenance and any routed-delivery claim
 that supplied the input. A completed interactive turn advances its durable message cursor,
 completes that routed claim, and removes the checkpoint in the same database transaction.
+The cursor follows SQLite-assigned local ingestion order rather than provider
+timestamps. Messages that share a provider timestamp or arrive late remain
+pending in the order Pynchy stores them. The polling high-water mark advances
+only after every known group in the batch reaches its routing boundary.
 
 Each checkpoint has a durable control state:
 

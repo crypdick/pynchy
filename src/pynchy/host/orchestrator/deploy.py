@@ -91,25 +91,78 @@ def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
     """
     if not previous_sha:
         return RollbackResult(success=False, error="no previous deploy SHA was recorded")
-
     runtime = _configured_runtime()
-    try:
-        result = cast("Any", runtime.run_git("reset", "--hard", previous_sha))
-    except (OSError, subprocess.SubprocessError) as exc:
-        error = f"git reset could not run: {exc}"
-        logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
-        return RollbackResult(success=False, error=error)
-    if result.returncode != 0:
-        error = result.stderr.strip() or "git reset failed"
-        logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
-        return RollbackResult(success=False, error=error)
+    return rollback_checkout(
+        previous_sha,
+        get_head_sha=runtime.get_head_sha,
+        run_git=runtime.run_git,
+    )
 
-    actual_sha = runtime.get_head_sha()
+
+def rollback_checkout(
+    previous_sha: str,
+    *,
+    get_head_sha: Callable[[], str],
+    run_git: Callable[..., object],
+) -> RollbackResult:
+    """Reset one deploy checkout without discarding operator-owned changes."""
+    if not previous_sha:
+        return RollbackResult(success=False, error="no previous deploy SHA was recorded")
+
+    stashed, error = _stash_dirty_work(run_git)
+    if error is not None:
+        return RollbackResult(success=False, error=error)
+    error = _reset_checkout(run_git, previous_sha)
+    if error is not None:
+        if stashed and (restore_error := _restore_rollback_stash(run_git)):
+            error = f"{error}; {restore_error}"
+        logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
+        return RollbackResult(success=False, error=error)
+    if stashed and (restore_error := _restore_rollback_stash(run_git)):
+        return RollbackResult(success=False, error=restore_error)
+
+    actual_sha = get_head_sha()
     if actual_sha == "unknown":
         return RollbackResult(success=False, error="could not verify checkout SHA after git reset")
 
     logger.info("Pre-restart deploy rollback complete", rollback_sha=actual_sha)
     return RollbackResult(success=True, actual_sha=actual_sha)
+
+
+def _stash_dirty_work(run_git: Callable[..., object]) -> tuple[bool, str | None]:
+    try:
+        status = cast("Any", run_git("status", "--porcelain", "--untracked-files=normal"))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"git status could not run: {exc}"
+    if status.returncode != 0:
+        return False, f"git status failed: {status.stderr.strip() or 'unknown error'}"
+    if not status.stdout.strip():
+        return False, None
+    try:
+        result = cast("Any", run_git("stash", "push", "--include-untracked"))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"git stash could not run: {exc}"
+    if result.returncode == 0:
+        return "No local changes" not in result.stdout, None
+    return False, result.stderr.strip() or "git stash failed"
+
+
+def _reset_checkout(run_git: Callable[..., object], previous_sha: str) -> str | None:
+    try:
+        result = cast("Any", run_git("reset", "--hard", previous_sha))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git reset could not run: {exc}"
+    return None if result.returncode == 0 else result.stderr.strip() or "git reset failed"
+
+
+def _restore_rollback_stash(run_git: Callable[..., object]) -> str | None:
+    try:
+        result = cast("Any", run_git("stash", "pop"))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git stash restore could not run: {exc}"
+    if result.returncode == 0:
+        return None
+    return result.stderr.strip() or "git stash restore failed; local work remains in the stash"
 
 
 def build_container_image(

@@ -1,7 +1,7 @@
 Handle this Linear issue update within its current authorization. Use your
 judgment about the work's actual state instead of treating workflow names as a
-ritual. When authorized work produces pull requests, attach every PR to this
-issue with `linear_create_attachment` before requesting review.
+ritual. When authorized work produces pull requests, publish them through
+`sync_worktree_to_main`; it adds the native Linear `Resolves ISSUE-ID` link.
 
 Agent Proposed is for human review. Do not move an issue from Agent Proposed to
 Blocked merely because review or human input is needed; leave it in Agent

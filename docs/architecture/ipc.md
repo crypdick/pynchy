@@ -33,15 +33,12 @@ data/ipc/{group}/
 
 ### Atomic writes
 
-Both container and host use the same pattern to avoid partial reads:
-
-```python
-temp_path = filepath.with_suffix(".json.tmp")
-temp_path.write_text(json.dumps(data))
-temp_path.rename(filepath)          # atomic on same filesystem
-```
-
-The host only reads `.json` files, so the `.json.tmp` intermediate is never picked up.
+Writers publish complete JSON with a same-directory rename, so watchers never
+read partial files. Host writes into container-visible directories use an
+unpredictable, exclusively created temporary name. The host opens that directory
+without following its final symlink component and performs the replacement
+relative to the open directory. A container-created temporary-file symlink
+therefore cannot redirect a privileged host write.
 
 ## Message Flow (Host → Container)
 
@@ -108,6 +105,9 @@ All other operations — scheduling, group management, deployment, git sync — 
 ```
 
 Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` before execution so a replayed file cannot perform the mutation twice.
+The host accepts `request_id` only as one printable path component of at most
+128 UTF-8 bytes. Path separators, `.` and `..` cannot select a response path
+outside the group's `responses/` directory.
 
 | Kind | Purpose | God only? |
 |------|---------|-----------|
@@ -115,6 +115,8 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 | `pause_task` | Pause a task | No (own tasks) |
 | `resume_task` | Resume a task | No (own tasks) |
 | `cancel_task` | Delete a task | No (own tasks) |
+| `task_definition` | Read one task prompt and editable metadata | No (own tasks) |
+| `update_scheduled_task` | Update one task prompt or status | No (own tasks) |
 | `register_group` | Register a new chat group | Yes |
 | `create_periodic_agent` | Create a group + task + config for a periodic agent | Yes |
 | `messaging_source_health` | Read body-free source readiness and persisted ingress freshness | No |

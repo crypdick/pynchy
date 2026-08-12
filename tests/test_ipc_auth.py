@@ -419,6 +419,27 @@ class TestDeployAuth:
 class TestResetContextExecution:
     """Tests for the reset_context IPC command execution paths."""
 
+    async def test_non_admin_cannot_reset_another_workspace(self, deps, tmp_path):
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+            return_value=_test_settings(data_dir=tmp_path / "data"),
+        ):
+            await dispatch(
+                {
+                    "type": "reset_context",
+                    "chatJid": "admin-1@g.us",
+                    "message": "replace admin context",
+                    "groupFolder": "admin-1",
+                },
+                "other-group",
+                False,
+                deps,
+            )
+
+        assert not deps.cleared_sessions
+        assert not deps.cleared_chats
+        assert not (tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json").exists()
+
     async def test_reset_context_clears_session_and_chat(self, deps, tmp_path):
         with (
             patch(

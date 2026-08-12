@@ -65,6 +65,9 @@ routed session, retires prior routed work and runtime ownership, and archives an
 existing Discord control. FIFO delivery preserves audit and retry ordering; it
 does not defer those terminal actions. A terminal-first delivery records the
 same intent but creates neither a runtime workspace nor a Discord thread.
+Runtime retirement removes ephemeral workspace directories and clean worktree
+checkouts while retaining Git branch refs. Dirty or untracked worktrees and user
+workspace files retain the complete artifact set for recovery.
 If a process stops after the durable terminal transition but before local cleanup,
 startup repeats that cleanup from the persisted terminal intent.
 Each lifecycle delivery also repeats the same idempotent cleanup before its

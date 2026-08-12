@@ -6,7 +6,7 @@ import json
 from collections.abc import (
     Sequence,  # noqa: TC003 - beartype resolves this runtime annotation.
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from aiosqlite import Row
@@ -17,10 +17,16 @@ from pynchy.plugins.api import NewMessage
 from pynchy.state.chat_parents import ensure_chat_parent
 from pynchy.state.connection import _get_db, atomic_write
 
+_SEQUENCE_CURSOR_PREFIX = "sequence:"
+
 
 def _row_to_message(row: Row) -> NewMessage:
     """Convert a database row to a NewMessage."""
     metadata_str = row["metadata"]
+    try:
+        local_sequence = row["local_sequence"]
+    except (IndexError, KeyError):
+        local_sequence = None
 
     return NewMessage(
         id=row["id"],
@@ -32,7 +38,22 @@ def _row_to_message(row: Row) -> NewMessage:
         is_from_me=bool(row["is_from_me"]),
         message_type=row["message_type"] or "user",
         metadata=json.loads(metadata_str) if metadata_str else None,
+        local_sequence=local_sequence,
     )
+
+
+def _cursor_sequence(cursor: str | None) -> int | None:
+    if cursor is None or not cursor.startswith(_SEQUENCE_CURSOR_PREFIX):
+        return None
+    value = cursor.removeprefix(_SEQUENCE_CURSOR_PREFIX)
+    return int(value) if value.isdecimal() else None
+
+
+def message_cursor(message: NewMessage) -> str:
+    """Return the durable local cursor for a stored message."""
+    if message.local_sequence is None:
+        return message.timestamp
+    return f"{_SEQUENCE_CURSOR_PREFIX}{message.local_sequence}"
 
 
 async def store_message(msg: NewMessage, message_type: str = "user") -> None:
@@ -53,6 +74,16 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
         message_type=message_type,
         metadata=msg.metadata,
     )
+    msg.local_sequence = await _message_local_sequence(msg.id, msg.chat_jid)
+
+
+async def _message_local_sequence(message_id: str, chat_jid: str) -> int:
+    cursor = await _get_db().execute(
+        "SELECT sequence FROM message_ingestion_order WHERE message_id = ? AND chat_jid = ?",
+        (message_id, chat_jid),
+    )
+    row = cast("Row", await cursor.fetchone())
+    return int(row["sequence"])
 
 
 async def store_message_direct(  # noqa: PLR0913 - DB row writer keeps the message columns explicit.
@@ -77,10 +108,15 @@ async def store_message_direct(  # noqa: PLR0913 - DB row writer keeps the messa
     async with atomic_write() as db:
         await ensure_chat_parent(db, chat_jid, timestamp)
         await db.execute(
-            "INSERT OR REPLACE INTO messages "
+            "INSERT INTO messages "
             "(id, chat_jid, sender, sender_name, content, timestamp, is_from_me, "
             "message_type, metadata) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(id, chat_jid) DO UPDATE SET "
+            "sender = excluded.sender, sender_name = excluded.sender_name, "
+            "content = excluded.content, timestamp = excluded.timestamp, "
+            "is_from_me = excluded.is_from_me, message_type = excluded.message_type, "
+            "metadata = excluded.metadata",
             (
                 message_id,
                 chat_jid,
@@ -92,6 +128,10 @@ async def store_message_direct(  # noqa: PLR0913 - DB row writer keeps the messa
                 message_type,
                 metadata_json,
             ),
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO message_ingestion_order (message_id, chat_jid) VALUES (?, ?)",
+            (message_id, chat_jid),
         )
 
 
@@ -134,27 +174,32 @@ async def mark_message_as_host(
 
 
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
-    """Get inbound messages across multiple groups since a timestamp."""
+    """Get inbound messages across multiple groups since a durable cursor."""
     if not jids:
         return [], last_timestamp
 
     db = _get_db()
     placeholders = ",".join("?" for _ in jids)
     # S608 audit: only the number of SQLite value placeholders is dynamic.
+    sequence = _cursor_sequence(last_timestamp)
+    boundary = "ingestion.sequence > ?" if sequence is not None else "messages.timestamp > ?"
     sql = f"""
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-               message_type, metadata
+        SELECT messages.id, messages.chat_jid, messages.sender, messages.sender_name,
+               messages.content, messages.timestamp, messages.is_from_me,
+               messages.message_type, messages.metadata, ingestion.sequence AS local_sequence
         FROM messages
-        WHERE timestamp > ? AND chat_jid IN ({placeholders})
-              AND is_from_me = 0
-        ORDER BY timestamp
+        JOIN message_ingestion_order AS ingestion
+          ON ingestion.message_id = messages.id AND ingestion.chat_jid = messages.chat_jid
+        WHERE {boundary} AND messages.chat_jid IN ({placeholders})
+              AND messages.is_from_me = 0
+        ORDER BY ingestion.sequence
     """  # noqa: S608
-    cursor = await db.execute(sql, [last_timestamp, *jids])
+    cursor = await db.execute(sql, [sequence if sequence is not None else last_timestamp, *jids])
     rows = await cursor.fetchall()
 
     messages = [_row_to_message(row) for row in rows]
-    new_timestamp = max((msg.timestamp for msg in messages), default=last_timestamp)
-    return messages, new_timestamp
+    new_cursor = message_cursor(messages[-1]) if messages else last_timestamp
+    return messages, new_cursor
 
 
 async def get_messages_since(
@@ -163,18 +208,21 @@ async def get_messages_since(
     *,
     body_reader: object | None = None,
 ) -> list[NewMessage]:
-    """Get inbound messages for a specific chat since a timestamp."""
+    """Get inbound messages for a specific chat since a durable cursor."""
     del body_reader
 
     db = _get_db()
     # Routed projections stay in chat history after their durable claim completes or
     # is reclaimed, but only the projection for the active claim is pending input.
     sql = """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-               message_type, metadata
+        SELECT messages.id, messages.chat_jid, messages.sender, messages.sender_name,
+               messages.content, messages.timestamp, messages.is_from_me,
+               messages.message_type, messages.metadata, ingestion.sequence AS local_sequence
         FROM messages
-        WHERE chat_jid = ?
-              AND is_from_me = 0
+        JOIN message_ingestion_order AS ingestion
+          ON ingestion.message_id = messages.id AND ingestion.chat_jid = messages.chat_jid
+        WHERE messages.chat_jid = ?
+              AND messages.is_from_me = 0
               AND (
                   json_extract(metadata, '$.conversation_claim_id') IS NULL
                   OR EXISTS (
@@ -191,13 +239,39 @@ async def get_messages_since(
     """
     params: list[object] = [chat_jid]
     if since_timestamp is not None:
-        sql += " AND timestamp > ?"
-        params.append(since_timestamp)
-    sql += " ORDER BY timestamp"
+        sequence = _cursor_sequence(since_timestamp)
+        if sequence is None:
+            sql += " AND messages.timestamp > ?"
+            params.append(since_timestamp)
+        else:
+            sql += " AND ingestion.sequence > ?"
+            params.append(sequence)
+    sql += " ORDER BY ingestion.sequence"
     cursor = await db.execute(sql, params)
     rows = await cursor.fetchall()
 
     return [_row_to_message(row) for row in rows]
+
+
+async def upgrade_message_cursor(jids: Sequence[str], cursor: str) -> str:
+    """Convert one provider-time cursor to local ingestion order."""
+    if not cursor or _cursor_sequence(cursor) is not None or not jids:
+        return cursor
+    db = _get_db()
+    placeholders = ",".join("?" for _ in jids)
+    # Anchor conservatively at the first message that produced the provider-time cursor.
+    # Later-ingested older or equal-timestamp messages must remain pending.
+    result = await db.execute(
+        f"SELECT MIN(ingestion.sequence) AS sequence "  # noqa: S608
+        "FROM message_ingestion_order AS ingestion "
+        "JOIN messages ON messages.id = ingestion.message_id "
+        "AND messages.chat_jid = ingestion.chat_jid "
+        f"WHERE messages.timestamp = ? AND messages.chat_jid IN ({placeholders}) "
+        "AND messages.is_from_me = 0",
+        [cursor, *jids],
+    )
+    row = await result.fetchone()
+    return f"{_SEQUENCE_CURSOR_PREFIX}{row['sequence']}" if row and row["sequence"] else cursor
 
 
 async def get_messaging_stats() -> dict[str, int | str | None]:

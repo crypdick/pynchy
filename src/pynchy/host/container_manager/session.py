@@ -503,6 +503,11 @@ def active_session_container_names() -> set[str]:
     return {session.container_name for session in _sessions.values() if session.is_alive}
 
 
+def active_session_group_folders() -> set[str]:
+    """Return group folders owned by live in-process sessions."""
+    return {folder for folder, session in _sessions.items() if session.is_alive}
+
+
 def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     """Return the output handler for the active session of a group, or None.
 

@@ -6,6 +6,7 @@ Tests container system bootstrap logic.
 from __future__ import annotations
 
 import sys
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -125,6 +126,25 @@ class TestEnsureContainerSystemRunning:
             "--config",
             str(tmp_path / "data" / "personalization" / "pynchy.toml"),
         ]
+
+    def test_apple_runtime_build_uses_host_wide_lock(self, mock_runtime):
+        """Apple Container's shared builder is serialized before inspecting images."""
+        mock_runtime.cli = "container"
+
+        with (
+            patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.apple_build_lock",
+                return_value=nullcontext(),
+            ) as lock,
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run",
+                return_value=MagicMock(returncode=0),
+            ),
+        ):
+            ensure_agent_image_available(project_root=_PROJECT_ROOT, image=_AGENT_IMAGE)
+
+        lock.assert_called_once_with()
 
     def test_runtime_harness_defers_agent_image_validation(self, mock_runtime, monkeypatch):
         """Harness startup does not build an image until it actually needs an agent."""

@@ -27,6 +27,7 @@ from pynchy.state import (
     begin_in_flight_turn,
     get_in_flight_turn,
     init_test_database,
+    message_cursor,
     store_message,
 )
 from pynchy.workspace.api import (
@@ -109,7 +110,7 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
     checkpoint = await get_in_flight_turn("turn-pausing-with-reply")
     assert checkpoint is not None
     assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
-    assert deps.last_agent_timestamp[jid] == pause.timestamp
+    assert deps.last_agent_timestamp[jid] == message_cursor(pause)
 
 
 class TestBtwNonInterruptingMessages:

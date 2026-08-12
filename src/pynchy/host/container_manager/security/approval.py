@@ -144,6 +144,10 @@ def _read_json_file(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _open_payload_key(path: Path) -> int:
+    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+
+
 def _payload_cipher(root: Path) -> Fernet:
     """Load or atomically create the host-only key for approval payloads."""
     key_path = root / _PAYLOAD_KEY_FILE
@@ -153,7 +157,7 @@ def _payload_cipher(root: Path) -> Fernet:
         key_path.parent.mkdir(parents=True, exist_ok=True)
         key = Fernet.generate_key()
         try:
-            fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            fd = _open_payload_key(key_path)
         except FileExistsError:
             key = key_path.read_bytes()
         else:

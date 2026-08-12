@@ -245,6 +245,7 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
         type="docker",
         image="local/notebook:latest",
         dockerfile="src/Dockerfile",
+        build_context="src/context",
         port=8000,
     )
     run_docker = AsyncMock(
@@ -264,7 +265,7 @@ async def test_warm_image_cache_builds_a_missing_local_dockerfile_image():
         "local/notebook:latest",
         "-f",
         "/project/src/Dockerfile",
-        "/project",
+        "/project/src/context",
     )
 
 
@@ -569,7 +570,7 @@ async def test_docker_health_failure_redacts_secret_values_from_diagnostics():
     log_tail = error.call_args.kwargs["log_tail"]
     assert "bearer-token" not in log_tail
     assert "hunter2" not in log_tail
-    assert "<redacted>" in log_tail
+    assert "redacted sensitive data" in log_tail
 
 
 def test_expand_arg_placeholders_preserves_unknown_placeholders():
