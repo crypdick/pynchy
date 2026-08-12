@@ -1,6 +1,6 @@
 """Curated durable-scheduling API."""
 
-from pynchy.scheduling.health import scheduled_work_attention
+from pynchy.scheduling.health import scheduled_work_health_reasons
 from pynchy.scheduling.types import (
     HostJob,
     ScheduledTask,
@@ -21,5 +21,5 @@ __all__ = [
     "agent_task_occurrence_workflow_id",
     "agent_task_workflow_id",
     "safe_workflow_fragment",
-    "scheduled_work_attention",
+    "scheduled_work_health_reasons",
 ]

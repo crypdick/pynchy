@@ -14,7 +14,7 @@ _SCHEDULE_CHARS = 128
 _STATUS_CHARS = 32
 _TIMESTAMP_CHARS = 64
 
-_ATTENTION_VALUES = [
+_HEALTH_REASON_VALUES = [
     "paused",
     "missing_next_run",
     "recent_failure",
@@ -24,9 +24,9 @@ _ATTENTION_VALUES = [
 TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "$defs": {
-        "attention": {
+        "health_reasons": {
             "type": "array",
-            "items": {"type": "string", "enum": _ATTENTION_VALUES},
+            "items": {"type": "string", "enum": _HEALTH_REASON_VALUES},
         },
         "task": {
             "type": "object",
@@ -38,7 +38,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "status",
                 "next_run",
                 "orchestration_state",
-                "attention",
+                "health_reasons",
             ],
             "properties": {
                 "id": {"type": "string", "maxLength": _IDENTIFIER_CHARS},
@@ -55,7 +55,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "escalation_reason": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
                 "orchestration_state": {"type": "string", "maxLength": _STATUS_CHARS},
                 "orchestration_error": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
-                "attention": {"$ref": "#/$defs/attention"},
+                "health_reasons": {"$ref": "#/$defs/health_reasons"},
             },
             "additionalProperties": False,
         },
@@ -70,7 +70,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "enabled",
                 "next_run",
                 "orchestration_state",
-                "attention",
+                "health_reasons",
             ],
             "properties": {
                 "id": {"type": "string", "maxLength": _IDENTIFIER_CHARS},
@@ -83,7 +83,7 @@ TASK_STATUS_OUTPUT_SCHEMA: dict[str, Any] = {
                 "last_run": {"type": "string", "maxLength": _TIMESTAMP_CHARS},
                 "orchestration_state": {"type": "string", "maxLength": _STATUS_CHARS},
                 "orchestration_error": {"type": "string", "maxLength": MAX_EVIDENCE_CHARS},
-                "attention": {"$ref": "#/$defs/attention"},
+                "health_reasons": {"$ref": "#/$defs/health_reasons"},
             },
             "additionalProperties": False,
         },
@@ -166,15 +166,15 @@ def _mapping(value: object, field: str) -> dict[str, Any]:
     return value
 
 
-def _attention(value: object) -> list[str]:
+def _health_reasons(value: object) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(reason, str) for reason in value):
-        raise TaskStatusFormatError("attention must be an array of safe reason codes")
-    if any(reason not in _ATTENTION_VALUES for reason in value):
-        raise TaskStatusFormatError("attention contains an unknown reason code")
+        raise TaskStatusFormatError("health_reasons must be an array of safe reason codes")
+    if any(reason not in _HEALTH_REASON_VALUES for reason in value):
+        raise TaskStatusFormatError("health_reasons contains an unknown reason code")
     if len(value) != len(set(value)):
-        raise TaskStatusFormatError("attention must not contain duplicate reason codes")
-    if value != sorted(value, key=_ATTENTION_VALUES.index):
-        raise TaskStatusFormatError("attention reason codes must use stable order")
+        raise TaskStatusFormatError("health_reasons must not contain duplicate reason codes")
+    if value != sorted(value, key=_HEALTH_REASON_VALUES.index):
+        raise TaskStatusFormatError("health_reasons must use stable order")
     return value
 
 
@@ -192,7 +192,7 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         "status": _required_string(task, "status", limit=_STATUS_CHARS),
         "next_run": _optional_string(task.get("next_run"), "next_run", limit=_TIMESTAMP_CHARS),
         "orchestration_state": _required_string(orchestration, "state", limit=_STATUS_CHARS),
-        "attention": _attention(task.get("attention")),
+        "health_reasons": _health_reasons(task.get("health_reasons")),
     }
     optional_fields = {
         "last_run": _optional_string(task.get("last_run"), "last_run", limit=_TIMESTAMP_CHARS),
@@ -226,7 +226,7 @@ def _compact_host_job(job: dict[str, Any]) -> dict[str, Any]:
         "enabled": enabled,
         "next_run": _optional_string(job.get("next_run"), "next_run", limit=_TIMESTAMP_CHARS),
         "orchestration_state": _required_string(orchestration, "state", limit=_STATUS_CHARS),
-        "attention": _attention(job.get("attention")),
+        "health_reasons": _health_reasons(job.get("health_reasons")),
     }
     optional_fields = {
         "last_run": _optional_string(job.get("last_run"), "last_run", limit=_TIMESTAMP_CHARS),

@@ -229,7 +229,7 @@ class TestListTasks:
                         "last_status": "error",
                         "consecutive_failures": 2,
                     },
-                    "attention": [
+                    "health_reasons": [
                         "paused",
                         "recent_failure",
                         "scheduler_error",
@@ -247,7 +247,7 @@ class TestListTasks:
                     "enabled": True,
                     "next_run": "2026-07-23T08:00:00+00:00",
                     "orchestration": {"state": "scheduled", "error": None},
-                    "attention": [],
+                    "health_reasons": [],
                 }
             ],
         }
@@ -276,7 +276,7 @@ class TestListTasks:
         assert task["last_result"] == "Blocked: provider unavailable"
         assert task["consecutive_failures"] == 2
         assert task["orchestration_error"] == "Temporal unavailable"
-        assert task["attention"] == [
+        assert task["health_reasons"] == [
             "paused",
             "recent_failure",
             "scheduler_error",
@@ -303,7 +303,7 @@ class TestListTasks:
                 "next_run": "2026-07-23T16:00:00+00:00",
                 "last_result": f"result-{index} " + ("x" * 1000),
                 "orchestration": {"state": "scheduled", "error": None},
-                "attention": [],
+                "health_reasons": [],
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
             }
             for index in range(47)
@@ -338,7 +338,7 @@ class TestListTasks:
                 "next_run": "2026-07-23T16:00:00+00:00",
                 "last_result": "Completed",
                 "orchestration": {"state": "scheduled", "error": None},
-                "attention": [],
+                "health_reasons": [],
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
             }
             for index in range(65)
@@ -353,7 +353,7 @@ class TestListTasks:
                 "enabled": True,
                 "next_run": "2026-07-23T08:00:00+00:00",
                 "orchestration": {"state": "scheduled", "error": None},
-                "attention": [],
+                "health_reasons": [],
             }
             for index in range(33)
         ]
@@ -402,7 +402,7 @@ class TestListTasks:
                 "last_result": result,
                 "orchestration": {"state": "scheduled", "error": None},
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
-                "attention": [] if index == 0 else ["failure_shaped_result"],
+                "health_reasons": [] if index == 0 else ["failure_shaped_result"],
             }
             for index, result in enumerate(results)
         ]
@@ -427,8 +427,8 @@ class TestListTasks:
 
         assert result.structuredContent is not None
         structured_tasks = result.structuredContent["tasks"]
-        assert structured_tasks[0]["attention"] == []
-        assert structured_tasks[1]["attention"] == ["failure_shaped_result"]
+        assert structured_tasks[0]["health_reasons"] == []
+        assert structured_tasks[1]["health_reasons"] == ["failure_shaped_result"]
 
     @pytest.mark.asyncio
     async def test_list_tasks_declares_its_structured_output_schema(self):

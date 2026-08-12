@@ -10,7 +10,7 @@ from pynchy.scheduling.api import (  # type aliases evaluate at module import.
     HostJob,
     ScheduledTask,
     TaskRunLog,
-    scheduled_work_attention,
+    scheduled_work_health_reasons,
 )
 
 TemporalStateReader = Callable[
@@ -51,8 +51,8 @@ async def collect_scheduled_work(
                 "last_run": task.last_run,
                 "last_result": task.last_result,
                 "run_health": run_health,
-                "attention": list(
-                    scheduled_work_attention(
+                "health_reasons": list(
+                    scheduled_work_health_reasons(
                         status=task.status,
                         next_run=temporal_state["next_run"],
                         consecutive_failures=run_health["consecutive_failures"],
@@ -76,8 +76,8 @@ async def collect_scheduled_work(
                 "next_run": temporal_state["next_run"],
                 "orchestration": temporal_state,
                 "last_run": job.last_run,
-                "attention": list(
-                    scheduled_work_attention(
+                "health_reasons": list(
+                    scheduled_work_health_reasons(
                         status=job.status,
                         next_run=temporal_state["next_run"],
                         orchestration_error=temporal_state["error"],

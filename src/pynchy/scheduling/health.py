@@ -36,7 +36,7 @@ _FAILURE_PATTERNS = tuple(
 )
 
 
-def scheduled_work_attention(
+def scheduled_work_health_reasons(
     *,
     status: str,
     next_run: str | None,
@@ -44,7 +44,7 @@ def scheduled_work_attention(
     orchestration_error: str | None = None,
     last_result: str | None = None,
 ) -> tuple[str, ...]:
-    """Return ordered, non-sensitive reasons requiring scheduler attention."""
+    """Return ordered, non-sensitive scheduler health reasons."""
     reasons: list[str] = []
     if status == "paused":
         reasons.append("paused")
