@@ -386,7 +386,7 @@ def _check_run_event(
     )
 
 
-def parse_github_webhook(
+def parse_github_webhook(  # noqa: PLR0911 - each supported event has one closed disposition.
     raw_body: bytes,
     raw_headers: Mapping[str, str],
     secret: str,
@@ -405,6 +405,17 @@ def parse_github_webhook(
         repository=config.repository,
         occurred_at=now.isoformat(),
     )
+    sender = payload.sender.login if payload.sender is not None else None
+    if config.allowed_senders and (
+        sender is None
+        or sender.casefold() not in {allowed.casefold() for allowed in config.allowed_senders}
+    ):
+        return _ignored_event(
+            context,
+            action=payload.action,
+            subject_id=sender or event_type,
+            reason="sender_is_not_allowed",
+        )
     if event_type == "pull_request":
         return _pull_request_event(payload, context)
     if event_type == "issue_comment":
@@ -439,6 +450,8 @@ def github_webhook_routes(
             rate_limit_window_seconds=config.rate_limit_window_seconds,
             prepare_event=partial(prepare_github_webhook_event, config=config),
             routes_conversations=True,
+            public_source=not config.allowed_senders,
+            allow_admin_workspaces=bool(config.allowed_senders),
         )
         for config in configs
     )

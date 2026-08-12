@@ -112,9 +112,10 @@ control-plane endpoint retain the bearer-token policy.
 The host applies the global unauthenticated-client rate limit first, then a
 route-specific body-size and rate limit. It accepts a configured route only when
 its secret environment variable exists and every fixed or provider-derived
-workspace target passes startup validation. Fixed routes cannot target admin
-workspaces. A provider-derived route may opt into declared admin candidates only
-when their source-trust policy satisfies the admin clean room. Schema-valid
+workspace target passes startup validation. Routes cannot target admin workspaces
+unless the plugin establishes a trusted source policy and explicitly opts in. A
+provider-derived route may opt into declared admin candidates only when its
+source-trust policy satisfies the admin clean room. Schema-valid
 authenticated deliveries are deduplicated and durably
 admitted before the provider receives `200`. Routes declare whether authenticated
 provider context remains a public source. Public-source routes fence it and start

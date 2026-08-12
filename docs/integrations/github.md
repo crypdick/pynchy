@@ -8,8 +8,8 @@ and worktree for follow-up.
 A merged pull request starts an isolated agent turn so the agent can inspect
 the linked work and exercise judgment about Follow-ups. The webhook itself
 doesn't create another worktree or mutate GitHub or Linear. A route binds one GitHub
-repository to one Pynchy workspace, so an event can never fall back to an admin
-or unrelated channel.
+repository to one Pynchy workspace, so an event can never fall back to an unrelated
+channel.
 
 ## Configure repository routes
 
@@ -35,6 +35,22 @@ its `repository.full_name` exactly matches `owner/project`; a valid signature fo
 different repository still receives `400` and cannot be routed anywhere. Configure
 a separate route and secret for every project that should notify a different
 workspace.
+
+### Trust selected GitHub senders
+
+Routes treat GitHub content as public input by default and cannot target an admin
+workspace. To accept PR feedback only from trusted GitHub accounts, add an explicit
+sender allowlist:
+
+```toml
+allowed_senders = ["repo-owner"]
+```
+
+Pynchy verifies the webhook signature, then compares `sender.login`
+case-insensitively. It records deliveries from missing or unlisted senders as
+ignored without waking an agent. An allowlisted route treats accepted content as
+trusted and may target an admin workspace. Include every account whose comments
+belong inside that workspace's trust boundary; omit this option for public review.
 
 ## Create the GitHub webhook
 

@@ -73,11 +73,13 @@ def _payload(
     action: str = "edited",
     changes: dict[str, object] | None = None,
     repository: str = _REPOSITORY,
+    sender: str = "repo-owner",
 ) -> dict[str, object]:
     return {
         "action": action,
         "number": 42,
         "repository": {"full_name": repository},
+        "sender": {"login": sender},
         "pull_request": {
             "number": 42,
             "html_url": f"https://github.com/{repository}/pull/42",
@@ -253,16 +255,42 @@ def test_routes_bind_each_repository_to_its_workspace() -> None:
     assert routes[0].routes_conversations is True
 
 
+def test_sender_allowlist_marks_route_trusted_and_allows_admin_workspace() -> None:
+    config = GitHubWebhookRouteConfig(
+        name="project",
+        workspace="project",
+        repository=_REPOSITORY,
+        allowed_senders=("repo-owner",),
+    )
+
+    route = github_webhook_routes((config,))[0]
+
+    assert route.public_source is False
+    assert route.allow_admin_workspaces is True
+
+
 @asynccontextmanager
 async def _linear_client_context(client: object):
     yield client
 
 
 @pytest.mark.parametrize("event_type", ["issue_comment", "pull_request_review"])
+@pytest.mark.parametrize(
+    ("allowed_senders", "public_source"),
+    [((), True), (("repo-owner",), False)],
+)
 async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
     monkeypatch: pytest.MonkeyPatch,
     event_type: str,
+    allowed_senders: tuple[str, ...],
+    public_source: bool,
 ) -> None:
+    config = GitHubWebhookRouteConfig(
+        name="project",
+        workspace="project",
+        repository=_REPOSITORY,
+        allowed_senders=allowed_senders,
+    )
     now = datetime.now(UTC)
     if event_type == "issue_comment":
         payload = _payload(action="created", changes={})
@@ -272,7 +300,7 @@ async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
         payload = _payload(action="submitted", changes={})
         payload["review"] = {"state": "commented"}
     raw_body, headers = _signed_request(payload, event_type)
-    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=config)
     linear_client = AsyncMock()
     linear_client.find_issues_by_attachment_url.return_value = [{"issue": {"id": "issue-1"}}]
     subject = ConversationSubject(
@@ -301,13 +329,13 @@ async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
         AsyncMock(return_value=_Conversation(subject=subject)),
     )
 
-    prepared = await prepare_github_webhook_event(event, config=_config())
+    prepared = await prepare_github_webhook_event(event, config=config)
 
     assert prepared.conversation is not None
     assert prepared.conversation.subject == subject
     assert prepared.conversation.workspace == "project"
     assert prepared.conversation.control_title == "[SYN-1] Ship the fix"
-    assert prepared.conversation.public_source is True
+    assert prepared.conversation.public_source is public_source
     assert prepared.external_context is not None
     assert "fallback_host_message" not in prepared.external_context
     linear_client.find_issues_by_attachment_url.assert_awaited_once_with(

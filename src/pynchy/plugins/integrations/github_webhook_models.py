@@ -23,6 +23,8 @@ class GitHubWebhookRouteConfig(_GitHubModel):
     workspace: str
     repository: str
     secret_env: str = "GITHUB_WEBHOOK_SECRET"  # noqa: S105 - environment variable name, not a credential.
+    # NOTE: Update docs/integrations/github.md "Trust selected GitHub senders" if this changes.
+    allowed_senders: tuple[str, ...] = ()
     max_body_bytes: int = GITHUB_MAX_WEBHOOK_BODY_BYTES
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
@@ -39,6 +41,16 @@ class GitHubWebhookRouteConfig(_GitHubModel):
     def validate_repository(cls, value: str) -> str:
         if value.count("/") != 1 or any(not component for component in value.split("/")):
             raise ValueError("GitHub webhook repository must have owner/repository form")
+        return value
+
+    @field_validator("allowed_senders")
+    @classmethod
+    def validate_allowed_senders(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not sender.strip() for sender in value):
+            raise ValueError("GitHub webhook sender allowlist cannot contain blank logins")
+        normalized = tuple(sender.casefold() for sender in value)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("GitHub webhook sender allowlist cannot contain duplicates")
         return value
 
     @field_validator("max_body_bytes", "rate_limit_requests", "rate_limit_window_seconds")
@@ -66,6 +78,10 @@ class GitHubPluginOptions(_GitHubModel):
 
 class _GitHubRepository(_GitHubModel):
     full_name: str
+
+
+class _GitHubSender(_GitHubModel):
+    login: str
 
 
 class _GitHubPullRequest(_GitHubModel):
@@ -101,6 +117,7 @@ class _GitHubCheckRun(_GitHubModel):
 
 class GitHubEnvelope(_GitHubModel):
     repository: _GitHubRepository
+    sender: _GitHubSender | None = None
     action: str = ""
     number: int | None = None
     pull_request: _GitHubPullRequest | None = None

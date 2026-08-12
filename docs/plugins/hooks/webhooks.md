@@ -25,16 +25,17 @@ class ExamplePlugin:
 Pynchy collects and validates routes during HTTP startup. A plugin can return one
 `WebhookRoute`, a tuple, or `None`. The resulting endpoint is
 `POST /webhooks/<provider>/<name>`. Provider and route names must be lowercase
-URL-safe identifiers, and a fixed target cannot be an admin workspace.
+URL-safe identifiers. Admin targets require a trusted source policy and explicit
+`allow_admin_workspaces=True` opt-in.
 
 A provider that resolves ownership from authenticated event metadata may set
 `workspace=None` and declare every allowed logical owner in
 `candidate_workspaces`. Its `prepare_event` callback must then return a
 `WebhookConversation.workspace` from that allowlist. Set
 `allow_admin_workspaces=True` only when the provider identity and per-candidate
-source-trust declarations make admin admission safe; fixed routes remain barred
-from admin workspaces by default. The host validates all candidates at startup
-and checks the resolved owner again for every delivery.
+source-trust declarations make admin admission safe. The host validates all fixed
+targets and candidates at startup and checks resolved owners again for every
+delivery.
 
 Parse raw request bytes because signatures commonly cover the exact body.
 Authenticate before parsing; raise `WebhookAuthenticationError` for bad
