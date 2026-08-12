@@ -52,6 +52,8 @@ class _UpdateDeps:
 
     async def broadcast_system_notice(self, _jid: str, _text: str) -> None: ...
 
+    async def wake_worktree_conflict(self, _jid: str) -> None: ...
+
     def has_active_session(self, _group_folder: str) -> bool:
         return False
 

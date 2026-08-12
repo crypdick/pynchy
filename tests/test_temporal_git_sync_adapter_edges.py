@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from conftest import make_settings
 
@@ -61,6 +61,8 @@ class _NotificationAdapter(Protocol):
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None: ...
+
+    async def wake_worktree_conflict(self, jid: str) -> None: ...
 
 
 def _admin_workspace() -> WorkspaceProfile:
@@ -323,28 +325,35 @@ async def test_external_git_sync_routes_adapter_notifications_and_session_fallba
         notified.append(has_active)
         await adapter.broadcast_host_message("jid", "host update")
         await adapter.broadcast_system_notice("jid", "system update")
+        await adapter.wake_worktree_conflict("jid")
 
-    await set_router_state(f"temporal_git_sync_external_state:{slug}", "old-origin")
-    monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
-    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
-    monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
-    monkeypatch.setattr(
-        git_sync,
-        "probe_origin_main_sha",
-        lambda _root, _env: sync_poll.GitOriginProbe(sha="new-origin", error=None),
-    )
-    monkeypatch.setattr(
-        git_sync,
-        "host_update_main_result",
-        lambda _root, _env: sync_poll.GitUpdateResult(succeeded=True, error=None),
-    )
-    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-head")
-    monkeypatch.setattr(git_sync, "host_notify_worktree_updates", notify)
+    with patch(
+        "pynchy.host.orchestrator.temporal.scheduler.start_interactive_message_workflow",
+        new_callable=AsyncMock,
+    ) as wake:
+        await set_router_state(f"temporal_git_sync_external_state:{slug}", "old-origin")
+        monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
+        monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
+        monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
+        monkeypatch.setattr(
+            git_sync,
+            "probe_origin_main_sha",
+            lambda _root, _env: sync_poll.GitOriginProbe(sha="new-origin", error=None),
+        )
+        monkeypatch.setattr(
+            git_sync,
+            "host_update_main_result",
+            lambda _root, _env: sync_poll.GitUpdateResult(succeeded=True, error=None),
+        )
+        monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-head")
+        monkeypatch.setattr(git_sync, "host_notify_worktree_updates", notify)
 
-    assert await git_sync.run_external_git_sync(slug) == "synced"
+        assert await git_sync.run_external_git_sync(slug) == "synced"
+
     assert notified == [False]
     host_message.assert_awaited_once_with("jid", "host update")
     system_notice.assert_awaited_once_with("jid", "system update")
+    wake.assert_awaited_once_with("jid")
 
 
 async def test_external_git_sync_uses_explicit_session_state_from_dependencies(

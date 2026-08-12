@@ -295,6 +295,7 @@ class TestHostNotifyWorktreeUpdates:
         deps = NullIpcDeps()
         deps.broadcast_host_message = AsyncMock()
         deps.broadcast_system_notice = AsyncMock()
+        deps.wake_worktree_conflict = AsyncMock()
         deps.has_active_session = lambda folder: folder in active_sessions
         deps.workspaces = lambda: groups
         return deps
@@ -562,6 +563,49 @@ class TestHostNotifyWorktreeUpdates:
         deps.broadcast_system_notice.assert_not_called()
         msg = deps.broadcast_host_message.call_args[0][1]
         assert "rebase conflicts" in msg
+        deps.wake_worktree_conflict.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_active_conflict_wakes_owner_once_until_rebase_resolves(self, git_env: dict):
+        """A pending rebase suppresses repeat conflict notifications and wakes."""
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+
+        result = ensure_worktree("agent-1", repo_ctx)
+        wt_path = result.path
+        (wt_path / "README.md").write_text("agent version")
+        _git(wt_path, "add", "README.md")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "agent edit README")
+
+        (project / "README.md").write_text("main version")
+        _git(project, "add", "README.md")
+        _git(project, "commit", "-m", "main edit README")
+
+        deps = self._make_deps(
+            {
+                "jid-1@g.us": WorkspaceProfile(
+                    jid="jid-1@g.us",
+                    name="Agent 1",
+                    folder="agent-1",
+                    trigger="@test",
+                    added_at="2024-01-01",
+                ),
+            },
+            active_sessions={"agent-1"},
+        )
+
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
+
+        deps.broadcast_system_notice.assert_awaited_once()
+        assert "rebase conflicts" in deps.broadcast_system_notice.call_args.args[1]
+        deps.wake_worktree_conflict.assert_awaited_once_with("jid-1@g.us")
+
+        await host_notify_worktree_updates(exclude_group=None, deps=deps, repo_ctx=repo_ctx)
+
+        deps.broadcast_system_notice.assert_awaited_once()
+        deps.wake_worktree_conflict.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_dirty_worktree_active_session_uses_system_notice(self, git_env: dict):
@@ -762,6 +806,9 @@ class _RecordingGitSyncDeps:
         return None
 
     async def broadcast_system_notice(self, jid: str, text: str) -> None:
+        return None
+
+    async def wake_worktree_conflict(self, jid: str) -> None:
         return None
 
     def has_active_session(self, group_folder: str) -> bool:

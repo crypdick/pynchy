@@ -253,6 +253,8 @@ class NullIpcDeps:
 
     async def broadcast_system_notice(self, jid, text) -> None: ...
 
+    async def wake_worktree_conflict(self, jid) -> None: ...
+
     def workspaces(self) -> dict:
         return {}
 
