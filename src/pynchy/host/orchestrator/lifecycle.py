@@ -509,15 +509,11 @@ async def _prepare_state_and_subsystems(
             await app.connection_runtime_owner.close()
         except Exception:  # noqa: BLE001 - preserve the startup error that triggers rollback.
             logger.exception("Connection runtime cleanup failed during startup rollback")
+        await gateway_manager.stop_gateway_after_startup_failure()
         if isinstance(exc, Exception) and await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
     return interrupted_recovery
-
-
-# ---------------------------------------------------------------------------
-# Run — top-level orchestrator
-# ---------------------------------------------------------------------------
 
 
 async def run_app(app: PynchyApp) -> None:
@@ -530,12 +526,12 @@ async def run_app(app: PynchyApp) -> None:
     4. Subsystem startup (scheduler, IPC, git sync, HTTP)
     5. Boot finalization (notification, recovery, message loop)
     """
-    s = get_settings()
-    continuation_path = startup_handler.claim_deploy_continuation(s.data_dir)
+    continuation_path = startup_handler.claim_deploy_continuation(get_settings().data_dir)
 
     try:
         await _initialize_core(app)
     except Exception as exc:  # startup rollback boundary; any init failure should trigger rollback.
+        await gateway_manager.stop_gateway_after_startup_failure()
         if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
@@ -560,6 +556,7 @@ async def run_app(app: PynchyApp) -> None:
         await _setup_channels(app)
     # startup rollback boundary; any channel setup failure should trigger rollback.
     except Exception as exc:
+        await gateway_manager.stop_gateway_after_startup_failure()
         if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise

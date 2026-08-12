@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import signal
 import sys
 from typing import TYPE_CHECKING, Any
 
@@ -40,17 +43,19 @@ def make_shell_executor(
             if blocked := await _blocked_message(before_tool_hooks, shell_command):
                 results.extend(_failure_result(blocked).output)
                 break
+            proc: asyncio.subprocess.Process | None = None
             try:
                 proc = await asyncio.create_subprocess_shell(
                     shell_command,
                     cwd=cwd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,
                 )
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
             except TimeoutError:
-                proc.kill()
-                await proc.communicate()
+                if proc is not None:
+                    await _kill_process_group(proc)
                 results.append(
                     ShellCommandOutput(
                         stderr=f"Command timed out after {timeout_s}s",
@@ -59,6 +64,10 @@ def make_shell_executor(
                     )
                 )
                 break
+            except asyncio.CancelledError:
+                if proc is not None:
+                    await _kill_process_group(proc)
+                raise
             except Exception as exc:  # allow: exception-handling; tool error.  # noqa: BLE001
                 results.append(
                     ShellCommandOutput(
@@ -88,6 +97,12 @@ def make_shell_executor(
         return ShellResult(output=results, max_output_length=output_limit)
 
     return executor
+
+
+async def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    await proc.communicate()
 
 
 def _field(obj: object, name: str) -> object | None:
