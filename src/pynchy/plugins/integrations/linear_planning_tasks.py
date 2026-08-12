@@ -20,6 +20,7 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     DecisionIssue,
     ensure_task_active,
     linear_issue_conversation_id,
+    resume_quiet_paused_task,
 )
 from pynchy.scheduling.api import (
     ScheduledTask,
@@ -117,4 +118,10 @@ async def admit_planning_issue(
         conversation_id=await linear_issue_conversation_id(issue.id, workspace.folder),
     )
     active_task, admitted = await ensure_task_active(task, observed_at=observed_at)
+    if active_task.status == "paused":
+        active_task, resumed = await resume_quiet_paused_task(
+            active_task,
+            observed_at=observed_at,
+        )
+        admitted = admitted or resumed
     return active_task if admitted else None

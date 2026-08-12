@@ -384,6 +384,24 @@ async def ensure_task_active(
     return resumed, True
 
 
+async def resume_quiet_paused_task(
+    task: ScheduledTask,
+    *,
+    observed_at: datetime,
+) -> tuple[ScheduledTask, bool]:
+    """Resume a paused task only through its atomic unclaimed-turn guard."""
+    if task.status != "paused" or _last_run_is_recent(task, observed_at):
+        return task, False
+    runtime = _configured_runtime()
+    if not await runtime.resume_once_task(task.id):
+        return task, False
+    refreshed = await runtime.get_task(task.id)
+    if refreshed is None or refreshed.status != "active":
+        return task, False
+    logger.warning("Resumed quiet paused Linear work item task", task_id=task.id)
+    return refreshed, True
+
+
 async def _bind_execution_task(
     execution: WorkItemExecution,
     task: ScheduledTask,
@@ -440,16 +458,12 @@ async def _admit_in_progress_issue(
         ),
     )
     active_task, admitted = await ensure_task_active(task, observed_at=context.observed_at)
-    if (
-        active_task.status == "paused"
-        and execution.task_id == active_task.id
-        and not _last_run_is_recent(active_task, context.observed_at)
-        and await runtime.resume_once_task(active_task.id)
-    ):
-        refreshed_task = await runtime.get_task(active_task.id)
-        if refreshed_task is not None and refreshed_task.status == "active":
-            active_task = refreshed_task
-            admitted = True
+    if active_task.status == "paused" and execution.task_id == active_task.id:
+        active_task, resumed = await resume_quiet_paused_task(
+            active_task,
+            observed_at=context.observed_at,
+        )
+        admitted = admitted or resumed
     await _bind_execution_task(execution, active_task)
     return active_task if admitted else None
 
