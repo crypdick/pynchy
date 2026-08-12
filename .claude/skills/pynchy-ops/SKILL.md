@@ -206,6 +206,21 @@ Proton Pass. Keep `pass://` references in
 exists. Do not put resolved values in a launchd plist, systemd unit, workspace
 file, container argument, or generated env directory.
 
+For unattended SSH diagnostics, load the deployment's ignored provider config
+before invoking `pass-cli`:
+
+```bash
+cd "$PYNCHY_REMOTE_ROOT"
+set -a
+. data/proton-pass/host.conf
+set +a
+pass-cli info
+```
+
+Without `host.conf`, `pass-cli` may fall back to a GUI key provider and fail with
+`User interaction is not allowed`. Do not ask the operator to approve a GUI
+prompt; load the configured headless provider, then rerun the command.
+
 After updating the Pass items or tool requirements, use the normal managed
 deployment flow. Verify requirement names and tool availability through status,
 logs, or a canary without printing raw task environments or credential values.
