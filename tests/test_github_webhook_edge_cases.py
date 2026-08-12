@@ -26,6 +26,7 @@ def _payload(**updates: object) -> dict[str, object]:
         "action": "opened",
         "number": 42,
         "repository": {"full_name": _REPOSITORY},
+        "sender": {"login": "repo-owner"},
         "pull_request": {"number": 42},
     }
     payload.update(updates)
@@ -78,6 +79,40 @@ def test_route_configuration_accepts_a_smaller_payload_limit() -> None:
     )
 
     assert config.max_body_bytes == 1024
+
+
+def test_sender_allowlist_rejects_blank_and_duplicate_logins() -> None:
+    values = {"name": "project", "workspace": "project", "repository": _REPOSITORY}
+
+    with pytest.raises(ValueError, match="cannot contain blank"):
+        GitHubWebhookRouteConfig(**values, allowed_senders=("repo-owner", " "))
+    with pytest.raises(ValueError, match="cannot contain duplicates"):
+        GitHubWebhookRouteConfig(**values, allowed_senders=("repo-owner", "REPO-OWNER"))
+
+
+def test_sender_allowlist_ignores_untrusted_or_missing_senders() -> None:
+    config = GitHubWebhookRouteConfig(
+        name="project",
+        workspace="project",
+        repository=_REPOSITORY,
+        allowed_senders=("repo-owner",),
+    )
+    untrusted_body, untrusted_headers = _request(
+        _payload(sender={"login": "drive-by"}),
+        "pull_request",
+    )
+    missing_body, missing_headers = _request(
+        _payload(sender=None),
+        "pull_request",
+    )
+
+    untrusted = parse_github_webhook(
+        untrusted_body, untrusted_headers, _SECRET, _NOW, config=config
+    )
+    missing = parse_github_webhook(missing_body, missing_headers, _SECRET, _NOW, config=config)
+
+    assert untrusted.ignored_reason == "sender_is_not_allowed"
+    assert missing.ignored_reason == "sender_is_not_allowed"
 
 
 def test_authentication_requires_all_provider_headers() -> None:

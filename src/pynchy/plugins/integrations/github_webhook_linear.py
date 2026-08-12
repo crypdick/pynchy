@@ -121,6 +121,6 @@ async def prepare_github_webhook_event(  # noqa: PLR0911 - each branch preserves
             subject=conversation.subject,
             control_title=control_title[:100],
             workspace=config.workspace,
-            public_source=True,
+            public_source=not config.allowed_senders,
         ),
     )

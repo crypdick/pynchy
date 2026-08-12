@@ -203,9 +203,10 @@ cross-workspace use fail closed. Caller-supplied approval booleans are not
 trusted.
 
 **Authenticated external routes.** A connection runtime may authenticate an
-external provider event before routing it into a non-admin conversation
-workspace. Authentication proves provider origin; the route's source-trust
-declaration decides whether the provider can carry attacker-controlled content.
+external provider event before routing it into a conversation workspace.
+Authentication proves provider origin; the route's source-trust declaration
+decides whether the provider can carry attacker-controlled content. Admin targets
+require a trusted source policy and explicit plugin opt-in.
 Public-source routes fence provider context and start the invocation
 corruption-tainted. Trusted routes retain provider provenance without adding
 public-source taint. Matrix route input always starts both corruption-tainted and
