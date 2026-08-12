@@ -22,6 +22,7 @@ import aiohttp
 
 from pynchy.logger import logger
 from pynchy.process_environment import filtered_process_environment
+from pynchy.redaction import irreversibly_redact
 
 
 def docker_available() -> bool:
@@ -73,6 +74,12 @@ async def run_docker(
         timeout=command_timeout_seconds,
         environment=environment,
     )
+
+
+def redacted_container_logs(result: subprocess.CompletedProcess[str], *, limit: int) -> str:
+    """Return bounded container diagnostics without retaining detected secrets."""
+    combined = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    return irreversibly_redact(combined)[-limit:] if combined else "(no container log output)"
 
 
 async def ensure_image(image: str) -> None:
@@ -166,7 +173,7 @@ async def wait_healthy(request: HealthCheckRequest) -> None:
                 logger.error(
                     "Container exited",
                     container=request.container_name,
-                    logs=logs.stdout[-2000:],
+                    logs=redacted_container_logs(logs, limit=2000),
                 )
                 msg = f"Container {request.container_name} failed to start — check logs above"
                 raise RuntimeError(msg)

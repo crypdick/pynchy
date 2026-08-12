@@ -47,3 +47,13 @@ def test_atomic_json_write_removes_temp_after_replace_failure(tmp_path: Path) ->
         write_json_atomic(path, {"result": "not-published"})
 
     assert not list(tmp_path.iterdir())
+
+
+def test_atomic_json_write_preserves_existing_file_mode(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+    path.write_text('{"version": 1}')
+    path.chmod(0o600)
+
+    write_json_atomic(path, {"version": 2})
+
+    assert path.stat().st_mode & 0o777 == 0o600

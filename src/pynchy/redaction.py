@@ -141,7 +141,7 @@ _DETECTORS = (
     ),
     _Detector(
         re.compile(
-            r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|"
+            r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|"
             r"secret|authorization)\b\s*[:=]\s*([^\s,;]+)"
         ),
         SensitiveDataClass.CREDENTIAL,

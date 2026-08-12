@@ -466,17 +466,22 @@ def check_token_expiry(slug: str, token: str) -> None:
     Logs an error if the token is already expired.
     Silently succeeds if the API call fails (network issues, classic token, etc.).
     """
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415 - preserve the package's lazy import boundary.
+        git_env_without_credentials,
+    )
+
+    env = git_env_without_credentials(include_identity=False)
+    env["GH_TOKEN"] = token
     try:
-        result = subprocess.run(  # noqa: S603 - fixed gh API argv with token passed as a header; no shell.
+        result = subprocess.run(
             [  # noqa: S607 - gh is the trusted host GitHub CLI.
                 "gh",
                 "api",
                 "/rate_limit",
-                "-H",
-                f"Authorization: token {token}",
                 "-i",
             ],
             capture_output=True,
+            env=env,
             text=True,
             timeout=10,
             check=False,

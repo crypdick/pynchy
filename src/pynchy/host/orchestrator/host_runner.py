@@ -84,11 +84,15 @@ def _host_runner_payload(input_data: ContainerInput, cwd: Path) -> bytes:
 
 
 async def _write_payload(proc: _HostRunnerProcess, payload: bytes) -> None:
-    if proc.stdin is None:
-        raise RuntimeError("host runner subprocess missing stdin")
-    proc.stdin.write(payload)
-    await proc.stdin.drain()
-    proc.stdin.close()
+    try:
+        if proc.stdin is None:
+            raise RuntimeError("host runner subprocess missing stdin")
+        proc.stdin.write(payload)
+        await proc.stdin.drain()
+        proc.stdin.close()
+    except BaseException:
+        await stop_host_process(proc)
+        raise
 
 
 async def _read_stderr(proc: _HostRunnerProcess) -> str:
@@ -159,6 +163,7 @@ async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution
     is_interrupted: IsInterrupted | None = None,
 ) -> str:
     """Run one agent turn directly on the host via a child process."""
+    payload = _host_runner_payload(input_data, cwd)
     proc = await asyncio.create_subprocess_exec(
         *_host_runner_command(project_root),
         stdin=asyncio.subprocess.PIPE,
@@ -178,7 +183,7 @@ async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution
         if not accepted:
             await stop_host_process(proc)
             return "interrupted"
-    await _write_payload(proc, _host_runner_payload(input_data, cwd))
+    await _write_payload(proc, payload)
     stderr_task = asyncio.create_task(_read_stderr(proc), name="host-runner-stderr")
     progress_event = asyncio.Event()
 
@@ -223,7 +228,7 @@ async def run_host_input(  # noqa: PLR0913 - direct-run contract keeps execution
             )
         )
         return "error"
-    except asyncio.CancelledError:
+    except BaseException:
         await stop_host_process(proc)
         raise
     finally:

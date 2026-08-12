@@ -10,6 +10,21 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 import pytest
+from host_runner_fakes import (
+    BlockingStderr as _BlockingStderr,
+)
+from host_runner_fakes import (
+    BlockingStdout as _BlockingStdout,
+)
+from host_runner_fakes import (
+    FakeProcess as _FakeProcess,
+)
+from host_runner_fakes import (
+    FakeStderr as _FakeStderr,
+)
+from host_runner_fakes import (
+    TimedStdout as _TimedStdout,
+)
 
 from pynchy.agent_protocol.api import (
     ContainerInput,
@@ -19,105 +34,6 @@ from pynchy.host.orchestrator.host_runner import run_host_input, stop_host_proce
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-class _FakeStdin:
-    def __init__(self) -> None:
-        self.buffer = b""
-        self.closed = False
-
-    def write(self, data: bytes) -> None:
-        self.buffer += data
-
-    async def drain(self) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _FakeStdout:
-    def __init__(self, lines: list[bytes]) -> None:
-        self._lines = lines
-
-    def __aiter__(self) -> _FakeStdout:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if not self._lines:
-            raise StopAsyncIteration
-        return self._lines.pop(0)
-
-
-class _TimedStdout:
-    def __init__(self, lines: list[tuple[float, bytes]]) -> None:
-        self._lines = lines
-
-    def __aiter__(self) -> _TimedStdout:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if not self._lines:
-            raise StopAsyncIteration
-        delay, line = self._lines.pop(0)
-        await asyncio.sleep(delay)
-        return line
-
-
-class _BlockingStdout:
-    def __init__(self, first_line: bytes | None = None) -> None:
-        self.started = asyncio.Event()
-        self._first_line = first_line
-
-    def __aiter__(self) -> _BlockingStdout:
-        return self
-
-    async def __anext__(self) -> bytes:
-        if self._first_line is not None:
-            line = self._first_line
-            self._first_line = None
-            return line
-        self.started.set()
-        await asyncio.Event().wait()
-        raise StopAsyncIteration
-
-
-class _FakeStderr:
-    def __init__(self, data: bytes = b"") -> None:
-        self._data = data
-
-    async def read(self) -> bytes:
-        return self._data
-
-
-class _BlockingStderr:
-    def __init__(self) -> None:
-        self.cancelled = asyncio.Event()
-
-    async def read(self) -> bytes:
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            self.cancelled.set()
-            raise
-        return b""
-
-
-class _FakeProcess:
-    def __init__(self, stdout_lines: list[bytes], returncode: int | None = 0) -> None:
-        self.stdin = _FakeStdin()
-        self.stdout = _FakeStdout(stdout_lines)
-        self.stderr = _FakeStderr()
-        self.returncode = returncode
-        self.pid = 123
-        self.killed = False
-
-    async def wait(self) -> int:
-        return self.returncode
-
-    def kill(self) -> None:
-        self.killed = True
-        self.returncode = -9
 
 
 @pytest.mark.asyncio
@@ -247,6 +163,60 @@ async def test_run_host_input_reports_structured_errors_and_ignores_blank_lines(
 
 
 @pytest.mark.asyncio
+async def test_run_host_input_stops_process_after_malformed_runner_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([b"not-json\n"], returncode=None)
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(json.JSONDecodeError):
+        await run_host_input(
+            ContainerInput(
+                messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
+        )
+
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_validates_payload_before_spawning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spawn = AsyncMock()
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+
+    with pytest.raises(TypeError, match="JSON serializable"):
+        await run_host_input(
+            ContainerInput(
+                messages=[{"content": object()}],
+                group_folder="admin-host",
+                chat_jid="slack:C123",
+                is_admin=False,
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
+        )
+
+    spawn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_host_input_allows_a_runner_without_stderr(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -331,6 +301,36 @@ async def test_run_host_input_stops_process_when_start_callback_fails(
             on_output=AsyncMock(),
             timeout_seconds=5,
             on_process_started=fail_start,
+        )
+
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_stops_process_when_stdin_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_proc = _FakeProcess([], returncode=None)
+    fake_proc.stdin.drain = AsyncMock(side_effect=BrokenPipeError("runner exited"))
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    with pytest.raises(BrokenPipeError, match="runner exited"):
+        await run_host_input(
+            ContainerInput(
+                messages=[], group_folder="admin-host", chat_jid="slack:C123", is_admin=False
+            ),
+            cwd=tmp_path,
+            project_root=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=5,
         )
 
     assert signals == [(fake_proc.pid, signal.SIGINT)]

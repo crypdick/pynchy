@@ -18,6 +18,7 @@ from typing import Any, NoReturn, cast
 import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
+from pynchy.atomic_json import write_text_atomic
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
@@ -491,7 +492,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     for key, value in data.items():
         workspace_table.add(key, value)
     doc.add("workspace", workspace_table)
-    workspace_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text_atomic(workspace_path, tomlkit.dumps(doc))
     reset_settings()
 
 
@@ -535,6 +536,6 @@ def add_job_to_toml(job_name: str, config: JobConfig) -> None:
     for key, value in config.model_dump(exclude_none=True, exclude_defaults=True).items():
         job_table.add(key, value)
     doc.add("job", job_table)
-    automation_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    write_text_atomic(automation_path, tomlkit.dumps(doc))
 
     reset_settings()

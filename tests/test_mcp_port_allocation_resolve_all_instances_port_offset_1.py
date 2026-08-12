@@ -166,16 +166,19 @@ class TestResolveAllInstancesPortOffset:
         manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         await manager.sync()
 
-        proxy_factory.assert_called_once_with(
-            host=settings.gateway.host,
-            backend_lease=manager.proxy_backend_lease,
-        )
+        proxy_factory.assert_called_once()
+        proxy_options = proxy_factory.call_args.kwargs
+        assert proxy_options["host"] == settings.gateway.host
+        assert proxy_options["backend_lease"] == manager.proxy_backend_lease
 
         parent_ids = manager.get_workspace_instance_ids("admin")
         child_ids = manager.get_workspace_instance_ids("admin__thread_discord-channel-thread")
 
         assert child_ids == parent_ids
         assert child_ids
+        authorize_instance = proxy_options["authorize_instance"]
+        assert authorize_instance("admin__thread_discord-channel-thread", child_ids[0])
+        assert not authorize_instance("unknown", child_ids[0])
 
     @pytest.mark.asyncio
     async def test_runtime_route_restriction_removes_parent_mcp_instances(self, monkeypatch):

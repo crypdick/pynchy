@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404 - tests construct inert subprocess results.
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -24,11 +25,8 @@ _GATEWAY_KWARGS = {
 }
 
 
-def _docker_result(*, returncode: int, stdout: str = "") -> MagicMock:
-    result = MagicMock()
-    result.returncode = returncode
-    result.stdout = stdout
-    return result
+def _docker_result(*, returncode: int, stdout: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess([], returncode, stdout, "")
 
 
 def _gateway(tmp_path: Path) -> LiteLLMGateway:

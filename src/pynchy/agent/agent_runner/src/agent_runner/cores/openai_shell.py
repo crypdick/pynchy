@@ -34,11 +34,12 @@ def make_shell_executor(
         max_output_length = _field(action, "max_output_length") or _field(data, "max_output_length")
 
         _log(f"Shell ({cwd}): {command[:200]}")
-        if blocked := await _blocked_message(before_tool_hooks, command):
-            return _failure_result(blocked)
 
         results: list[ShellCommandOutput] = []
         for shell_command in command_list:
+            if blocked := await _blocked_message(before_tool_hooks, shell_command):
+                results.extend(_failure_result(blocked).output)
+                break
             try:
                 proc = await asyncio.create_subprocess_shell(
                     shell_command,

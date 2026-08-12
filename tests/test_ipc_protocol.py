@@ -199,6 +199,15 @@ class TestRequestEnvelope:
         with pytest.raises(ValueError, match="request_id must be a non-empty string"):
             IpcRequestEnvelope.from_dict(request)
 
+    def test_envelope_rejects_non_string_required_field(self):
+        request = make_ipc_request(
+            kind="refresh_groups", request_id="req-required", source_group="admin-1"
+        )
+        request["source_group"] = 42
+
+        with pytest.raises(ValueError, match="source_group must be a non-empty string"):
+            IpcRequestEnvelope.from_dict(request)
+
     @pytest.mark.parametrize(
         "request_id",
         [chr(47) + "tmp/escape", "../escape", r"..\escape", "line\nbreak", "x" * 129],

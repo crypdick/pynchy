@@ -158,6 +158,44 @@ class TestStoreMessage:
         pending = await get_messages_since("group@g.us", cursor)
         assert [message.id for message in pending] == ["delayed"]
 
+    async def test_legacy_cursor_upgrade_recovers_already_stranded_delayed_messages(self):
+        timestamp = "2024-01-01T00:00:01.000Z"
+        await _store_message_row(
+            _store(
+                message_id="processed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="processed",
+                timestamp=timestamp,
+            )
+        )
+        await _store_message_row(
+            _store(
+                message_id="already-delayed",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="delayed",
+                timestamp="2023-12-31T23:59:59.000Z",
+            )
+        )
+        await _store_message_row(
+            _store(
+                message_id="same-timestamp",
+                chat_jid="group@g.us",
+                sender="alice",
+                sender_name="Alice",
+                content="same timestamp",
+                timestamp=timestamp,
+            )
+        )
+
+        cursor = await upgrade_message_cursor(["group@g.us"], timestamp)
+
+        pending = await get_messages_since("group@g.us", cursor)
+        assert [message.id for message in pending] == ["already-delayed", "same-timestamp"]
+
     async def test_stores_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await _store_message_row(

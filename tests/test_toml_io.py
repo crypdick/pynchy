@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -36,3 +37,17 @@ def test_mutate_config_toml_does_not_write_an_invalid_candidate(tmp_path: Path) 
         mutate_config_toml(path, lambda doc: doc["server"].update({"port": 0}))
 
     assert path.read_text(encoding="utf-8") == "[server]\nport = 8484\n"
+
+
+def test_mutate_config_toml_preserves_existing_file_when_publish_fails(tmp_path: Path) -> None:
+    path = tmp_path / "pynchy.toml"
+    original = "[server]\nport = 8484\n"
+    path.write_text(original, encoding="utf-8")
+
+    with (
+        patch("pynchy.atomic_json.os.replace", side_effect=OSError("publish failed")),
+        pytest.raises(OSError, match="publish failed"),
+    ):
+        mutate_config_toml(path, lambda doc: doc["server"].update({"port": 9000}))
+
+    assert path.read_text(encoding="utf-8") == original
