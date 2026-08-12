@@ -98,6 +98,23 @@ class TestContainerArgs:
         assert "GIT_AUTHOR_NAME" not in environment
         assert "GIT_AUTHOR_EMAIL" not in environment
 
+    def test_agent_environment_uses_discovered_git_identity(self, tmp_path: Path):
+        identity = [
+            MagicMock(returncode=0, stdout="Test User\n"),
+            MagicMock(returncode=0, stdout="test@example.com\n"),
+        ]
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=None),
+            patch(f"{_CR_CREDS}.subprocess.run", side_effect=identity),
+        ):
+            environment = build_agent_env_vars(is_admin=False, group_folder="dev")
+
+        assert environment["GIT_AUTHOR_NAME"] == "Test User"
+        assert environment["GIT_COMMITTER_NAME"] == "Test User"
+        assert environment["GIT_AUTHOR_EMAIL"] == "test@example.com"
+        assert environment["GIT_COMMITTER_EMAIL"] == "test@example.com"
+
     def test_agent_environment_includes_anthropic_gateway_and_extra_values(
         self,
         tmp_path: Path,

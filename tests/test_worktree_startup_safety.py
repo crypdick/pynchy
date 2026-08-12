@@ -47,6 +47,7 @@ def _reconcile(
     *,
     folders: list[str] | None = None,
     git_runner: object | None = None,
+    discovered_token: str | None = None,
 ) -> None:
     git_patch = (
         patch("pynchy.host.git_ops.worktree.run_git", side_effect=git_runner)
@@ -66,11 +67,22 @@ def _reconcile(
             "pynchy.host.git_ops.worktree.repo_manager.ensure_repo_cloned",
             return_value=True,
         ),
-        patch("pynchy.host.git_ops.worktree.repo_manager.get_repo_token", return_value=None),
+        patch(
+            "pynchy.host.git_ops.worktree.repo_manager.get_repo_token",
+            return_value=discovered_token,
+        ),
         patch("pynchy.host.git_ops.worktree.install_repo_hooks"),
         git_patch,
     ):
         reconcile_worktrees_at_startup({"owner/repo": folders or []})
+
+
+def test_startup_accepts_a_discovered_repository_token(tmp_path: Path, caplog) -> None:
+    repo_context, runtime = _repo_context(tmp_path)
+
+    _reconcile(repo_context, runtime, discovered_token=tmp_path.name)
+
+    assert "No git token for repo" not in caplog.text
 
 
 @pytest.mark.parametrize(
