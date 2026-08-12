@@ -299,6 +299,19 @@ async def test_linear_cleanup_rejects_an_issue_that_survives_deletion(
 
 
 @pytest.mark.asyncio
+async def test_linear_cleanup_skips_artifacts_already_removed_by_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario, client, exercise = await _linear_scenario(monkeypatch)
+    client.issues.clear()
+    client.delete_issue = AsyncMock()
+
+    await scenario.cleanup(_context(), exercise)
+
+    client.delete_issue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_linear_verify_rejects_a_todo_missing_from_the_final_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -111,6 +111,11 @@ async def test_mcp_coerces_issue_list_limit_to_an_integer(
             {"query": "coverage", "unexpected": True},
             "unexpected arguments: unexpected",
         ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "first": 0},
+            "first must be an integer from 1 through 100",
+        ),
     ],
 )
 async def test_mcp_rejects_invalid_tool_arguments(
