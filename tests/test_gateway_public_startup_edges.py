@@ -190,6 +190,16 @@ async def test_startup_failure_stops_gateway_without_raising() -> None:
     stop.assert_awaited_once_with()
 
 
+@pytest.mark.asyncio
+async def test_startup_failure_keeps_original_error_when_gateway_stop_fails() -> None:
+    with patch(
+        "pynchy.host.container_manager.gateway.stop_gateway",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("stop failed"),
+    ):
+        await stop_gateway_after_startup_failure()
+
+
 def test_collect_yaml_environment_skips_placeholder_values(tmp_path: Path) -> None:
     config = tmp_path / "litellm.yaml"
     config.write_text("api_key: os.environ/OPENAI_API_KEY\n")
