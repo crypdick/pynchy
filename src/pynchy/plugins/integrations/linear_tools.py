@@ -6,6 +6,7 @@ from typing import Any
 
 
 def tool_specs() -> list[dict[str, Any]]:
+    # NOTE: Keep docs/integrations/linear.md § Use Linear tools aligned with this list.
     return [
         {
             "name": "linear_list_teams",

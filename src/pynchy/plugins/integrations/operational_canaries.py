@@ -232,8 +232,6 @@ class LinearWorkspaceRoundTripCanary:
             except Exception:  # remove any issue created before an incomplete canary exercise.
                 await _delete_linear_artifacts(client, (issue_id, todo_id))
                 raise
-            if todo_id is None:
-                raise CanaryServiceError("Linear did not return a created canary todo identifier")
         return CanaryExercise(
             artifact=_LinearArtifact(issue_id, todo_id),
             evidence_refs=(

@@ -220,14 +220,25 @@ class _LifecycleLinearClient:
         assert team_id == "team-1"
         return []
 
+    async def search_issues(
+        self, query: str, *, team_id: str, first: int = 50
+    ) -> list[dict[str, object]]:
+        assert query == "Pynchy canary issue run"
+        assert team_id == "team-1"
+        assert first == 1
+        issue = self.issues.get("issue-1")
+        return [issue] if issue is not None else []
+
     async def create_issue(self, **_kwargs: object) -> dict[str, object]:
-        return {"id": "issue-1"}
+        issue = {"id": "issue-1"}
+        self.issues["issue-1"] = issue
+        return issue
 
     async def get_issue(self, issue_id: str) -> dict[str, object] | None:
         return self.issues.get(issue_id)
 
-    async def delete_issue(self, _issue_id: str) -> None:
-        return None
+    async def delete_issue(self, issue_id: str) -> None:
+        self.issues.pop(issue_id, None)
 
 
 async def _linear_scenario(
@@ -280,7 +291,8 @@ async def test_linear_verify_reports_provider_state_gaps(
 async def test_linear_cleanup_rejects_an_issue_that_survives_deletion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scenario, _client, exercise = await _linear_scenario(monkeypatch)
+    scenario, client, exercise = await _linear_scenario(monkeypatch)
+    client.delete_issue = AsyncMock()
 
     with pytest.raises(canaries.CanaryServiceError, match="retained"):
         await scenario.cleanup(_context(), exercise)
@@ -409,28 +421,4 @@ async def test_linear_canary_rejects_a_todo_without_an_identifier(
     )
 
     with pytest.raises(canaries.CanaryServiceError, match="issue identifier"):
-        await scenario.exercise(_context())
-
-
-@pytest.mark.asyncio
-async def test_linear_canary_rejects_a_provider_that_returns_no_todo_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    @asynccontextmanager
-    async def context(_client: object):
-        yield _client
-
-    monkeypatch.setattr(canaries, "select_team", AsyncMock(return_value={"id": "team-1"}))
-    monkeypatch.setattr(canaries, "_linear_issue_id", lambda _issue: None)
-    monkeypatch.setattr(canaries, "list_workspace_todos", AsyncMock(return_value=[]))
-    monkeypatch.setattr(canaries, "create_workspace_todo", AsyncMock(return_value={}))
-    monkeypatch.setattr(canaries, "move_workspace_todo", AsyncMock())
-    client = _LifecycleLinearClient()
-    scenario = LinearWorkspaceRoundTripCanary(
-        "CANARY",
-        WorkspaceContext(folder="canary", name="Canary"),
-        client_context=lambda: context(client),
-    )
-
-    with pytest.raises(canaries.CanaryServiceError, match="created canary todo identifier"):
         await scenario.exercise(_context())

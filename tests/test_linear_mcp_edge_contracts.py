@@ -106,6 +106,11 @@ async def test_mcp_coerces_issue_list_limit_to_an_integer(
             {"query": "coverage", "team_id": 123},
             "team_id must be a string",
         ),
+        (
+            "linear_search_issues",
+            {"query": "coverage", "unexpected": True},
+            "unexpected arguments: unexpected",
+        ),
     ],
 )
 async def test_mcp_rejects_invalid_tool_arguments(

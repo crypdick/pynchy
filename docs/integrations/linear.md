@@ -373,6 +373,7 @@ The Linear MCP server provides ordinary provider tools:
 |------|---------|
 | `linear_list_teams` | Lists teams visible to the selected account. |
 | `linear_list_issues` | Lists recent issues, optionally by team. |
+| `linear_search_issues` | Finds issues by case-insensitive title text, optionally by team. |
 | `linear_get_issue` | Gets an issue by stable Linear ID. |
 | `linear_create_issue` | Creates an ordinary issue without an approval-bearing state; optionally sets priority (`0` none, `1` urgent, `2` high, `3` medium, `4` low). |
 | `linear_list_todos` | Lists open items on the current workspace board. |

@@ -77,6 +77,26 @@ class WorkspaceContext:
     jid: str = ""
 
 
+@dataclass(frozen=True)
+class _SearchIssuesArguments:
+    query: str
+    team_id: str | None
+    first: int
+
+    @classmethod
+    def parse(cls, arguments: dict[str, Any]) -> _SearchIssuesArguments:
+        unexpected = sorted(arguments.keys() - {"query", "team_id", "first"})
+        if unexpected:
+            raise LinearError(f"unexpected arguments: {', '.join(unexpected)}")
+        first = arguments.get("first", 50)
+        if type(first) is not int or not 1 <= first <= 100:
+            raise LinearError(_LINEAR_SEARCH_LIMIT_INVALID)
+        team_id = arguments.get("team_id")
+        if team_id is not None and not isinstance(team_id, str):
+            raise LinearError(_LINEAR_TEAM_ID_NOT_STRING)
+        return cls(query=_required_str(arguments, "query"), team_id=team_id, first=first)
+
+
 class LinearMcpPlugin:
     """Register the built-in Linear script MCP server."""
 
@@ -269,18 +289,13 @@ async def _tool_search_issues(
     arguments: dict[str, Any],
     _workspace: str | None,
 ) -> list[dict[str, Any]]:
-    first = arguments.get("first", 50)
-    if type(first) is not int or not 1 <= first <= 100:
-        raise LinearError(_LINEAR_SEARCH_LIMIT_INVALID)
-    team_id = arguments.get("team_id")
-    if team_id is not None and not isinstance(team_id, str):
-        raise LinearError(_LINEAR_TEAM_ID_NOT_STRING)
+    parsed = _SearchIssuesArguments.parse(arguments)
     return cast(
         "list[dict[str, Any]]",
         await cast("Any", client).search_issues(
-            _required_str(arguments, "query"),
-            team_id=team_id,
-            first=first,
+            parsed.query,
+            team_id=parsed.team_id,
+            first=parsed.first,
         ),
     )
 
