@@ -18,6 +18,7 @@ from pynchy.host.container_manager.gateway import (
     get_settings,
     start_gateway,
     stop_gateway,
+    stop_gateway_after_startup_failure,
 )
 from pynchy.host.container_manager.gateway_litellm import collect_litellm_yaml_environment
 from pynchy.plugins.api import McpServerConfig, McpServerSpec
@@ -177,6 +178,26 @@ async def test_stop_gateway_stops_and_clears_active_mcp_manager() -> None:
 
     mcp_manager.stop_all.assert_awaited_once()
     set_manager.assert_called_once_with(None)
+
+
+@pytest.mark.asyncio
+async def test_startup_failure_stops_gateway_without_raising() -> None:
+    with patch(
+        "pynchy.host.container_manager.gateway.stop_gateway", new_callable=AsyncMock
+    ) as stop:
+        await stop_gateway_after_startup_failure()
+
+    stop.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_startup_failure_keeps_original_error_when_gateway_stop_fails() -> None:
+    with patch(
+        "pynchy.host.container_manager.gateway.stop_gateway",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("stop failed"),
+    ):
+        await stop_gateway_after_startup_failure()
 
 
 def test_collect_yaml_environment_skips_placeholder_values(tmp_path: Path) -> None:

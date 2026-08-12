@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import signal
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from agents import ShellResult
 
 from agent_runner.cores.openai_shell import make_shell_executor
@@ -58,6 +62,75 @@ def test_shell_executor_reports_timed_out_command(tmp_path) -> None:
     assert result.output[0].outcome.type == "timeout"
 
 
+def test_shell_executor_timeout_kills_descendant_processes(tmp_path) -> None:
+    pid_file = tmp_path / "child.pid"
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(
+        executor(
+            {
+                "action": {
+                    "commands": [f"sleep 30 & echo $! > {pid_file}; wait"],
+                    "timeout_ms": 100,
+                }
+            }
+        )
+    )
+
+    pid = int(pid_file.read_text())
+    try:
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+    assert result.output[0].outcome.type == "timeout"
+
+
+def test_shell_executor_cancellation_kills_descendant_processes(tmp_path) -> None:
+    pid_file = tmp_path / "child.pid"
+    executor = make_shell_executor(str(tmp_path))
+
+    async def run_and_cancel() -> None:
+        task = asyncio.create_task(
+            executor({"action": {"commands": [f"sleep 30 & echo $! > {pid_file}; wait"]}})
+        )
+        await asyncio.sleep(0.05)
+        assert pid_file.exists()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run_and_cancel())
+
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_shell_executor_cancellation_before_process_start_is_preserved(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+    started = asyncio.Event()
+
+    async def blocked_spawn(*_args, **_kwargs):
+        started.set()
+        await asyncio.Future()
+
+    async def run_and_cancel() -> None:
+        with patch(
+            "agent_runner.cores.openai_shell.asyncio.create_subprocess_shell",
+            side_effect=blocked_spawn,
+        ):
+            task = asyncio.create_task(executor({"action": {"commands": ["echo never"]}}))
+            await started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    asyncio.run(run_and_cancel())
+
+
 def test_shell_executor_gates_each_executed_command(tmp_path) -> None:
     process = AsyncMock()
     process.communicate.return_value = (b"safe", b"")
@@ -85,6 +158,7 @@ def test_shell_executor_gates_each_executed_command(tmp_path) -> None:
         cwd=str(tmp_path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
     assert result.output[-1].exit_code == 1
     assert "blocked by security policy" in result.output[-1].stderr.lower()

@@ -682,11 +682,16 @@ async def test_run_app_rolls_back_claimed_continuation_when_core_startup_fails(
     )
     monkeypatch.setattr(lifecycle, "_initialize_core", fail_core)
     monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", rollback)
+    stop_gateway = AsyncMock()
+    monkeypatch.setattr(
+        lifecycle.gateway_manager, "stop_gateway_after_startup_failure", stop_gateway
+    )
 
     with pytest.raises(RuntimeError, match="gateway unavailable"):
         await lifecycle.run_app(PynchyApp())
 
     rollback.assert_awaited_once_with(continuation_path, startup_error)
+    stop_gateway.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

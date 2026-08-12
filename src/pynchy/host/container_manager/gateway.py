@@ -379,6 +379,14 @@ async def stop_gateway() -> None:
         _set_gateway(None)
 
 
+async def stop_gateway_after_startup_failure() -> None:
+    """Stop gateway sidecars without masking the startup failure."""
+    try:
+        await stop_gateway()
+    except Exception:  # noqa: BLE001 - preserve the error that aborted startup.
+        logger.exception("Gateway cleanup failed during startup rollback")
+
+
 async def recover_gateway_if_unhealthy() -> bool:
     """Restart a lost LiteLLM gateway and restore its MCP registrations."""
     gateway = get_gateway()
