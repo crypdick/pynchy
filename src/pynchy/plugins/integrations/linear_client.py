@@ -13,7 +13,8 @@ from typing import Any, Protocol, cast, runtime_checkable
 import aiohttp
 
 from pynchy.plugins.integrations.linear_connections import (
-    connection_nodes,
+    LinearIssueSummary,
+    issue_connection_nodes,
     issue_connection_query,
 )
 from pynchy.plugins.integrations.linear_errors import LinearError
@@ -40,6 +41,8 @@ _LINEAR_COMMENT_MISSING = "Linear commentCreate response did not include a comme
 _LINEAR_ATTACHMENT_NOT_CREATED = "Linear did not create the attachment"
 _LINEAR_ATTACHMENT_MISSING = "Linear attachmentCreate response did not include an attachment"
 _LINEAR_ISSUE_NOT_FOUND = "Entity not found: Issue"
+_LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
+_LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
 _TRANSIENT_HTTP_STATUSES = frozenset({429, 502, 503, 504})
 _READ_RETRY_DELAYS = (0.25, 0.5)
 
@@ -184,14 +187,14 @@ class LinearClient:
             }
             """
         )
-        return connection_nodes(data, "teams")
+        return _nodes(data, "teams")
 
     async def list_issues(
         self,
         *,
         team_id: str | None = None,
         first: int = 50,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LinearIssueSummary]:
         return await self._query_issues(team_id=team_id, first=first)
 
     async def search_issues(
@@ -200,7 +203,7 @@ class LinearClient:
         *,
         team_id: str | None = None,
         first: int = 50,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LinearIssueSummary]:
         """Find issues whose titles contain the requested text."""
         return await self._query_issues(title_query=query, team_id=team_id, first=first)
 
@@ -210,7 +213,7 @@ class LinearClient:
         title_query: str | None = None,
         team_id: str | None = None,
         first: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LinearIssueSummary]:
         variable_definitions = ""
         filters: list[str] = []
         variables: dict[str, object] = {"first": first}
@@ -228,7 +231,7 @@ class LinearClient:
             issue_connection_query(operation, variable_definitions, issue_filter),
             **variables,
         )
-        return connection_nodes(data, "issues")
+        return issue_connection_nodes(data)
 
     async def create_issue(  # noqa: PLR0913 - Linear issue creation follows the API field set.
         self,
@@ -436,7 +439,7 @@ class LinearClient:
             """,
             url=url,
         )
-        return connection_nodes(data, "attachmentsForURL")
+        return _nodes(data, "attachmentsForURL")
 
     async def delete_issue(self, issue_id: str) -> None:
         """Permanently remove an issue created exclusively for a canary."""
@@ -499,3 +502,13 @@ async def confirm_issue_state_effect(
             revision=response["updatedAt"],
         )
     )
+
+
+def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    connection = data.get(key)
+    if not isinstance(connection, dict):
+        raise LinearError(_LINEAR_CONNECTION_MISSING.format(key=key))
+    nodes = connection.get("nodes")
+    if not isinstance(nodes, list):
+        raise LinearError(_LINEAR_NODES_MISSING.format(key=key))
+    return [node for node in nodes if isinstance(node, dict)]

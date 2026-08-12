@@ -238,8 +238,16 @@ class TestLinearClientResponseEdges:
         ("method", "response", "message"),
         [
             ("list_teams", {}, "teams"),
+            ("list_teams", {"teams": {"nodes": {}}}, "teams.nodes"),
+            ("list_issues", [], "issues"),
             ("list_issues", {"issues": {"nodes": {}}}, "nodes"),
+            ("search_issues", {}, "issues"),
             ("search_issues", {"issues": {"nodes": {}}}, "nodes"),
+            (
+                "search_issues",
+                {"issues": {"nodes": [{"id": 123}]}},
+                "invalid node",
+            ),
             ("find_issues_by_attachment_url", {}, "attachmentsForURL"),
         ],
     )

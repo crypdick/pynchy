@@ -180,6 +180,7 @@ class TestLinearMcpServer:
                                 "team_id": "team-1",
                                 "title": "Track task",
                                 "description": "Task details",
+                                "label_ids": ["label-1"],
                                 "priority": 4,
                             },
                         },
@@ -199,7 +200,7 @@ class TestLinearMcpServer:
             description="Task details",
             project_id=None,
             state_id=None,
-            label_ids=None,
+            label_ids=["label-1"],
             priority=4,
         )
 

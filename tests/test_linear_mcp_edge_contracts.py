@@ -13,7 +13,7 @@ from pynchy.workspace.api import WorkspaceProfile
 
 
 async def _call(
-    params: dict[str, object],
+    params: object,
     *,
     method: str = "tools/call",
     workspace: str | None = None,
@@ -59,6 +59,28 @@ async def test_mcp_rejects_non_object_tool_arguments(monkeypatch: pytest.MonkeyP
     response = await _call({"name": "linear_list_teams", "arguments": ["invalid"]})
 
     assert "Tool arguments must be an object" in _error_text(response)
+
+
+async def test_mcp_rejects_non_object_tool_params(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+
+    response = await _call(["invalid"])
+
+    result = response["result"]
+    assert isinstance(result, dict)
+    assert result["isError"] is True
+
+
+async def test_mcp_rejects_invalid_json_rpc_request():
+    client = TestClient(TestServer(build_app()))
+    await client.start_server()
+    try:
+        response = await client.post("/mcp", json={"id": 1, "method": "tools/list"})
+        payload = await response.json()
+    finally:
+        await client.close()
+
+    assert payload["error"]["code"] == -32600
 
 
 async def test_mcp_reports_unknown_tool(monkeypatch: pytest.MonkeyPatch):

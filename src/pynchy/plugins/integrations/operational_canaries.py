@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import aiohttp
 
@@ -29,6 +29,9 @@ from pynchy.plugins.integrations.api import (
     move_workspace_todo,
     select_team,
 )
+
+if TYPE_CHECKING:
+    from pynchy.plugins.integrations.linear_connections import LinearIssueSummary
 
 _CANARY_EVENT_DURATION = timedelta(minutes=1)
 _CANARY_EVENT_LEAD_TIME = timedelta(minutes=10)
@@ -52,11 +55,11 @@ class _LinearCanaryClient(Protocol):
 
     async def list_teams(self) -> list[dict[str, Any]]: ...
 
-    async def list_issues(self, *, team_id: str) -> list[dict[str, Any]]: ...
+    async def list_issues(self, *, team_id: str) -> list[LinearIssueSummary]: ...
 
     async def search_issues(
         self, query: str, *, team_id: str, first: int = 50
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[LinearIssueSummary]: ...
 
     async def create_issue(  # noqa: PLR0913 - mirrors the built-in Linear client contract.
         self,
