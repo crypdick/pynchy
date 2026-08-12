@@ -570,7 +570,7 @@ async def test_docker_health_failure_redacts_secret_values_from_diagnostics():
     log_tail = error.call_args.kwargs["log_tail"]
     assert "bearer-token" not in log_tail
     assert "hunter2" not in log_tail
-    assert "<redacted>" in log_tail
+    assert "redacted sensitive data" in log_tail
 
 
 def test_expand_arg_placeholders_preserves_unknown_placeholders():

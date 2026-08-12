@@ -112,9 +112,57 @@ class TestRollbackDeployCheckout:
         )
         result = rollback_deploy_checkout("previous-sha")
 
-        run_git.assert_called_once_with("reset", "--hard", "previous-sha")
+        assert [call.args for call in run_git.call_args_list] == [
+            ("status", "--porcelain", "--untracked-files=normal"),
+            ("reset", "--hard", "previous-sha"),
+        ]
         assert result.success is True
         assert result.actual_sha == "previous-sha-full"
+
+    def test_preserves_dirty_work_around_reset(self):
+        run_git = MagicMock(
+            side_effect=[
+                subprocess.CompletedProcess([], 0, " M operator.txt", ""),
+                subprocess.CompletedProcess([], 0, "Saved working directory", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+            ]
+        )
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "previous-sha",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result.success is True
+        assert [call.args for call in run_git.call_args_list] == [
+            ("status", "--porcelain", "--untracked-files=normal"),
+            ("stash", "push", "--include-untracked"),
+            ("reset", "--hard", "previous-sha"),
+            ("stash", "pop"),
+        ]
+
+    def test_fails_closed_when_dirty_status_is_unknown(self):
+        run_git = MagicMock(
+            return_value=subprocess.CompletedProcess([], 1, "", "fatal: status unavailable")
+        )
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result.success is False
+        assert result.error == "git status failed: fatal: status unavailable"
+        run_git.assert_called_once_with("status", "--porcelain", "--untracked-files=normal")
 
     def test_reports_an_unverified_reset_as_a_rollback_failure(self):
         reset_result = subprocess.CompletedProcess(
@@ -144,11 +192,17 @@ class TestRollbackDeployCheckout:
         )
 
     def test_reports_when_git_reset_cannot_run(self):
+        run_git = MagicMock(
+            side_effect=[
+                subprocess.CompletedProcess([], 0, "", ""),
+                OSError("git unavailable"),
+            ]
+        )
         configure_deploy_git_runtime(
             DeployGitRuntime(
                 get_head_sha=lambda: "unused",
                 get_deploy_config_hash=lambda: _CONFIG_HASH,
-                run_git=MagicMock(side_effect=OSError("git unavailable")),
+                run_git=run_git,
             )
         )
 
@@ -158,13 +212,19 @@ class TestRollbackDeployCheckout:
         assert result.error == "git reset could not run: git unavailable"
 
     def test_reports_a_failed_git_reset(self):
+        run_git = MagicMock(
+            side_effect=[
+                subprocess.CompletedProcess([], 0, "", ""),
+                subprocess.CompletedProcess(
+                    args=["git"], returncode=1, stdout="", stderr="permission denied"
+                ),
+            ]
+        )
         configure_deploy_git_runtime(
             DeployGitRuntime(
                 get_head_sha=lambda: "unused",
                 get_deploy_config_hash=lambda: _CONFIG_HASH,
-                run_git=lambda *_args: subprocess.CompletedProcess(
-                    args=["git"], returncode=1, stdout="", stderr="permission denied"
-                ),
+                run_git=run_git,
             )
         )
 

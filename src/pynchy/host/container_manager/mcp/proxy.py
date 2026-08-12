@@ -36,6 +36,7 @@ from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 # broadcasts the notification to chat channels.
 ApprovalRequestFn = Callable[[str, str, dict[str, Any], str], Awaitable[None]]
 BackendLeaseFn = Callable[[str], AbstractAsyncContextManager[None]]
+AuthorizeInstanceFn = Callable[[str, str], bool]
 
 
 class McpBackendUnavailableError(RuntimeError):
@@ -57,6 +58,7 @@ class _ProxyState:
     http_session: aiohttp.ClientSession | None = None
     approval_fn: ApprovalRequestFn | None = None
     backend_lease: BackendLeaseFn | None = None
+    authorize_instance: AuthorizeInstanceFn | None = None
 
 
 # Typed app key -- set once at construction, never reassigned.
@@ -87,13 +89,14 @@ class _BackendForwardContext:
     group_folder: str
 
 
-def create_proxy_app(
+def create_proxy_app(  # noqa: PLR0913 - proxy composition keeps security callbacks explicit.
     instance_urls: dict[str, str],
     *,
     trust_map: dict[str, dict[str, Any]] | None = None,
     service_names: dict[str, str] | None = None,
     approval_fn: ApprovalRequestFn | None = None,
     backend_lease: BackendLeaseFn | None = None,
+    authorize_instance: AuthorizeInstanceFn | None = None,
 ) -> object:
     """Create the aiohttp proxy application.
 
@@ -108,6 +111,7 @@ def create_proxy_app(
             file and broadcast to chat, then blocks until the human responds.
         backend_lease: Context manager that keeps a managed backend available
             while a valid request is forwarded.
+        authorize_instance: Optional workspace-to-instance authorization check.
     """
     app = web.Application()
     app[_STATE_KEY] = _ProxyState(
@@ -116,6 +120,7 @@ def create_proxy_app(
         service_names=service_names or {},
         approval_fn=approval_fn,
         backend_lease=backend_lease,
+        authorize_instance=authorize_instance,
     )
     app.router.add_route(
         "*",
@@ -164,7 +169,10 @@ def _proxy_request(request: web.Request) -> _ProxyRequest | web.Response:
 
 def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> str | web.Response:
     backend_url = state.instance_urls.get(proxy_request.instance_id)
-    if backend_url is not None:
+    if backend_url is not None and (
+        state.authorize_instance is None
+        or state.authorize_instance(proxy_request.group_folder, proxy_request.instance_id)
+    ):
         return backend_url
     return web.json_response(
         {"error": f"Unknown MCP instance: {proxy_request.instance_id}"},
@@ -486,9 +494,11 @@ class McpProxy:
         *,
         host: str = "localhost",
         backend_lease: BackendLeaseFn | None = None,
+        authorize_instance: AuthorizeInstanceFn | None = None,
     ) -> None:
         self._host = host
         self._backend_lease = backend_lease
+        self._authorize_instance = authorize_instance
         self._runner: web.AppRunner | None = None
         self._port: int = 0
 
@@ -522,6 +532,7 @@ class McpProxy:
                 service_names=service_names,
                 approval_fn=approval_fn,
                 backend_lease=self._backend_lease,
+                authorize_instance=self._authorize_instance,
             ),
         )
         self._runner = web.AppRunner(app)

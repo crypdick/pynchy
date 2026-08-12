@@ -20,6 +20,7 @@ from pynchy.agent_protocol.api import (
 from pynchy.atomic_json import write_json_atomic
 from pynchy.deployments import DeployRevision
 from pynchy.host.orchestrator import adapters, session_handler
+from pynchy.host.orchestrator.deploy import rollback_checkout
 from pynchy.host.orchestrator.startup_rollback import (
     ensure_rollback_evidence_durable,
     terminate_failed_startup,
@@ -245,9 +246,13 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
         error=str(exc),
     )
 
-    result = run_git("reset", "--hard", previous_sha)
-    if result.returncode != 0:
-        logger.error("Rollback git reset failed", stderr=result.stderr)
+    rollback = rollback_checkout(
+        previous_sha,
+        get_head_sha=get_head_sha,
+        run_git=run_git,
+    )
+    if not rollback.success:
+        logger.error("Rollback git reset failed", error=rollback.error)
         return
 
     # Rewrite continuation with rollback info (clear previous_commit_sha to prevent loops)

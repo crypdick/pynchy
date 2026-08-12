@@ -193,6 +193,9 @@ class McpManager:
         self._proxy = McpProxy(
             host=settings.gateway.host,
             backend_lease=self.proxy_backend_lease,
+            authorize_instance=lambda group, instance: (
+                instance in self.get_workspace_instance_ids(group)
+            ),
         )
         self._proxy_port: int = 0
 

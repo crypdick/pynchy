@@ -259,12 +259,14 @@ async def upgrade_message_cursor(jids: Sequence[str], cursor: str) -> str:
         return cursor
     db = _get_db()
     placeholders = ",".join("?" for _ in jids)
+    # Anchor conservatively at the first message that produced the provider-time cursor.
+    # Later-ingested older or equal-timestamp messages must remain pending.
     result = await db.execute(
-        f"SELECT MAX(ingestion.sequence) AS sequence "  # noqa: S608
+        f"SELECT MIN(ingestion.sequence) AS sequence "  # noqa: S608
         "FROM message_ingestion_order AS ingestion "
         "JOIN messages ON messages.id = ingestion.message_id "
         "AND messages.chat_jid = ingestion.chat_jid "
-        f"WHERE messages.timestamp <= ? AND messages.chat_jid IN ({placeholders}) "
+        f"WHERE messages.timestamp = ? AND messages.chat_jid IN ({placeholders}) "
         "AND messages.is_from_me = 0",
         [cursor, *jids],
     )

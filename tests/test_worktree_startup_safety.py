@@ -236,6 +236,7 @@ def test_startup_rebase_aborts_a_conflicting_rebase(tmp_path: Path) -> None:
             "pynchy.host.git_ops.worktree.run_git",
             side_effect=[
                 subprocess.CompletedProcess([], 0),
+                subprocess.CompletedProcess([], 0, str(tmp_path / "git-dir")),
                 subprocess.CompletedProcess([], 1, "", "conflict"),
                 subprocess.CompletedProcess([], 0),
             ],
@@ -248,6 +249,7 @@ def test_startup_rebase_aborts_a_conflicting_rebase(tmp_path: Path) -> None:
 
     assert [call.args[:2] for call in run_git.call_args_list] == [
         ("worktree", "prune"),
+        ("rev-parse", "--absolute-git-dir"),
         ("rebase", "main"),
         ("rebase", "--abort"),
     ]
