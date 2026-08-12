@@ -125,6 +125,9 @@ class TestCreatePendingQuestion:
 
 
 class TestFindPendingQuestion:
+    def test_returns_none_for_unsafe_request_id(self):
+        assert find_pending_question("../../victim") is None
+
     def test_requires_configured_ipc_root(self):
         with (
             patch(

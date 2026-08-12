@@ -30,6 +30,7 @@ from pynchy.host.orchestrator.deploy import (
     configure_deploy_git_runtime,
     current_deploy_revision,
     finalize_deploy,
+    rollback_checkout,
     rollback_deploy_checkout,
 )
 
@@ -189,6 +190,101 @@ class TestRollbackDeployCheckout:
         assert result == RollbackResult(
             success=False,
             error="no previous deploy SHA was recorded",
+        )
+
+    def test_common_rollback_rejects_empty_previous_sha(self):
+        result = rollback_checkout(
+            "",
+            get_head_sha=lambda: "unused",
+            run_git=MagicMock(),
+        )
+
+        assert result == RollbackResult(
+            success=False,
+            error="no previous deploy SHA was recorded",
+        )
+
+    @pytest.mark.parametrize(
+        ("git_results", "expected_error"),
+        [
+            ([OSError("git unavailable")], "git status could not run: git unavailable"),
+            (
+                [subprocess.CompletedProcess([], 0, " M operator.txt", ""), OSError("no stash")],
+                "git stash could not run: no stash",
+            ),
+            (
+                [
+                    subprocess.CompletedProcess([], 0, " M operator.txt", ""),
+                    subprocess.CompletedProcess([], 1, "", ""),
+                ],
+                "git stash failed",
+            ),
+        ],
+    )
+    def test_fails_closed_when_rollback_preflight_cannot_protect_work(
+        self,
+        git_results: list[object],
+        expected_error: str,
+    ) -> None:
+        run_git = MagicMock(side_effect=git_results)
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result == RollbackResult(success=False, error=expected_error)
+
+    def test_reports_reset_and_stash_restore_failures_together(self):
+        run_git = MagicMock(
+            side_effect=[
+                subprocess.CompletedProcess([], 0, " M operator.txt", ""),
+                subprocess.CompletedProcess([], 0, "Saved working directory", ""),
+                subprocess.CompletedProcess([], 1, "", "reset failed"),
+                subprocess.CompletedProcess([], 1, "", "restore failed"),
+            ]
+        )
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result == RollbackResult(
+            success=False,
+            error="reset failed; restore failed",
+        )
+
+    def test_reports_when_stash_restore_cannot_run_after_reset(self):
+        run_git = MagicMock(
+            side_effect=[
+                subprocess.CompletedProcess([], 0, " M operator.txt", ""),
+                subprocess.CompletedProcess([], 0, "Saved working directory", ""),
+                subprocess.CompletedProcess([], 0, "", ""),
+                OSError("restore unavailable"),
+            ]
+        )
+        configure_deploy_git_runtime(
+            DeployGitRuntime(
+                get_head_sha=lambda: "unused",
+                get_deploy_config_hash=lambda: _CONFIG_HASH,
+                run_git=run_git,
+            )
+        )
+
+        result = rollback_deploy_checkout("previous-sha")
+
+        assert result == RollbackResult(
+            success=False,
+            error="git stash restore could not run: restore unavailable",
         )
 
     def test_reports_when_git_reset_cannot_run(self):
