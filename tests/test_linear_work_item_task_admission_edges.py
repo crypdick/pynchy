@@ -557,3 +557,52 @@ async def test_planning_admission_keeps_a_recently_run_paused_task_paused(
 
     assert task is None
     resume_once_task.assert_not_awaited()
+
+
+async def test_planning_admission_keeps_a_paused_task_when_guard_refuses_resume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issue = DecisionIssue.from_payload(
+        _issue(
+            "issue-planning",
+            "SYN-15",
+            "Respect active turn",
+            "ready_for_planning",
+            "project-beta",
+        )
+    )
+    assert issue is not None
+    paused = ScheduledTask(
+        id="linear-plan-syn-15-existing",
+        group_folder="beta",
+        chat_jid="linear:beta",
+        prompt='{"issue_id": "issue-planning"}',
+        schedule_type="once",
+        schedule_value="2026-07-31T00:05:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        status="paused",
+        last_run="2026-07-30T00:00:00+00:00",
+        created_at="2026-07-30T00:00:00+00:00",
+        derived_thread_name="[SYN-15] Respect active turn",
+    )
+    resume_once_task = AsyncMock(return_value=False)
+    configure_linear_work_item_task_runtime(
+        _runtime(get_task=AsyncMock(return_value=paused), resume_once_task=resume_once_task)
+    )
+    configure_linear_planning_task_runtime(
+        LinearPlanningTaskRuntime(get_all_tasks=AsyncMock(return_value=[paused]))
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_planning_tasks.linear_issue_conversation_id",
+        AsyncMock(return_value=None),
+    )
+
+    task = await admit_planning_issue(
+        issue,
+        _Workspace("beta", "Beta", "linear:beta"),
+        observed_at=datetime(2026, 7, 31, 0, 5, tzinfo=UTC),
+        public_source=True,
+    )
+
+    assert task is None
+    resume_once_task.assert_awaited_once_with(paused.id)
