@@ -258,7 +258,7 @@ def build_resources(
                 "image": request.image,
                 "imagePullPolicy": pull_policy,
                 "command": ["sh", "-c"],
-                "args": [f"chown -R 1000:3000 {targets}"],
+                "args": [f"chown -R 3000:3000 {targets}"],
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
                     "capabilities": {"drop": ["ALL"], "add": ["CHOWN"]},

@@ -142,7 +142,7 @@ def test_agent_pod_takes_ownership_of_migrated_session_homes(tmp_path: Path) -> 
     )
 
     init = resources[0]["spec"]["initContainers"][0]
-    assert init["args"] == ["chown -R 1000:3000 /home/agent/.claude /home/agent/.codex"]
+    assert init["args"] == ["chown -R 3000:3000 /home/agent/.claude /home/agent/.codex"]
     assert init["volumeMounts"] == [
         {
             "name": "shared",

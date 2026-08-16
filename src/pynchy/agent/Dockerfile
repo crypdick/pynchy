@@ -75,10 +75,14 @@ RUN mkdir -p \
 COPY entrypoint.sh /opt/pynchy/entrypoint.sh
 RUN chmod +x /opt/pynchy/entrypoint.sh
 
-# Create non-root user with passwordless sudo.
+# Create non-root user with passwordless sudo. Kubernetes builds use UID/GID
+# 3000 so host and agent can safely share imported session state.
 # Claude Code refuses --dangerously-skip-permissions as root, so we run as a
 # regular user but grant sudo so agents can apt-get install tools they need.
-RUN useradd -m -s /bin/bash agent \
+ARG AGENT_UID=1000
+ARG AGENT_GID=1000
+RUN groupadd --gid "$AGENT_GID" agent \
+ && useradd --uid "$AGENT_UID" --gid "$AGENT_GID" -m -s /bin/bash agent \
  && echo 'agent ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/agent \
  && chown -R agent:agent /home/agent /opt/pynchy /run/pynchy
 
