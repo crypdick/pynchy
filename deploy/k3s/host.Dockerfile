@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     curl \
+    ffmpeg \
     gh \
     git \
     jq \
@@ -23,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && mkdir -p /usr/share/scrcpy \
+    && curl -fsSL https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4 -o /usr/share/scrcpy/scrcpy-server \
+    && echo "8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e  /usr/share/scrcpy/scrcpy-server" | sha256sum -c - \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src/pynchy/agent/install_codex.sh /tmp/install_codex.sh
