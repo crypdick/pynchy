@@ -370,9 +370,24 @@ def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
         return False
 
     try:
-        return marker.read_text().strip() == str(skill_path.resolve())
+        marked_source = marker.read_text().strip()
     except OSError:
         return False
+    current_source = str(skill_path.resolve())
+    marked_relative = _site_packages_relative(marked_source)
+    return marked_source == current_source or (
+        marked_relative is not None and marked_relative == _site_packages_relative(current_source)
+    )
+
+
+def _site_packages_relative(source: str) -> tuple[str, ...] | None:
+    parts = Path(source).parts
+    try:
+        index = parts.index("site-packages")
+    except ValueError:
+        return None
+    relative = parts[index + 1 :]
+    return relative or None
 
 
 def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path, project_root: Path) -> bool:

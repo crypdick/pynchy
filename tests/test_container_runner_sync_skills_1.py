@@ -162,6 +162,41 @@ class TestSyncSkills:
         ext_dst = session_dir / "skills" / "ext-skill"
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
 
+    def test_plugin_skill_survives_site_packages_prefix_relocation(self, tmp_path: Path):
+        plugin_skill = tmp_path / "new/lib/python3.13/site-packages/example_plugin/skills/ext-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text("# Current skill\n")
+
+        session_dir = tmp_path / "session/.claude"
+        destination = session_dir / "skills/ext-skill"
+        destination.mkdir(parents=True)
+        (destination / "SKILL.md").write_text("# Prior skill\n")
+        old_source = tmp_path / "old/site-packages/example_plugin/skills/ext-skill"
+        (destination / ".pynchy-plugin-skill").write_text(f"{old_source}\n")
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        with _patch_settings(tmp_path):
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+            )
+
+        assert (destination / "SKILL.md").read_text() == "# Current skill\n"
+        assert (destination / ".pynchy-plugin-skill").read_text().strip() == str(
+            plugin_skill.resolve()
+        )
+
     def test_unmarked_prior_plugin_skill_copy_is_resynced(self, tmp_path: Path):
         """Old plugin copies without markers are upgraded on the next sync."""
         plugin_skill = tmp_path / "plugins" / "ext-skill"
