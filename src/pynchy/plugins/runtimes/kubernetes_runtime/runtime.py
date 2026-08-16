@@ -53,7 +53,9 @@ class KubernetesContainerRuntime:
         for item in json.loads(result.stdout).get("items", []):
             metadata = item.get("metadata", {})
             runtime_name = metadata.get("annotations", {}).get("pynchy.dev/runtime-name", "")
-            if item.get("status", {}).get("phase") == "Running" and runtime_name.startswith(prefix):
+            # Pending is alive: the adapter CLI can exit before kubelet starts the Pod.
+            phase = item.get("status", {}).get("phase")
+            if phase in {"Pending", "Running"} and runtime_name.startswith(prefix):
                 names.append(runtime_name)
         return names
 

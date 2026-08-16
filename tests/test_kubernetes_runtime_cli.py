@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -165,6 +166,28 @@ def test_runtime_probe_uses_namespace_scoped_permission() -> None:
     command = run.call_args.args[0]
     assert command[3:5] == ["get", "pods"]
     assert "namespace" not in command
+
+
+def test_runtime_probe_keeps_pending_agent_pod_alive() -> None:
+    pods = {
+        "items": [
+            {
+                "metadata": {"annotations": {"pynchy.dev/runtime-name": "pynchy-home"}},
+                "status": {"phase": "Pending"},
+            }
+        ]
+    }
+    result = _ProcessResult(returncode=0, stdout=json.dumps(pods))
+    with (
+        patch(
+            "pynchy.plugins.runtimes.kubernetes_runtime.runtime.kubectl_command",
+            return_value=["kubectl"],
+        ),
+        patch("subprocess.run", return_value=result),
+    ):
+        running = KubernetesContainerRuntime().list_running_containers(prefix="pynchy-home")
+
+    assert running == ["pynchy-home"]
 
 
 @pytest.mark.parametrize(
