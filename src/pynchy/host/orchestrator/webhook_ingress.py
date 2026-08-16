@@ -29,6 +29,7 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     WebhookAuthenticationError,
     WebhookConfigurationError,
+    WebhookDiscard,
     WebhookEvent,
     WebhookPayloadError,
     WebhookProcessingError,
@@ -231,7 +232,7 @@ def _parse_event(
     raw_body: bytes,
     secret: str,
     received_at: datetime,
-) -> WebhookEvent | web.Response:
+) -> WebhookEvent | WebhookDiscard | web.Response:
     try:
         return route.parse(raw_body, dict(request.headers), secret, received_at)
     except WebhookAuthenticationError as exc:
@@ -242,7 +243,7 @@ def _parse_event(
         return web.json_response({"error": "invalid payload"}, status=400)
 
 
-async def _prepared_event_and_workspace(
+async def _prepared_event_and_workspace(  # noqa: PLR0911 - each admission failure returns its HTTP response.
     request: web.Request,
     ingress: WebhookIngress,
     route: WebhookRoute,
@@ -253,6 +254,8 @@ async def _prepared_event_and_workspace(
     event = _parse_event(request, route, raw_body, secret, received_at)
     if isinstance(event, web.Response):
         return event
+    if isinstance(event, WebhookDiscard):
+        return web.Response(status=204)
     prepared_event = await _prepare_route_event(route, event)
     if isinstance(prepared_event, web.Response):
         return prepared_event

@@ -5,8 +5,8 @@
 Provide a provider-authenticated HTTP callback. The plugin owns provider schema,
 signature verification, replay detection, and the closed mapping from provider
 events to a scheduled task, routed conversation, lifecycle-only callback, host
-notification, or ignored result. The host owns the public path, size/rate limits,
-workspace boundary, durable receipt, and dispatch.
+notification, ignored result, or pre-admission discard. The host owns the public
+path, size/rate limits, workspace boundary, durable receipt, and dispatch.
 
 ```python
 class ExamplePlugin:
@@ -40,12 +40,15 @@ delivery.
 Parse raw request bytes because signatures commonly cover the exact body.
 Authenticate before parsing; raise `WebhookAuthenticationError` for bad
 credentials or replay checks, and `WebhookPayloadError` only for an authenticated
-payload that fails its schema. Keep provider text in `external_context`, separate
-from host-authored instructions. A route can provide a concise, provider-rendered
-string or a mapping that the host serializes. `public_source=True` remains the safe
-default and makes the host fence that context. Set `public_source=False` only when
-every provider principal who can contribute the routed content belongs inside the
-workspace trust boundary.
+payload that fails its schema. Return `WebhookDiscard` after authentication when a
+delivery must leave no durable receipt or host effect. The host responds with
+`204` before workspace resolution, preparation, and admission. Return an ignored
+`WebhookEvent` instead when operators need a durable audit or replay record. Keep
+provider text in `external_context`, separate from host-authored instructions. A
+route can provide a concise, provider-rendered string or a mapping that the host
+serializes. `public_source=True` remains the safe default and makes the host fence
+that context. Set `public_source=False` only when every provider principal who can
+contribute the routed content belongs inside the workspace trust boundary.
 
 Use `prepare_event` for a read-only provider check that must run before receipt or
 conversation admission. The host runs preparation on delivery replays, so the

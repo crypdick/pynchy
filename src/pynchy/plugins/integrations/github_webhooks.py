@@ -18,6 +18,7 @@ from pydantic import ValidationError
 
 from pynchy.plugins.api import (
     WebhookAuthenticationError,
+    WebhookDiscard,
     WebhookEvent,
     WebhookPayloadError,
     WebhookRoute,
@@ -393,7 +394,7 @@ def parse_github_webhook(  # noqa: PLR0911 - each supported event has one closed
     now: datetime,
     *,
     config: GitHubWebhookRouteConfig,
-) -> WebhookEvent:
+) -> WebhookEvent | WebhookDiscard:
     """Authenticate and turn one GitHub delivery into a closed host notification."""
     delivery_id, event_type = _authenticate(raw_body, raw_headers, secret)
     payload = _payload(raw_body)
@@ -410,12 +411,7 @@ def parse_github_webhook(  # noqa: PLR0911 - each supported event has one closed
         sender is None
         or sender.casefold() not in {allowed.casefold() for allowed in config.allowed_senders}
     ):
-        return _ignored_event(
-            context,
-            action=payload.action,
-            subject_id=sender or event_type,
-            reason="sender_is_not_allowed",
-        )
+        return WebhookDiscard()
     if event_type == "pull_request":
         return _pull_request_event(payload, context)
     if event_type == "issue_comment":

@@ -116,12 +116,14 @@ workspace target passes startup validation. Routes cannot target admin workspace
 unless the plugin establishes a trusted source policy and explicitly opts in. A
 provider-derived route may opt into declared admin candidates only when its
 source-trust policy satisfies the admin clean room. Schema-valid
-authenticated deliveries are deduplicated and durably
-admitted before the provider receives `200`. Routes declare whether authenticated
-provider context remains a public source. Public-source routes fence it and start
-the agent invocation corruption-tainted; trusted routes retain provenance without
-that taint. Routes can also emit deterministic host notifications without an agent
-run. Provider input cannot bypass a subsystem's explicit authorization gates.
+authenticated deliveries are deduplicated and durably admitted before the
+provider receives `200`. A provider may return `WebhookDiscard` after
+authentication to receive `204` without a durable receipt or host effect. Routes
+declare whether authenticated provider context remains a public source.
+Public-source routes fence it and start the agent invocation corruption-tainted;
+trusted routes retain provenance without that taint. Routes can also emit
+deterministic host notifications without an agent run. Provider input cannot
+bypass a subsystem's explicit authorization gates.
 
 See [Linear](../integrations/linear.md#receive-linear-callbacks) for agent-task
 callbacks and [GitHub](../integrations/github.md) for direct PR notifications.

@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pynchy.plugins.api import WebhookAuthenticationError, WebhookPayloadError
+from pynchy.plugins.api import WebhookAuthenticationError, WebhookDiscard, WebhookPayloadError
 from pynchy.plugins.integrations.github_webhooks import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubWebhookRouteConfig,
@@ -90,7 +90,7 @@ def test_sender_allowlist_rejects_blank_and_duplicate_logins() -> None:
         GitHubWebhookRouteConfig(**values, allowed_senders=("repo-owner", "REPO-OWNER"))
 
 
-def test_sender_allowlist_ignores_untrusted_or_missing_senders() -> None:
+def test_sender_allowlist_discards_untrusted_or_missing_senders() -> None:
     config = GitHubWebhookRouteConfig(
         name="project",
         workspace="project",
@@ -111,8 +111,8 @@ def test_sender_allowlist_ignores_untrusted_or_missing_senders() -> None:
     )
     missing = parse_github_webhook(missing_body, missing_headers, _SECRET, _NOW, config=config)
 
-    assert untrusted.ignored_reason == "sender_is_not_allowed"
-    assert missing.ignored_reason == "sender_is_not_allowed"
+    assert isinstance(untrusted, WebhookDiscard)
+    assert isinstance(missing, WebhookDiscard)
 
 
 def test_authentication_requires_all_provider_headers() -> None:

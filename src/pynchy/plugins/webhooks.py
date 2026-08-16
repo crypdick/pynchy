@@ -50,6 +50,11 @@ class WebhookProcessingError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WebhookDiscard:
+    """Authenticated provider delivery intentionally dropped before durable admission."""
+
+
+@dataclass(frozen=True)
 class WebhookConversation:
     """Provider-parsed placement for an actionable routed conversation event."""
 
@@ -167,7 +172,7 @@ class WebhookEvent:
             )
 
 
-WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
+WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent | WebhookDiscard]
 WebhookEventPreparer = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
 WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
 WebhookLifecycleProcessor = Callable[[WebhookLifecycleDelivery], Awaitable[None]]

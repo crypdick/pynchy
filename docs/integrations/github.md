@@ -47,10 +47,11 @@ allowed_senders = ["repo-owner"]
 ```
 
 Pynchy verifies the webhook signature, then compares `sender.login`
-case-insensitively. It records deliveries from missing or unlisted senders as
-ignored without waking an agent. An allowlisted route treats accepted content as
-trusted and may target an admin workspace. Include every account whose comments
-belong inside that workspace's trust boundary; omit this option for public review.
+case-insensitively. It returns `204` for missing or unlisted senders without
+storing a receipt, resolving a workspace, or waking an agent. An allowlisted route
+treats accepted content as trusted and may target an admin workspace. Include
+every account whose comments belong inside that workspace's trust boundary; omit
+this option for public review.
 
 ## Create the GitHub webhook
 

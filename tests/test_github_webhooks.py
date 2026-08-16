@@ -606,6 +606,42 @@ async def test_delivery_notifies_its_route_workspace_without_agent_run(
     assert receipt.disposition == "notified"
 
 
+async def test_unlisted_sender_is_discarded_without_a_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", _SIGNING_KEY)
+    config = GitHubWebhookRouteConfig(
+        name="project",
+        workspace="project",
+        repository=_REPOSITORY,
+        allowed_senders=("repo-owner",),
+    )
+    route = WebhookRoute(
+        provider="github",
+        name=config.name,
+        workspace=config.workspace,
+        secret_env=config.secret_env,
+        parse=partial(parse_github_webhook, config=config),
+    )
+    deps = _WebhookDeps()
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        raw_body, headers = _signed_request(
+            _payload(sender="drive-by"),
+            "pull_request",
+        )
+        response = await client.post(route.path, data=raw_body, headers=headers)
+    finally:
+        await client.close()
+
+    assert response.status == 204
+    assert await get_webhook_receipt("github", "project", _DELIVERY_ID) is None
+    assert not deps.dispatched
+    assert not deps.host_messages
+
+
 async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

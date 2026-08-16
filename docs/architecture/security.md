@@ -207,6 +207,9 @@ external provider event before routing it into a conversation workspace.
 Authentication proves provider origin; the route's source-trust declaration
 decides whether the provider can carry attacker-controlled content. Admin targets
 require a trusted source policy and explicit plugin opt-in.
+After authentication, a provider may discard an actor outside that policy before
+workspace resolution and durable receipt admission. Discarded deliveries leave no
+provider event record or host effect.
 Public-source routes fence provider context and start the invocation
 corruption-tainted. Trusted routes retain provider provenance without adding
 public-source taint. Matrix route input always starts both corruption-tainted and
