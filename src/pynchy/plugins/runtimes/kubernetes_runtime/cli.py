@@ -19,6 +19,8 @@ _DNS_NAME = re.compile(r"[^a-z0-9-]+")
 _MANAGED_LABEL = "app.kubernetes.io/managed-by"
 _NAME_HASH_LABEL = "pynchy.dev/runtime-name-hash"
 _NAME_ANNOTATION = "pynchy.dev/runtime-name"
+_AGENT_ROLE_LABEL = "com.pynchy.role"
+_SESSION_HOME_TARGETS = {"/home/agent/.claude", "/home/agent/.codex"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +235,40 @@ def build_resources(
         if volume_mounts
         else []
     )
+    pod_spec: dict[str, Any] = {
+        "automountServiceAccountToken": False,
+        "restartPolicy": "Always" if request.detached else "Never",
+        "securityContext": {
+            "fsGroup": 3000,
+            "fsGroupChangePolicy": "OnRootMismatch",
+        },
+        "containers": [container],
+        "volumes": volumes,
+    }
+    session_home_mounts = [
+        mount
+        for mount in volume_mounts
+        if mount["mountPath"] in _SESSION_HOME_TARGETS and not mount.get("readOnly")
+    ]
+    if request.labels.get(_AGENT_ROLE_LABEL) == "agent" and session_home_mounts:
+        targets = " ".join(str(mount["mountPath"]) for mount in session_home_mounts)
+        pod_spec["initContainers"] = [
+            {
+                "name": "session-home-owner",
+                "image": request.image,
+                "imagePullPolicy": pull_policy,
+                "command": ["sh", "-c"],
+                "args": [f"chown -R 1000:3000 {targets}"],
+                "securityContext": {
+                    "allowPrivilegeEscalation": False,
+                    "capabilities": {"drop": ["ALL"], "add": ["CHOWN"]},
+                    "readOnlyRootFilesystem": True,
+                    "runAsGroup": 3000,
+                    "runAsUser": 0,
+                },
+                "volumeMounts": session_home_mounts,
+            }
+        ]
     pod: dict[str, Any] = {
         "apiVersion": "v1",
         "kind": "Pod",
@@ -242,16 +278,7 @@ def build_resources(
             "labels": labels,
             "annotations": {_NAME_ANNOTATION: request.name},
         },
-        "spec": {
-            "automountServiceAccountToken": False,
-            "restartPolicy": "Always" if request.detached else "Never",
-            "securityContext": {
-                "fsGroup": 3000,
-                "fsGroupChangePolicy": "OnRootMismatch",
-            },
-            "containers": [container],
-            "volumes": volumes,
-        },
+        "spec": pod_spec,
     }
     resources = [pod]
     if request.ports:

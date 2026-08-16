@@ -117,6 +117,46 @@ def test_writable_ipc_mount_makes_existing_subdirectories_group_writable(tmp_pat
     assert output_dir.stat().st_mode & 0o7777 == 0o2775
 
 
+def test_agent_pod_takes_ownership_of_migrated_session_homes(tmp_path: Path) -> None:
+    claude_home = tmp_path / "data" / "sessions" / "home" / ".claude"
+    codex_home = tmp_path / "data" / "sessions" / "home" / ".codex"
+    claude_home.mkdir(parents=True)
+    codex_home.mkdir()
+
+    resources = build_resources(
+        [
+            "run",
+            "--name",
+            "pynchy-home",
+            "--label",
+            "com.pynchy.role=agent",
+            "-v",
+            f"{claude_home}:/home/agent/.claude",
+            "-v",
+            f"{codex_home}:/home/agent/.codex",
+            "pynchy-agent:latest",
+        ],
+        shared_root=tmp_path,
+        pvc_name="pynchy-data",
+        namespace="pynchy",
+    )
+
+    init = resources[0]["spec"]["initContainers"][0]
+    assert init["args"] == ["chown -R 1000:3000 /home/agent/.claude /home/agent/.codex"]
+    assert init["volumeMounts"] == [
+        {
+            "name": "shared",
+            "mountPath": "/home/agent/.claude",
+            "subPath": "data/sessions/home/.claude",
+        },
+        {
+            "name": "shared",
+            "mountPath": "/home/agent/.codex",
+            "subPath": "data/sessions/home/.codex",
+        },
+    ]
+
+
 def test_builds_detached_mcp_pod_and_service(
     tmp_path: Path,
 ) -> None:
