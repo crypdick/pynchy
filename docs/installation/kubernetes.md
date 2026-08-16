@@ -42,6 +42,23 @@ workspaces. The Pynchy service account has Pod, Pod log, and Service permissions
 only inside the `pynchy` namespace. K3s hosts with a default-deny host firewall
 must allow the K3s Pod CIDR to reach node-local cluster services.
 
+## Android USB
+
+Do not make the Pynchy Pod privileged or mount `/dev/bus/usb` into it. Install
+`adb` and the distribution's Android udev rules on the node, create the
+unprivileged `pynchy-adb` system user in the `plugdev` group, and install
+`deploy/k3s/pynchy-adb.service`. The service exposes ADB through one Unix socket,
+which the manifest mounts read-only into the Pynchy container.
+
+Set this variable in the Android MCP tool environment:
+
+```toml
+ADB_SERVER_SOCKET = "localfilesystem:/run/pynchy-adb/adb.sock"
+```
+
+Authorize the node's ADB key on the phone before running the Android MCP wet
+test.
+
 ## Shadow validation and cutover
 
 The checked-in manifest is deliberately safe for shadow validation:

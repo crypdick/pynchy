@@ -1,0 +1,30 @@
+[Unit]
+Description=Pynchy Android Debug Bridge
+Requires=k3s.service
+After=k3s.service systemd-udevd.service
+
+[Service]
+Type=simple
+User=pynchy-adb
+Group=plugdev
+Environment=HOME=/var/lib/pynchy-adb
+StateDirectory=pynchy-adb
+RuntimeDirectory=pynchy-adb
+RuntimeDirectoryMode=0755
+UMask=0000
+ExecStartPre=/usr/bin/rm -f /run/pynchy-adb/adb.sock
+ExecStart=/usr/bin/adb -L localfilesystem:/run/pynchy-adb/adb.sock nodaemon server
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

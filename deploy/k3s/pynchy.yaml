@@ -97,6 +97,9 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /srv/pynchy
+            - name: android-adb
+              mountPath: /run/pynchy-adb
+              readOnly: true
             - name: service-account
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
               readOnly: true
@@ -177,6 +180,10 @@ spec:
             - name: pocket-tts-cache
               mountPath: /home/pocket/.cache
       volumes:
+        - name: android-adb
+          hostPath:
+            path: /run/pynchy-adb
+            type: Directory
         - name: shared
           persistentVolumeClaim:
             claimName: pynchy-data
