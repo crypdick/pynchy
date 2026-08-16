@@ -140,6 +140,42 @@ spec:
             - name: litellm-data
               mountPath: /app/data
               subPath: app/data/litellm
+        - name: pocket-tts
+          image: pynchy-pocket-tts:shadow
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pocket-tts
+              containerPort: 8000
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/').read()
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/').read()
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - name: pocket-tts-cache
+              mountPath: /home/pocket/.cache
       volumes:
         - name: shared
           persistentVolumeClaim:
@@ -150,6 +186,9 @@ spec:
         - name: litellm-data
           persistentVolumeClaim:
             claimName: pynchy-data
+        - name: pocket-tts-cache
+          persistentVolumeClaim:
+            claimName: pynchy-pocket-tts
         - name: service-account
           projected:
             defaultMode: 420

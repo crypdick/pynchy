@@ -1,8 +1,9 @@
 # Kubernetes
 
-The manifests in `deploy/k3s` run Pynchy, LiteLLM, PostgreSQL, Temporal, and
-Temporal UI in one namespace. They target a single-node K3s installation and
-do not replace unrelated Docker Compose or Dockge workloads on the host.
+The manifests in `deploy/k3s` run Pynchy, LiteLLM, Pocket TTS, PostgreSQL,
+Temporal, and Temporal UI in one namespace. They target a single-node K3s
+installation and do not replace unrelated Docker Compose or Dockge workloads
+on the host.
 
 ## Storage boundary
 
@@ -13,7 +14,8 @@ the host root filesystem or Docker socket.
 
 `deploy/k3s/storage.yaml` uses static local volumes with a `Retain` reclaim
 policy. Change its node name and local paths before applying it on another
-host. Back up both local volume paths and the namespace secrets.
+host. Back up all three local volume paths and the namespace secrets. Pocket
+TTS uses its own volume only for downloaded model caches.
 
 ## Prepare and deploy
 
@@ -24,9 +26,10 @@ host. Back up both local volume paths and the namespace secrets.
    - `repos`: repositories configured as `repos.root`
    - `external`: any explicitly configured external files
 
-2. Build `pynchy-host:shadow` from `deploy/k3s/host.Dockerfile`. Build the
-   configured agent and private MCP images, then import the local images into
-   K3s containerd.
+2. Build `pynchy-host:shadow` from `deploy/k3s/host.Dockerfile` and
+   `pynchy-pocket-tts:shadow` from `deploy/k3s/pocket-tts.Dockerfile`. Build
+   the configured agent and private MCP images, then import the local images
+   into K3s containerd.
 3. Create `pynchy-env` from the migrated Pynchy environment file. Create
    `pynchy-runtime` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`,
    `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `UI_USERNAME`, and `UI_PASSWORD`.

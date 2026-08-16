@@ -63,3 +63,36 @@ spec:
   resources:
     requests:
       storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pynchy-pocket-tts-dcloud
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pynchy-local
+  local:
+    path: /mnt/tank-20/appdata/pynchy-k3s/pocket-tts
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [dcloud]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pynchy-pocket-tts
+  namespace: pynchy
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: pynchy-local
+  volumeName: pynchy-pocket-tts-dcloud
+  resources:
+    requests:
+      storage: 20Gi
