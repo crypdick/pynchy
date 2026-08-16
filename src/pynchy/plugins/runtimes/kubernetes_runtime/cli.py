@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess  # noqa: S404 - adapter executes fixed kubectl argv without a shell.
 import sys
 from dataclasses import dataclass, field
@@ -172,6 +173,9 @@ def _mount_spec(
         relative = resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError(f"Mount source is outside Kubernetes shared root: {source}") from exc
+    if not readonly and resolved.is_dir():
+        mode = stat.S_IMODE(resolved.stat().st_mode)
+        resolved.chmod(mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP)
     mount: dict[str, object] = {"name": "shared", "mountPath": target}
     if relative.parts:
         mount["subPath"] = relative.as_posix()

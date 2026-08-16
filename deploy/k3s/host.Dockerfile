@@ -9,13 +9,17 @@ COPY --from=kubectl /bin/kubectl /usr/local/bin/kubectl
 RUN apt-get update && apt-get install -y --no-install-recommends \
     adb \
     ca-certificates \
+    chromium \
     curl \
     git \
     jq \
+    novnc \
     procps \
     ripgrep \
     rsync \
     sqlite3 \
+    x11vnc \
+    xvfb \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*

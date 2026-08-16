@@ -67,6 +67,28 @@ def test_builds_agent_pod_from_existing_container_arguments(
             "subPath": "groups/admin",
         }
     ]
+    assert workspace.stat().st_mode & 0o7777 == 0o2775
+
+
+def test_read_only_mount_keeps_source_permissions(tmp_path: Path) -> None:
+    workspace = tmp_path / "groups" / "admin"
+    workspace.mkdir(parents=True, mode=0o750)
+
+    build_resources(
+        [
+            "run",
+            "--name",
+            "pynchy-admin",
+            "-v",
+            f"{workspace}:/home/agent/workspace:ro",
+            "pynchy-agent:latest",
+        ],
+        shared_root=tmp_path,
+        pvc_name="pynchy-data",
+        namespace="pynchy",
+    )
+
+    assert workspace.stat().st_mode & 0o7777 == 0o750
 
 
 def test_builds_detached_mcp_pod_and_service(
