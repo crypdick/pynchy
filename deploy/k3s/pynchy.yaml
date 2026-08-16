@@ -107,6 +107,9 @@ spec:
                 name: pynchy-env
             - secretRef:
                 name: pynchy-runtime
+          env:
+            - name: CHATGPT_TOKEN_DIR
+              value: /app/data/chatgpt
           ports:
             - name: litellm
               containerPort: 4000
