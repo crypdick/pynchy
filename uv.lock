@@ -3365,7 +3365,7 @@ requires-dist = [
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6.30" },
     { name = "jupyter-client", marker = "extra == 'notebook'", specifier = ">=8.6" },
     { name = "jupyterlab", marker = "extra == 'notebook'", specifier = ">=4.6.2" },
-    { name = "mcp", specifier = ">=1.28.1" },
+    { name = "mcp", specifier = ">=1.28.1,<2" },
     { name = "nbformat", marker = "extra == 'notebook'", specifier = ">=5.10" },
     { name = "neonize", marker = "extra == 'whatsapp'", specifier = ">=0.3.14.post0" },
     { name = "pillow", marker = "extra == 'notebook'", specifier = ">=12.3.0" },

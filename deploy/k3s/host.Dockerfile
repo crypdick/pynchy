@@ -35,7 +35,7 @@ RUN /bin/sh /tmp/install_codex.sh && rm /tmp/install_codex.sh
 WORKDIR /opt/pynchy
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN uv pip install --system --no-cache-dir '.[all]'
+RUN uv sync --locked --no-dev --all-extras --no-editable --no-cache
 
 RUN groupadd --gid 3000 pynchy \
     && useradd --uid 3000 --gid 3000 --create-home --shell /bin/bash pynchy \
@@ -43,6 +43,7 @@ RUN groupadd --gid 3000 pynchy \
     && chown -R pynchy:pynchy /srv/pynchy /run/pynchy
 
 ENV HOME=/home/pynchy \
+    PATH=/opt/pynchy/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1
 USER pynchy
 WORKDIR /srv/pynchy/app

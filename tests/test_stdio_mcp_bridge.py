@@ -143,6 +143,8 @@ async def test_stdio_bridge_cli_lifespan_initializes_and_closes_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     started = Mock()
+    backend_parameters = []
+    monkeypatch.setenv("ADB_SERVER_SOCKET", "tcp:10.42.0.1:5037")
     monkeypatch.setattr(stdio_bridge.uvicorn, "run", started)
     monkeypatch.setattr(
         sys,
@@ -151,7 +153,8 @@ async def test_stdio_bridge_cli_lifespan_initializes_and_closes_backend(
     )
 
     @asynccontextmanager
-    async def fake_stdio_client(_parameters):
+    async def fake_stdio_client(parameters):
+        backend_parameters.append(parameters)
         yield object(), object()
 
     class FakeSession:
@@ -191,6 +194,8 @@ async def test_stdio_bridge_cli_lifespan_initializes_and_closes_backend(
     async with app.router.lifespan_context(app):
         session = FakeSession.instances[-1]
         assert session.initialized
+
+    assert backend_parameters[-1].env["ADB_SERVER_SOCKET"] == "tcp:10.42.0.1:5037"
 
 
 @pytest.mark.asyncio

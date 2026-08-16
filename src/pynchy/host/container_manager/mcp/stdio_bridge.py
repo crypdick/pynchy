@@ -7,6 +7,7 @@ gate still approves every tool call before it reaches this bridge.
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import (  # noqa: TC003 - lifespan annotations must resolve at runtime.
     AsyncIterator,
     Awaitable,
@@ -73,7 +74,11 @@ def _application(command: list[str]) -> Starlette:
         return await connected_session().call_tool(name, arguments)
 
     session_manager = StreamableHTTPSessionManager(server, json_response=True)
-    backend_params = StdioServerParameters(command=command[0], args=command[1:])
+    backend_params = StdioServerParameters(
+        command=command[0],
+        args=command[1:],
+        env=dict(os.environ),
+    )
 
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
