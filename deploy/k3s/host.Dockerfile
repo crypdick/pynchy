@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     chromium \
     curl \
+    gh \
     git \
     jq \
     novnc \
@@ -23,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+COPY src/pynchy/agent/install_codex.sh /tmp/install_codex.sh
+RUN /bin/sh /tmp/install_codex.sh && rm /tmp/install_codex.sh
 
 WORKDIR /opt/pynchy
 COPY pyproject.toml uv.lock README.md ./

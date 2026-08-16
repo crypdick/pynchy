@@ -34,10 +34,10 @@ host. Back up both local volume paths and the namespace secrets.
 4. Apply `deploy/k3s` with Kustomize and wait for all workloads to become
    ready.
 
-The host image includes `kubectl`; the Pynchy service account has Pod, Pod log,
-and Service permissions only inside the `pynchy` namespace. K3s hosts with a
-default-deny host firewall must allow the K3s Pod CIDR to reach node-local
-cluster services.
+The host image includes `kubectl`, Codex, and GitHub CLI for direct-host admin
+workspaces. The Pynchy service account has Pod, Pod log, and Service permissions
+only inside the `pynchy` namespace. K3s hosts with a default-deny host firewall
+must allow the K3s Pod CIDR to reach node-local cluster services.
 
 ## Shadow validation and cutover
 
