@@ -78,7 +78,7 @@ async def test_graceful_stop_force_kills_when_runtime_cli_is_not_configured():
     kill.assert_called_once_with()
 
 
-async def test_runtime_probe_returns_false_for_non_apple_runtime():
+async def test_runtime_probe_checks_non_apple_runtime():
     probe = MagicMock(return_value=True)
     process.configure_container_process_runtime(
         container_cli="docker",
@@ -86,8 +86,8 @@ async def test_runtime_probe_returns_false_for_non_apple_runtime():
         container_is_running=probe,
     )
 
-    assert await process.runtime_container_running("worker") is False
-    probe.assert_not_called()
+    assert await process.runtime_container_running("worker") is True
+    probe.assert_called_once_with("worker")
 
 
 async def test_orphan_scan_degrades_when_process_listing_cannot_start():

@@ -53,6 +53,8 @@ spec:
               value: "false"
             - name: PLUGINS__DISCORD__ENABLED
               value: "false"
+            - name: PLUGINS__LINEAR__ENABLED
+              value: "false"
             - name: PYNCHY_RUNTIME_HARNESS
               value: "1"
             - name: PYNCHY_DISABLE_SERVICE_INSTALL

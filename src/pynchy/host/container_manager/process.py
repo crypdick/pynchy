@@ -91,9 +91,9 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
 
 
 async def runtime_container_running(container_name: str) -> bool:
-    """Return whether Apple Container still reports one container running."""
+    """Return whether the selected runtime still reports one container running."""
     container_is_running = _runtime.container_is_running
-    if not _runtime.is_apple_runtime or container_is_running is None:
+    if container_is_running is None:
         return False
 
     try:

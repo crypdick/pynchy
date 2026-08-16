@@ -44,6 +44,7 @@ cluster services.
 The checked-in manifest is deliberately safe for shadow validation:
 
 - channel plugins are disabled;
+- the Linear integration is disabled so shadow startup cannot reconcile provider state;
 - `scheduler.reconcile_schedules` is `false`, so the Temporal worker can run
   test workflows without creating schedules or delayed workflows;
 - `scheduler.auto_deploy` is `false`, because Kubernetes releases replace
