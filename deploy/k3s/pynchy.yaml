@@ -55,6 +55,8 @@ spec:
               value: "false"
             - name: PYNCHY_RUNTIME_HARNESS
               value: "1"
+            - name: PYNCHY_DISABLE_SERVICE_INSTALL
+              value: "1"
             - name: SERVER__HOST
               value: 0.0.0.0
             - name: SERVER__PORT
