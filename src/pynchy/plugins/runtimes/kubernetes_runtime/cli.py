@@ -261,7 +261,10 @@ def build_resources(
                 "args": [f"chown -R 3000:3000 {targets}"],
                 "securityContext": {
                     "allowPrivilegeEscalation": False,
-                    "capabilities": {"drop": ["ALL"], "add": ["CHOWN"]},
+                    "capabilities": {
+                        "drop": ["ALL"],
+                        "add": ["CHOWN", "DAC_READ_SEARCH"],
+                    },
                     "readOnlyRootFilesystem": True,
                     "runAsGroup": 3000,
                     "runAsUser": 0,
