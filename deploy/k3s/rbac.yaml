@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pynchy-controller
+  namespace: pynchy
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pynchy-runtime
+  namespace: pynchy
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pynchy-runtime
+  namespace: pynchy
+subjects:
+  - kind: ServiceAccount
+    name: pynchy-controller
+    namespace: pynchy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pynchy-runtime

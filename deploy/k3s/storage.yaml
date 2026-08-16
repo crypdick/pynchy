@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pynchy-data-dcloud
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pynchy-local
+  local:
+    path: /mnt/tank-20/appdata/pynchy-k3s/shared
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [dcloud]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pynchy-data
+  namespace: pynchy
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: pynchy-local
+  volumeName: pynchy-data-dcloud
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pynchy-postgres-dcloud
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pynchy-local
+  local:
+    path: /mnt/tank-20/appdata/pynchy-k3s/postgres
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [dcloud]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pynchy-postgres
+  namespace: pynchy
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: pynchy-local
+  volumeName: pynchy-postgres-dcloud
+  resources:
+    requests:
+      storage: 20Gi

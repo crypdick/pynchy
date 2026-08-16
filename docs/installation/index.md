@@ -7,6 +7,7 @@ Linux server.
 |-------|-------------------------|
 | [Local installation](local.md) | Run Pynchy interactively on a desktop or local Linux machine. |
 | [Headless Linux server](server.md) | Run Pynchy as a user service behind Tailscale or another controlled network. |
+| [Kubernetes](kubernetes.md) | Run Pynchy and a dedicated Temporal stack on K3s with PVC-scoped storage. |
 | [Migration](migration.md) | Move a working Pynchy installation to a new checkout or host. |
 | [Troubleshooting](troubleshooting.md) | Diagnose startup, connectivity, container, and WhatsApp problems. |
 

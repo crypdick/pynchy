@@ -24,6 +24,26 @@ def test_docker_available_follows_path_lookup(monkeypatch: pytest.MonkeyPatch) -
     assert docker.docker_available() is True
 
 
+def test_container_helpers_select_kubernetes_adapter_and_cluster_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_CONTAINER_CLI", "pynchy-kubernetes-runtime")
+    monkeypatch.setattr(docker.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    assert docker.docker_available() is True
+    assert (
+        docker.managed_container_url("pynchy-mcp-browser", host_port=19101, container_port=8931)
+        == "http://pynchy-mcp-browser:8931"
+    )
+
+
+def test_managed_container_url_uses_published_host_port_by_default() -> None:
+    assert (
+        docker.managed_container_url("pynchy-mcp-browser", host_port=19101, container_port=8931)
+        == "http://localhost:19101"
+    )
+
+
 @pytest.mark.asyncio
 async def test_docker_image_and_network_are_created_only_when_missing(
     monkeypatch: pytest.MonkeyPatch,

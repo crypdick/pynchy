@@ -411,12 +411,13 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
     if info.get("mode") != "litellm":
         return result
 
-    litellm_state, pg_state = await asyncio.gather(
-        deps.get_container_state(runtime_container_name("litellm")),
-        deps.get_container_state(runtime_container_name("litellm-db")),
-    )
-    result["litellm_container"] = litellm_state
-    result["postgres_container"] = pg_state
+    if info.get("managed", True):
+        litellm_state, pg_state = await asyncio.gather(
+            deps.get_container_state(runtime_container_name("litellm")),
+            deps.get_container_state(runtime_container_name("litellm-db")),
+        )
+        result["litellm_container"] = litellm_state
+        result["postgres_container"] = pg_state
 
     # LiteLLM documents /health/readiness as the proxy readiness endpoint;
     # /health performs provider model calls and can be provider-shape-sensitive.

@@ -70,6 +70,7 @@ def _scheduler_runtime(
         temporal_address=scheduler.temporal_address,
         temporal_namespace=scheduler.temporal_namespace,
         temporal_task_queue=scheduler.temporal_task_queue,
+        reconcile_schedules=scheduler.reconcile_schedules,
         poll_interval=scheduler.poll_interval,
         timezone=timezone,
         git_sync_interval_seconds=scheduler.git_sync_interval_seconds,

@@ -31,6 +31,7 @@ from pynchy.agent_protocol.api import McpStartupFailure
 from pynchy.async_tasks import create_background_task
 from pynchy.host.container_manager.docker import (
     is_container_running,
+    managed_container_url,
     stop_container,
 )
 from pynchy.host.container_manager.gateway import LiteLLMGateway, resolve_container_host
@@ -198,6 +199,7 @@ class McpManager:
             ),
         )
         self._proxy_port: int = 0
+        self._configured_proxy_port = int(getattr(settings.gateway, "mcp_proxy_port", 0))
 
     @property
     def _merged_mcp_servers(self) -> dict[str, McpServerConfig]:
@@ -242,7 +244,14 @@ class McpManager:
             if cfg.type == "url":
                 instance_urls[iid] = cfg.url or ""
             elif inst.port is not None:
-                instance_urls[iid] = f"http://localhost:{inst.port}"
+                if cfg.type == "docker" and cfg.port is not None:
+                    instance_urls[iid] = managed_container_url(
+                        inst.container_name,
+                        host_port=inst.port,
+                        container_port=cfg.port,
+                    )
+                else:
+                    instance_urls[iid] = f"http://localhost:{inst.port}"
         trust_map = build_trust_map(
             self._instances,
             self._plugin_trust_defaults,
@@ -257,6 +266,7 @@ class McpManager:
                 instance_urls,
                 trust_map=trust_map,
                 service_names=service_names,
+                port=self._configured_proxy_port,
             )
 
         logger.info(
@@ -382,7 +392,14 @@ class McpManager:
             return instance.endpoint_url
         if instance.port is None:
             raise RuntimeError(f"Canary MCP server has no host port: {server_name}")
-        base = f"http://localhost:{instance.port}"
+        if instance.server_config.type == "docker" and instance.server_config.port is not None:
+            base = managed_container_url(
+                instance.container_name,
+                host_port=instance.port,
+                container_port=instance.server_config.port,
+            )
+        else:
+            base = f"http://localhost:{instance.port}"
         if instance.server_config.transport in ("http", "streamable_http"):
             return f"{base}/mcp"
         return base

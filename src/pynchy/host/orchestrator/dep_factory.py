@@ -732,6 +732,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
                 "mode": mode,
                 "port": gw.port,
                 "key": gw.key,
+                "managed": getattr(gw, "managed", True),
                 "redaction": gw.redaction_posture.value,
                 **response_info,
             }

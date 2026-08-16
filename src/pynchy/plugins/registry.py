@@ -49,6 +49,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.tunnels.tailscale", "TailscaleTunnelPlugin", "tailscale"),
     ("pynchy.plugins.runtimes.docker_runtime", "DockerRuntimePlugin", "docker-runtime"),
     ("pynchy.plugins.runtimes.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),
+    (
+        "pynchy.plugins.runtimes.kubernetes_runtime",
+        "KubernetesRuntimePlugin",
+        "kubernetes-runtime",
+    ),
     ("pynchy.plugins.integrations.caldav", "CalDAVMcpServerPlugin", "caldav"),
     (
         "pynchy.plugins.integrations.slack_token_extractor",

@@ -205,6 +205,8 @@ class GatewayConfig(_StrictModel):
     """
 
     port: int = 4010  # set to 4000 when using litellm mode
+    managed: bool = True  # false when an orchestrator owns LiteLLM/PostgreSQL lifecycle
+    mcp_proxy_port: Annotated[int, Field(ge=0, le=65535)] = 0  # fixed for cluster Services
     host: str = CONTAINER_REACHABLE_BIND_HOST  # bind address
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
     litellm_config: str | None = None  # convention-wired personalized source path

@@ -76,6 +76,7 @@ class SchedulerRuntimeConfig:
     temporal_address: str
     temporal_namespace: str
     temporal_task_queue: str
+    reconcile_schedules: bool
     poll_interval: float
     timezone: str | None
     git_sync_interval_seconds: int

@@ -86,6 +86,28 @@ class TestCollectGateway:
         )
 
     @pytest.mark.asyncio
+    async def test_external_litellm_reports_readiness_without_fake_container_states(self):
+        deps = MockStatusDeps(
+            gateway={"mode": "litellm", "managed": False, "port": 4000, "key": "sk-test"}
+        )
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json.return_value = {"status": "healthy", "db": "connected"}
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_resp
+        mock_session.__aenter__.return_value = mock_session
+        mock_session.__aexit__.return_value = None
+
+        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await collect_status(deps, time.monotonic())
+
+        gateway = result["gateway"]
+        assert gateway["ready"] is True
+        assert "litellm_container" not in gateway
+        assert "postgres_container" not in gateway
+        deps.get_container_state.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_litellm_responses_snapshot_stays_separate_from_readiness(self):
         responses = {
             "state": "available",

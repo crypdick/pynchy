@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pynchy-temporal
+  namespace: pynchy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pynchy-temporal
+  template:
+    metadata:
+      labels:
+        app: pynchy-temporal
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      initContainers:
+        - name: wait-postgres
+          image: postgres:17-alpine
+          command: ["sh", "-c", "until pg_isready -h pynchy-postgres -U $POSTGRES_USER; do sleep 2; done"]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-runtime
+                  key: POSTGRES_USER
+      containers:
+        - name: temporal
+          image: temporalio/auto-setup:1.31.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB
+              value: postgres12
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-runtime
+                  key: POSTGRES_USER
+            - name: POSTGRES_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-runtime
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_SEEDS
+              value: pynchy-postgres
+            - name: BIND_ON_IP
+              value: 0.0.0.0
+          ports:
+            - name: grpc
+              containerPort: 7233
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pynchy-temporal
+  namespace: pynchy
+spec:
+  selector:
+    app: pynchy-temporal
+  ports:
+    - name: grpc
+      port: 7233
+      targetPort: grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pynchy-temporal-ui
+  namespace: pynchy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pynchy-temporal-ui
+  template:
+    metadata:
+      labels:
+        app: pynchy-temporal-ui
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      containers:
+        - name: temporal-ui
+          image: temporalio/ui:2.34.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: pynchy-temporal:7233
+            - name: TEMPORAL_UI_PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pynchy-temporal-ui
+  namespace: pynchy
+spec:
+  selector:
+    app: pynchy-temporal-ui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

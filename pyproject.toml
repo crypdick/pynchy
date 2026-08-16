@@ -49,6 +49,7 @@ voice = [
 [project.scripts]
 pynchy = "pynchy.__main__:main"
 pynchy-whatsapp-auth = "pynchy.__main__:whatsapp_auth"
+pynchy-kubernetes-runtime = "pynchy.plugins.runtimes.kubernetes_runtime.cli:main"
 
 [dependency-groups]
 dev = [

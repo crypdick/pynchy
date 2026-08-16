@@ -47,6 +47,7 @@ class SchedulerConfig(_StrictModel):
     temporal_address: str = "localhost:7233"
     temporal_namespace: str = "default"
     temporal_task_queue: str = "pynchy-scheduler"
+    reconcile_schedules: bool = True
     git_sync_interval_seconds: int = 300
     channel_reconciliation_interval_seconds: int = 300
     # Operators approve repository revisions unless they explicitly retain automatic deployment.

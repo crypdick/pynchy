@@ -494,6 +494,7 @@ async def test_status_adapter_reports_queue_gateway_container_and_counts(tmp_pat
                 "port": 4010,
                 "key": "builtin-key",
                 "redaction": "enforced",
+                "managed": True,
             }
 
         result = _DockerResult(returncode=0, stdout="running\n")

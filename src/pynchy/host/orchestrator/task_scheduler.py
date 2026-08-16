@@ -135,10 +135,11 @@ async def _run_scheduler_loop(
 ) -> None:
     """Reconcile desired scheduled work into Temporal-owned schedules."""
     while True:
-        try:
-            await temporal_runtime.reconcile_schedules()
-        except Exception:  # noqa: BLE001 - scheduler loop is a long-lived reconcile boundary.
-            logger.exception("Error in scheduler loop")
+        if _deps.scheduler_runtime.reconcile_schedules:
+            try:
+                await temporal_runtime.reconcile_schedules()
+            except Exception:  # noqa: BLE001 - scheduler loop is a long-lived reconcile boundary.
+                logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(_deps.scheduler_runtime.poll_interval)
 

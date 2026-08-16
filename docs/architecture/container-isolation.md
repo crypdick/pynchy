@@ -2,7 +2,7 @@
 
 How Pynchy isolates agents inside containers. Use this page to configure groups, debug mount issues, and write plugins that interact with the container filesystem.
 
-Each agent invocation spawns a fresh, ephemeral container with explicitly mounted directories. The container runtime is pluggable — Pynchy ships with two built-in runtimes and picks one based on the platform. For the security properties of this isolation, see [Security Model](security.md).
+Each agent invocation spawns a fresh, ephemeral container with explicitly mounted directories. The container runtime is pluggable — Pynchy ships with Docker, Apple Container, and Kubernetes runtimes. For the security properties of this isolation, see [Security Model](security.md).
 
 ## Container Runtime
 
@@ -10,7 +10,7 @@ The container runtime is pluggable via the `pynchy_container_runtime` hook. Pync
 
 ```toml
 [container]
-runtime = "docker"    # or "apple"
+runtime = "docker"    # or "apple" or "kubernetes"
 ```
 
 ### Built-in: Docker
@@ -20,6 +20,14 @@ The default runtime on Linux and the fallback on macOS. Requires the `docker` CL
 ### Built-in: Apple Container
 
 The default runtime on macOS. Uses Apple's native container framework for lower overhead. Requires the `container` CLI (`brew install container`). Falls back to Docker if not installed.
+
+### Built-in: Kubernetes
+
+An explicit runtime for a Pynchy host running in Kubernetes. It translates the
+Docker-compatible command subset used by Pynchy into namespace-scoped Pods and
+Services. Mount sources must be under `PYNCHY_KUBERNETES_SHARED_ROOT` and are
+projected from `PYNCHY_KUBERNETES_PVC`; arbitrary host paths are rejected. See
+the [Kubernetes installation guide](../installation/kubernetes.md).
 
 ## Container Lifecycle
 

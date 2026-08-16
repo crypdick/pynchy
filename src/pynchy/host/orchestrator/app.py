@@ -745,6 +745,7 @@ def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
         temporal_address=settings.scheduler.temporal_address,
         temporal_namespace=settings.scheduler.temporal_namespace,
         temporal_task_queue=settings.scheduler.temporal_task_queue,
+        reconcile_schedules=settings.scheduler.reconcile_schedules,
         poll_interval=settings.scheduler.poll_interval,
         timezone=settings.timezone or None,
         git_sync_interval_seconds=settings.scheduler.git_sync_interval_seconds,

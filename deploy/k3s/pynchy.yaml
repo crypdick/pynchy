@@ -1,0 +1,181 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pynchy
+  namespace: pynchy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pynchy
+  template:
+    metadata:
+      labels:
+        app: pynchy
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      serviceAccountName: pynchy-controller
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 3000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: wait-temporal
+          image: busybox:1.37
+          command: ["sh", "-c", "until nc -z pynchy-temporal 7233; do sleep 2; done"]
+      containers:
+        - name: pynchy
+          image: pynchy-host:shadow
+          imagePullPolicy: IfNotPresent
+          workingDir: /srv/pynchy/app
+          envFrom:
+            - secretRef:
+                name: pynchy-env
+          env:
+            - name: CONTAINER__RUNTIME
+              value: kubernetes
+            - name: CONTAINER__IMAGE
+              value: pynchy-agent:shadow
+            - name: GATEWAY__MANAGED
+              value: "false"
+            - name: GATEWAY__CONTAINER_HOST
+              value: pynchy
+            - name: GATEWAY__MCP_PROXY_PORT
+              value: "4011"
+            - name: SCHEDULER__TEMPORAL_ADDRESS
+              value: pynchy-temporal:7233
+            - name: SCHEDULER__RECONCILE_SCHEDULES
+              value: "false"
+            - name: SCHEDULER__AUTO_DEPLOY
+              value: "false"
+            - name: PLUGINS__DISCORD__ENABLED
+              value: "false"
+            - name: PYNCHY_RUNTIME_HARNESS
+              value: "1"
+            - name: SERVER__HOST
+              value: 0.0.0.0
+            - name: SERVER__PORT
+              value: "8485"
+            - name: SERVER__ALLOW_PUBLIC_BIND
+              value: "true"
+            - name: PYNCHY_CONTAINER_CLI
+              value: pynchy-kubernetes-runtime
+            - name: PYNCHY_KUBERNETES_NAMESPACE
+              value: pynchy
+            - name: PYNCHY_KUBERNETES_PVC
+              value: pynchy-data
+            - name: PYNCHY_KUBERNETES_SHARED_ROOT
+              value: /srv/pynchy
+          ports:
+            - name: web
+              containerPort: 8485
+            - name: mcp-proxy
+              containerPort: 4011
+          startupProbe:
+            tcpSocket:
+              port: web
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: web
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          volumeMounts:
+            - name: shared
+              mountPath: /srv/pynchy
+            - name: service-account
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+        - name: litellm
+          image: ghcr.io/berriai/litellm@sha256:9c1f1889774a973ce650f712ace6753a9b6dd1182d25d837b858dbcac6ea3056
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/app/config.yaml", "--port", "4000"]
+          envFrom:
+            - secretRef:
+                name: pynchy-env
+            - secretRef:
+                name: pynchy-runtime
+          ports:
+            - name: litellm
+              containerPort: 4000
+          readinessProbe:
+            tcpSocket:
+              port: litellm
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: litellm
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /app/config.yaml
+              subPath: app/data/personalization/litellm.yaml
+              readOnly: true
+            - name: litellm-data
+              mountPath: /app/data
+              subPath: app/data/litellm
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: pynchy-data
+        - name: litellm-config
+          persistentVolumeClaim:
+            claimName: pynchy-data
+        - name: litellm-data
+          persistentVolumeClaim:
+            claimName: pynchy-data
+        - name: service-account
+          projected:
+            defaultMode: 420
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pynchy
+  namespace: pynchy
+spec:
+  selector:
+    app: pynchy
+  ports:
+    - name: web
+      port: 8485
+      targetPort: web
+    - name: litellm
+      port: 4000
+      targetPort: litellm
+    - name: mcp-proxy
+      port: 4011
+      targetPort: mcp-proxy

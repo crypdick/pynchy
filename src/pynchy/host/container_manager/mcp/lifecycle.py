@@ -30,6 +30,7 @@ from pynchy.host.container_manager.docker import (
     ensure_image,
     ensure_network,
     is_container_running,
+    managed_container_url,
     redacted_container_logs,
     remove_container,
     run_docker,
@@ -442,7 +443,13 @@ async def _start_docker_container(
 
 
 def _docker_health_url(instance: McpInstance) -> str:
-    return f"http://localhost:{instance.port}" if instance.port else instance.endpoint_url
+    if instance.port is None or instance.server_config.port is None:
+        return instance.endpoint_url
+    return managed_container_url(
+        instance.container_name,
+        host_port=instance.port,
+        container_port=instance.server_config.port,
+    )
 
 
 async def _wait_for_docker_health(instance: McpInstance) -> None:

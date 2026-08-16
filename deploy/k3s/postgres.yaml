@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pynchy-postgres-init
+  namespace: pynchy
+data:
+  01-litellm.sql: |
+    CREATE DATABASE litellm;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pynchy-postgres
+  namespace: pynchy
+spec:
+  serviceName: pynchy-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pynchy-postgres
+  template:
+    metadata:
+      labels:
+        app: pynchy-postgres
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      securityContext:
+        fsGroup: 3000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-runtime
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-runtime
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_INITDB_ARGS
+              value: --auth-host=scram-sha-256
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pynchy-postgres
+        - name: init
+          configMap:
+            name: pynchy-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pynchy-postgres
+  namespace: pynchy
+spec:
+  selector:
+    app: pynchy-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

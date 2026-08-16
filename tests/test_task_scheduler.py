@@ -198,6 +198,24 @@ class TestStartSchedulerLoop:
         assert len(runtime_cls.instances) == 1
 
     @pytest.mark.asyncio
+    async def test_shadow_runtime_owns_worker_without_reconciling_schedules(self, mock_deps):
+        mock_deps._scheduler_runtime = _scheduler_runtime_from_settings(
+            make_settings(scheduler=SchedulerConfig(reconcile_schedules=False))
+        )
+        with (
+            _patch_scheduler_temporal_runtime() as runtime_cls,
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.asyncio.sleep",
+                side_effect=asyncio.CancelledError,
+            ),
+            contextlib.suppress(asyncio.CancelledError),
+        ):
+            await start_scheduler_loop(mock_deps)
+
+        assert len(runtime_cls.instances) == 1
+        assert runtime_cls.instances[0].reconcile_count == 0
+
+    @pytest.mark.asyncio
     async def test_startup_readiness_waits_for_temporal_runtime_entry(self, mock_deps):
         """Readiness means the Temporal runtime entered, not that startup was attempted."""
         allow_entry = asyncio.Event()

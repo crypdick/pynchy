@@ -185,6 +185,7 @@ class LiteLLMGateway:
         postgres_image: str,
         data_dir: Path,
         master_key: str,
+        managed: bool = True,
         required_models: tuple[str, ...] = (),
         required_response_models: tuple[str, ...] = (),
         ui_credentials: LiteLLMGatewayCredentials | None = None,
@@ -192,6 +193,7 @@ class LiteLLMGateway:
         self.port = port
         self.container_host = container_host
         self.key: str = master_key
+        self.managed = managed
         self._required_models = tuple(dict.fromkeys(required_models))
         self._required_response_models = tuple(dict.fromkeys(required_response_models))
         self._ui_credentials = ui_credentials or LiteLLMGatewayCredentials()
@@ -263,12 +265,13 @@ class LiteLLMGateway:
 
     async def is_ready(self) -> bool:
         """Return whether both sidecars and the proxy readiness endpoint work."""
-        litellm_running, postgres_running = await asyncio.gather(
-            is_container_running(self._litellm_container),
-            is_container_running(self._postgres_container),
-        )
-        if not litellm_running or not postgres_running:
-            return False
+        if self.managed:
+            litellm_running, postgres_running = await asyncio.gather(
+                is_container_running(self._litellm_container),
+                is_container_running(self._postgres_container),
+            )
+            if not litellm_running or not postgres_running:
+                return False
         try:
             async with (
                 aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session,
@@ -447,7 +450,7 @@ class LiteLLMGateway:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        if not docker_available():
+        if self.managed and not docker_available():
             msg = "Docker is required for LiteLLM gateway mode but 'docker' was not found on PATH"
             raise RuntimeError(msg)
 
@@ -471,6 +474,20 @@ class LiteLLMGateway:
         phoenix_env = self._phoenix_env_vars(filtered_config, env)
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
+
+        if not self.managed:
+            await wait_healthy(
+                HealthCheckRequest(
+                    container_name="external-litellm",
+                    url=f"http://localhost:{self.port}/health/readiness",
+                    health_timeout_seconds=_HEALTH_TIMEOUT,
+                    poll_interval=_HEALTH_POLL_INTERVAL,
+                    headers={"Authorization": f"Bearer {self.key}"},
+                )
+            )
+            await self._responses.refresh()
+            logger.info("External LiteLLM ready", port=self.port, container_url=self.base_url)
+            return
 
         container_environment = {
             "LITELLM_MASTER_KEY": self.key,
@@ -543,8 +560,10 @@ class LiteLLMGateway:
         )
 
     async def stop(self) -> None:
-        logger.info("Stopping LiteLLM gateway containers")
         await self._responses.stop()
+        if not self.managed:
+            return
+        logger.info("Stopping LiteLLM gateway containers")
         await asyncio.gather(
             stop_container(self._litellm_container),
             stop_container(self._postgres_container),

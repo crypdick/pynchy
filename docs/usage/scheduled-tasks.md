@@ -250,6 +250,7 @@ task prompt again.
 temporal_address = "localhost:7233"
 temporal_namespace = "default"
 temporal_task_queue = "pynchy-scheduler"
+reconcile_schedules = true
 git_sync_interval_seconds = 300
 channel_reconciliation_interval_seconds = 300
 auto_deploy = false
@@ -263,6 +264,11 @@ to run `uv run pynchy deploy` on the host. Set `auto_deploy = true` to pull and
 deploy eligible source changes automatically.
 
 Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local due-work execution. The local scheduler loop only reconciles desired state from config and SQLite into Temporal; it does not decide that a task is due or run shell commands itself.
+
+Set `reconcile_schedules = false` only for a shadow migration instance. Its
+Temporal worker remains available for explicit test workflows, but Pynchy does
+not create recurring schedules or delayed workflows from configuration and
+SQLite. Enable reconciliation on exactly one authoritative instance.
 
 The `/status` endpoint includes a `temporal` section:
 

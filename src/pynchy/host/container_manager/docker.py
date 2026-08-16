@@ -10,6 +10,7 @@ The underlying subprocess calls run in a thread via ``asyncio.to_thread``.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import subprocess  # noqa: S404 - Docker helpers use fixed no-shell argv.
 import time
@@ -17,6 +18,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves Docker environm
     Mapping,
 )
 from dataclasses import dataclass
+from pathlib import Path
 
 import aiohttp
 
@@ -24,10 +26,24 @@ from pynchy.logger import logger
 from pynchy.process_environment import filtered_process_environment
 from pynchy.redaction import irreversibly_redact
 
+_CONTAINER_CLI_ENV = "PYNCHY_CONTAINER_CLI"
+_KUBERNETES_CLI = "pynchy-kubernetes-runtime"
+
+
+def _container_cli() -> str:
+    return os.environ.get(_CONTAINER_CLI_ENV, "docker")
+
 
 def docker_available() -> bool:
-    """Check if ``docker`` is on PATH."""
-    return shutil.which("docker") is not None
+    """Check if the configured container CLI is on PATH."""
+    return shutil.which(_container_cli()) is not None
+
+
+def managed_container_url(name: str, *, host_port: int, container_port: int) -> str:
+    """Return host-reachable URL for one managed container port."""
+    if Path(_container_cli()).name == _KUBERNETES_CLI:
+        return f"http://{name}:{container_port}"
+    return f"http://localhost:{host_port}"
 
 
 @dataclass(frozen=True)
@@ -51,7 +67,7 @@ def _run_docker_sync(
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command (blocking — internal only)."""
     return subprocess.run(  # noqa: S603 - args are constrained by internal Docker helper call sites; no shell.
-        ["docker", *args],  # noqa: S607 - docker is the trusted runtime CLI for this helper.
+        [_container_cli(), *args],
         capture_output=True,
         text=True,
         timeout=timeout,

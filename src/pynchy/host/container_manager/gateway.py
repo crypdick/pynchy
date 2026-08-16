@@ -94,6 +94,7 @@ class _SecretValue(Protocol):
 class _GatewayConfig(Protocol):
     container_host: str
     litellm_config: str | None
+    managed: bool
     master_key: _SecretValue | None
     port: int
     litellm_image: str
@@ -297,6 +298,7 @@ async def start_gateway(
             postgres_image=s.gateway.postgres_image,
             data_dir=s.data_dir,
             master_key=s.gateway.master_key.get_secret_value(),
+            managed=s.gateway.managed,
             required_models=_required_litellm_models(
                 agent_core=s.agent.default_core,
                 models=s.configured_agent_models(),
