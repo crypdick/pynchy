@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import os
 import signal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from agents import ShellResult
@@ -62,6 +62,17 @@ def test_shell_executor_reports_timed_out_command(tmp_path) -> None:
     assert result.output[0].outcome.type == "timeout"
 
 
+def test_shell_executor_applies_one_timeout_to_the_command_sequence(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(
+        executor({"action": {"commands": ["sleep 0.1", "sleep 0.1"], "timeout_ms": 150}})
+    )
+
+    assert isinstance(result, ShellResult)
+    assert [output.outcome.type for output in result.output] == ["exit", "timeout"]
+
+
 def test_shell_executor_timeout_kills_descendant_processes(tmp_path) -> None:
     pid_file = tmp_path / "child.pid"
     executor = make_shell_executor(str(tmp_path))
@@ -88,6 +99,34 @@ def test_shell_executor_timeout_kills_descendant_processes(tmp_path) -> None:
     assert result.output[0].outcome.type == "timeout"
 
 
+def test_shell_executor_success_kills_background_descendants(tmp_path) -> None:
+    pid_file = tmp_path / "child.pid"
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(
+        executor(
+            {
+                "action": {
+                    "commands": [f"printf done; sleep 30 & echo $! > {pid_file}"],
+                    "timeout_ms": 5_000,
+                }
+            }
+        )
+    )
+
+    pid = int(pid_file.read_text())
+    try:
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+
+    assert isinstance(result, ShellResult)
+    assert result.output[0].stdout == "done"
+    assert result.output[0].exit_code == 0
+
+
 def test_shell_executor_cancellation_kills_descendant_processes(tmp_path) -> None:
     pid_file = tmp_path / "child.pid"
     executor = make_shell_executor(str(tmp_path))
@@ -107,6 +146,28 @@ def test_shell_executor_cancellation_kills_descendant_processes(tmp_path) -> Non
     pid = int(pid_file.read_text())
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+def test_shell_cleanup_only_signals_owned_process_group(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+    process = AsyncMock()
+    process.pid = 111
+    process.kill = Mock()
+    process.returncode = 0
+    process.wait.return_value = 0
+
+    with (
+        patch(
+            "agent_runner.cores.openai_shell.asyncio.create_subprocess_shell",
+            new=AsyncMock(return_value=process),
+        ),
+        patch("agent_runner.cores.openai_shell.os.killpg") as killpg,
+    ):
+        result = asyncio.run(executor({"action": {"commands": ["printf safe"]}}))
+
+    assert isinstance(result, ShellResult)
+    killpg.assert_called_once_with(process.pid, signal.SIGKILL)
+    process.kill.assert_called_once_with()
 
 
 def test_shell_executor_cancellation_before_process_start_is_preserved(tmp_path) -> None:
@@ -133,7 +194,8 @@ def test_shell_executor_cancellation_before_process_start_is_preserved(tmp_path)
 
 def test_shell_executor_gates_each_executed_command(tmp_path) -> None:
     process = AsyncMock()
-    process.communicate.return_value = (b"safe", b"")
+    process.kill = Mock()
+    process.wait.return_value = 0
     process.returncode = 0
     executor = make_shell_executor(str(tmp_path), [guard_git_hook])
 
@@ -153,12 +215,6 @@ def test_shell_executor_gates_each_executed_command(tmp_path) -> None:
         )
 
     assert isinstance(result, ShellResult)
-    spawn.assert_awaited_once_with(
-        "printf safe #",
-        cwd=str(tmp_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        start_new_session=True,
-    )
+    assert spawn.await_count == 1
     assert result.output[-1].exit_code == 1
     assert "blocked by security policy" in result.output[-1].stderr.lower()

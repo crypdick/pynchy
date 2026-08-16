@@ -7,9 +7,13 @@ import contextlib
 import os
 import signal
 import sys
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agents import ShellCallOutcome, ShellCommandOutput, ShellResult
+
+_PROCESS_EXIT_GRACE_SECONDS = 0.1
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -39,20 +43,38 @@ def make_shell_executor(
         _log(f"Shell ({cwd}): {command[:200]}")
 
         results: list[ShellCommandOutput] = []
+        deadline = asyncio.get_running_loop().time() + timeout_s
         for shell_command in command_list:
-            if blocked := await _blocked_message(before_tool_hooks, shell_command):
-                results.extend(_failure_result(blocked).output)
-                break
             proc: asyncio.subprocess.Process | None = None
-            try:
-                proc = await asyncio.create_subprocess_shell(
-                    shell_command,
-                    cwd=cwd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True,
-                )
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+            try:  # noqa: PLW0717 - one cleanup boundary must retain the spawned process.
+                if blocked := await asyncio.wait_for(
+                    _blocked_message(before_tool_hooks, shell_command),
+                    timeout=max(0, deadline - asyncio.get_running_loop().time()),
+                ):
+                    results.extend(_failure_result(blocked).output)
+                    break
+                with (
+                    tempfile.TemporaryFile() as stdout_file,
+                    tempfile.TemporaryFile() as stderr_file,
+                ):
+                    proc = await asyncio.wait_for(
+                        asyncio.create_subprocess_shell(
+                            shell_command,
+                            cwd=cwd,
+                            stdout=stdout_file,
+                            stderr=stderr_file,
+                            start_new_session=True,
+                        ),
+                        timeout=max(0, deadline - asyncio.get_running_loop().time()),
+                    )
+                    await asyncio.wait_for(
+                        proc.wait(),
+                        timeout=max(0, deadline - asyncio.get_running_loop().time()),
+                    )
+                    await _kill_process_group(proc)
+                    stdout_file.seek(0)
+                    stderr_file.seek(0)
+                    stdout, stderr = stdout_file.read(), stderr_file.read()
             except TimeoutError:
                 if proc is not None:
                     await _kill_process_group(proc)
@@ -100,9 +122,35 @@ def make_shell_executor(
 
 
 async def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
+    descendants = _process_group_pids(proc.pid)
     with contextlib.suppress(ProcessLookupError):
         os.killpg(proc.pid, signal.SIGKILL)
-    await proc.communicate()
+    with contextlib.suppress(ProcessLookupError):
+        proc.kill()
+    await proc.wait()
+    await _wait_for_process_exit(descendants)
+
+
+async def _wait_for_process_exit(pids: list[int]) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _PROCESS_EXIT_GRACE_SECONDS
+    while any(
+        Path(f"/proc/{pid}").exists()  # noqa: ASYNC240 - bounded local process metadata read.
+        for pid in pids
+    ):
+        if loop.time() >= deadline:
+            return
+        await asyncio.sleep(0.005)
+
+
+def _process_group_pids(process_group: int) -> list[int]:
+    members: list[int] = []
+    for stat_path in Path("/proc").glob("[0-9]*/stat"):
+        with contextlib.suppress(OSError, ValueError):
+            fields = stat_path.read_text().rsplit(")", 1)[1].split()
+            if int(fields[2]) == process_group:
+                members.append(int(stat_path.parent.name))
+    return members
 
 
 def _field(obj: object, name: str) -> object | None:
