@@ -7,6 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY --from=kubectl /bin/kubectl /usr/local/bin/kubectl
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    adb \
     ca-certificates \
     curl \
     git \
