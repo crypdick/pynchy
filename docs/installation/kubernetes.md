@@ -61,21 +61,23 @@ test.
 
 ## Shadow validation and cutover
 
-The checked-in manifest is deliberately safe for shadow validation:
+The checked-in manifest runs production channels and schedule reconciliation.
+For a shadow deployment, copy `deploy/k3s/pynchy.yaml` and make these temporary
+changes before applying it:
 
-- channel plugins are disabled;
-- the Linear integration is disabled so shadow startup cannot reconcile provider state;
-- `scheduler.reconcile_schedules` is `false`, so the Temporal worker can run
+- set `PLUGINS__DISCORD__ENABLED` and `PLUGINS__LINEAR__ENABLED` to `false`;
+- set `SCHEDULER__RECONCILE_SCHEDULES` to `false` so the Temporal worker can run
   test workflows without creating schedules or delayed workflows;
-- `scheduler.auto_deploy` is `false`, because Kubernetes releases replace
-  images instead of mutating a running source checkout;
-- the runtime harness is enabled for an injected end-to-end message.
+- add `PYNCHY_RUNTIME_HARNESS=1` for injected end-to-end messages.
+
+Keep `SCHEDULER__AUTO_DEPLOY=false`. Kubernetes releases replace images instead
+of mutating a running source checkout.
 
 Before cutover, prove service health, an injected agent response, required MCP
 tools, LiteLLM persistence, Temporal persistence, restart recovery, backup and
 restore, and rollback. Then stop the old service, take the final SQLite-safe
-copy, disable the runtime harness, enable the real channel plugins, and set
-`scheduler.reconcile_schedules = true` on the new deployment.
+copy, apply the production manifest, and verify the reconstructed Temporal
+inventory before routing messages to the new deployment.
 
 Do not restore a single-host Temporal SQLite database into PostgreSQL. Archive
 it for audit and rollback. Pynchy reconstructs current recurring schedules and
