@@ -48,15 +48,13 @@ spec:
             - name: SCHEDULER__TEMPORAL_ADDRESS
               value: pynchy-temporal:7233
             - name: SCHEDULER__RECONCILE_SCHEDULES
-              value: "false"
+              value: "true"
             - name: SCHEDULER__AUTO_DEPLOY
               value: "false"
             - name: PLUGINS__DISCORD__ENABLED
-              value: "false"
+              value: "true"
             - name: PLUGINS__LINEAR__ENABLED
-              value: "false"
-            - name: PYNCHY_RUNTIME_HARNESS
-              value: "1"
+              value: "true"
             - name: PYNCHY_DISABLE_SERVICE_INSTALL
               value: "1"
             - name: SERVER__HOST
