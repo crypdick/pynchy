@@ -91,6 +91,31 @@ def test_read_only_mount_keeps_source_permissions(tmp_path: Path) -> None:
     assert workspace.stat().st_mode & 0o7777 == 0o750
 
 
+def test_writable_ipc_mount_makes_existing_subdirectories_group_writable(tmp_path: Path) -> None:
+    ipc_root = tmp_path / "data" / "ipc" / "home"
+    input_dir = ipc_root / "input"
+    output_dir = ipc_root / "output"
+    input_dir.mkdir(parents=True, mode=0o755)
+    output_dir.mkdir(mode=0o755)
+
+    build_resources(
+        [
+            "run",
+            "--name",
+            "pynchy-home",
+            "-v",
+            f"{ipc_root}:/run/pynchy",
+            "pynchy-agent:latest",
+        ],
+        shared_root=tmp_path,
+        pvc_name="pynchy-data",
+        namespace="pynchy",
+    )
+
+    assert input_dir.stat().st_mode & 0o7777 == 0o2775
+    assert output_dir.stat().st_mode & 0o7777 == 0o2775
+
+
 def test_builds_detached_mcp_pod_and_service(
     tmp_path: Path,
 ) -> None:

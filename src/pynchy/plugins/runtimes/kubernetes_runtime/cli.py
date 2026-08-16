@@ -174,8 +174,14 @@ def _mount_spec(
     except ValueError as exc:
         raise ValueError(f"Mount source is outside Kubernetes shared root: {source}") from exc
     if not readonly and resolved.is_dir():
-        mode = stat.S_IMODE(resolved.stat().st_mode)
-        resolved.chmod(mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP)
+        writable_directories = [resolved]
+        if target == "/run/pynchy":
+            writable_directories.extend(
+                child for child in resolved.iterdir() if child.is_dir() and not child.is_symlink()
+            )
+        for directory in writable_directories:
+            mode = stat.S_IMODE(directory.stat().st_mode)
+            directory.chmod(mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP)
     mount: dict[str, object] = {"name": "shared", "mountPath": target}
     if relative.parts:
         mount["subPath"] = relative.as_posix()
