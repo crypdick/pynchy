@@ -120,9 +120,13 @@ class RuntimeProcessControl:
         )
 
     def send_message(self, runtime_id: RuntimeId, text: str) -> bool:
-        """Send a follow-up message to the active container through IPC."""
+        """Send best-effort context to an active scheduled-task container.
+
+        Interactive follow-ups need their own output handler and query ID, so
+        the queue serializes them as a separate warm turn instead of writing raw IPC.
+        """
         state = self._registry.get(runtime_id)
-        if state is None or not state.active or state.is_host_process:
+        if state is None or not state.active or not state.active_is_task or state.is_host_process:
             return False
         try:
             self._container_runtime.write_message(state.target.folder, text)

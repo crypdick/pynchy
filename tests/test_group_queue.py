@@ -559,20 +559,36 @@ class TestSendMessage:
     def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         assert queue.send_message(_runtime("group1@g.us"), "hello") is False
 
-    async def test_writes_ipc_file_when_active_with_folder(
+    async def test_defers_followup_while_interactive_turn_is_active(
         self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
     ):
-        """Successful send_message delegates to the bound runtime operation."""
-        completions: list[asyncio.Event] = []
+        completion = asyncio.Event()
 
-        async def process_messages(group_jid: str) -> TurnOutcome:
-            event = asyncio.Event()
-            completions.append(event)
-            await event.wait()
+        async def process_messages(_group_jid: str) -> TurnOutcome:
+            await completion.wait()
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
         queue.enqueue_message_check(_target("group1@g.us", "test-group"))
+        await asyncio.sleep(0.02)
+        queue.register_process(_runtime("test-group"), None, "container-1")
+
+        assert queue.send_message(_runtime("test-group"), "follow-up") is False
+        container_runtime.write_message.assert_not_called()
+
+        completion.set()
+        await asyncio.sleep(0.05)
+
+    async def test_writes_ipc_file_for_active_scheduled_task(
+        self, queue: GroupQueue, container_runtime: ContainerRuntimeOperations
+    ):
+        """Scheduled tasks accept best-effort context through IPC."""
+        completion = asyncio.Event()
+
+        async def run_task() -> None:
+            await completion.wait()
+
+        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", run_task)
         await asyncio.sleep(0.02)
 
         queue.register_process(_runtime("test-group"), None, "container-1")
@@ -582,7 +598,7 @@ class TestSendMessage:
         assert result is True
         container_runtime.write_message.assert_called_once_with("test-group", "hello world")
 
-        completions[0].set()
+        completion.set()
         await asyncio.sleep(0.05)
 
 
