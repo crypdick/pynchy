@@ -170,6 +170,27 @@ def test_shell_cleanup_only_signals_owned_process_group(tmp_path) -> None:
     process.kill.assert_called_once_with()
 
 
+def test_shell_cleanup_refuses_synthetic_process_group_id(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+    process = AsyncMock()
+    process.kill = Mock()
+    process.returncode = 0
+    process.wait.return_value = 0
+
+    with (
+        patch(
+            "agent_runner.cores.openai_shell.asyncio.create_subprocess_shell",
+            new=AsyncMock(return_value=process),
+        ),
+        patch("agent_runner.cores.openai_shell.os.killpg") as killpg,
+    ):
+        result = asyncio.run(executor({"action": {"commands": ["printf safe"]}}))
+
+    assert isinstance(result, ShellResult)
+    killpg.assert_not_called()
+    process.kill.assert_called_once_with()
+
+
 def test_shell_executor_cancellation_before_process_start_is_preserved(tmp_path) -> None:
     executor = make_shell_executor(str(tmp_path))
     started = asyncio.Event()
