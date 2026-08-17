@@ -26,6 +26,10 @@ TTS uses its own volume only for downloaded model caches.
    - `repos`: repositories configured as `repos.root`
    - `external`: any explicitly configured external files
 
+   Keep the shared tree owned by UID and GID `3000`, including restored
+   `.runtime` volume directories. The Pynchy host runs as that identity and
+   must be able to prepare writable mounts for managed agent and MCP Pods.
+
 2. Build `pynchy-host:shadow` from `deploy/k3s/host.Dockerfile` and
    `pynchy-pocket-tts:shadow` from `deploy/k3s/pocket-tts.Dockerfile`. Build
    the configured agent and private MCP images, then import the local images
