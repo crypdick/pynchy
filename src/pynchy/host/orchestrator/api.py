@@ -47,6 +47,10 @@ from pynchy.host.orchestrator.scheduled_binding import (
     ensure_scheduled_task_conversation_open,
 )
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent
+from pynchy.host.orchestrator.terminal_task_retirement import (
+    cancel_scheduled_host_job,
+    cancel_scheduled_task,
+)
 from pynchy.host.orchestrator.workspace_artifacts import (
     cleanup_orphaned_workspace_artifacts,
     cleanup_workspace_artifacts,
@@ -121,6 +125,8 @@ __all__ = [
     "SessionManager",
     "TextFormatter",
     "build_container_image",
+    "cancel_scheduled_host_job",
+    "cancel_scheduled_task",
     "cleanup_orphaned_workspace_artifacts",
     "cleanup_workspace_artifacts",
     "configure_config_refresh_runtime",

@@ -258,6 +258,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # beartype resolves metho
     DirectCommandOutput,
 )
 from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
+from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.host.orchestrator.runtime_process_control import ContainerRuntimeOperations
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
 from pynchy.host.orchestrator.scheduler_deps import (  # beartype resolves method annotations.
@@ -1858,7 +1859,13 @@ class PynchyApp(ThreadRouting):
             messages,
             final_cursor,
             cast("learning_capture.LearningRunSummary", summary),
-            get_messages_since,
+            lambda jid, cursor: load_allowed_group_messages(
+                self,
+                jid,
+                group,
+                cursor,
+                get_messages_since,
+            ),
             self.start_learning_review_workflow,
             enabled=self._learning_review_enabled,
             review_after_turn=self._learning_review_after_turn,

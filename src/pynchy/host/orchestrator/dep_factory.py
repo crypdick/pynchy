@@ -97,6 +97,8 @@ from pynchy.host.orchestrator.temporal.scheduler import (
 )
 from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.host.orchestrator.terminal_task_retirement import (
+    cancel_scheduled_host_job,
+    cancel_scheduled_task,
     retire_conversation_tasks,
     retire_provider_work_item_execution,
 )
@@ -126,8 +128,6 @@ from pynchy.state.api import (
     conversation_control_state_matches,
     create_host_job,
     create_task,
-    delete_host_job,
-    delete_task,
     deny_action_intent,
     expire_action_intent,
     fail_action_intent,
@@ -270,8 +270,8 @@ class _ScheduledWorkStore:
     update_task = staticmethod(update_task)
     update_host_job = staticmethod(update_host_job)
     resume_task = staticmethod(resume_task)
-    delete_task = staticmethod(delete_task)
-    delete_host_job = staticmethod(delete_host_job)
+    cancel_task = staticmethod(cancel_scheduled_task)
+    cancel_host_job = staticmethod(cancel_scheduled_host_job)
 
 
 async def _scheduled_work_status(

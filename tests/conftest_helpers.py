@@ -28,6 +28,8 @@ from pynchy.host.container_manager.security.cop import (
 from pynchy.host.orchestrator.agent_runner import ContainerAgentOperations
 from pynchy.host.orchestrator.api import (
     ContainerRuntimeOperations,
+    cancel_scheduled_host_job,
+    cancel_scheduled_task,
     execute_action_intent,
     policy_approval_timestamp,
     prepare_action_intent,
@@ -53,8 +55,6 @@ from pynchy.state import (
     approve_action_intent,
     create_host_job,
     create_task,
-    delete_host_job,
-    delete_task,
     deny_action_intent,
     expire_action_intent,
     fail_action_intent,
@@ -352,8 +352,8 @@ class _TestScheduledWorkStore:
     update_task = staticmethod(update_task)
     update_host_job = staticmethod(update_host_job)
     resume_task = staticmethod(resume_task)
-    delete_task = staticmethod(delete_task)
-    delete_host_job = staticmethod(delete_host_job)
+    cancel_task = staticmethod(cancel_scheduled_task)
+    cancel_host_job = staticmethod(cancel_scheduled_host_job)
 
 
 class NullChannel:

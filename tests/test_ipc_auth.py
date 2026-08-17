@@ -181,7 +181,9 @@ class TestCancelTaskAuth:
         )
 
         await dispatch({"type": "cancel_task", "taskId": "task-to-cancel"}, "admin-1", True, deps)
-        assert await get_task_by_id("task-to-cancel") is None
+        task = await get_task_by_id("task-to-cancel")
+        assert task is not None
+        assert task.status == "cancelled"
 
     async def test_non_admin_can_cancel_own_task(self, deps):
         await create_task(
@@ -205,7 +207,9 @@ class TestCancelTaskAuth:
             False,
             deps,
         )
-        assert await get_task_by_id("task-own") is None
+        task = await get_task_by_id("task-own")
+        assert task is not None
+        assert task.status == "cancelled"
 
     async def test_non_admin_cannot_cancel_other_groups_task(self, deps):
         await create_task(
