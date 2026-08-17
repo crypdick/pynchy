@@ -61,7 +61,7 @@ def _check_tunnel_provider(t: TunnelProvider) -> str | None:
 
 
 def check_tunnels(pm: pluggy.PluginManager) -> None:
-    """Check all registered tunnel providers, warn if none connected.
+    """Check all registered tunnel providers.
 
     Non-fatal: logs warnings but never raises.
     """
@@ -76,14 +76,5 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
         logger.info("No tunnel plugins registered")
         return
 
-    connected: list[str] = []
     for t in tunnels:
-        tunnel_name = _check_tunnel_provider(t)
-        if tunnel_name is not None:
-            connected.append(tunnel_name)
-
-    if not connected:
-        logger.warning(
-            "No tunnels connected — remote access may be unavailable. "
-            "Check your tunnel provider or install a tunnel plugin."
-        )
+        _check_tunnel_provider(t)

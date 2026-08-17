@@ -85,6 +85,9 @@ async def ensure_issue_control(
             ensure_runtime_workspace_policy_owner(profile.folder, conversation.workspace)
             await ensure_thread_link_pinned(app.channels, binding.thread_jid, control.url)
             return
+    parent = app.workspaces.get(control.parent_jid)
+    if parent is None:
+        raise ValueError("Linear issue control parent workspace is not registered")
     ensured = await ensure_conversation_workspace(
         ConversationWorkspaceContext(
             channels=lambda: app.channels,
@@ -96,7 +99,7 @@ async def ensure_issue_control(
         ),
         ConversationControlRequest(
             conversation_id=conversation.id,
-            parent_workspace=GroupFolder(control.workspace),
+            parent_workspace=GroupFolder(parent.folder),
             parent_jid=ChatJid(control.parent_jid),
             title=control.title,
             owner_workspace=conversation.workspace,

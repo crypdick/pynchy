@@ -28,6 +28,8 @@ from pynchy.redaction import irreversibly_redact
 
 _CONTAINER_CLI_ENV = "PYNCHY_CONTAINER_CLI"
 _KUBERNETES_CLI = "pynchy-kubernetes-runtime"
+_SLOW_DOCKER_INSPECT_SECONDS = 0.5
+_SLOW_KUBERNETES_INSPECT_SECONDS = 2.0
 
 
 def _container_cli() -> str:
@@ -122,12 +124,17 @@ async def is_container_running(name: str) -> bool:
     """Check if a Docker container is currently running."""
     start = time.monotonic()
     result = await run_docker("inspect", "-f", "{{.State.Running}}", name, check=False)
-    elapsed_ms = (time.monotonic() - start) * 1000
-    if elapsed_ms > 500:
+    elapsed_seconds = time.monotonic() - start
+    slow_threshold = (
+        _SLOW_KUBERNETES_INSPECT_SECONDS
+        if Path(_container_cli()).name == _KUBERNETES_CLI
+        else _SLOW_DOCKER_INSPECT_SECONDS
+    )
+    if elapsed_seconds > slow_threshold:
         logger.warning(
             "Slow docker inspect",
             container=name,
-            elapsed_ms=round(elapsed_ms),
+            elapsed_ms=round(elapsed_seconds * 1000),
         )
     return result.stdout.strip() == "true"
 
