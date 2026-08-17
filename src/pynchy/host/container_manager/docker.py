@@ -50,7 +50,7 @@ def managed_container_url(name: str, *, host_port: int, container_port: int) -> 
 class HealthCheckRequest:
     """Parameters for waiting on a container or local process health check."""
 
-    container_name: str
+    container_name: str | None
     url: str
     health_timeout_seconds: float = 90
     poll_interval: float = 1.0
@@ -184,7 +184,11 @@ async def wait_healthy(request: HealthCheckRequest) -> None:
                 )
                 return
 
-            if request.process is None and not await is_container_running(request.container_name):
+            if (
+                request.process is None
+                and request.container_name is not None
+                and not await is_container_running(request.container_name)
+            ):
                 logs = await run_docker("logs", "--tail", "30", request.container_name, check=False)
                 logger.error(
                     "Container exited",
@@ -196,10 +200,8 @@ async def wait_healthy(request: HealthCheckRequest) -> None:
 
             await asyncio.sleep(request.poll_interval)
 
-    msg = (
-        f"Container {request.container_name} did not become healthy within "
-        f"{request.health_timeout_seconds}s"
-    )
+    target = request.container_name or request.url
+    msg = f"{target} did not become healthy within {request.health_timeout_seconds}s"
     raise TimeoutError(msg)
 
 
