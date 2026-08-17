@@ -83,7 +83,7 @@ async def test_cancel_stops_active_execution_before_retiring_task(
     ]
 
 
-async def test_cancel_missing_scheduled_work_is_idempotent(monkeypatch) -> None:
+async def test_cancel_missing_scheduled_work_is_idempotent(deps, monkeypatch) -> None:
     cancel_workflow = AsyncMock()
     monkeypatch.setattr(
         "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
