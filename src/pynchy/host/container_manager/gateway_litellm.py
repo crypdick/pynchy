@@ -478,7 +478,7 @@ class LiteLLMGateway:
         if not self.managed:
             await wait_healthy(
                 HealthCheckRequest(
-                    container_name="external-litellm",
+                    container_name=None,
                     url=f"http://localhost:{self.port}/health/readiness",
                     health_timeout_seconds=_HEALTH_TIMEOUT,
                     poll_interval=_HEALTH_POLL_INTERVAL,

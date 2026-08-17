@@ -103,6 +103,7 @@ async def test_external_litellm_checks_readiness_without_managing_containers(
 
     docker.assert_not_awaited()
     request = wait_healthy.await_args.args[0]
+    assert request.container_name is None
     assert request.url == "http://localhost:4000/health/readiness"
     assert request.headers == {"Authorization": "Bearer test-master-key"}
 

@@ -142,6 +142,40 @@ async def test_docker_wait_healthy_accepts_an_http_endpoint() -> None:
 
 
 @pytest.mark.asyncio
+async def test_docker_wait_healthy_does_not_inspect_an_external_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter((503, 200))
+
+    async def eventually_healthy(_request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
+        return web.Response(status=next(responses))
+
+    app = web.Application()
+    app.router.add_get("/health", eventually_healthy)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    inspect = AsyncMock()
+    monkeypatch.setattr(docker, "is_container_running", inspect)
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        await docker.wait_healthy(
+            docker.HealthCheckRequest(
+                container_name=None,
+                url=f"http://127.0.0.1:{port}/health",
+                health_timeout_seconds=1.0,
+                poll_interval=0.01,
+            )
+        )
+    finally:
+        await runner.cleanup()
+
+    inspect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_docker_wait_healthy_can_accept_non_server_errors() -> None:
     async def unavailable(_request: web.Request) -> web.Response:
         await asyncio.sleep(0)
