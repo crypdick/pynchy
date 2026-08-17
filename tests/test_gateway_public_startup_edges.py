@@ -248,6 +248,31 @@ async def test_startup_failure_retains_gateway_when_its_cleanup_fails() -> None:
     set_gateway.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_stop_gateway_retains_both_handles_when_both_cleanups_fail() -> None:
+    mcp_manager = MagicMock()
+    mcp_manager.stop_all = AsyncMock(side_effect=RuntimeError("MCP cleanup failed"))
+    gateway = MagicMock()
+    gateway.stop = AsyncMock(side_effect=RuntimeError("gateway cleanup failed"))
+
+    with (
+        patch(
+            "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
+            return_value=mcp_manager,
+        ),
+        patch("pynchy.host.container_manager.mcp.manager.set_mcp_manager") as set_manager,
+        patch("pynchy.host.container_manager.gateway.get_gateway", return_value=gateway),
+        patch("pynchy.host.container_manager.gateway._set_gateway") as set_gateway,
+        pytest.raises(RuntimeError, match="MCP cleanup failed"),
+    ):
+        await stop_gateway()
+
+    mcp_manager.stop_all.assert_awaited_once()
+    set_manager.assert_not_called()
+    gateway.stop.assert_awaited_once()
+    set_gateway.assert_not_called()
+
+
 def test_collect_yaml_environment_skips_placeholder_values(tmp_path: Path) -> None:
     config = tmp_path / "litellm.yaml"
     config.write_text("api_key: os.environ/OPENAI_API_KEY\n")

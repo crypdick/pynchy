@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pynchy.host.container_manager.ipc.registry import dispatch
+from pynchy.host.orchestrator.api import cancel_scheduled_host_job, cancel_scheduled_task
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state import create_task
 
@@ -32,6 +33,14 @@ pytest_plugins = ("tests.ipc_auth_support",)
                 ),
                 "pynchy-agent-task-task-running-2025-06-01T00-00-00.000Z",
             ],
+        ),
+        (
+            "once",
+            {
+                "superseded_occurrence_generation": 0,
+                "superseded_occurrence_due_at": "2025-06-01T00:00:00.000Z",
+            },
+            ["pynchy-agent-task-task-running-2025-06-01T00-00-00.000Z"],
         ),
         ("cron", {}, ["pynchy-agent-schedule-task-running-workflow"]),
     ],
@@ -72,3 +81,16 @@ async def test_cancel_stops_active_execution_before_retiring_task(
         *(("workflow", workflow_id) for workflow_id in workflow_ids),
         ("durable", "task-running"),
     ]
+
+
+async def test_cancel_missing_scheduled_work_is_idempotent(monkeypatch) -> None:
+    cancel_workflow = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
+        cancel_workflow,
+    )
+
+    await cancel_scheduled_task("missing-task")
+    await cancel_scheduled_host_job("missing-host-job")
+
+    cancel_workflow.assert_not_awaited()
