@@ -370,15 +370,25 @@ async def stop_gateway() -> None:
         set_mcp_manager,
     )
 
-    mcp_mgr = get_mcp_manager()
-    if mcp_mgr is not None:
-        await mcp_mgr.stop_all()
-        set_mcp_manager(None)
+    cleanup_error: Exception | None = None
+    if (mcp_mgr := get_mcp_manager()) is not None:
+        try:
+            await mcp_mgr.stop_all()
+        except Exception as exc:  # noqa: BLE001  # allow: exception-handling - continue independent cleanup.
+            cleanup_error = exc
+        else:
+            set_mcp_manager(None)
 
-    gateway = get_gateway()
-    if gateway is not None:
-        await gateway.stop()
-        _set_gateway(None)
+    if (gateway := get_gateway()) is not None:
+        try:
+            await gateway.stop()
+        except Exception:  # allow: exception-handling - retain failed handle for retry.
+            if cleanup_error is None:
+                raise
+        else:
+            _set_gateway(None)
+    if cleanup_error is not None:
+        raise cleanup_error
 
 
 async def stop_gateway_after_startup_failure() -> None:
