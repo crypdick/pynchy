@@ -64,7 +64,9 @@ async def _wait_for_pid_file(pid_file: Path) -> int:
         except FileNotFoundError:
             await asyncio.sleep(0.01)
             continue
-        return int(contents)
+        if contents:
+            return int(contents)
+        await asyncio.sleep(0.01)
     pytest.fail("subprocess did not record its PID")
 
 
