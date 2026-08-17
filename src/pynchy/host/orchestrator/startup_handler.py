@@ -11,7 +11,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves startup annotations at runtime.
-from typing import TYPE_CHECKING, Any, NoReturn, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NoReturn, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
     CheckpointControlState,
@@ -21,6 +21,10 @@ from pynchy.atomic_json import write_json_atomic
 from pynchy.deployments import DeployRevision
 from pynchy.host.orchestrator import adapters, session_handler
 from pynchy.host.orchestrator.deploy import rollback_checkout
+from pynchy.host.orchestrator.messaging.sender_policy import (
+    SenderPolicyDeps,
+    load_allowed_group_messages,
+)
 from pynchy.host.orchestrator.startup_rollback import (
     ensure_rollback_evidence_durable,
     terminate_failed_startup,
@@ -109,7 +113,7 @@ _CLAIMED_DEPLOY_CONTINUATION_NAME = "deploy_continuation.startup.json"
 
 
 @runtime_checkable
-class StartupDeps(Protocol):
+class StartupDeps(SenderPolicyDeps, Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
@@ -118,9 +122,6 @@ class StartupDeps(Protocol):
 
     @property
     def queue(self) -> GroupQueue: ...
-
-    @property
-    def channels(self) -> list[Any]: ...
 
     @property
     def sessions(self) -> dict[str, str]: ...
@@ -212,7 +213,13 @@ async def recover_pending_messages(
             continue
 
         since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
-        pending = await get_messages_since(chat_jid, since_timestamp)
+        pending = await load_allowed_group_messages(
+            deps,
+            chat_jid,
+            group,
+            since_timestamp,
+            get_messages_since,
+        )
         if pending:
             logger.info(
                 "Recovery: found unprocessed messages",

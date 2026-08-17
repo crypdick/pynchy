@@ -32,6 +32,10 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     reclassify_batch_host_controls,
     turn_boundary_lock,
 )
+from pynchy.host.orchestrator.messaging.sender_policy import (
+    allowed_group_messages,
+    load_allowed_group_messages,
+)
 from pynchy.identifiers import (
     RuntimeId,  # beartype resolves inbound routing annotations at runtime.
 )
@@ -66,7 +70,7 @@ async def _route_incoming_group(
     when the group should be skipped (channel filtering, system-notice
     filtering, special commands).
     """
-    group_messages = _allowed_group_messages(deps, group_jid, group, group_messages)
+    group_messages = allowed_group_messages(deps, group_jid, group, group_messages)
     if not group_messages:
         return
 
@@ -78,42 +82,6 @@ async def _route_incoming_group(
         return
 
     await _route_pending_messages(deps, group_jid, group, all_pending)
-
-
-def _channel_plugin_name(deps: MessageHandlerDeps, group_jid: str) -> str | None:
-    return next((ch.name for ch in deps.channels if ch.owns_jid(group_jid)), None)
-
-
-def _allowed_group_messages(
-    deps: MessageHandlerDeps,
-    group_jid: str,
-    group: WorkspaceProfile,
-    group_messages: list[NewMessage],
-) -> list[NewMessage]:
-    channel_plugin_name = _channel_plugin_name(deps, group_jid)
-    authenticated_external_ids = {
-        message.id
-        for message in group_messages
-        if (message.metadata or {}).get("authenticated_external_route") is True
-    }
-    channel_messages = [
-        message for message in group_messages if message.id not in authenticated_external_ids
-    ]
-    allowed_channel_ids = {
-        message.id
-        for message in deps.filter_allowed_messages(channel_messages, group, channel_plugin_name)
-    }
-    # The marker bypasses only the control channel's sender allowlist. The
-    # provider body remains untrusted and taints the agent invocation.
-    filtered_messages = [
-        message
-        for message in group_messages
-        if message.id in authenticated_external_ids or message.id in allowed_channel_ids
-    ]
-    if not filtered_messages:
-        logger.info("route_trace", step="skip_all_filtered", group=group.name)
-        return []
-    return filtered_messages
 
 
 def _routing_cursor(deps: MessageHandlerDeps, group_jid: str) -> str:
@@ -132,7 +100,13 @@ async def _pending_messages_for_group(
         group=group.name,
         cursor=cursor[:30] if cursor else "empty",
     )
-    all_pending = await get_messages_since(group_jid, cursor)
+    all_pending = await load_allowed_group_messages(
+        deps,
+        group_jid,
+        group,
+        cursor,
+        get_messages_since,
+    )
     if not all_pending:
         logger.info("route_trace", step="skip_no_pending", group=group.name)
         return []
@@ -205,9 +179,12 @@ async def _intercept_host_control_batch(
         # This lock may have waited for the active turn to finalize. Refresh
         # against the now-current cursor so an already-committed routed
         # delivery cannot be forwarded into a duplicate agent turn.
-        all_pending[:] = await get_messages_since(
+        all_pending[:] = await load_allowed_group_messages(
+            deps,
             group_jid,
+            group,
             _routing_cursor(deps, group_jid),
+            get_messages_since,
         )
         if not any(
             message.message_type != "host" and any(host_control_kind(deps, message))

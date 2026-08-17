@@ -11,6 +11,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype 
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
+from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves control annotations at runtime.
@@ -205,9 +206,12 @@ async def intercept_immediate_checkpoint_controls(
         return None
 
     async with turn_boundary_lock(chat_jid):
-        pending[:] = await get_messages_since(
+        pending[:] = await load_allowed_group_messages(
+            deps,
             chat_jid,
+            group,
             deps.routing_cursor(chat_jid),
+            get_messages_since,
         )
         handled = False
         for message in pending:

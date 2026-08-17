@@ -39,6 +39,7 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     begin_message_turn,
 )
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
+from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.host.orchestrator.messaging.turn_control import (
     AgentBatch,
     TurnPreparationCallbacks,
@@ -394,7 +395,13 @@ async def process_group_messages(
         deps.message_data_dir,
         TurnPreparationCallbacks(
             process_pending=lambda jid: process_group_messages(deps, jid),
-            get_pending_messages=get_messages_since,
+            get_pending_messages=lambda jid, cursor: load_allowed_group_messages(
+                deps,
+                jid,
+                group,
+                cursor,
+                get_messages_since,
+            ),
         ),
     )
     if not isinstance(prepared, AgentBatch):
