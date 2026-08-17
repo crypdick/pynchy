@@ -123,6 +123,20 @@ async def test_reports_unready_when_proxy_cannot_connect(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_unmanaged_gateway_skips_container_lifecycle(tmp_path: Path):
+    gateway = LiteLLMGateway(
+        config_path=str(tmp_path / "config.yaml"),
+        data_dir=tmp_path,
+        managed=False,
+        **_LITELLM_KWARGS,
+    )
+    gateway.port = 0
+
+    assert await gateway.is_ready() is False
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
 async def test_supervisor_rechecks_after_a_healthy_probe(monkeypatch):
     sleep = AsyncMock(side_effect=(None, asyncio.CancelledError))
     recover = AsyncMock(return_value=False)

@@ -452,6 +452,22 @@ class TestMcpManagerLifecycleContracts:
         ensure_running.assert_awaited_once_with("canary")
 
     @pytest.mark.asyncio
+    async def test_canary_endpoint_uses_managed_container_url(self, tmp_path, monkeypatch):
+        config = McpServerConfig(type="docker", image="image", port=8003)
+        manager = await _synced_manager(
+            tmp_path,
+            monkeypatch,
+            server_names=("canary",),
+            server_configs={"canary": config},
+        )
+        monkeypatch.setattr(manager, "ensure_running", AsyncMock())
+        container_url = MagicMock(return_value="http://managed:8003")
+        monkeypatch.setattr(mcp_manager, "managed_container_url", container_url)
+
+        assert await manager.get_canary_server_endpoint("canary") == "http://managed:8003"
+        container_url.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_canary_endpoint_rejects_missing_or_ambiguous_servers(
         self, tmp_path, monkeypatch
     ):

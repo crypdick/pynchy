@@ -122,9 +122,17 @@ def make_shell_executor(
 
 
 async def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
-    descendants = _process_group_pids(proc.pid)
+    process_group = proc.pid
+    if type(process_group) is not int or process_group <= 1 or process_group == os.getpgrp():
+        _log(f"Refusing unsafe process-group cleanup target: {process_group!r}")
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        await proc.wait()
+        return
+
+    descendants = _process_group_pids(process_group)
     with contextlib.suppress(ProcessLookupError):
-        os.killpg(proc.pid, signal.SIGKILL)
+        os.killpg(process_group, signal.SIGKILL)
     with contextlib.suppress(ProcessLookupError):
         proc.kill()
     await proc.wait()

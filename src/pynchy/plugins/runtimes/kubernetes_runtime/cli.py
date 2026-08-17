@@ -115,7 +115,7 @@ def _apply_run_option(request: _RunRequest, option: str, value: str) -> None:
         request.mounts.append(_parse_volume(value))
     elif option == "--mount":
         request.mounts.append(_parse_mount(value))
-    elif option == "-p":
+    else:
         request.ports.append(_container_port(value))
 
 
