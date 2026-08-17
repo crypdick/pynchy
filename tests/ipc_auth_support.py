@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
@@ -98,8 +100,12 @@ class MockDeps(NullIpcDeps):
 
 
 @pytest.fixture
-async def deps():
+async def deps(monkeypatch):
     await init_test_database()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
+        AsyncMock(return_value=False),
+    )
 
     groups = {
         "admin-1@g.us": ADMIN_GROUP,

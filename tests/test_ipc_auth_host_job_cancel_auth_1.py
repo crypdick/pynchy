@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.state import (
     create_host_job,
@@ -37,9 +39,9 @@ THIRD_GROUP = WorkspaceProfile(
 
 
 class TestHostJobCancelAuth:
-    """Tests for cancel_task routing host job IDs to delete_host_job."""
+    """Tests for cancel_task routing host job IDs through lifecycle retirement."""
 
-    async def test_admin_can_cancel_host_job(self, deps):
+    async def test_admin_cancels_running_host_job_before_retirement(self, deps, monkeypatch):
         await create_host_job(
             {
                 "id": "host-cancel-1",
@@ -54,9 +56,21 @@ class TestHostJobCancelAuth:
                 "enabled": True,
             }
         )
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
+            AsyncMock(side_effect=lambda called_id: calls.append(("workflow", called_id))),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.terminal_task_retirement.delete_host_job",
+            AsyncMock(side_effect=lambda called_id: calls.append(("durable", called_id))),
+        )
 
         await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "admin-1", True, deps)
-        assert await get_host_job_by_id("host-cancel-1") is None
+        assert calls == [
+            ("workflow", "pynchy-host-job-schedule-host-cancel-1-workflow"),
+            ("durable", "host-cancel-1"),
+        ]
 
     async def test_non_admin_cannot_cancel_host_job(self, deps):
         await create_host_job(

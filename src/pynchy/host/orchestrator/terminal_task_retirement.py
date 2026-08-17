@@ -9,7 +9,12 @@ from pynchy.conversation.api import (
     ConversationId,
     ConversationSubjectKey,
 )
-from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
+from pynchy.host.orchestrator.temporal.schedules import (
+    agent_task_schedule_id,
+    agent_task_workflow_id,
+    database_host_job_schedule_id,
+    database_host_job_workflow_id,
+)
 from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
 from pynchy.host.orchestrator.webhook_terminal_retirement import (
     TerminalConversationRetirementDeps,
@@ -17,13 +22,16 @@ from pynchy.host.orchestrator.webhook_terminal_retirement import (
 )
 from pynchy.identifiers import GroupFolder
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
+    ScheduledTask,
+    agent_task_occurrence_workflow_id,
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
     clear_in_flight_turn,
+    delete_host_job,
     get_conversation,
     get_conversation_for_subject_key,
+    get_host_job_by_id,
     get_task_by_id,
     get_tasks_for_conversation,
     get_unfinished_work_item_execution,
@@ -34,6 +42,47 @@ from pynchy.state.api import (
 from pynchy.work_items.api import (
     WorkItemExecution,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
 )
+
+
+async def cancel_scheduled_task(task_id: str) -> None:
+    """Cancel active execution before retiring one scheduled task checkpoint."""
+    task = await get_task_by_id(task_id)
+    if task is None:
+        return
+    workflow_ids = [
+        agent_task_workflow_id(task)
+        if task.schedule_type == "once"
+        else f"{agent_task_schedule_id(task)}-workflow"
+    ]
+    if (
+        task.schedule_type == "once"
+        and task.superseded_occurrence_due_at is not None
+        and task.superseded_occurrence_generation is not None
+    ):
+        superseded_id = agent_task_occurrence_workflow_id(
+            task.id,
+            task.superseded_occurrence_due_at,
+            task.superseded_occurrence_generation,
+        )
+        if superseded_id not in workflow_ids:
+            workflow_ids.append(superseded_id)
+    for workflow_id in workflow_ids:
+        await cancel_scheduled_agent_workflow(workflow_id)
+    await cancel_task_and_checkpoint(task_id)
+
+
+async def cancel_scheduled_host_job(job_id: str) -> None:
+    """Cancel active execution before deleting one durable host job."""
+    job = await get_host_job_by_id(job_id)
+    if job is None:
+        return
+    workflow_id = (
+        database_host_job_workflow_id(job)
+        if job.schedule_type == "once"
+        else f"{database_host_job_schedule_id(job)}-workflow"
+    )
+    await cancel_scheduled_agent_workflow(workflow_id)
+    await delete_host_job(job_id)
 
 
 async def retire_conversation_tasks(conversation_id: ConversationId) -> None:

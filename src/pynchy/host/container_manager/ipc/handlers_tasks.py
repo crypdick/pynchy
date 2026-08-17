@@ -342,7 +342,7 @@ async def _handle_cancel_task(
 ) -> None:
     store = _scheduled_work_store(deps)
     task_id = data.get("taskId", "")
-    action = store.delete_host_job if task_id.startswith("host-") else store.delete_task
+    action = store.cancel_host_job if task_id.startswith("host-") else store.cancel_task
     await _authorized_task_action(
         data,
         source_group,

@@ -114,7 +114,7 @@ outside the group's `responses/` directory.
 | `schedule_host_job` | Schedule a shell command on the host | Yes |
 | `pause_task` | Pause a task | No (own tasks) |
 | `resume_task` | Resume a task | No (own tasks) |
-| `cancel_task` | Delete a task | No (own tasks) |
+| `cancel_task` | Stop active execution and cancel a task projection | No (own tasks) |
 | `task_definition` | Read one task prompt and editable metadata | No (own tasks) |
 | `update_scheduled_task` | Update one task prompt or status | No (own tasks) |
 | `register_group` | Register a new chat group | Yes |
