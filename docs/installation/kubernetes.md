@@ -37,6 +37,19 @@ TTS uses its own volume only for downloaded model caches.
 4. Apply `deploy/k3s` with Kustomize and wait for all workloads to become
    ready.
 
+## Back up runtime state
+
+Install `deploy/k3s/backup.sh` on the node and schedule it with
+`deploy/k3s/pynchy-k3s-backup.cron` before the host backup system. It creates
+SQLite-safe copies of `messages.db` and `neonize.db` plus native PostgreSQL
+dumps of the LiteLLM, Temporal, and Temporal visibility databases. The script
+keeps 14 local generations under the Pynchy storage root.
+
+Exclude the live `pynchy-k3s/postgres` directory and live SQLite database files
+from file-level backup plans. Back up the generated `pynchy-k3s/backups`
+directory instead. ZFS snapshots remain useful for short rollback windows, but
+they do not replace PostgreSQL dumps or off-host backups.
+
 The host image includes `kubectl`, Codex, and GitHub CLI for direct-host admin
 workspaces. The Pynchy service account has Pod, Pod log, and Service permissions
 only inside the `pynchy` namespace. K3s hosts with a default-deny host firewall

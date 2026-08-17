@@ -19,3 +19,13 @@ def test_android_usb_bridge_is_unprivileged_and_k3s_local() -> None:
     assert "localfilesystem:/run/pynchy-adb/adb.sock" in service
     assert "path: /run/pynchy-adb" in manifest
     assert "privileged: true" not in manifest
+
+
+def test_k3s_backup_uses_logical_database_snapshots() -> None:
+    script = Path("deploy/k3s/backup.sh").read_text(encoding="utf-8")
+
+    assert ".backup '$partial/$database'" in script
+    assert "litellm temporal temporal_visibility" in script
+    assert "pg_dump -U" in script
+    assert "pg_restore -l" in script
+    assert "/var/lib/postgresql/data/.pynchy-backup-$timestamp" in script
