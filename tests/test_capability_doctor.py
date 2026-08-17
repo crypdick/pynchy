@@ -160,6 +160,7 @@ def test_doctor_rejects_malformed_workspace_capability_payload(
     payload: object,
     message: str,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.urllib.request, "urlopen", Mock(return_value=_Response(payload)))
     monkeypatch.setattr(
         sys,

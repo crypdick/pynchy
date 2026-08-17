@@ -45,7 +45,7 @@ def configure_container_process_runtime(
     *,
     container_cli: str,
     is_apple_runtime: bool,
-    container_is_running: Callable[[str], bool],
+    container_is_running: Callable[[str], bool] | None,
 ) -> None:
     """Inject the selected container runtime's process operations."""
     _runtime.container_cli = container_cli

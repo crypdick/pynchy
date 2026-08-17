@@ -90,6 +90,16 @@ async def test_runtime_probe_checks_non_apple_runtime():
     probe.assert_called_once_with("worker")
 
 
+async def test_runtime_probe_without_configured_probe_is_not_running():
+    process.configure_container_process_runtime(
+        container_cli="docker",
+        is_apple_runtime=False,
+        container_is_running=None,
+    )
+
+    assert await process.runtime_container_running("worker") is False
+
+
 async def test_orphan_scan_degrades_when_process_listing_cannot_start():
     with (
         patch("pynchy.host.container_manager.process._runtime.is_apple_runtime", True),
