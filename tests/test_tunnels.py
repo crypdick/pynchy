@@ -240,8 +240,10 @@ class TestCheckTunnels:
     def test_tunnel_not_available(self):
         tunnel = self._make_tunnel(available=False)
         pm = self._make_pm([tunnel])
-        check_tunnels(pm)  # Should not raise
+        with patch("pynchy.plugins.tunnels.api.logger.warning") as warning:
+            check_tunnels(pm)
         assert tunnel.is_connected_calls == 0
+        warning.assert_not_called()
 
     def test_tunnel_check_exception(self):
         tunnel = _FakeTunnel(available_error=RuntimeError("boom"))

@@ -319,6 +319,12 @@ async def test_run_app_reconciles_workspaces_boards_and_connection_runtimes(
 @pytest.mark.asyncio
 async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> None:
     app = PynchyApp()
+    app.workspaces["discord:channel:health-forum"] = WorkspaceProfile(
+        jid="discord:channel:health-forum",
+        name="Health",
+        folder="health",
+        trigger="@Pynchy",
+    )
     conversation = _conversation()
     ensured = MagicMock()
     ensured.profile.folder = "health__thread_conversation-1"
@@ -374,6 +380,67 @@ async def test_linear_issue_control_targets_managed_forum_root(monkeypatch) -> N
     ensure_link.assert_awaited_once_with(
         app.channels, ensured.control.binding.thread_jid, control.url
     )
+
+
+@pytest.mark.asyncio
+async def test_linear_issue_control_places_semantic_child_under_physical_parent(
+    monkeypatch,
+) -> None:
+    app = PynchyApp()
+    parent = WorkspaceProfile(
+        jid="discord:channel:pynchy-forum",
+        name="Pynchy",
+        folder="pynchy",
+        trigger="@Pynchy",
+    )
+    conversation = Conversation(
+        id=ConversationId("conversation-1"),
+        workspace="pynchy-daily-agent-failure-review",
+        subject=ConversationSubject(
+            ConversationSubjectNamespace("linear:issue"),
+            ConversationSubjectKey("issue-1"),
+        ),
+        session_id=None,
+        created_at="2026-07-31T08:00:00Z",
+        updated_at="2026-07-31T08:00:00Z",
+    )
+    control = LinearIssueControl(
+        issue_id="issue-1",
+        workspace=conversation.workspace,
+        parent_jid=parent.jid,
+        account_name="linear",
+        title="[SYN-1] Repair daily review",
+        url="https://linear.app/acme/issue/SYN-1",
+        updated_at="2026-07-31T09:00:00Z",
+    )
+    ensured = MagicMock()
+    ensured.profile.folder = "pynchy-daily-agent-failure-review__thread_conversation-1"
+    ensured.control.binding.thread_jid = "discord:thread:issue-1"
+    ensure_workspace = AsyncMock(return_value=ensured)
+    monkeypatch.setattr(linear_issue_controls, "apply_conversation_control_state", AsyncMock())
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "get_conversation_control_binding",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(linear_issue_controls, "ensure_conversation_workspace", ensure_workspace)
+    monkeypatch.setattr(
+        linear_issue_controls,
+        "ensure_runtime_workspace_policy_owner",
+        MagicMock(),
+    )
+    monkeypatch.setattr(linear_issue_controls, "ensure_thread_link_pinned", AsyncMock())
+
+    with pytest.raises(ValueError, match="parent workspace"):
+        await linear_issue_controls.ensure_issue_control(app, control, conversation)
+
+    app.workspaces[parent.jid] = parent
+    await linear_issue_controls.ensure_issue_control(app, control, conversation)
+
+    request = ensure_workspace.await_args.args[1]
+    assert request.parent_workspace == "pynchy"
+    assert request.parent_jid == parent.jid
+    assert request.owner_workspace == conversation.workspace
 
 
 @pytest.mark.asyncio
@@ -433,6 +500,12 @@ async def test_linear_issue_control_rebuilds_when_binding_workspace_is_missing(
     monkeypatch,
 ) -> None:
     app = PynchyApp()
+    app.workspaces["discord:channel:health-forum"] = WorkspaceProfile(
+        jid="discord:channel:health-forum",
+        name="Health",
+        folder="health",
+        trigger="@Pynchy",
+    )
     conversation = _conversation()
     control = LinearIssueControl(
         issue_id="issue-1",
