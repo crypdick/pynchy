@@ -7,7 +7,28 @@ description: Use when managing the pynchy service on the server — deploying ch
 
 The live Pynchy host and checkout path are deployment-specific. Public repo instructions must not assume a private hostname or home-directory layout. Set `PYNCHY_HOST` and `PYNCHY_REMOTE_ROOT` from local memory, environment, or the operator before running remote commands.
 
-## Auto-deploy: Never Restart Manually
+## Deployment Mode Gate
+
+Identify the live deployment before running an operational command. A `pynchy`
+Kubernetes namespace means the Kubernetes path applies:
+
+```bash
+PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl get namespace pynchy'
+```
+
+For Kubernetes deployments:
+
+- Read [Kubernetes installation and operations](../../../docs/installation/kubernetes.md).
+- Treat `SCHEDULER__AUTO_DEPLOY=false` as authoritative. A Git pull updates the persistent checkout but does not replace the running image.
+- Use `sudo k3s kubectl -n pynchy`; do not use `pynchy deploy`, LaunchAgent commands, standalone systemd commands, or direct container deletion.
+- Release through the Deployment and wait for rollout completion. Do not use `kubectl delete pod` as a deploy mechanism.
+- Keep unrelated Docker Compose and Dockge services outside Kubernetes.
+
+The standalone sections below apply only when the live host has no Kubernetes
+Pynchy Deployment.
+
+## Standalone Auto-deploy: Never Restart Manually
 
 Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
@@ -19,6 +40,20 @@ Pynchy self-manages. Two mechanisms trigger automatic restarts:
 Only use manual commands when the service is unhealthy and needs fixing. See [references/server-debug.md](references/server-debug.md) for diagnostic steps.
 
 ## Quick Status Check
+
+Kubernetes deployment:
+
+```bash
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get pods -o wide'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy logs deploy/pynchy -c pynchy --since=30m'
+```
+
+The status command uses the permission-restricted Unix socket inside the Pod.
+Do not infer application readiness from Kubernetes TCP probes alone; require a
+successful status response.
+
+Standalone deployment:
 
 **Preferred: the authenticated control-plane CLI.** It uses the
 permission-restricted Unix socket on the live host:
@@ -68,6 +103,34 @@ and merge it into `main`. Do not leave the production checkout dirty or deploy
 an uncommitted implementation. Deployment-specific ignored configuration may
 change separately when needed, but source changes always go through a commit.
 
+### Kubernetes
+
+Pull the clean live checkout as its runtime user. Build the host image with
+both an immutable release tag and the manifest's local `shadow` tag, import
+both into K3s containerd, then trigger and verify a Deployment rollout:
+
+```bash
+cd "$PYNCHY_REMOTE_ROOT"
+git pull --ff-only origin main
+pynchy_release="$(git rev-parse --short=12 HEAD)"
+sudo docker build \
+  -f deploy/k3s/host.Dockerfile \
+  -t "pynchy-host:$pynchy_release" \
+  -t pynchy-host:shadow \
+  .
+sudo docker save "pynchy-host:$pynchy_release" pynchy-host:shadow \
+  | sudo k3s ctr images import -
+sudo k3s kubectl -n pynchy rollout restart deployment/pynchy
+sudo k3s kubectl -n pynchy rollout status deployment/pynchy --timeout=300s
+```
+
+After rollout, verify the Pod image ID, live Git SHA, application status,
+startup warning/error lines, channel delivery, LiteLLM, and Temporal. Merely
+overwriting a mutable local tag does not change the Pod template and therefore
+does not deploy anything.
+
+### Standalone
+
 ```bash
 # Trigger a deploy through the live host's Unix socket. From containers, use
 # mcp__pynchy__deploy_changes instead.
@@ -108,7 +171,18 @@ ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && sqlite3 data/messages.db \"
 
 Scheduled work runs through Temporal. Pynchy reconciles active agent tasks, database host jobs, and config cron jobs into Temporal schedules or delayed workflows. Pynchy owns the worker in the host process; Temporal owns workflow durability and wake-ups.
 
-macOS launchd deployment:
+Kubernetes deployment:
+
+```bash
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get pods -l app=pynchy-temporal'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status'
+```
+
+The Kubernetes manifests provide a dedicated PostgreSQL-backed Temporal
+cluster and UI for Pynchy. Do not point Pynchy at an unrelated Compose
+Temporal cluster or restore a Temporal SQLite database into PostgreSQL.
+
+Standalone macOS deployment:
 
 | Item | Value |
 |------|-------|
@@ -130,7 +204,13 @@ ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && uv run pynchy status"
 
 ## Runtime DB Backups
 
-macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
+Kubernetes deployments use `deploy/k3s/backup.sh`. It creates SQLite-safe
+copies and native LiteLLM, Temporal, and Temporal visibility PostgreSQL dumps.
+Back up its generated output; exclude live SQLite files and raw PostgreSQL
+directories from file-level backup plans. See
+[Kubernetes backup guidance](../../../docs/installation/kubernetes.md#back-up-runtime-state).
+
+Standalone macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
 
 Live service:
 
