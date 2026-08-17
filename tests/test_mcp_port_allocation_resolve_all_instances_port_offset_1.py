@@ -117,6 +117,30 @@ class TestResolveAllInstancesPortOffset:
 
         assert sorted(instance.port for instance in state.instances.values()) == [8474, 8475]
 
+    def test_host_service_ports_are_not_assigned_to_mcp_processes(self):
+        settings = validate_settings_mapping(
+            {
+                "server": {"port": 9100},
+                "gateway": {"port": 9101, "mcp_proxy_port": 9102},
+                "profiles": {"tools": {"tools": ["browser"]}},
+                "workspaces": {"admin": {"profiles": ["tools"]}},
+                "tools": {
+                    "browser": {
+                        "type": "mcp",
+                        "mcp": {
+                            "runtime": "script",
+                            "command": "npx",
+                            "port": 9100,
+                        },
+                    }
+                },
+            }
+        )
+
+        state = resolve_all_instances(settings, merged_mcp_servers(settings, {}))
+
+        assert next(iter(state.instances.values())).port == 9103
+
     @pytest.mark.asyncio
     async def test_sync_makes_parent_workspace_instances_available_to_dynamic_threads(
         self, monkeypatch

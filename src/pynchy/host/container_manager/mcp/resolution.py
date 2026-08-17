@@ -266,11 +266,18 @@ def resolve_all_instances(
     # Track how many instances we've created per server_name so we can
     # offset the host port for each additional instance.
     port_counters: dict[str, int] = {}
-    assigned_ports: set[int] = set()
+    settings_view = _settings(settings)
+    server = getattr(settings_view, "server", None)
+    gateway = getattr(settings_view, "gateway", None)
+    assigned_ports = {
+        getattr(server, "port", 0),
+        getattr(gateway, "port", 0),
+        getattr(gateway, "mcp_proxy_port", 0),
+    }
+    assigned_ports.discard(0)
 
     # Semantic child workspaces own policy independently from their physical
     # roots, so they must receive their own selected MCP instances too.
-    settings_view = _settings(settings)
     for folder in settings_view.workspace_names():
         servers = resolve_workspace_servers(settings, all_servers, folder)
         if not servers:
