@@ -87,7 +87,7 @@ async def _api_response_data(
         json=request.json_data,
         headers=request.headers,
     ) as resp:
-        if resp.status in (200, 201):
+        if 200 <= resp.status < 300:
             try:
                 return cast("object", await resp.json())
             except (aiohttp.ContentTypeError, ValueError):
@@ -247,6 +247,34 @@ async def _delete_stale_endpoints(
         )
 
 
+async def _verify_empty_inventory(
+    session: object,
+    gateway: LiteLLMGateway,
+    instances: dict[str, McpInstance],
+) -> None:
+    """Prune registrations omitted by LiteLLM's first post-startup inventory."""
+    existing = _registered_endpoints(
+        await api_request(
+            cast("aiohttp.ClientSession", session),
+            gateway,
+            "GET",
+            "/v1/mcp/server",
+            log_event="Failed to verify MCP servers from LiteLLM",
+        )
+    )
+    for instance_id, instance in instances.items():
+        registrations = existing.pop(_sanitized_instance_id(instance_id), [])
+        _keep, to_delete = _registration_partition(registrations, instance.endpoint_url)
+        await _delete_registrations(
+            session,
+            gateway,
+            server_ids=to_delete,
+            log_event="Deleted duplicate MCP registration",
+            instance_id=instance_id,
+        )
+    await _delete_stale_endpoints(session, gateway, existing)
+
+
 async def sync_mcp_endpoints(
     gateway: LiteLLMGateway,
     instances: dict[str, McpInstance],
@@ -272,6 +300,7 @@ async def sync_mcp_endpoints(
                 log_event="Failed to list MCP servers from LiteLLM",
             )
         )
+        verify_empty_inventory = not existing and bool(instances)
 
         for instance_id, instance in instances.items():
             await _sync_instance_endpoint(
@@ -283,6 +312,8 @@ async def sync_mcp_endpoints(
             )
 
         await _delete_stale_endpoints(session, gateway, existing)
+        if verify_empty_inventory:
+            await _verify_empty_inventory(session, gateway, instances)
 
 
 # ---------------------------------------------------------------------------

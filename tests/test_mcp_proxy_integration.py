@@ -186,12 +186,17 @@ class TestLiteLLMApiRequest:
             await asyncio.sleep(0)
             return web.Response(status=200)
 
+        async def accepted_response(_request: web.Request) -> web.Response:
+            await asyncio.sleep(0)
+            return web.Response(status=202)
+
         async def rejected_response(_request: web.Request) -> web.Response:
             await asyncio.sleep(0)
             return web.Response(status=403, text="denied")
 
         app = web.Application()
         app.router.add_get("/empty", empty_response)
+        app.router.add_delete("/accepted", accepted_response)
         app.router.add_get("/rejected", rejected_response)
         runner, port = await _start_http_server(app)
         gateway = _make_gateway(tmp_path, port=port)
@@ -199,11 +204,13 @@ class TestLiteLLMApiRequest:
         try:
             async with ClientSession() as session:
                 empty = await litellm.api_request(session, gateway, "GET", "/empty")
+                accepted = await litellm.api_request(session, gateway, "DELETE", "/accepted")
                 rejected = await litellm.api_request(session, gateway, "GET", "/rejected")
         finally:
             await runner.cleanup()
 
         assert empty is True
+        assert accepted is True
         assert rejected is None
 
 
@@ -296,6 +303,47 @@ class TestLiteLLMSyncEndpoints:
                 "auth_value": "secret-token",
             },
         ) in calls
+
+    @pytest.mark.asyncio
+    async def test_sync_mcp_endpoints_rechecks_an_empty_startup_inventory(self, tmp_path):
+        gateway = _make_gateway(tmp_path)
+        instance = _make_instance("linear", instance_id="linear_team", port=8486)
+        calls: list[tuple[str, str]] = []
+        list_calls = 0
+
+        async def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+            nonlocal list_calls
+            await asyncio.sleep(0)
+            calls.append((method, path))
+            if method != "GET":
+                return True
+            list_calls += 1
+            if list_calls == 1:
+                return []
+            return [
+                {
+                    "server_name": "linear_team",
+                    "url": "http://localhost:8485",
+                    "server_id": "stale-control-port",
+                },
+                {
+                    "server_name": "linear_team",
+                    "url": instance.endpoint_url,
+                    "server_id": "keep",
+                },
+            ]
+
+        with (
+            patch(
+                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
+                return_value=_LiteLLMSession(),
+            ),
+            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
+        ):
+            await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
+
+        assert list_calls == 2
+        assert ("DELETE", "/v1/mcp/server/stale-control-port") in calls
 
     @pytest.mark.asyncio
     async def test_sync_mcp_endpoints_omits_an_unset_auth_value(self, tmp_path, monkeypatch):
