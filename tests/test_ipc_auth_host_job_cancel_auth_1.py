@@ -12,6 +12,8 @@ from pynchy.state import (
 )
 from pynchy.workspace.api import WorkspaceProfile
 
+pytest_plugins = ("tests.ipc_auth_support",)
+
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",
     name="Admin",
@@ -57,20 +59,19 @@ class TestHostJobCancelAuth:
             }
         )
         calls: list[tuple[str, str]] = []
+
+        async def cancel_workflow(workflow_id: str) -> None:
+            assert await get_host_job_by_id("host-cancel-1") is not None
+            calls.append(("workflow", workflow_id))
+
         monkeypatch.setattr(
             "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
-            AsyncMock(side_effect=lambda called_id: calls.append(("workflow", called_id))),
-        )
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.terminal_task_retirement.delete_host_job",
-            AsyncMock(side_effect=lambda called_id: calls.append(("durable", called_id))),
+            AsyncMock(side_effect=cancel_workflow),
         )
 
         await dispatch({"type": "cancel_task", "taskId": "host-cancel-1"}, "admin-1", True, deps)
-        assert calls == [
-            ("workflow", "pynchy-host-job-schedule-host-cancel-1-workflow"),
-            ("durable", "host-cancel-1"),
-        ]
+        assert calls == [("workflow", "pynchy-host-job-schedule-host-cancel-1-workflow")]
+        assert await get_host_job_by_id("host-cancel-1") is None
 
     async def test_non_admin_cannot_cancel_host_job(self, deps):
         await create_host_job(
