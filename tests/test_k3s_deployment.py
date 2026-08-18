@@ -36,6 +36,7 @@ def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
     assert "concurrencyPolicy: Forbid" in manifest
     assert 'resources: ["deployments"]' in manifest
     assert 'resources: ["pods"]' in manifest
+    assert 'verbs: ["get", "list", "watch", "create", "delete"]' in manifest
     assert 'resources: ["secrets"]' not in manifest
     assert "ClusterRole" not in manifest
     assert "hostPath:" not in manifest
