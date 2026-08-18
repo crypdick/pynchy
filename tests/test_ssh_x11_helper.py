@@ -46,12 +46,16 @@ def test_permission_handshake_reports_version_and_actions(monkeypatch: pytest.Mo
     assert calls == [["xdotool", "getactivewindow"]]
 
 
-def test_launch_app_opens_web_urls_with_desktop_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_launch_app_opens_web_urls_with_requested_app(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
+    popen = MagicMock()
     monkeypatch.setattr(
         ssh_x11_helper, "_x11_environment", lambda: {"PATH": "/bin", "DISPLAY": ":0"}
     )
     monkeypatch.setattr(ssh_x11_helper, "_run", _run_recorder(calls))
+    monkeypatch.setattr(ssh_x11_helper, "_require_binaries", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ssh_x11_helper.shutil, "which", lambda *args, **kwargs: "/snap/bin/brave")
+    monkeypatch.setattr(ssh_x11_helper.subprocess, "Popen", popen)
 
     result = ssh_x11_helper.command(
         {
@@ -61,7 +65,10 @@ def test_launch_app_opens_web_urls_with_desktop_default(monkeypatch: pytest.Monk
         }
     )
 
-    assert calls == [["xdg-open", "https://myedd.edd.ca.gov/"]]
+    assert popen.call_args.args[0] == ["/snap/bin/brave", "https://myedd.edd.ca.gov/"]
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert popen.call_args.kwargs["env"] == {"PATH": "/bin", "DISPLAY": ":0"}
+    assert calls == []
     assert result == {"launched": True, "urls": ["https://myedd.edd.ca.gov/"]}
 
 
@@ -156,6 +163,10 @@ def test_window_index_rejects_untyped_remote_input(monkeypatch: pytest.MonkeyPat
         ({"action": "capture", "app": "Brave", "window_index": 1}, "exceeds"),
         ({"action": "launch_app", "app": "Brave", "urls": []}, "at least one URL"),
         ({"action": "launch_app", "app": "Brave", "urls": ["file:///etc/passwd"]}, "HTTP"),
+        (
+            {"action": "launch_app", "app": "Missing", "urls": ["https://example.com"]},
+            "not installed",
+        ),
     ],
 )
 def test_helper_rejects_invalid_requests(

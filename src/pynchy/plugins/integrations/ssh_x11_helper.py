@@ -123,7 +123,12 @@ def _launch_urls(request: dict[str, Any], env: dict[str, str]) -> dict[str, Any]
         parsed = urlsplit(url) if isinstance(url, str) else None
         if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("SSH X11 launch_app requires HTTP(S) URLs")
-        _run(["xdg-open", url], env=env)
+    app = request.get("app") or request.get("bundle_id")
+    candidate = app.casefold().replace(" ", "-") if isinstance(app, str) else ""
+    executable = shutil.which(candidate, path=f"{env['PATH']}:/snap/bin")
+    if executable is None:
+        raise ValueError(f"SSH X11 application is not installed: {app}")
+    _spawn([executable, *urls], env=env)
     return {"launched": True, "urls": urls}
 
 
@@ -154,6 +159,19 @@ def _run(argv: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess
         capture_output=True,
         env=env,
         timeout=20,
+    )
+
+
+def _spawn(argv: list[str], *, env: dict[str, str]) -> None:
+    _require_binaries(argv[0], path=env["PATH"])
+    subprocess.Popen(  # noqa: S603 - allowlisted executable and HTTP(S) argument.
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        env=env,
+        start_new_session=True,
     )
 
 
