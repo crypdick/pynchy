@@ -7,15 +7,14 @@ on the host.
 
 ## Storage boundary
 
-Pynchy receives shared persistent storage at `/srv/pynchy` and a dedicated
-vault volume at `/srv/pynchy/vault`. Agent Pods route vault mounts through that
-dedicated claim. All other agent and managed MCP mounts remain restricted to
-subdirectories of `PYNCHY_KUBERNETES_SHARED_ROOT`; Pynchy does not expose the
-host root filesystem or Docker socket.
+Pynchy receives one persistent volume at `/srv/pynchy`. Agent and managed MCP
+Pods can mount only subdirectories of that volume. The Kubernetes runtime
+rejects host paths outside `PYNCHY_KUBERNETES_SHARED_ROOT`; it does not expose
+the host root filesystem or Docker socket.
 
 `deploy/k3s/storage.yaml` uses static local volumes with a `Retain` reclaim
 policy. Change its node name and local paths before applying it on another
-host. Back up all four local volume paths and the namespace secrets. Pocket
+host. Back up all three local volume paths and the namespace secrets. Pocket
 TTS uses its own volume only for downloaded model caches.
 
 ## Prepare and deploy
@@ -23,26 +22,13 @@ TTS uses its own volume only for downloaded model caches.
 1. Populate these directories under the shared volume:
 
    - `app`: Pynchy checkout, configuration, `data`, and `groups`
-   - `vault`: mount point for the Obsidian vault configured as
-     `learning.obsidian.vault_root`
+   - `vault`: Obsidian vault configured as `learning.obsidian.vault_root`
    - `repos`: repositories configured as `repos.root`
    - `external`: any explicitly configured external files
 
    Keep the shared tree owned by UID and GID `3000`, including restored
    `.runtime` volume directories. The Pynchy host runs as that identity and
    must be able to prepare writable mounts for managed agent and MCP Pods.
-
-   Mount the synchronization service's live vault at `vault`; do not populate
-   it with a one-time copy. Persist the bind mount in the node's mount
-   configuration so it exists before K3s starts:
-
-   ```bash
-   mount --bind <synced-vault-path> <pynchy-storage-root>/shared/vault
-   ```
-
-   Make the mounted vault writable by UID and GID `3000`, and set its root
-   directory's group to `3000` before starting the Pod. The runtime leaves
-   synchronization-owned vault permissions unchanged.
 
 2. Build `pynchy-host:shadow` from `deploy/k3s/host.Dockerfile` and
    `pynchy-pocket-tts:shadow` from `deploy/k3s/pocket-tts.Dockerfile`. Build
@@ -54,6 +40,19 @@ TTS uses its own volume only for downloaded model caches.
    Do not commit either Secret.
 4. Apply `deploy/k3s` with Kustomize and wait for all workloads to become
    ready.
+
+### Mount a synchronized vault
+
+Keep concrete vault paths, node names, and claims in the deployment-specific
+Kustomize overlay. Mount its claim at `/srv/pynchy/vault` in the Pynchy
+container and set `PYNCHY_KUBERNETES_VAULT_PVC` to the claim name. Agent Pods
+then route vault and automation-memory mounts through that claim while other
+mounts remain on the shared claim.
+
+Mount the synchronization service's live vault into the claim's local path
+before K3s starts. Make it writable by UID and GID `3000`, and set its root
+directory's group to `3000`. The runtime leaves synchronization-owned vault
+permissions unchanged.
 
 ## Back up runtime state
 
