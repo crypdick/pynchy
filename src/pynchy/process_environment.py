@@ -7,7 +7,21 @@ from collections.abc import (  # noqa: TC003 - beartype resolves this runtime an
     Mapping,
 )
 
-_SAFE_HOST_ENVIRONMENT = ("HOME", "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL")
+_SAFE_HOST_ENVIRONMENT = (
+    "HOME",
+    "PATH",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "PYNCHY_KUBECONFIG",
+    "PYNCHY_KUBERNETES_NAMESPACE",
+    "PYNCHY_KUBERNETES_PVC",
+    "PYNCHY_KUBERNETES_VAULT_PVC",
+    "PYNCHY_KUBERNETES_SHARED_ROOT",
+    "PYNCHY_KUBERNETES_PULL_POLICY",
+)
 
 
 def filtered_process_environment(
