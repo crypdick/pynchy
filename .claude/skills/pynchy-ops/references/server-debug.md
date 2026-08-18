@@ -62,9 +62,14 @@ container run -i --rm --entrypoint ls pynchy-agent:latest /workspace/extra/
 
 ## Exercising the Message Pipeline
 
-Pynchy does not expose a production HTTP endpoint for injecting user messages. Send a test
-message from a real account through the configured channel to exercise channel authentication,
-message ingestion, routing, the agent turn, and outbound delivery.
+For routine conversational canaries, use the local control-plane route documented in
+[Send synthetic Discord canary input](../../../../docs/usage/control-plane.md#send-synthetic-discord-canary-input).
+It reuses the existing Discord bot round trip, strips the canary prefix, and enters the normal
+user-message path. Use it to test message routing, the agent turn, tools, and outbound delivery.
+Do not open Discord in a browser merely to submit a test prompt.
+
+Use a real non-bot sender only when the test specifically covers Discord's human-authentication,
+mention, or access-policy boundary. Synthetic input does not prove that boundary.
 
 ```bash
 # Identify the destination JID before sending the test message.
@@ -74,7 +79,7 @@ sqlite3 data/messages.db "
   ORDER BY name;
 "
 
-# After sending from the real channel, inspect the conversation.
+# After sending either kind of message, inspect the conversation.
 sqlite3 data/messages.db "
   SELECT timestamp, sender_name, message_type, substr(content, 1, 120)
   FROM messages
@@ -85,7 +90,7 @@ sqlite3 data/messages.db "
 ```
 
 This is useful for:
-- **Debugging the agent** while preserving the same trust boundary as normal messages.
+- **Debugging the agent** through the same user-message processing path.
 - **Exercising MCP tools** — send a message like "use the playwright MCP to check ..." to prompt the agent to invoke an MCP tool it wouldn't use unprompted. Handy for verifying MCP server connectivity, tool schemas, or end-to-end behavior.
 - **Verifying output delivery** through the configured channel instead of only inspecting host state.
 
