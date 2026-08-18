@@ -1,56 +1,3 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: default
-  namespace: pynchy
-imagePullSecrets:
-  - name: pynchy-ghcr
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: pynchy-release-monitor
-  namespace: pynchy
-automountServiceAccountToken: true
-imagePullSecrets:
-  - name: pynchy-ghcr
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: pynchy-release-monitor
-  namespace: pynchy
-rules:
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "watch", "patch"]
-  - apiGroups: ["apps"]
-    resources: ["replicasets"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
-  - apiGroups: [""]
-    resources: ["pods/exec"]
-    verbs: ["create", "get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: pynchy-release-monitor
-  namespace: pynchy
-subjects:
-  - kind: ServiceAccount
-    name: pynchy-release-monitor
-    namespace: pynchy
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: pynchy-release-monitor
----
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -103,6 +50,14 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
+                - name: PYNCHY_RELEASE_CHECKOUT
+                  value: /srv/pynchy/app
+                - name: PYNCHY_RELEASE_PATCH
+                  valueFrom:
+                    secretKeyRef:
+                      name: pynchy-env
+                      key: PYNCHY_RELEASE_PATCH
+                      optional: true
                 - name: GH_CONFIG_DIR
                   value: /tmp/gh
                 - name: HOME
@@ -123,6 +78,8 @@ spec:
                 - name: monitor
                   mountPath: /opt/pynchy-release
                   readOnly: true
+                - name: shared
+                  mountPath: /srv/pynchy
                 - name: tmp
                   mountPath: /tmp
           volumes:
@@ -130,5 +87,8 @@ spec:
               configMap:
                 name: pynchy-release-monitor
                 defaultMode: 365
+            - name: shared
+              persistentVolumeClaim:
+                claimName: pynchy-data
             - name: tmp
               emptyDir: {}
