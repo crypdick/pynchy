@@ -252,7 +252,8 @@ render_application "$checkout" "$current_sha" "$previous_manifest" \
 checkout_advanced=false
 if [ "$checkout_sha" != "$target_sha" ]; then
     gh auth setup-git >/dev/null
-    git -C "$checkout" fetch --quiet origin "$target_sha"
+    git -C "$checkout" fetch --quiet origin \
+        +refs/heads/main:refs/remotes/origin/main
     if ! git -C "$checkout" merge-base --is-ancestor "$checkout_sha" "$target_sha"; then
         printf 'Published release %s is not a fast-forward from %s.\n' \
             "$target_sha" "$checkout_sha" >&2
