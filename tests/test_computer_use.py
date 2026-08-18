@@ -85,6 +85,7 @@ def test_computer_use_surface_and_provider_plugins_are_registered() -> None:
         "builtin-computer-use",
         "builtin-peekaboo",
         "builtin-cua-driver",
+        "builtin-ssh-x11",
     } <= names
     descriptor = get_host_action_catalog(pm).action_for("computer_use")
     assert descriptor is not None

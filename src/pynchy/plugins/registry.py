@@ -102,6 +102,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "cua-driver",
     ),
     (
+        "pynchy.plugins.integrations.ssh_x11",
+        "SshX11ComputerUsePlugin",
+        "ssh-x11",
+    ),
+    (
         "pynchy.plugins.integrations.linear",
         "LinearMcpPlugin",
         "linear",
