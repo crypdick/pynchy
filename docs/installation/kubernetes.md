@@ -32,16 +32,62 @@ only for downloaded model caches.
    `.runtime` volume directories. The Pynchy host runs as that identity and
    must be able to prepare writable mounts for managed agent and MCP Pods.
 
-2. Build `pynchy-host:shadow` from `deploy/k3s/host.Dockerfile` and
-   `pynchy-pocket-tts:shadow` from `deploy/k3s/pocket-tts.Dockerfile`. Build
-   the configured agent and private MCP images, then import the local images
-   into K3s containerd.
+2. For the first deployment, build `pynchy-host:shadow` from
+   `deploy/k3s/host.Dockerfile` and `pynchy-pocket-tts:shadow` from
+   `deploy/k3s/pocket-tts.Dockerfile`. Build the configured agent and private
+   MCP images, then import the local images into K3s containerd. The release
+   monitor replaces the host and agent bootstrap images after the first
+   successful release.
 3. Create `pynchy-env` from the migrated Pynchy environment file. Create
    `pynchy-runtime` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`,
    `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `UI_USERNAME`, and `UI_PASSWORD`.
    Do not commit either Secret.
-4. Apply the deployment-specific Kustomize overlay and wait for all workloads
+4. Add these release values to `pynchy-env`:
+
+   ```dotenv
+   PYNCHY_RELEASE_REPOSITORY=OWNER/REPOSITORY
+   PYNCHY_RELEASE_HOST_IMAGE=ghcr.io/OWNER/pynchy-host
+   PYNCHY_RELEASE_AGENT_IMAGE=ghcr.io/OWNER/pynchy-agent
+   ```
+
+   `GITHUB_TOKEN` must be able to read repository metadata. Create the
+   `pynchy-ghcr` image pull Secret separately with credentials that can read
+   both packages. Keep repository names, owners, and credentials in the
+   deployment-specific overlay or Secret, not in the public base.
+5. Apply the deployment-specific Kustomize overlay and wait for all workloads
    to become ready.
+
+## Release from main
+
+The `Test` GitHub Actions workflow publishes immutable host and agent images
+tagged with the full commit SHA only after the Python and deterministic runtime
+jobs pass. The `pynchy-release-monitor` CronJob checks `main` every two minutes.
+It waits until the persistent checkout has the same commit, starts isolated
+host and agent preflight Pods, and changes both Deployment images in one
+revision.
+
+The monitor waits for the Kubernetes rollout and then requires Pynchy service
+status, release accounting, LiteLLM, and Temporal to report healthy. A failed
+preflight leaves the running Deployment unchanged. A failed rollout or
+application health check triggers `kubectl rollout undo`, so the previous
+ReplicaSet becomes active again. The Deployment uses `Recreate`, so rollback
+protects availability but does not guarantee zero downtime.
+
+Check release state with:
+
+```bash
+kubectl -n pynchy get cronjob pynchy-release-monitor
+kubectl -n pynchy get jobs --sort-by=.metadata.creationTimestamp
+kubectl -n pynchy logs job/JOB_NAME
+kubectl -n pynchy get deployment pynchy \
+  -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}'
+kubectl -n pynchy exec deploy/pynchy -c pynchy -- \
+  /opt/pynchy/.venv/bin/pynchy status
+```
+
+This path releases application images only. Changes to Kubernetes manifests,
+storage, Secrets, RBAC, Pocket TTS, or private MCP images still require an
+operator to review and apply the deployment-specific Kustomize overlay.
 
 ### Mount a synchronized vault
 
@@ -104,8 +150,8 @@ changes before applying it:
   test workflows without creating schedules or delayed workflows;
 - add `PYNCHY_RUNTIME_HARNESS=1` for injected end-to-end messages.
 
-Keep `SCHEDULER__AUTO_DEPLOY=false`. Kubernetes releases replace images instead
-of mutating a running source checkout.
+Keep `SCHEDULER__AUTO_DEPLOY=false`. The release monitor replaces Kubernetes
+images instead of asking Pynchy to restart itself from a changed checkout.
 
 Before cutover, prove service health, an injected agent response, required MCP
 tools, LiteLLM persistence, Temporal persistence, restart recovery, backup and

@@ -72,3 +72,41 @@ jobs:
             data/messages.db
             data/temporal.db
           if-no-files-found: ignore
+
+  release-images:
+    name: Publish release images
+    if: github.event_name == 'push'
+    needs: [test, runtime]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Log in to GitHub Container Registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and test release images
+        env:
+          OWNER: ${{ github.repository_owner }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          host_image="ghcr.io/$owner/pynchy-host:$RELEASE_SHA"
+          agent_image="ghcr.io/$owner/pynchy-agent:$RELEASE_SHA"
+          docker build \
+            --build-arg "PYNCHY_RELEASE_SHA=$RELEASE_SHA" \
+            -f deploy/k3s/host.Dockerfile \
+            -t "$host_image" \
+            .
+          docker run --rm --entrypoint /opt/pynchy/.venv/bin/python \
+            "$host_image" -c 'import pynchy'
+          docker build \
+            --build-arg AGENT_UID=3000 \
+            --build-arg AGENT_GID=3000 \
+            -t "$agent_image" \
+            src/pynchy/agent
+          docker run --rm --entrypoint python "$agent_image" -c 'import agent_runner'
+          docker push "$host_image"
+          docker push "$agent_image"

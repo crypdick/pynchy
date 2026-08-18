@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import signal
 import subprocess  # noqa: S404 - deploy helper invokes the repo-local build script without a shell.
 from collections.abc import (  # noqa: TC003 - beartype resolves deploy annotations at runtime.
@@ -26,6 +27,7 @@ from pynchy.state import api as pynchy_state
 
 _CONTAINER_BUILD_TIMEOUT_SECONDS = 180
 _APPLE_BUILD_LOCK_TIMEOUT_SECONDS = 60
+_RELEASE_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 
 
 @dataclass
@@ -77,8 +79,11 @@ def _configured_runtime() -> DeployGitRuntime:
 def current_deploy_revision() -> DeployRevision:
     """Capture the code and configuration revision effective for a restart."""
     runtime = _configured_runtime()
+    release_sha = os.environ.get("PYNCHY_RELEASE_SHA", "")
+    if release_sha and _RELEASE_SHA_PATTERN.fullmatch(release_sha) is None:
+        raise RuntimeError("PYNCHY_RELEASE_SHA must be a full lowercase Git commit SHA")
     return DeployRevision(
-        commit_sha=runtime.get_head_sha(),
+        commit_sha=release_sha or runtime.get_head_sha(),
         config_hash=runtime.get_deploy_config_hash(),
     )
 

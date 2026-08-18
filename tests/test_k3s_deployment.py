@@ -15,6 +15,31 @@ def test_host_image_installs_locked_dependencies() -> None:
 
     assert "uv sync --locked --no-dev --all-extras --no-editable" in dockerfile
     assert "uv pip install --system --no-cache-dir '.[all]'" not in dockerfile
+    assert "ARG PYNCHY_RELEASE_SHA" in dockerfile
+    assert "PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA}" in dockerfile
+
+
+def test_main_workflow_publishes_both_images_after_tests() -> None:
+    workflow = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
+
+    assert "needs: [test, runtime]" in workflow
+    assert "packages: write" in workflow
+    assert "ghcr.io/$owner/pynchy-host:$RELEASE_SHA" in workflow
+    assert "ghcr.io/$owner/pynchy-agent:$RELEASE_SHA" in workflow
+    assert workflow.index("docker run --rm") < workflow.index('docker push "$host_image"')
+
+
+def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
+    manifest = Path("deploy/k3s/release-monitor.yaml").read_text(encoding="utf-8")
+
+    assert "kind: CronJob" in manifest
+    assert "concurrencyPolicy: Forbid" in manifest
+    assert 'resources: ["deployments"]' in manifest
+    assert 'resources: ["pods"]' in manifest
+    assert 'resources: ["secrets"]' not in manifest
+    assert "ClusterRole" not in manifest
+    assert "hostPath:" not in manifest
+    assert "docker.sock" not in manifest
 
 
 def test_android_usb_bridge_is_unprivileged_and_k3s_local() -> None:
