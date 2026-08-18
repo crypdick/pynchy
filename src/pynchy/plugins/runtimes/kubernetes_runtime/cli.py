@@ -27,6 +27,7 @@ _SESSION_HOME_TARGETS = {"/home/agent/.claude", "/home/agent/.codex"}
 class RuntimeSettings:
     namespace: str
     pvc_name: str
+    vault_pvc_name: str | None
     shared_root: Path
     pull_policy: str
 
@@ -48,6 +49,7 @@ def runtime_settings() -> RuntimeSettings:
     return RuntimeSettings(
         namespace=os.environ.get("PYNCHY_KUBERNETES_NAMESPACE", "pynchy"),
         pvc_name=os.environ.get("PYNCHY_KUBERNETES_PVC", "pynchy-data"),
+        vault_pvc_name=os.environ.get("PYNCHY_KUBERNETES_VAULT_PVC"),
         shared_root=Path(os.environ.get("PYNCHY_KUBERNETES_SHARED_ROOT", "/srv/pynchy")),
         pull_policy=os.environ.get("PYNCHY_KUBERNETES_PULL_POLICY", "IfNotPresent"),
     )
@@ -155,12 +157,13 @@ def _memory_quantity(value: str) -> str:
     return value
 
 
-def _mount_spec(
+def _mount_spec(  # noqa: PLR0912 - mount translation handles Docker's supported mount shapes.
     source: str,
     target: str,
     *,
     readonly: bool,
     shared_root: Path,
+    vault_pvc_name: str | None,
 ) -> dict[str, object]:
     if "/" not in source and not source.startswith("."):
         source_path = shared_root / ".runtime" / "volumes" / source
@@ -169,13 +172,24 @@ def _mount_spec(
         source_path = Path(source)
         if not source_path.is_absolute():
             source_path = shared_root / source_path
-    root = shared_root.resolve()
     resolved = source_path.resolve()
-    try:
-        relative = resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"Mount source is outside Kubernetes shared root: {source}") from exc
-    if not readonly and resolved.is_dir():
+    root = shared_root.resolve()
+    mount_name = "shared"
+    if vault_pvc_name is not None:
+        vault_root = (shared_root / "vault").resolve()
+        try:
+            relative = resolved.relative_to(vault_root)
+        except ValueError:
+            pass
+        else:
+            root = vault_root
+            mount_name = "vault"
+    if mount_name == "shared":
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError(f"Mount source is outside Kubernetes shared root: {source}") from exc
+    if mount_name == "shared" and not readonly and resolved.is_dir():
         writable_directories = [resolved]
         if target == "/run/pynchy":
             writable_directories.extend(
@@ -184,7 +198,7 @@ def _mount_spec(
         for directory in writable_directories:
             mode = stat.S_IMODE(directory.stat().st_mode)
             directory.chmod(mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP)
-    mount: dict[str, object] = {"name": "shared", "mountPath": target}
+    mount: dict[str, object] = {"name": mount_name, "mountPath": target}
     if relative.parts:
         mount["subPath"] = relative.as_posix()
     if readonly:
@@ -192,11 +206,12 @@ def _mount_spec(
     return mount
 
 
-def build_resources(
+def build_resources(  # noqa: PLR0913 - resource composition receives explicit runtime settings.
     args: list[str],
     *,
     shared_root: Path,
     pvc_name: str,
+    vault_pvc_name: str | None = None,
     namespace: str,
     pull_policy: str = "IfNotPresent",
 ) -> list[dict[str, Any]]:
@@ -211,7 +226,13 @@ def build_resources(
         value = inline_value if separator else os.environ.get(key, "")
         environment.append({"name": key, "value": value})
     volume_mounts = [
-        _mount_spec(source, target, readonly=readonly, shared_root=shared_root)
+        _mount_spec(
+            source,
+            target,
+            readonly=readonly,
+            shared_root=shared_root,
+            vault_pvc_name=vault_pvc_name,
+        )
         for source, target, readonly in request.mounts
     ]
     container: dict[str, Any] = {
@@ -230,11 +251,13 @@ def build_resources(
         }
     if request.ports:
         container["ports"] = [{"containerPort": port} for port in sorted(set(request.ports))]
-    volumes = (
-        [{"name": "shared", "persistentVolumeClaim": {"claimName": pvc_name}}]
-        if volume_mounts
-        else []
-    )
+    mounted_volume_names = {str(mount["name"]) for mount in volume_mounts}
+    volume_claims = (("shared", pvc_name), ("vault", vault_pvc_name))
+    volumes = [
+        {"name": name, "persistentVolumeClaim": {"claimName": claim}}
+        for name, claim in volume_claims
+        if claim is not None and name in mounted_volume_names
+    ]
     pod_spec: dict[str, Any] = {
         "automountServiceAccountToken": False,
         "restartPolicy": "Always" if request.detached else "Never",
@@ -373,6 +396,7 @@ def _run(args: list[str]) -> int:
         args,
         shared_root=settings.shared_root,
         pvc_name=settings.pvc_name,
+        vault_pvc_name=settings.vault_pvc_name,
         namespace=settings.namespace,
         pull_policy=settings.pull_policy,
     )
