@@ -123,23 +123,23 @@ _state = _WorkspaceConfigState()
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeWorkspaceRestriction:
-    """Connection-owned restrictions applied beneath one configured workspace."""
+class RuntimeWorkspacePolicy:
+    """Connection-owned policy applied beneath one configured workspace."""
 
     parent_workspace: str
     tools: tuple[str, ...] | None = None
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
-_runtime_restrictions: dict[str, RuntimeWorkspaceRestriction] = {}
+_runtime_policies: dict[str, RuntimeWorkspacePolicy] = {}
 
 
-def register_runtime_workspace_restriction(
+def register_runtime_workspace_policy(
     folder: str,
-    restriction: RuntimeWorkspaceRestriction,
+    policy: RuntimeWorkspacePolicy,
 ) -> None:
-    """Register a fail-closed runtime restriction for one generated workspace."""
-    _runtime_restrictions[folder] = restriction
+    """Register runtime policy for one generated workspace."""
+    _runtime_policies[folder] = policy
 
 
 def ensure_runtime_workspace_policy_owner(
@@ -147,25 +147,25 @@ def ensure_runtime_workspace_policy_owner(
     parent_workspace: str,
 ) -> None:
     """Install an owner mapping without replacing narrower route policy."""
-    existing = _runtime_restrictions.get(folder)
+    existing = _runtime_policies.get(folder)
     if existing is None:
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             folder,
-            RuntimeWorkspaceRestriction(parent_workspace=parent_workspace),
+            RuntimeWorkspacePolicy(parent_workspace=parent_workspace),
         )
         return
     if existing.parent_workspace != parent_workspace:
-        raise ValueError("Runtime workspace restriction has a different policy owner")
+        raise ValueError("Runtime workspace policy has a different policy owner")
 
 
-def clear_runtime_workspace_restrictions() -> None:
-    """Clear connection-owned runtime restrictions during lifecycle teardown/tests."""
-    _runtime_restrictions.clear()
+def clear_runtime_workspace_policies() -> None:
+    """Clear connection-owned runtime policies during lifecycle teardown/tests."""
+    _runtime_policies.clear()
 
 
-def unregister_runtime_workspace_restriction(folder: str) -> None:
-    """Remove one generated workspace restriction during connection teardown."""
-    _runtime_restrictions.pop(folder, None)
+def unregister_runtime_workspace_policy(folder: str) -> None:
+    """Remove one generated workspace policy during connection teardown."""
+    _runtime_policies.pop(folder, None)
 
 
 def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
@@ -224,16 +224,16 @@ def load_workspace_config(
 
     Returns None if the group has no configured workspace document or plugin spec.
     """
-    runtime_restriction = _runtime_restrictions.get(group_folder)
-    if conversation_id_from_folder(group_folder) is not None and runtime_restriction is None:
+    runtime_policy = _runtime_policies.get(group_folder)
+    if conversation_id_from_folder(group_folder) is not None and runtime_policy is None:
         # A persisted route workspace can outlive its route configuration.
         # Never let that stale registration fall back to the full parent policy.
         return None
     effective_settings = settings or get_settings()
     specs = _workspace_specs(effective_settings)
     parent_folder = (
-        runtime_restriction.parent_workspace
-        if runtime_restriction is not None
+        runtime_policy.parent_workspace
+        if runtime_policy is not None
         else _parent_folder_for_dynamic_thread(group_folder)
     )
     policy_folder = parent_folder or group_folder
@@ -259,41 +259,45 @@ def _load_declared_resolved_config(
     *,
     settings: Settings | None = None,
 ) -> ResolvedWorkspaceConfig | None:
-    """Load merged policy and apply route restrictions before credential access."""
+    """Load merged policy and apply runtime policy before credential access."""
     effective_settings = settings or get_settings()
     if load_workspace_config(group_folder, settings=effective_settings) is None:
         return None
 
     s = effective_settings
-    runtime_restriction = _runtime_restrictions.get(group_folder)
+    runtime_policy = _runtime_policies.get(group_folder)
     resolved = s.resolved_workspace_config(group_folder)
     base: ResolvedWorkspaceConfig | None
     if resolved is not None:
         base = resolved
     else:
         parent_folder = (
-            runtime_restriction.parent_workspace
-            if runtime_restriction is not None
+            runtime_policy.parent_workspace
+            if runtime_policy is not None
             else _parent_folder_for_dynamic_thread(group_folder)
         )
         base = s.resolved_workspace_config(parent_folder) if parent_folder is not None else None
-    if base is None or runtime_restriction is None:
+    if base is None or runtime_policy is None:
         return base
     restricted_tools = (
-        [tool for tool in base.tools if tool in runtime_restriction.tools]
-        if runtime_restriction.tools is not None
+        [tool for tool in base.tools if tool in runtime_policy.tools]
+        if runtime_policy.tools is not None
         else list(base.tools)
     )
     capabilities = dict(base.capabilities)
-    for capability, restriction in runtime_restriction.capabilities.items():
-        inherited = (
+    for capability, runtime_rule in runtime_policy.capabilities.items():
+        inherited = tuple(
             rule
             for pattern, rule in base.capabilities.items()
             if capability_pattern_matches(pattern, capability)
         )
-        capabilities[capability] = (
-            most_restrictive_capability_rule((*inherited, restriction)) or restriction
-        )
+        inherited_rule = most_restrictive_capability_rule(inherited)
+        effective = most_restrictive_capability_rule((*inherited, runtime_rule)) or runtime_rule
+        if inherited_rule is not None and effective.decision != runtime_rule.decision:
+            raise ValueError(
+                f"Runtime workspace policy cannot widen explicit {capability!r} permission"
+            )
+        capabilities[capability] = effective
     return replace(base, tools=restricted_tools, capabilities=capabilities)
 
 
@@ -463,7 +467,7 @@ async def reconcile_workspaces(  # noqa: PLR0913 - lifecycle cleanup joins exist
     if unregister_fn is not None:
         await remove_orphaned_workspace_registrations(
             {*specs, *get_settings().workspace_names()},
-            set(_runtime_restrictions),
+            set(_runtime_policies),
             workspaces,
             channels,
             unregister_fn,

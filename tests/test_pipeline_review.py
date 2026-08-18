@@ -14,7 +14,7 @@ from pynchy.host.orchestrator.pipeline_review import (
     run_configured_pipeline_reviews,
     run_pipeline_reviews,
 )
-from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
+from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_policies
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -90,7 +90,7 @@ def _group() -> WorkspaceProfile:
 
 
 async def test_pipeline_reviewers_run_in_separate_contexts() -> None:
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     deps = _Deps()
     try:
         results = await run_pipeline_reviews(
@@ -105,7 +105,7 @@ async def test_pipeline_reviewers_run_in_separate_contexts() -> None:
             ),
         )
     finally:
-        clear_runtime_workspace_restrictions()
+        clear_runtime_workspace_policies()
 
     assert [result.reviewer for result in results] == [
         "reviewers/security",
@@ -119,7 +119,7 @@ async def test_pipeline_reviewers_run_in_separate_contexts() -> None:
 
 
 async def test_pipeline_reviewer_requires_a_successful_final_result() -> None:
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     try:
         with pytest.raises(RuntimeError, match="did not return a review"):
             await run_pipeline_reviews(
@@ -134,11 +134,11 @@ async def test_pipeline_reviewer_requires_a_successful_final_result() -> None:
                 ),
             )
     finally:
-        clear_runtime_workspace_restrictions()
+        clear_runtime_workspace_policies()
 
 
 async def test_pipeline_reviewer_ignores_empty_result_events() -> None:
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     try:
         results = await run_pipeline_reviews(
             _EmptyThenValidDeps(),
@@ -152,7 +152,7 @@ async def test_pipeline_reviewer_ignores_empty_result_events() -> None:
             ),
         )
     finally:
-        clear_runtime_workspace_restrictions()
+        clear_runtime_workspace_policies()
 
     assert results[0].review == "valid review"
 

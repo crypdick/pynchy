@@ -32,6 +32,7 @@ from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_
 from pynchy.host.orchestrator.messaging.deps import ApprovalRuntimeOperations
 from pynchy.plugins.api import OutboundEventType
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -104,7 +105,10 @@ def _register_gate(
     trust: ServiceTrustConfig,
 ) -> None:
     """Register a SecurityGate with the given trust config for a tool."""
-    security = WorkspaceSecurity(services={tool_name: trust})
+    security = WorkspaceSecurity(
+        capabilities={"*": CapabilityRule("allow")} if trust.dangerous_writes is False else {},
+        services={tool_name: trust},
+    )
     create_gate(source_group, 1000.0, security)
 
 

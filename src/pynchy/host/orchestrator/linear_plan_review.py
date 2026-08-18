@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    register_runtime_workspace_restriction,
+    RuntimeWorkspacePolicy,
+    register_runtime_workspace_policy,
 )
 from pynchy.linear_plan_types import (
     LinearPlanReviewDecision,
@@ -63,9 +63,9 @@ class PlanReviewDeps(Protocol):
 def _reviewer_profile(request: LinearPlanReviewRequest) -> WorkspaceProfile:
     digest = hashlib.sha256(request.issue_id.encode()).hexdigest()[:16]
     folder = f"linear-plan-review-{digest}"
-    register_runtime_workspace_restriction(
+    register_runtime_workspace_policy(
         folder,
-        RuntimeWorkspaceRestriction(
+        RuntimeWorkspacePolicy(
             parent_workspace=request.workspace,
             tools=(),
             capabilities={"*": CapabilityRule(decision="deny")},

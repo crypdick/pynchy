@@ -70,10 +70,11 @@ def test_capability_wildcard_deny_beats_exact_allow():
     assert not decision.overrides_human_approval
 
 
-def test_missing_capability_rule_is_neutral_not_an_approval_override():
+def test_missing_capability_rule_requires_approval_without_an_override():
     decision = SecurityPolicy(WorkspaceSecurity()).evaluate_capability("mcp.email.send")
 
     assert decision.allowed
+    assert decision.needs_human
     assert not decision.overrides_human_approval
 
 

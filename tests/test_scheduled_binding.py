@@ -45,10 +45,10 @@ from pynchy.host.orchestrator.scheduled_binding import (
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.webhook_terminal_retirement import retire_terminal_runtime
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    clear_runtime_workspace_restrictions,
+    RuntimeWorkspacePolicy,
+    clear_runtime_workspace_policies,
     load_resolved_config,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
 )
 from pynchy.identifiers import (
     GroupFolder,
@@ -86,9 +86,9 @@ from pynchy.workspace.api import (
 @pytest.fixture(autouse=True)
 async def _database() -> None:
     await init_test_database()
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     yield
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
 
 
 def _profile(*, jid: str = "discord:channel:parent", folder: str = "owner") -> WorkspaceProfile:
@@ -475,7 +475,7 @@ async def test_scheduled_linear_binding_restores_webhook_conversation_repo_polic
             "owner": ProfileConfig(
                 repo="crypdick/pynchy",
                 tools=["repo_read", "repo_write"],
-                capabilities={"repo.write": {"decision": "allow"}},
+                permissions={"allow": ["repo.write"]},
             )
         },
         workspaces={"owner": WorkspaceConfig(profiles=["owner"])},
@@ -535,10 +535,10 @@ async def test_scheduled_linear_binding_restores_webhook_conversation_repo_polic
     assert resolved.repo == ["crypdick/pynchy"]
     assert [repo.slug for repo in resolve_repos_for_group(folder)] == ["crypdick/pynchy"]
 
-    clear_runtime_workspace_restrictions()
-    register_runtime_workspace_restriction(
+    clear_runtime_workspace_policies()
+    register_runtime_workspace_policy(
         folder,
-        RuntimeWorkspaceRestriction(
+        RuntimeWorkspacePolicy(
             parent_workspace=owner.folder,
             tools=("repo_read",),
             capabilities={"repo.write": CapabilityRule(decision="deny")},

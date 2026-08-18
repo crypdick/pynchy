@@ -37,9 +37,9 @@ from pynchy.host.orchestrator.webhook_terminal_retirement import (
     retire_terminal_runtime,
 )
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    register_runtime_workspace_restriction,
-    unregister_runtime_workspace_restriction,
+    RuntimeWorkspacePolicy,
+    register_runtime_workspace_policy,
+    unregister_runtime_workspace_policy,
 )
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
@@ -128,7 +128,7 @@ class WebhookConversationDispatcher:
         for provider in {route.provider for route in self.routes}:
             unregister_conversation_delivery_waker(provider, self.owner)
         for folder in self._runtime_workspace_folders:
-            unregister_runtime_workspace_restriction(folder)
+            unregister_runtime_workspace_policy(folder)
         self._runtime_workspace_folders.clear()
         self._terminal_cleanup_conversations.clear()
 
@@ -350,8 +350,8 @@ class WebhookConversationDispatcher:
         policy_owner: str,
     ) -> None:
         folder = routed_conversation_folder(workspace, conversation_id)
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             folder,
-            RuntimeWorkspaceRestriction(parent_workspace=policy_owner),
+            RuntimeWorkspacePolicy(parent_workspace=policy_owner),
         )
         self._runtime_workspace_folders.add(folder)

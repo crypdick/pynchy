@@ -1,5 +1,7 @@
 """Tests for operator-authored permission policy configuration."""
 
+from unittest.mock import patch
+
 import pytest
 from conftest import make_settings
 from pydantic import ValidationError
@@ -7,6 +9,13 @@ from pydantic import ValidationError
 from pynchy.config.api import PermissionConfig, ProfileConfig, WorkspaceConfig
 from pynchy.config.models import RouteConfig
 from pynchy.config.workspace_layout import WorkspaceScopeConfig, WorkspaceThreadConfig
+from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspacePolicy,
+    clear_runtime_workspace_policies,
+    load_resolved_config,
+    register_runtime_workspace_policy,
+)
+from pynchy.workspace.api import CapabilityRule
 
 
 def test_permission_buckets_map_to_runtime_decisions():
@@ -40,12 +49,9 @@ def test_empty_permission_pattern_is_rejected():
         PermissionConfig(allow=[" "])
 
 
-def test_profile_rejects_new_and_legacy_policy_together():
-    with pytest.raises(ValidationError, match=r"permissions.*capabilities"):
-        ProfileConfig(
-            permissions={"allow": ["mcp.email.send"]},
-            capabilities={"mcp.email.send": {"decision": "allow"}},
-        )
+def test_legacy_capability_syntax_is_rejected():
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        ProfileConfig(capabilities={"mcp.email.send": {"decision": "allow"}})
 
 
 def test_new_permission_syntax_resolves_for_profiles_and_routes():
@@ -56,10 +62,10 @@ def test_new_permission_syntax_resolves_for_profiles_and_routes():
         permissions={"ask": ["mcp.email.send"]},
     )
 
-    assert profile.permission_decisions == {"mcp.email.send": "allow"}
-    assert route.permission_decisions == {"mcp.email.send": "needs_human"}
+    assert profile.permissions.decisions == {"mcp.email.send": "allow"}
+    assert route.permissions.decisions == {"mcp.email.send": "needs_human"}
 
-    with pytest.raises(ValidationError, match=r"permissions.*capabilities"):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         RouteConfig(
             source="connection.matrix.main.chat.email",
             workspace="email",
@@ -93,11 +99,7 @@ def test_permissions_are_available_on_every_operator_layer():
 
 def test_workspace_permissions_override_profile_policy_and_reach_semantic_children():
     settings = make_settings(
-        profiles={
-            "computer-use": ProfileConfig(
-                capabilities={"desktop.computer.use": {"decision": "needs_human"}}
-            )
-        },
+        profiles={"computer-use": ProfileConfig(permissions={"ask": ["desktop.computer.use"]})},
         workspaces={
             "finance": WorkspaceConfig(
                 profiles=["computer-use"],
@@ -120,4 +122,47 @@ def test_workspace_permissions_override_profile_policy_and_reach_semantic_childr
     assert finance is not None
     assert finance.capabilities["desktop.computer.use"].decision == "deny"
     assert unemployment is not None
-    assert unemployment.capabilities["desktop.computer.use"].decision == "allow"
+    assert unemployment.capabilities["desktop.computer.use"].decision == "needs_human"
+
+
+def test_profile_and_workspace_permissions_merge_most_restrictively():
+    settings = make_settings(
+        profiles={
+            "allow": ProfileConfig(permissions={"allow": ["mcp.email.send"]}),
+            "ask": ProfileConfig(permissions={"ask": ["mcp.email.send"]}),
+            "deny": ProfileConfig(permissions={"deny": ["mcp.email.send"]}),
+        },
+        workspaces={
+            "email": WorkspaceConfig(
+                profiles=["deny", "allow", "ask"],
+                permissions={"allow": ["mcp.email.send"]},
+            )
+        },
+    )
+
+    resolved = settings.resolved_workspace_config("email")
+
+    assert resolved is not None
+    assert resolved.capabilities["mcp.email.send"].decision == "deny"
+
+
+def test_runtime_allow_overrides_implicit_ask():
+    settings = make_settings(
+        profiles={"base": ProfileConfig(tools=["matrix_route_read"])},
+        workspaces={"support": WorkspaceConfig(profiles=["base"])},
+    )
+    register_runtime_workspace_policy(
+        "support-conversation-conv_test",
+        RuntimeWorkspacePolicy(
+            parent_workspace="support",
+            capabilities={"chat.matrix.route.read": CapabilityRule(decision="allow")},
+        ),
+    )
+    try:
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings):
+            resolved = load_resolved_config("support-conversation-conv_test")
+    finally:
+        clear_runtime_workspace_policies()
+
+    assert resolved is not None
+    assert resolved.capabilities["chat.matrix.route.read"].decision == "allow"

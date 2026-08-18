@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 
 from pynchy.config.models import (
     ValidatedProfileName,
@@ -13,12 +13,6 @@ from pynchy.config.models import (
     _StrictModel,
 )
 from pynchy.config.permissions import PermissionConfig
-
-
-class CapabilityTomlConfig(_StrictModel):
-    """Profile-level semantic capability policy for tool surfaces."""
-
-    decision: Literal["allow", "deny", "needs_human"]
 
 
 class ProfileConfig(_StrictModel):
@@ -36,19 +30,6 @@ class ProfileConfig(_StrictModel):
     contains_secrets: bool = False
     cop_active: bool | None = None
     permissions: PermissionConfig = Field(default_factory=PermissionConfig)
-    capabilities: dict[str, CapabilityTomlConfig] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def reject_mixed_permission_syntax(self) -> ProfileConfig:
-        if self.permissions.decisions and self.capabilities:
-            raise ValueError("configure permissions or legacy capabilities, not both")
-        return self
-
-    @property
-    def permission_decisions(self) -> dict[str, Literal["allow", "deny", "needs_human"]]:
-        if self.permissions.decisions:
-            return self.permissions.decisions
-        return {capability: rule.decision for capability, rule in self.capabilities.items()}
 
     @field_validator("repo", mode="before")
     @classmethod

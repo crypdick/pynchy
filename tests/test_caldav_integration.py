@@ -26,6 +26,7 @@ from pynchy.plugins.integrations.caldav import (
 )
 from pynchy.state import init_test_database
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -844,6 +845,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
 
     # Register a SecurityGate with all-safe trust for list_calendar
     security = WorkspaceSecurity(
+        capabilities={"*": CapabilityRule("allow")},
         services={
             "list_calendar": ServiceTrustConfig(
                 public_source=False,

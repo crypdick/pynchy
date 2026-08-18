@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
-from pynchy.workspace.api import CapabilityRule
+from pynchy.workspace.api import CapabilityRule, most_restrictive_capability_rule
 
 
 def _deduplicate(items: list[str]) -> list[str]:
@@ -69,12 +69,12 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         contains_secrets = contains_secrets or profile.contains_secrets
         if profile.cop_active is not None:
             cop_active = profile.cop_active
-        capabilities.update(
-            {
-                capability: CapabilityRule(decision=decision)
-                for capability, decision in profile.permission_decisions.items()
-            }
-        )
+        for capability, decision in profile.permissions.decisions.items():
+            rule = CapabilityRule(decision=decision)
+            existing = capabilities.get(capability)
+            capabilities[capability] = (
+                most_restrictive_capability_rule((existing, rule)) if existing else rule
+            ) or rule
 
     return ResolvedWorkspaceConfig(
         skills=_deduplicate(skills),

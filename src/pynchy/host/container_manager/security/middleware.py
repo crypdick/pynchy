@@ -35,7 +35,7 @@ class PolicyDecision:
     reason: str | None = None
     needs_cop: bool = False
     needs_human: bool = False
-    # NOTE: Update docs/usage/security.md § Capability Rules if this override changes.
+    # NOTE: Update docs/usage/security.md § Permissions if this override changes.
     overrides_human_approval: bool = False
 
 
@@ -136,18 +136,19 @@ class SecurityPolicy:
 
         Capability IDs use dotted segments and support trailing ``.*``
         wildcards, for example ``mcp.email.send`` and ``mcp.email.*``.
-        Missing rules are neutral: the service-trust policy still applies.
+        Missing rules require human approval.
         """
         rule = self._matching_capability_rule(capability)
         if rule is None:
-            return PolicyDecision(allowed=True)
-        if rule.decision == "allow":
-            # A profile's explicit allow is the durable authorization boundary.
-            # Profile composition can then opt many workspaces in without
-            # repeating the same approval at runtime.
             return PolicyDecision(
                 allowed=True,
-                reason=f"Capability '{capability}' explicitly allowed by profile",
+                reason=f"Capability '{capability}' requires human approval by default",
+                needs_human=True,
+            )
+        if rule.decision == "allow":
+            return PolicyDecision(
+                allowed=True,
+                reason=f"Capability '{capability}' explicitly allowed",
                 overrides_human_approval=True,
             )
         if rule.decision == "deny":

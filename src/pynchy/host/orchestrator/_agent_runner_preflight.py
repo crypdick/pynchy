@@ -24,6 +24,7 @@ from pynchy.identifiers import (
 )
 from pynchy.ipc_snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.logger import logger
+from pynchy.plugins.api import get_host_action_catalog
 from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
@@ -36,7 +37,10 @@ from pynchy.state.api import (
     update_in_flight_session,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    CapabilityRule,
+    WorkspaceProfile,
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
 )
 
 
@@ -218,6 +222,11 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.on_output,
     )
     access = workspace_config.load_resolved_tool_access(request.group.folder)
+    agent_tool_grants = _visible_agent_tool_grants(
+        access.agent_tool_grants if access is not None else (),
+        request.group.folder,
+        request.deps.plugin_manager,
+    )
     system_notices = merged_system_notices(
         [
             *(
@@ -257,8 +266,34 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         automation_memory_dir=request.automation_memory_dir,
         corruption_tainted=taint.corruption_tainted,
         secret_tainted=taint.secret_tainted,
-        agent_tool_grants=access.agent_tool_grants if access is not None else (),
+        agent_tool_grants=agent_tool_grants,
     )
+
+
+def _visible_agent_tool_grants(
+    grants: tuple[str, ...],
+    group_folder: str,
+    plugin_manager: object,
+) -> tuple[str, ...]:
+    """Hide explicitly denied host tools while retaining ask-by-default tools."""
+    if not grants or (resolved := workspace_config.load_resolved_config(group_folder)) is None:
+        return grants
+    catalog = get_host_action_catalog(cast("Any", plugin_manager))
+    visible: list[str] = []
+    for grant in grants:
+        action = catalog.action_for(grant)
+        if action is None:
+            visible.append(grant)
+            continue
+        capability = str(action.capability.id)
+        rule = most_restrictive_capability_rule(
+            CapabilityRule(configured.decision)
+            for pattern, configured in resolved.capabilities.items()
+            if capability_pattern_matches(pattern, capability)
+        )
+        if rule is None or rule.decision != "deny":
+            visible.append(grant)
+    return tuple(visible)
 
 
 def resolved_pre_container_context(

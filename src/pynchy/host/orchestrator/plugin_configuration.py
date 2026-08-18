@@ -46,12 +46,12 @@ from pynchy.host.container_manager.security.security_canaries import (
 from pynchy.host.orchestrator.api import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
-    RuntimeWorkspaceRestriction,
+    RuntimeWorkspacePolicy,
     ensure_conversation_workspace,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
     resolve_workspace_placement,
     static_workspace_folder,
-    unregister_runtime_workspace_restriction,
+    unregister_runtime_workspace_policy,
 )
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
@@ -609,9 +609,9 @@ def _matrix_connection_operations() -> MatrixConnectionOperations:
             matrix_route_subject(route), GroupFolder(route.workspace)
         )
         folder = routed_conversation_folder(route.workspace, conversation.id)
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             folder,
-            RuntimeWorkspaceRestriction(
+            RuntimeWorkspacePolicy(
                 parent_workspace=route.workspace,
                 tools=route.tools,
                 capabilities={
@@ -658,7 +658,7 @@ def _matrix_connection_operations() -> MatrixConnectionOperations:
         claim_delivery=claim_delivery,
         release_delivery_claim=release_conversation_delivery_claim,
         conversation_exists=conversation_exists,
-        unregister_workspace_restriction=unregister_runtime_workspace_restriction,
+        unregister_workspace_restriction=unregister_runtime_workspace_policy,
     )
 
 
@@ -672,7 +672,7 @@ def configure_matrix_gateway_plugin(settings: Settings) -> None:
             activation=route.activation,
             outbound=route.outbound,
             tools=tuple(route.tools) if route.tools is not None else None,
-            capabilities=dict(route.permission_decisions),
+            capabilities=dict(route.permissions.decisions),
         )
         for name, route in settings.routes.items()
     )

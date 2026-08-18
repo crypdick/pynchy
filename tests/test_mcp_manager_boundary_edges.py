@@ -23,7 +23,12 @@ from pynchy.plugins.api import McpServerConfig
 
 
 async def _synced_manager(
-    tmp_path, monkeypatch, servers, workspace_tools, capture_background_tasks=None
+    tmp_path,
+    monkeypatch,
+    servers,
+    workspace_tools,
+    capture_background_tasks=None,
+    permissions=None,
 ):
     settings = make_settings(
         data_dir=tmp_path,
@@ -36,7 +41,9 @@ async def _synced_manager(
             )
             for name, config in servers.items()
         },
-        profiles={"test": ProfileConfig(tools=list(workspace_tools))},
+        profiles={
+            "test": ProfileConfig(tools=list(workspace_tools), permissions=permissions or {})
+        },
         workspaces={"workspace": WorkspaceConfig(profiles=["test"])},
     )
     manager = McpManager(
@@ -283,6 +290,25 @@ def test_routed_workspace_without_resolved_policy_has_no_instances(tmp_path, mon
         load_resolved_workspace_config=lambda _folder, _settings: None,
     )
     assert manager.get_workspace_instance_ids("thread") == []
+
+
+@pytest.mark.asyncio
+async def test_whole_denied_mcp_server_has_no_workspace_instance(tmp_path, monkeypatch):
+    manager = await _synced_manager(
+        tmp_path,
+        monkeypatch,
+        {"browser": McpServerConfig(type="url", url="https://mcp.test/mcp")},
+        ("browser",),
+        permissions={"deny": ["mcp.browser.*"]},
+    )
+    configure_mcp_manager_runtime(
+        static_workspace_folder=lambda folder: folder,
+        load_resolved_workspace_config=lambda folder, settings: settings.resolved_workspace_config(
+            folder
+        ),
+    )
+
+    assert manager.get_workspace_instance_ids("workspace") == []
 
 
 @pytest.mark.asyncio

@@ -164,17 +164,19 @@ descriptors without the existing IPC idempotency and terminal-audit contracts.
 
 Descriptors do not define a second permission system. The capability snapshot
 shown by `/capabilities` and `/status` is read-only diagnostic state.
-`SecurityPolicy` evaluates current semantic capability rules and service trust
-again at each dispatch. A profile capability `allow` suppresses human approval
-from service trust but cannot override a `"forbidden"` service property. A
-missing capability rule remains neutral. Approved replay also rechecks denial
-and descriptor availability.
+`SecurityPolicy` evaluates current semantic permissions and service trust again
+at each dispatch. Selected tools default to `ask`. Explicit profile, workspace,
+and runtime rules intersect with `deny` more restrictive than `ask`, and `ask`
+more restrictive than `allow`. An explicit `allow` suppresses human approval
+from service trust but cannot override a `"forbidden"` service property. Runtime
+policy may authorize an implicit default but cannot weaken an explicit rule.
+Approved replay also rechecks denial and descriptor availability.
 
 Each host-action plugin declares an approval trigger and scope in its
 `ApprovalContract`. The default `service_policy` trigger combines capability
 rules with service trust. `capability_only` is reserved for bounded,
 workspace-local state: it suppresses automatic human gates from service trust
-and payload scanning, while explicit capability `needs_human` and `deny` rules,
+and payload scanning, while explicit permission `ask` and `deny` rules,
 service prohibitions, and Cop review remain authoritative. `always` requires a
 person even when the other policies would allow the request.
 

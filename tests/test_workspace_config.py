@@ -26,7 +26,7 @@ from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
+    RuntimeWorkspacePolicy,
     add_job_to_toml,
     add_workspace_to_toml,
     configure_plugin_workspaces,
@@ -37,7 +37,7 @@ from pynchy.host.orchestrator.workspace_config import (
     load_workspace_config,
     prompt_ids_for_context,
     reconcile_workspaces,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
     update_profile_skill_policy,
 )
 from pynchy.plugins.api import (
@@ -167,7 +167,7 @@ class TestLoadWorkspaceConfig:
 
 class TestLoadResolvedConfig:
     def teardown_method(self):
-        workspace_config.clear_runtime_workspace_restrictions()
+        workspace_config.clear_runtime_workspace_policies()
 
     def test_resolves_selected_profiles(self):
         s = _settings_with_workspaces(
@@ -237,22 +237,19 @@ class TestLoadResolvedConfig:
             settings=s,
         ) == ("souls/default", "reviewers/security")
 
-    def test_runtime_restrictions_cannot_weaken_parent_capabilities(self):
+    def test_runtime_policy_rejects_weakening_explicit_permissions(self):
         s = _settings_with_workspaces(
             profiles={
                 "base": ProfileConfig(
                     tools=["matrix_route_read", "matrix_route_send"],
-                    capabilities={
-                        "chat.matrix.*": {"decision": "deny"},
-                        "chat.matrix.route.send": {"decision": "needs_human"},
-                    },
+                    permissions={"deny": ["chat.matrix.*"]},
                 )
             },
             workspaces={"support": WorkspaceConfig(profiles=["base"])},
         )
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             "support-conversation-conv_test",
-            RuntimeWorkspaceRestriction(
+            RuntimeWorkspacePolicy(
                 parent_workspace="support",
                 tools=("matrix_route_read",),
                 capabilities={
@@ -261,19 +258,16 @@ class TestLoadResolvedConfig:
                 },
             ),
         )
-        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            resolved = load_resolved_config("support-conversation-conv_test")
+        with (
+            patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s),
+            pytest.raises(ValueError, match="cannot widen explicit"),
+        ):
+            load_resolved_config("support-conversation-conv_test")
 
-        assert resolved is not None
-        assert resolved.tools == ["matrix_route_read"]
-        assert resolved.capabilities["chat.matrix.route.read"].decision == "deny"
-        assert resolved.capabilities["chat.matrix.*"].decision == "deny"
-        assert resolved.capabilities["chat.matrix.route.send"].decision == "deny"
-
-    def test_runtime_restriction_rejects_a_different_policy_owner(self):
-        register_runtime_workspace_restriction(
+    def test_runtime_policy_rejects_a_different_policy_owner(self):
+        register_runtime_workspace_policy(
             "support-conversation-conv_test",
-            RuntimeWorkspaceRestriction(parent_workspace="support"),
+            RuntimeWorkspacePolicy(parent_workspace="support"),
         )
 
         with pytest.raises(ValueError, match="different policy owner"):

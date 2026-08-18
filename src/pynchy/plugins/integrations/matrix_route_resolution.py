@@ -113,16 +113,20 @@ def resolve_matrix_routes(
             )
         weakened = []
         for capability, decision in route.capabilities.items():
+            route_rule = CapabilityRule(decision=decision)
             inherited = most_restrictive_capability_rule(
                 rule
                 for pattern, rule in workspace.capabilities.items()
                 if capability_pattern_matches(pattern, capability)
             )
-            if inherited is not None and inherited.decision == "deny" and decision != "deny":
+            effective = most_restrictive_capability_rule(
+                rule for rule in (inherited, route_rule) if rule is not None
+            )
+            if effective is not None and effective.decision != decision:
                 weakened.append(capability)
         if weakened:
             raise ValueError(
-                f"Matrix route {route_name!r} capabilities cannot weaken workspace denial: "
+                f"Matrix route {route_name!r} cannot weaken workspace permissions: "
                 + ", ".join(sorted(weakened))
             )
         resolved_routes.append(

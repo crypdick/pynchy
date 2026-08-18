@@ -64,7 +64,9 @@ from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.workspace.api import (
-    ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ServiceTrustConfig,
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
 )
 
 # ---------------------------------------------------------------------------
@@ -527,17 +529,24 @@ class McpManager:
         """Get only MCP instances still authorized by effective workspace policy."""
         static_folder = _static_workspace_folder(group_folder)
         instance_ids = self._workspace_instances.get(static_folder, [])
-        if static_folder == group_folder:
-            return list(instance_ids)
         resolved = _load_resolved_workspace_config(group_folder, self._settings)
         if resolved is None:
             return []
         allowed_tools = set(resolved.tools)
-        return [
-            instance_id
-            for instance_id in instance_ids
-            if self._instances[instance_id].server_name in allowed_tools
-        ]
+        result: list[str] = []
+        for instance_id in instance_ids:
+            server_name = self._instances[instance_id].server_name
+            if server_name not in allowed_tools:
+                continue
+            capability = f"mcp.{server_name}.__pynchy_visibility__"
+            rule = most_restrictive_capability_rule(
+                candidate
+                for pattern, candidate in resolved.capabilities.items()
+                if capability_pattern_matches(pattern, capability)
+            )
+            if rule is None or rule.decision != "deny":
+                result.append(instance_id)
+        return result
 
     def get_direct_server_configs(
         self,

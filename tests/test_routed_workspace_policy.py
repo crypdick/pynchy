@@ -58,7 +58,7 @@ async def test_startup_restores_policy_for_deliveryless_open_conversation(tmp_pa
             await restore_routed_workspace_policy_owners([routed])
             resolved = load_resolved_config(routed.folder)
     finally:
-        workspace_config.clear_runtime_workspace_restrictions()
+        workspace_config.clear_runtime_workspace_policies()
 
     assert resolved is not None
     assert resolved.repo == ["owner/project"]

@@ -208,23 +208,23 @@
 # contains_secrets = true  # pragma: allowlist secret
 # model = "chatgpt/gpt-5.3-codex"
 #
-# Semantic capability rules target a specific tool surface.
-# [profiles.pynchy-admin.capabilities."mcp.email.send"]
-# decision = "needs_human"  # "allow", "deny", or "needs_human"
+# Permissions target specific host actions or MCP calls.
+# permissions = { ask = ["mcp.email.send"], deny = ["mcp.email.delete"] }
 
-# Reuse an explicit no-prompt computer-use grant across profiles.
+# Reuse policy-neutral computer-use selection across profiles.
 # [tools.computer_use]
 # type = "builtin"
 # name = "computer_use"
 #
-# [profiles.unrestricted-computer-use]
+# [profiles.desktop-computer-use]
 # tools = ["computer_use"]
 #
-# [profiles.unrestricted-computer-use.capabilities."desktop.computer.use"]
-# decision = "allow"
-#
 # [profiles.desktop-worker]
-# includes = ["pynchy-worker", "unrestricted-computer-use"]
+# includes = ["pynchy-worker", "desktop-computer-use"]
+#
+# [workspaces.desktop-automation]
+# profiles = ["desktop-worker"]
+# permissions = { allow = ["desktop.computer.use"] }
 
 # [profiles.pynchy-worker]
 # skills = ["core"]

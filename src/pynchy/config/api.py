@@ -50,7 +50,7 @@ from pynchy.config.personalization import (
     validate_litellm_model_names,
     validate_personalization_tree,
 )
-from pynchy.config.profiles import CapabilityTomlConfig, ProfileConfig
+from pynchy.config.profiles import ProfileConfig
 from pynchy.config.prompts import (
     PipelineConfig,
     PipelineStageConfig,
@@ -108,7 +108,6 @@ __all__ = [
     "CalDAVServerConfig",
     "CalDAVTool",
     "CanaryConfig",
-    "CapabilityTomlConfig",
     "ChannelOverrideConfig",
     "CommandCenterConfig",
     "CommandWordsConfig",

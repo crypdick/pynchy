@@ -11,7 +11,7 @@ import pytest
 
 from pynchy.config.api import MatrixConnectionConfig, MatrixEndpointConfig
 from pynchy.conversation.api import ConversationId
-from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
+from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_policies
 from pynchy.identifiers import ChatJid
 from pynchy.plugins.api import ConnectionRuntimeContext
 from pynchy.plugins.integrations.matrix_connection import (
@@ -33,10 +33,10 @@ from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRo
 @pytest.fixture(autouse=True)
 def _database_and_registries() -> None:
     clear_active_matrix_routes()
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     yield
     clear_active_matrix_routes()
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
 
 
 class _StubGateway:

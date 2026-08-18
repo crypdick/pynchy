@@ -66,7 +66,12 @@ def register_gate():
     """
 
     def _make(source_group: str = "test-ws", **service_overrides: ServiceTrustConfig):
-        security = WorkspaceSecurity(services=dict(service_overrides))
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}
+            if all(trust.dangerous_writes is False for trust in service_overrides.values())
+            else {},
+            services=dict(service_overrides),
+        )
         return create_gate(source_group, 1000.0, security)
 
     return _make
@@ -214,7 +219,12 @@ async def test_named_linear_account_admits_stable_host_service_action(tmp_path):
     catalog = HostActionCatalog(actions=(action,))
     settings = make_settings(
         data_dir=tmp_path,
-        profiles={"synapse": ProfileConfig(tools=["linear_synapse"])},
+        profiles={
+            "synapse": ProfileConfig(
+                tools=["linear_synapse"],
+                permissions={"allow": ["linear.workitem.list"]},
+            )
+        },
         workspaces={"test-ws": WorkspaceConfig(profiles=["synapse"])},
         tools={
             "linear_synapse": LinearTool(

@@ -32,7 +32,9 @@ _SAFE_TRUST = ServiceTrustConfig(
 class TestMcpProxyRouting:
     async def test_proxy_forwards_to_backend(self, mock_backend):
         """Proxy should forward requests to the correct backend."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -58,7 +60,8 @@ class TestMcpProxyRouting:
         backend = TestServer(backend_app)
         await backend.start_server()
         security = WorkspaceSecurity(
-            services={"browser": ServiceTrustConfig(public_source=True, dangerous_writes=False)}
+            capabilities={"*": CapabilityRule("allow")},
+            services={"browser": ServiceTrustConfig(public_source=True, dangerous_writes=False)},
         )
         create_gate("test-ws", 1000.0, security)
         proxy = create_proxy_app(
@@ -81,7 +84,9 @@ class TestMcpProxyRouting:
 
     async def test_proxy_uses_configured_service_for_hashed_instance(self, mock_backend):
         """Workspace-scoped instance IDs must retain their configured trust policy."""
-        security = WorkspaceSecurity(services={"linear": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"linear": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -141,7 +146,9 @@ class TestMcpProxyRouting:
 
     async def test_proxy_does_not_duplicate_streamable_http_mcp_path(self, mock_backend):
         """A streamable-HTTP client must not make the backend path ``/mcp/mcp``."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -172,7 +179,13 @@ class TestMcpProxyRouting:
 
     async def test_proxy_404_instance_not_assigned_to_workspace(self):
         """A workspace must not reach another workspace's MCP credentials."""
-        create_gate("other-ws", 1000.0, WorkspaceSecurity(services={"browser": _SAFE_TRUST}))
+        create_gate(
+            "other-ws",
+            1000.0,
+            WorkspaceSecurity(
+                capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+            ),
+        )
         app = create_proxy_app(
             {"browser": "http://localhost:9999/mcp"},
             authorize_instance=lambda workspace, instance: (
@@ -202,7 +215,9 @@ class TestMcpProxyRouting:
 
     async def test_proxy_502_backend_unavailable(self):
         """Proxy should return 502 when the backend is unreachable."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
         events: list[str] = []
 
@@ -234,7 +249,9 @@ class TestMcpProxyRouting:
 
     async def test_proxy_ensures_stopped_backend_before_forwarding(self):
         """A valid request should restart its managed backend before forwarding."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
         backend_running = False
         events: list[str] = []
@@ -280,7 +297,9 @@ class TestMcpProxyRouting:
 
     async def test_proxy_returns_502_when_backend_ensure_fails(self, mock_backend):
         """A managed-backend startup failure should not escape as a proxy 500."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
         ensure_backend = AsyncMock(side_effect=RuntimeError("start failed"))
 
@@ -328,12 +347,13 @@ class TestMcpProxyFencing:
     async def test_public_source_response_is_fenced(self, mock_backend):
         """Responses from public_source=true servers should be fenced."""
         security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")},
             services={
                 "browser": ServiceTrustConfig(
                     public_source=True,
                     dangerous_writes=False,
                 )
-            }
+            },
         )
         create_gate("test-ws", 1000.0, security)
 
@@ -360,7 +380,9 @@ class TestMcpProxyFencing:
 
     async def test_non_public_source_not_fenced(self, mock_backend):
         """Responses from non-public_source servers should NOT be fenced."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -392,12 +414,13 @@ class TestMcpProxyFencing:
             mock_cop.return_value = CopVerdict(flagged=True, reason="Prompt injection detected")
 
             security = WorkspaceSecurity(
+                capabilities={"*": CapabilityRule("allow")},
                 services={
                     "browser": ServiceTrustConfig(
                         public_source=True,
                         dangerous_writes=False,
                     )
-                }
+                },
             )
             create_gate("test-ws", 1000.0, security)
 
@@ -425,6 +448,7 @@ class TestMcpProxyFencing:
     async def test_inactive_cop_fences_without_inspection(self, mock_backend):
         """Unattended profiles retain provenance fencing without Cop calls."""
         security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")},
             services={
                 "browser": ServiceTrustConfig(
                     public_source=True,
@@ -478,7 +502,13 @@ class TestMcpProxyFencing:
         backend_app.router.add_route("*", "/mcp", handle)
         backend = TestServer(backend_app)
         await backend.start_server()
-        create_gate("test-ws", 1000.0, WorkspaceSecurity(services={"browser": _SAFE_TRUST}))
+        create_gate(
+            "test-ws",
+            1000.0,
+            WorkspaceSecurity(
+                capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+            ),
+        )
         client = TestClient(
             TestServer(
                 create_proxy_app(
@@ -505,12 +535,13 @@ class TestMcpProxyFencing:
     async def test_fencing_sets_corruption_taint(self, mock_backend):
         """Reading from a public_source server should set corruption taint on the gate."""
         security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")},
             services={
                 "browser": ServiceTrustConfig(
                     public_source=True,
                     dangerous_writes=False,
                 )
-            }
+            },
         )
         gate = create_gate("test-ws", 1000.0, security)
 

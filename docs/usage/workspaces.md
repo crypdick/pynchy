@@ -1,7 +1,7 @@
 # Workspace Configuration
 
 Use profiles and workspaces to give each chat the right instructions, tools,
-repositories, and security boundary. A profile describes reusable capabilities;
+repositories, and security boundary. A profile describes reusable configuration;
 a workspace selects one or more profiles and optionally binds them to a
 configured channel chat.
 
@@ -21,13 +21,18 @@ model = "gpt-5.5"
 
 Profiles can include other profiles with `includes = ["base-profile"]`.
 They also carry security-relevant fields such as `is_admin`,
-`contains_secrets`, and capability rules. Keep an admin profile narrowly
+`contains_secrets`, and permissions. Keep an admin profile narrowly
 scoped: it cannot select a tool marked `public_source = true`. See [Tool
 Trust](security.md) for that policy.
 
 Tool declarations own their required environment and companion skills. A
 profile selects the tool; it does not grant credentials by naming a skill.
 See [Tool access and secrets](tool-access.md).
+
+Profiles, root workspaces, semantic threads, and scopes accept
+`permissions = { allow = [...], ask = [...], deny = [...] }`. Selecting a tool
+without a matching explicit permission makes each call ask for approval. See
+[Permissions](security.md#permissions) for composition and precedence.
 
 ## Create a workspace file
 

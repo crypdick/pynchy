@@ -20,7 +20,6 @@ from pynchy.actions.api import (
 )
 from pynchy.config.api import (
     BuiltinTool,
-    CapabilityTomlConfig,
     LinearTool,
     ProfileConfig,
     Settings,
@@ -120,8 +119,10 @@ def _settings(
     decision: str | None = None,
     tools: list[str] | None = None,
 ):
-    capabilities = (
-        {_ACTION_ID: CapabilityTomlConfig(decision=decision)} if decision is not None else {}
+    permissions = (
+        {"ask" if decision == "needs_human" else decision: [_ACTION_ID]}
+        if decision is not None
+        else {}
     )
     selected_tools = tools if tools is not None else [_TOOL_NAME] if enabled else []
     return make_settings(
@@ -129,7 +130,7 @@ def _settings(
         profiles={
             "matrix": ProfileConfig(
                 tools=selected_tools,
-                capabilities=capabilities,
+                permissions=permissions,
             )
         },
         workspaces={"test-ws": WorkspaceConfig(profiles=["matrix"])},
@@ -200,7 +201,7 @@ async def test_ready_capability_includes_current_policy_requirements():
 
     assert resolved.status is CapabilityStatus.READY
     assert resolved.cop_review_required is True
-    assert resolved.approval_required is False
+    assert resolved.approval_required is True
 
 
 @pytest.mark.asyncio

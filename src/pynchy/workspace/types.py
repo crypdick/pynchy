@@ -69,6 +69,8 @@ class CapabilityRule:
 
 def capability_pattern_matches(pattern: str, capability: str) -> bool:
     """Return whether an exact capability is covered by a trailing wildcard."""
+    if pattern == "*":
+        return True
     if pattern == capability:
         return True
     if not pattern.endswith(".*"):

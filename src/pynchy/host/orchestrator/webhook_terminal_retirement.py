@@ -12,7 +12,7 @@ from pynchy.conversation.api import (  # beartype resolves runtime annotations.
     conversation_id_from_folder,
     conversation_runtime_lock,
 )
-from pynchy.host.orchestrator.workspace_config import unregister_runtime_workspace_restriction
+from pynchy.host.orchestrator.workspace_config import unregister_runtime_workspace_policy
 from pynchy.identifiers import (
     GroupFolder,  # beartype resolves runtime annotations.
 )
@@ -94,6 +94,6 @@ async def retire_terminal_runtime(
         for workspace_jid in retirement.runtime_workspace_jids:
             await deps.unregister_workspace(workspace_jid)
         for runtime_folder in runtime_folders:
-            unregister_runtime_workspace_restriction(runtime_folder)
+            unregister_runtime_workspace_policy(runtime_folder)
             runtime_workspace_folders.discard(runtime_folder)
     return True
