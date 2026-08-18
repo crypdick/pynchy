@@ -75,6 +75,8 @@ def test_linux_desktop_is_isolated_and_persistent() -> None:
     }
     assert container["securityContext"]["seccompProfile"] == {"type": "Unconfined"}
     assert Path("deploy/k3s/pynchy-chromium.apparmor").is_file()
+    assert container["startupProbe"]["timeoutSeconds"] == 5
+    assert container["livenessProbe"]["timeoutSeconds"] == 5
     assert container["image"].startswith("pynchy-host:")
     assert container["volumeMounts"] == [
         {"name": "browser-profile", "mountPath": "/home/pynchy/.config/chromium"}
