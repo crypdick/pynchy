@@ -101,7 +101,7 @@ class ApprovalRuntimeOperations:
 
     find_pending_by_short_id: Callable[[str], dict[str, Any] | None]
     list_pending_approvals: Callable[[], list[dict[str, Any]]]
-    persist_and_process: Callable[[str, dict[str, object], object], Awaitable[None]]
+    persist_and_process: Callable[[str, dict[str, object]], Awaitable[None]]
 
 
 @runtime_checkable

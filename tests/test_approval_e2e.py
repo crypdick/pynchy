@@ -77,13 +77,13 @@ class FakeDeps(NullIpcDeps):
         )
 
     async def _persist_and_process_approval(
-        self, source_group: str, decision_data: dict[str, object], deps: object
+        self, source_group: str, decision_data: dict[str, object]
     ) -> None:
         decisions_dir = approval_state_root() / source_group / "approval_decisions"
         decisions_dir.mkdir(parents=True, exist_ok=True)
         decision_file = decisions_dir / f"{decision_data['request_id']}.json"
         write_json_atomic(decision_file, decision_data, indent=2)
-        await handlers_approval.process_approval_decision(decision_file, source_group, deps=deps)
+        await handlers_approval.process_approval_decision(decision_file, source_group, deps=self)
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
