@@ -242,10 +242,14 @@ ssh "$PYNCHY_HOST" 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
 
 ## Exercising Message Ingress
 
-Pynchy does not expose a production HTTP endpoint for injecting user messages. Send a test
-message from a real account through a configured channel so the test crosses the channel's
-authentication and ingestion boundaries. Inspect the resulting messages and agent activity in
-SQLite as described in [server debugging](references/server-debug.md#exercising-the-message-pipeline).
+For routine conversational canaries, use the local control-plane route documented in
+[Send synthetic Discord canary input](../../../docs/usage/control-plane.md#send-synthetic-discord-canary-input).
+It sends through the existing Discord bot account, then routes the prefixed echo through the
+normal user-message path. Do not open Discord in a browser merely to submit a test prompt.
+
+Use a real non-bot sender only when the test specifically covers Discord's human-authentication,
+mention, or access-policy boundary. Inspect the resulting messages and agent activity in SQLite
+as described in [server debugging](references/server-debug.md#exercising-the-message-pipeline).
 
 ## Service Management Reference
 
