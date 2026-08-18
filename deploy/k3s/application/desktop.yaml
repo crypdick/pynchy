@@ -43,6 +43,7 @@ spec:
                 - 'printf ''{"action":"check_permissions"}'' | pynchy-x11-computer-use'
             failureThreshold: 30
             periodSeconds: 2
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command:
@@ -50,6 +51,7 @@ spec:
                 - -c
                 - 'printf ''{"action":"check_permissions"}'' | pynchy-x11-computer-use'
             periodSeconds: 10
+            timeoutSeconds: 5
           securityContext:
             allowPrivilegeEscalation: false
             appArmorProfile:
