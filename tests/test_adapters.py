@@ -226,6 +226,20 @@ class TestHostMessageBroadcaster:
 class TestMessageBroadcaster:
     """Test channel broadcast behavior including error suppression."""
 
+    async def test_synthetic_user_input_reuses_channel_broadcast(self):
+        channel = FakeChannel()
+        broadcaster = MessageBroadcaster([channel])
+
+        await broadcaster.broadcast_synthetic_user_input(
+            "discord:channel:1", "use native search_skills"
+        )
+
+        jid, event = channel.sent[0]
+        assert jid == "discord:channel:1"
+        assert event.type is OutboundEventType.TEXT
+        assert event.content == "use native search_skills"
+        assert event.metadata == {"synthetic_user_input": True}
+
     async def test_sends_to_all_connected_channels(self):
         ch1 = FakeChannel()
         ch2 = FakeChannel()

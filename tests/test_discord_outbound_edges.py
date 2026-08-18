@@ -42,6 +42,25 @@ async def test_send_event_routes_forum_root_through_post_creation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_synthetic_user_input_marks_the_discord_message() -> None:
+    channel = _channel()
+    channel.client = object()
+    destination = _FakeSendChannel()
+    channel.resolve_channel = AsyncMock(return_value=destination)  # type: ignore[method-assign]
+
+    await channel.send_event(
+        "discord:channel:1",
+        OutboundEvent(
+            type=OutboundEventType.TEXT,
+            content="use native search_skills",
+            metadata={"synthetic_user_input": True},
+        ),
+    )
+
+    assert destination.sends[0][0] == "🦜 use native search_skills"
+
+
+@pytest.mark.asyncio
 async def test_empty_approval_content_does_not_send_a_blank_discord_message() -> None:
     channel = _channel()
     channel.client = object()

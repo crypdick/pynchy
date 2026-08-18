@@ -77,6 +77,17 @@ class MessageBroadcaster:
         """
         await broadcast(self, jid, event, suppress_errors=suppress_errors)
 
+    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None:
+        """Send one canary through the ordinary channel delivery path."""
+        await self.broadcast_to_channels(
+            jid,
+            OutboundEvent(
+                type=OutboundEventType.TEXT,
+                content=content,
+                metadata={"synthetic_user_input": True},
+            ),
+        )
+
 
 class HostMessageBroadcaster:
     """Broadcasts host operational messages and stores them in message history.

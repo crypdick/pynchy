@@ -44,7 +44,7 @@ from pynchy.workspace.api import (
 from ._access import DiscordAccess, interaction_context
 from ._ask_user import DiscordAskUserView, send_ask_user_prompt
 from ._chunk import DISCORD_LIMIT
-from ._events import DiscordEvents
+from ._events import SYNTHETIC_USER_PREFIX, DiscordEvents
 from ._history import (
     MESSAGE_ID_PREFIX as _MESSAGE_ID_PREFIX,
 )
@@ -615,6 +615,9 @@ class DiscordChannel:
         rendered = self._render_event(event)
         if not rendered.text.strip():
             return
+        text = rendered.text
+        if event.metadata.get("synthetic_user_input") is True:
+            text = f"{SYNTHETIC_USER_PREFIX} {text}"
         try:
             channel = await self.resolve_channel(jid)
         except discord.DiscordException as exc:
@@ -622,9 +625,9 @@ class DiscordChannel:
         try:
             short_id = event.metadata.get("short_id")
             if event.type is OutboundEventType.APPROVAL and isinstance(short_id, str) and short_id:
-                await send_approval(channel, self, jid, rendered.text, short_id)
+                await send_approval(channel, self, jid, text, short_id)
             else:
-                await send_text(channel, rendered.text)
+                await send_text(channel, text)
         except discord.Forbidden as exc:
             raise OSError(f"Discord send forbidden: {exc}") from exc
 

@@ -20,6 +20,25 @@ The Unix socket relies on filesystem permissions and accepts local control reque
 without a bearer token. Loopback TCP also accepts local requests without a token
 until either remote-access option gets enabled.
 
+## Send synthetic Discord canary input
+
+Use the local control socket to exercise a configured Discord workspace through
+the same outbound delivery, Discord gateway, and user-message ingestion paths as
+normal operation:
+
+```bash
+curl --silent --show-error --unix-socket data/pynchy.sock \
+  --header 'Content-Type: application/json' \
+  --data '{"jid":"discord:channel:<channel-id>","content":"Reply with the available native tools."}' \
+  http://localhost/canaries/messages
+```
+
+Pynchy sends the request from its existing Discord bot account with a visible
+`🦜` prefix. The Discord adapter removes that prefix and records the inbound
+message as user input with `synthetic_user_input = true` metadata. The agent sees
+only the supplied content. This route accepts Discord channel JIDs only and uses
+the same control-plane authentication policy as other `/canaries/*` routes.
+
 ## Readiness and operational status
 
 `GET /health` returns only `{"status": "ok"}`. It stays unauthenticated so a local

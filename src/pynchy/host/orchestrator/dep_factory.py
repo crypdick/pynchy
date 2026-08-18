@@ -368,7 +368,7 @@ async def _request_ipc_deploy(
 
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
-    _broadcaster, host_broadcaster = _get_broadcasters(app)
+    broadcaster, host_broadcaster = _get_broadcasters(app)
     settings = get_settings()
 
     class HttpDeps:
@@ -384,6 +384,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             start_deploy_workflow=start_deploy_workflow,
         )
         broadcast_host_message = host_broadcaster.broadcast_host_message
+        broadcast_synthetic_user_input = broadcaster.broadcast_synthetic_user_input
         complete_conversation_delivery = staticmethod(complete_conversation_delivery)
         conversation_control_state_matches = staticmethod(conversation_control_state_matches)
         get_conversation = staticmethod(get_conversation)
