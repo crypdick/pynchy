@@ -294,6 +294,8 @@ attempt=0
 while [ "$attempt" -lt 12 ]; do
     status=$(k exec deployment/pynchy -c pynchy -- \
         /opt/pynchy/.venv/bin/pynchy status 2>/dev/null || true)
+    capabilities=$(k exec deployment/pynchy -c pynchy -- \
+        /opt/pynchy/.venv/bin/pynchy doctor --json 2>/dev/null || true)
     desktop_status=$(printf '{"action":"check_permissions"}' \
         | k exec -i deployment/pynchy-desktop -c desktop -- \
             pynchy-x11-computer-use 2>/dev/null || true)
@@ -305,6 +307,15 @@ while [ "$attempt" -lt 12 ]; do
         and .temporal.cluster_healthy == true
         and .temporal.worker_running == true
     ' >/dev/null 2>&1 \
+        && printf '%s' "$capabilities" | jq -e '
+            [.workspaces[]?.capabilities[]?
+                | select(
+                    .id == "desktop.computer.use"
+                    and .status != "unconfigured"
+                    and .status != "denied_by_policy"
+                )]
+            | all(.status != "unavailable")
+        ' >/dev/null 2>&1 \
         && printf '%s' "$desktop_status" | jq -e \
             '.ready == true and .protocol_version == 1' >/dev/null 2>&1; then
         printf 'Released %s.\n' "$target_sha"

@@ -113,6 +113,11 @@ def _run_monitor(
         'if [ "$1" = "exec" ]; then\n'
         '  if [ "$2" = "-i" ]; then\n'
         '    printf \'{"protocol_version":1,"supported_actions":[],"ready":true}\\n\'\n'
+        '  elif printf "%s" "$*" | grep -q "pynchy doctor --json"; then\n'
+        "    printf '"
+        '{"workspaces":[{"capabilities":['
+        '{"id":"desktop.computer.use","status":"not_established"}'
+        "]}]}\\n'\n"
         "  else\n"
         "    printf '"
         '{"service":{"status":"ok"},'
@@ -171,6 +176,7 @@ def test_monitor_applies_one_healthy_published_revision(tmp_path: Path) -> None:
     assert "status=success" in gh_calls
     assert any(call.startswith("apply -f ") for call in kubectl_calls)
     assert not any(call.startswith("patch deployment") for call in kubectl_calls)
+    assert any("pynchy doctor --json" in call for call in kubectl_calls)
     assert any(call.endswith(f"merge --ff-only --quiet {_TARGET_SHA}") for call in git_calls)
     assert f"Released {_TARGET_SHA}." in result.stdout
 

@@ -4,6 +4,11 @@ set -eu
 display=${DISPLAY:-:0}
 export DISPLAY="$display"
 
+profile=${PYNCHY_CHROMIUM_PROFILE:-/home/pynchy/.config/chromium}
+for name in SingletonLock SingletonSocket SingletonCookie; do
+    rm -f "$profile/$name"
+done
+
 Xvfb "$display" -screen 0 1920x1080x24 -nolisten tcp &
 xvfb_pid=$!
 openbox &

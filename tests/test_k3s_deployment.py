@@ -84,9 +84,19 @@ def test_linux_desktop_is_isolated_and_persistent() -> None:
     ]
 
 
+def test_linux_desktop_removes_retired_pod_browser_locks_before_startup() -> None:
+    entrypoint = Path("deploy/k3s/desktop-entrypoint.sh").read_text(encoding="utf-8")
+
+    cleanup = 'rm -f "$profile/$name"'
+    assert cleanup in entrypoint
+    assert entrypoint.index(cleanup) < entrypoint.index('Xvfb "$display"')
+
+
 def test_runtime_can_exec_only_namespace_pods() -> None:
     manifest = Path("deploy/k3s/bootstrap/rbac.yaml").read_text(encoding="utf-8")
 
+    assert 'resources: ["deployments"]' in manifest
+    assert 'verbs: ["get"]' in manifest
     assert 'resources: ["pods/exec"]' in manifest
     assert "ClusterRole" not in manifest
 
