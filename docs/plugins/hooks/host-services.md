@@ -48,9 +48,9 @@ For each new semantic action, also implement [`pynchy_action_specs`](#pynchy_act
 ## `pynchy_computer_use_backend`
 
 Provide one platform implementation for the backend-neutral `computer_use`
-action. Pynchy collects providers and selects the first available name in
-`[plugins.computer-use.options].providers`. It does not retry a failed mutating
-action with another provider.
+action. Pynchy uses the exact provider named in
+`[plugins.computer-use.options].provider`. It reports an unavailable provider
+instead of silently selecting another implementation.
 
 ```python
 class MyDesktopPlugin:
@@ -61,8 +61,9 @@ class MyDesktopPlugin:
 
 Provider names must be unique. Implementations receive a validated,
 closed `ComputerUseRequest`; translate it to an allowlisted native API or
-subprocess invocation. The router keeps policy, audit, idempotency, attribution,
-and screenshot ownership. See [Computer use](../../usage/host-capabilities/computer-use.md).
+subprocess invocation. The neutral service keeps policy, audit, idempotency,
+attribution, and screenshot ownership. See
+[Computer use](../../usage/host-capabilities/computer-use.md).
 
 ## `pynchy_action_specs`
 

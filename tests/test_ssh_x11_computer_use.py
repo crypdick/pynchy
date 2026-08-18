@@ -5,13 +5,19 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import subprocess  # noqa: S404 - tests construct inert CompletedProcess results.
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from pynchy.plugins.api import ComputerUseRequest
-from pynchy.plugins.integrations.ssh_x11 import SshX11Backend, SshX11Config
+from pynchy.plugins.integrations.ssh_x11 import (
+    SshX11Backend,
+    SshX11ComputerUsePlugin,
+    SshX11Config,
+)
+from pynchy.plugins.integrations.ssh_x11_helper import PROTOCOL_VERSION, SUPPORTED_ACTIONS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +72,21 @@ def _config(tmp_path: Path) -> SshX11Config:
     )
 
 
+def _handshake_result(*, protocol_version: int = PROTOCOL_VERSION) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout=json.dumps(
+            {
+                "protocol_version": protocol_version,
+                "supported_actions": sorted(SUPPORTED_ACTIONS),
+                "ready": True,
+            }
+        ).encode(),
+        stderr=b"",
+    )
+
+
 def test_ssh_x11_requires_pinned_connection_files(tmp_path) -> None:
     backend = SshX11Backend(SshX11Config(host="desktop", private_key=tmp_path / "missing-key"))
 
@@ -98,10 +119,87 @@ def test_ssh_x11_reports_unavailable_local_prerequisites(
 def test_ssh_x11_reports_ready_with_pinned_files(tmp_path) -> None:
     backend = SshX11Backend(_config(tmp_path))
 
-    with patch("pynchy.plugins.integrations.ssh_x11.shutil.which", return_value="/usr/bin/ssh"):
+    with (
+        patch("pynchy.plugins.integrations.ssh_x11.shutil.which", return_value="/usr/bin/ssh"),
+        patch(
+            "pynchy.plugins.integrations.ssh_x11.subprocess.run",
+            return_value=_handshake_result(),
+        ) as run,
+    ):
         status = backend.availability()
 
     assert status.available is True
+    assert run.call_args.args[0][-1] == "operator@100.72.183.9"
+    assert json.loads(run.call_args.kwargs["input"])["action"] == "check_permissions"
+
+
+def test_ssh_x11_rejects_helper_protocol_mismatch(tmp_path) -> None:
+    backend = SshX11Backend(_config(tmp_path))
+
+    with (
+        patch("pynchy.plugins.integrations.ssh_x11.shutil.which", return_value="/usr/bin/ssh"),
+        patch(
+            "pynchy.plugins.integrations.ssh_x11.subprocess.run",
+            return_value=_handshake_result(protocol_version=PROTOCOL_VERSION + 1),
+        ),
+    ):
+        status = backend.availability()
+
+    assert status.available is False
+    assert status.reason == "SSH X11 protocol mismatch: host expects 1, helper returned 2"
+
+
+@pytest.mark.parametrize(
+    ("response", "reason"),
+    [
+        (
+            {"protocol_version": PROTOCOL_VERSION, "supported_actions": [], "ready": False},
+            "not ready",
+        ),
+        ({"ready": True}, "protocol_version"),
+    ],
+)
+def test_ssh_x11_rejects_unready_or_invalid_handshake(tmp_path, response, reason) -> None:
+    backend = SshX11Backend(_config(tmp_path))
+
+    with (
+        patch("pynchy.plugins.integrations.ssh_x11.shutil.which", return_value="/usr/bin/ssh"),
+        patch(
+            "pynchy.plugins.integrations.ssh_x11.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=json.dumps(response).encode(), stderr=b""
+            ),
+        ),
+    ):
+        status = backend.availability()
+
+    assert status.available is False
+    assert reason in (status.reason or "")
+
+
+def test_ssh_x11_plugin_applies_configuration(tmp_path) -> None:
+    plugin = SshX11ComputerUsePlugin()
+    config = _config(tmp_path)
+
+    plugin.configure(config)
+
+    assert plugin.pynchy_computer_use_backend().config is config
+
+
+def test_ssh_x11_availability_projects_blocking_timeout(tmp_path) -> None:
+    backend = SshX11Backend(_config(tmp_path))
+
+    with (
+        patch("pynchy.plugins.integrations.ssh_x11.shutil.which", return_value="/usr/bin/ssh"),
+        patch(
+            "pynchy.plugins.integrations.ssh_x11.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("ssh", 30),
+        ),
+    ):
+        status = backend.availability()
+
+    assert status.available is False
+    assert "timed out" in (status.reason or "")
 
 
 @pytest.mark.asyncio
@@ -129,7 +227,8 @@ async def test_ssh_x11_sends_request_over_stdin_and_materializes_capture(tmp_pat
 
     assert artifact.read_bytes() == screenshot
     assert json.loads(process.input)["source_group"] == "unemployment"
-    assert create.call_args.args[-2:] == ("operator@100.72.183.9", "pynchy-x11-computer-use")
+    assert create.call_args.args[-1] == "operator@100.72.183.9"
+    assert "-T" in create.call_args.args
     assert result["backend"] == "ssh-x11"
     assert result["screenshot"]["bytes"] == len(screenshot)
 
@@ -176,7 +275,7 @@ async def test_ssh_x11_returns_non_capture_output_without_artifact(tmp_path) -> 
     ) as create:
         result = await backend.execute(request)
 
-    assert create.call_args.args[-2:] == ("100.72.183.9", "pynchy-x11-computer-use")
+    assert create.call_args.args[-1] == "100.72.183.9"
     assert result == {"backend": "ssh-x11", "output": {"apps": ["Brave"]}}
 
 
@@ -186,6 +285,8 @@ async def test_ssh_x11_returns_non_capture_output_without_artifact(tmp_path) -> 
     [
         (_FakeProcess(returncode=1, stderr=b"connection denied"), "connection denied"),
         (_FakeProcess(returncode=1), "unknown error"),
+        (_FakeProcess(returncode=1, stdout=b"not json"), "unknown error"),
+        (_FakeProcess(stdout=b""), "non-object response"),
         (_FakeProcess(stdout=b"not json"), "invalid JSON"),
         (_FakeProcess(["not", "an", "object"]), "non-object response"),
         (_FakeProcess({"error": "desktop denied"}), "desktop denied"),

@@ -1,14 +1,17 @@
-"""Tests for Codex's local bridge into Pynchy agent tools."""
+"""End-to-end checks for Pynchy's native stdio MCP server."""
 
 from __future__ import annotations
 
-import json
 import os
-import subprocess  # noqa: S404 - tests run the fixed agent-tools module argv.
 import sys
 
+import pytest
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
-def test_call_hex_invokes_visible_agent_tool(tmp_path) -> None:
+
+@pytest.mark.asyncio
+async def test_native_mcp_advertises_and_calls_skill_discovery(tmp_path) -> None:
     skills = tmp_path / "skills"
     skill = skills / "job-hunt-tracking"
     skill.mkdir(parents=True)
@@ -16,63 +19,22 @@ def test_call_hex_invokes_visible_agent_tool(tmp_path) -> None:
         "---\nname: job-hunt-tracking\n"
         "description: Track unemployment benefits and myEDD evidence.\n---\n"
     )
-    arguments = json.dumps({"query": "myEDD unemployment"}).encode().hex()
-    env = {**os.environ, "PYNCHY_SKILLS_ROOT": str(skills)}
-
-    result = subprocess.run(  # noqa: S603 - fixed interpreter and module argv.
-        [
-            sys.executable,
-            "-m",
-            "agent_runner.agent_tools",
-            "call-hex",
-            "search_skills",
-            arguments,
-        ],
-        check=False,
-        capture_output=True,
-        env=env,
-        text=True,
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "agent_runner.agent_tools"],
+        env={**os.environ, "PYNCHY_SKILLS_ROOT": str(skills)},
     )
 
-    assert result.returncode == 0
-    assert "job-hunt-tracking" in json.loads(result.stdout)["content"][0]["text"]
+    async with (
+        stdio_client(parameters) as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        initialization = await session.initialize()
+        tools = await session.list_tools()
+        result = await session.call_tool("search_skills", {"query": "myEDD unemployment"})
 
-
-def test_call_hex_rejects_invalid_arguments() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "agent_runner.agent_tools", "call-hex", "search_skills", "xyz"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 2
-    assert "arguments must be hex-encoded JSON object" in result.stderr
-
-
-def test_call_hex_cannot_invoke_hidden_agent_tool() -> None:
-    arguments = (
-        json.dumps({"jid": "chat", "name": "chat", "folder": "chat", "trigger": "@pynchy"})
-        .encode()
-        .hex()
-    )
-    env = {**os.environ, "PYNCHY_IS_ADMIN": "0"}
-
-    result = subprocess.run(  # noqa: S603 - fixed interpreter and module argv.
-        [
-            sys.executable,
-            "-m",
-            "agent_runner.agent_tools",
-            "call-hex",
-            "register_group",
-            arguments,
-        ],
-        check=False,
-        capture_output=True,
-        env=env,
-        text=True,
-    )
-
-    assert result.returncode == 1
-    assert json.loads(result.stdout)["isError"] is True
-    assert json.loads(result.stdout)["content"][0]["text"] == "Unknown tool: register_group"
+    assert initialization.instructions is not None
+    skill_tool_names = {"search_skills", "request_skill_access"}
+    assert all(name in initialization.instructions for name in skill_tool_names)
+    assert skill_tool_names <= {tool.name for tool in tools.tools}
+    assert "job-hunt-tracking" in result.content[0].text

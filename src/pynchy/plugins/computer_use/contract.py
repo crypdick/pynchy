@@ -25,7 +25,7 @@ class ComputerUseBackend(Protocol):
 
     @property
     def name(self) -> str:
-        """Return the stable provider identifier used in router configuration."""
+        """Return the stable provider identifier used in computer-use configuration."""
 
     def availability(self) -> ComputerUseBackendAvailability:
         """Inspect local prerequisites without mutating host state."""

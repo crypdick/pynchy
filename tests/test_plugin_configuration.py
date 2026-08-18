@@ -33,19 +33,19 @@ def _plugin_manager(*plugins: tuple[str, object]) -> pluggy.PluginManager:
 
 
 def test_configure_computer_use_plugins_applies_provider_options() -> None:
-    router = ComputerUsePlugin()
+    computer_use = ComputerUsePlugin()
     cua = CuaDriverComputerUsePlugin()
     peekaboo = PeekabooComputerUsePlugin()
     ssh_x11 = SshX11ComputerUsePlugin()
     manager = _plugin_manager(
-        ("builtin-computer-use", router),
+        ("builtin-computer-use", computer_use),
         ("builtin-cua-driver", cua),
         ("builtin-peekaboo", peekaboo),
         ("builtin-ssh-x11", ssh_x11),
     )
     settings = make_settings(
         plugins={
-            "computer-use": PluginConfig(options={"providers": ["cua-driver"]}),
+            "computer-use": PluginConfig(options={"provider": "cua-driver"}),
             "cua-driver": PluginConfig(options={"binary": "/opt/cua", "timeout_seconds": 12}),
             "peekaboo": PluginConfig(options={"binary": "/opt/peekaboo", "timeout_seconds": 8}),
             "ssh-x11": PluginConfig(
@@ -65,7 +65,16 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
     assert cua.pynchy_computer_use_backend().config.timeout_seconds == 12
     assert peekaboo.pynchy_computer_use_backend().config.binary == "/opt/peekaboo"
     assert ssh_x11.pynchy_computer_use_backend().config.host == "desktop"
-    assert router.pynchy_service_handler(computer_use_backends=()).actions
+    backend = cua.pynchy_computer_use_backend()
+    assert computer_use.pynchy_service_handler(computer_use_backends=(backend,)).actions
+
+
+def test_configure_computer_use_plugins_requires_provider_when_configured() -> None:
+    manager = _plugin_manager(("builtin-computer-use", ComputerUsePlugin()))
+    settings = make_settings(plugins={"computer-use": PluginConfig()})
+
+    with pytest.raises(ValueError, match="provider"):
+        plugin_configuration.configure_computer_use_plugins(manager, settings)
 
 
 def test_configure_desktop_screenshot_plugin_injects_gateway_accessor(

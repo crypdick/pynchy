@@ -25,8 +25,8 @@ from pynchy.plugins.api import (
     CapabilityRequirementKind,
     ComputerUseAction,
     ComputerUseBackend,
+    ComputerUseConfig,
     ComputerUseRequest,
-    ComputerUseRouterConfig,
     HostActionAccess,
     HostActionDescriptor,
     HostActionHandler,
@@ -107,52 +107,45 @@ def _backend_catalog(
     return catalog
 
 
-async def _select_backend(
-    config: ComputerUseRouterConfig,
+def _configured_backend(
+    config: ComputerUseConfig | None,
     backends: dict[str, ComputerUseBackend],
-) -> tuple[ComputerUseBackend, int, tuple[str, ...]]:
-    configured = [(name, backends.get(name)) for name in config.providers]
-    available = [(name, backend) for name, backend in configured if backend is not None]
-    statuses = await asyncio.gather(
-        *(asyncio.to_thread(backend.availability) for _, backend in available)
+) -> ComputerUseBackend | None:
+    if config is None:
+        return None
+    backend = backends.get(config.provider)
+    if backend is not None:
+        return backend
+    available = ", ".join(sorted(backends)) or "none"
+    raise ValueError(
+        f"configured computer-use provider {config.provider!r} is not loaded; "
+        f"available providers: {available}"
     )
-    by_name = {name: status for (name, _), status in zip(available, statuses, strict=True)}
-    reasons: list[str] = []
-    for index, (name, backend) in enumerate(configured):
-        if backend is None:
-            reasons.append(f"{name}: plugin is not loaded")
-            continue
-        status = by_name[name]
-        if status.available:
-            return backend, index, tuple(reasons)
-        reasons.append(f"{name}: {status.reason or 'unavailable'}")
-    detail = "; ".join(reasons) or "no providers configured"
-    raise RuntimeError(f"No configured computer-use provider is available: {detail}")
 
 
 async def _probe_backend(
     _context: CapabilityProbeContext,
-    config: ComputerUseRouterConfig,
-    backends: dict[str, ComputerUseBackend],
+    backend: ComputerUseBackend | None,
 ) -> CapabilityProbeResult:
-    try:
-        backend, index, reasons = await _select_backend(config, backends)
-    except RuntimeError as exc:
-        return CapabilityProbeResult(ProbeStatus.UNAVAILABLE, str(exc))
-    if index:
+    if backend is None:
         return CapabilityProbeResult(
-            ProbeStatus.DEGRADED,
-            f"Using fallback provider {backend.name}: {'; '.join(reasons)}",
+            ProbeStatus.UNAVAILABLE,
+            "computer-use provider is not configured",
         )
-    return CapabilityProbeResult(ProbeStatus.READY)
+    status = await asyncio.to_thread(backend.availability)
+    if status.available:
+        return CapabilityProbeResult(ProbeStatus.READY)
+    return CapabilityProbeResult(
+        ProbeStatus.UNAVAILABLE,
+        f"computer-use provider {backend.name} is unavailable: {status.reason or 'unavailable'}",
+    )
 
 
 def _capability(
-    config: ComputerUseRouterConfig,
-    backends: dict[str, ComputerUseBackend],
+    backend: ComputerUseBackend | None,
 ) -> CapabilityDescriptor:
     async def probe(context: CapabilityProbeContext) -> CapabilityProbeResult:
-        return await _probe_backend(context, config, backends)
+        return await _probe_backend(context, backend)
 
     return CapabilityDescriptor(
         id=CapabilityId("desktop.computer.use"),
@@ -170,8 +163,9 @@ def _capability(
                 kind=CapabilityRequirementKind.HOST_BINARY,
                 name="computer-use-provider",
                 description=(
-                    "Load and configure one of these provider plugins: "
-                    f"{', '.join(config.providers) or '(none)'}"
+                    f"Load configured provider plugin {backend.name}."
+                    if backend is not None
+                    else "Configure one computer-use provider plugin."
                 ),
             ),
         ),
@@ -184,9 +178,8 @@ def _capability(
 
 async def _execute_request(
     request: ComputerUseRequest,
-    config: ComputerUseRouterConfig,
     data_dir: Path | None,
-    backends: dict[str, ComputerUseBackend],
+    backend: ComputerUseBackend | None,
 ) -> dict[str, Any]:
     if request.action is ComputerUseAction.WAIT:
         await asyncio.sleep(request.seconds)
@@ -197,7 +190,8 @@ async def _execute_request(
                 "output": f"waited {request.seconds:g}s",
             }
         }
-    backend, _, _ = await _select_backend(config, backends)
+    if backend is None:
+        raise RuntimeError("computer-use provider is not configured")
     screenshot_path = None
     if request.action is ComputerUseAction.CAPTURE:
         screenshot_path = _artifact_path(
@@ -225,14 +219,13 @@ async def _execute_request(
 
 
 def _handler(
-    config: ComputerUseRouterConfig,
     data_dir: Path | None,
-    backends: dict[str, ComputerUseBackend],
+    backend: ComputerUseBackend | None,
 ) -> HostActionHandler:
     async def handle(data: dict[str, Any]) -> dict[str, Any]:
         try:
             request = ComputerUseRequest.parse(data)
-            return await _execute_request(request, config, data_dir, backends)
+            return await _execute_request(request, data_dir, backend)
         except (RuntimeError, TypeError, ValidationError, ValueError) as exc:
             return {"error": str(exc)}
 
@@ -240,19 +233,19 @@ def _handler(
 
 
 class ComputerUsePlugin:
-    """Route one neutral host action through optional platform provider plugins."""
+    """Expose one selected computer-use provider through a neutral host action."""
 
     def __init__(
         self,
-        config: ComputerUseRouterConfig | None = None,
+        config: ComputerUseConfig | None = None,
         *,
         data_dir: Path | None = None,
     ) -> None:
-        self._config = config or ComputerUseRouterConfig()
+        self._config = config
         self._data_dir = data_dir
 
-    def configure(self, config: ComputerUseRouterConfig, *, data_dir: Path) -> None:
-        """Apply the router's resolved configuration before registration."""
+    def configure(self, config: ComputerUseConfig | None, *, data_dir: Path) -> None:
+        """Apply provider selection and lifecycle paths before registration."""
         self._config = config
         self._data_dir = data_dir
 
@@ -262,10 +255,11 @@ class ComputerUsePlugin:
         computer_use_backends: tuple[ComputerUseBackend, ...],
     ) -> HostActionRegistration:
         backends = _backend_catalog(computer_use_backends)
+        backend = _configured_backend(self._config, backends)
         descriptor = HostActionDescriptor(
-            capability=_capability(self._config, backends),
+            capability=_capability(backend),
             tool_name=HostToolName("computer_use"),
-            handler=_handler(self._config, self._data_dir, backends),
+            handler=_handler(self._data_dir, backend),
             access=HostActionAccess.WRITE,
             approval=ApprovalContract(mode=ApprovalMode.SESSION_TOOL),
             idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),

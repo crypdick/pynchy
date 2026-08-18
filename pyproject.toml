@@ -50,6 +50,7 @@ voice = [
 pynchy = "pynchy.__main__:main"
 pynchy-whatsapp-auth = "pynchy.__main__:whatsapp_auth"
 pynchy-kubernetes-runtime = "pynchy.plugins.runtimes.kubernetes_runtime.cli:main"
+pynchy-x11-computer-use = "pynchy.plugins.integrations.ssh_x11_helper:main"
 
 [dependency-groups]
 dev = [

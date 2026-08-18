@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, NewType
 
-from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -72,19 +72,12 @@ class _StrictModel(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class ComputerUseRouterConfig(_StrictModel):
-    """Ordered provider selection for the neutral computer-use tool."""
+class ComputerUseConfig(_StrictModel):
+    """Explicit provider selection for the neutral computer-use tool."""
 
-    # NOTE: Update docs/usage/host-capabilities/computer-use.md § Configure provider order
+    # NOTE: Update docs/usage/host-capabilities/computer-use.md § Select a provider
     # if this changes.
-    providers: tuple[NonEmptyString, ...] = ("peekaboo", "cua-driver")
-
-    @field_validator("providers")
-    @classmethod
-    def require_unique_providers(cls, providers: tuple[str, ...]) -> tuple[str, ...]:
-        if len(providers) != len(set(providers)):
-            raise ValueError("computer-use providers must be unique")
-        return providers
+    provider: NonEmptyString
 
 
 class ComputerUseInput(_StrictModel):

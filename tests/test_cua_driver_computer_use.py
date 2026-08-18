@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.plugins.api import ComputerUseRouterConfig
+from pynchy.plugins.api import ComputerUseConfig
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
 from pynchy.plugins.integrations.cua_driver import (
     CuaDriverBackend,
@@ -46,7 +46,7 @@ def _handler(data_dir: Path | None = None, *, timeout_seconds: float = 5) -> Hos
     backend = CuaDriverBackend(
         CuaDriverConfig(binary="cua-driver", timeout_seconds=timeout_seconds)
     )
-    config = ComputerUseRouterConfig(providers=("cua-driver",))
+    config = ComputerUseConfig(provider="cua-driver")
     registration = ComputerUsePlugin(config, data_dir=data_dir).pynchy_service_handler((backend,))
     return registration.actions[0].handler
 
@@ -81,26 +81,16 @@ def test_cua_availability_reports_platform_and_binary_requirements() -> None:
         assert availability.available is False
         assert availability.reason == "Cua Driver is not installed at 'configured-cua'"
 
+    with (
+        patch("pynchy.plugins.integrations.cua_driver.platform.system", return_value="Darwin"),
+        patch("pynchy.plugins.integrations.cua_driver.shutil.which", return_value="/bin/cua"),
+    ):
+        assert backend.availability().available is True
+
 
 @pytest.mark.asyncio
 async def test_cua_reports_missing_binary_at_execution_time() -> None:
     with patch("pynchy.plugins.integrations.cua_driver.shutil.which", return_value=None):
-        result = await _handler()({"source_group": "admin", "action": "list_apps"})
-
-    assert result == {
-        "error": (
-            "No configured computer-use provider is available: "
-            "cua-driver: Cua Driver is not installed at 'cua-driver'"
-        )
-    }
-
-
-@pytest.mark.asyncio
-async def test_cua_reports_binary_disappearing_after_availability_probe() -> None:
-    with patch(
-        "pynchy.plugins.integrations.cua_driver.shutil.which",
-        side_effect=["/bin/cua-driver", None],
-    ):
         result = await _handler()({"source_group": "admin", "action": "list_apps"})
 
     assert result == {"error": "Cua Driver is not installed at 'cua-driver'"}
@@ -123,7 +113,7 @@ async def test_cua_reports_binary_disappearing_after_availability_probe() -> Non
         ("check_permissions", {}, "check_permissions"),
     ],
 )
-async def test_existing_actions_remain_available_through_cua_fallback(
+async def test_existing_actions_remain_available_through_cua_provider(
     action: str,
     arguments: dict[str, object],
     expected_action: str,

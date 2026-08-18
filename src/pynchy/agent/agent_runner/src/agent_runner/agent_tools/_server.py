@@ -38,7 +38,13 @@ _TOOL_MODULES = (
 for module_name in _TOOL_MODULES:
     import_module(f"{__package__}.{module_name}")
 
-server = Server("pynchy")
+_INSTRUCTIONS = (
+    "Before improvising a workflow that may have personalized guidance, call search_skills with "
+    "task terms. If it returns a relevant skill, call request_skill_access before proceeding. Use "
+    "Pynchy MCP tools directly; do not invoke them through Bash or shell wrappers."
+)
+
+server = Server("pynchy", instructions=_INSTRUCTIONS)
 
 type ListToolsHandler = Callable[[], Awaitable[list[Tool]]]
 type ListToolsDecorator = Callable[[ListToolsHandler], ListToolsHandler]
