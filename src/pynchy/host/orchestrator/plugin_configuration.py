@@ -666,7 +666,7 @@ def configure_matrix_gateway_plugin(settings: Settings) -> None:
             activation=route.activation,
             outbound=route.outbound,
             tools=tuple(route.tools) if route.tools is not None else None,
-            capabilities=dict(route.capabilities),
+            capabilities=dict(route.permission_decisions),
         )
         for name, route in settings.routes.items()
     )

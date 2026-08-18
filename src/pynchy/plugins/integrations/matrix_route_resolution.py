@@ -8,7 +8,6 @@ from collections.abc import (  # noqa: TC003 - beartype resolves Matrix route an
     Mapping,
 )
 from dataclasses import dataclass
-from typing import Literal
 
 from pynchy.integration_contracts import (  # noqa: TC001 - beartype resolves Matrix route annotations.
     MatrixActivation,
@@ -17,6 +16,7 @@ from pynchy.integration_contracts import (  # noqa: TC001 - beartype resolves Ma
     MatrixOutbound,
 )
 from pynchy.workspace.api import (  # beartype resolves Matrix route annotations.
+    CapabilityDecision,
     CapabilityRule,
     capability_pattern_matches,
     most_restrictive_capability_rule,
@@ -39,7 +39,7 @@ class MatrixRouteInput:
     activation: MatrixActivation | None
     outbound: MatrixOutbound | None
     tools: tuple[str, ...] | None
-    capabilities: dict[str, Literal["deny", "needs_human"]]
+    capabilities: dict[str, CapabilityDecision]
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +63,7 @@ class ResolvedMatrixRoute:
     activation: MatrixActivation
     outbound: MatrixOutbound
     tools: tuple[str, ...] | None
-    capabilities: dict[str, Literal["deny", "needs_human"]]
+    capabilities: dict[str, CapabilityDecision]
 
 
 def parse_matrix_endpoint_ref(value: str) -> MatrixEndpointRef | None:
