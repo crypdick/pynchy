@@ -45,6 +45,8 @@ def _run_monitor(
     kubectl_log = tmp_path / "kubectl.log"
     git_log = tmp_path / "git.log"
     apply_count = tmp_path / "apply-count"
+    release_patch = tmp_path / "vault.yaml"
+    release_patch.write_text("apiVersion: apps/v1\nkind: Deployment\n", encoding="utf-8")
     _write_executable(
         fake_bin / "gh",
         "#!/bin/sh\n"
@@ -96,6 +98,7 @@ def _run_monitor(
         "  exit 1\n"
         "fi\n"
         'if [ "$1" = "kustomize" ]; then\n'
+        '  if grep -q \'": "/\' "$2/kustomization.yaml"; then exit 1; fi\n'
         "  printf 'apiVersion: v1\\nkind: Service\\n"
         "metadata:\\n  name: pynchy\\n  namespace: pynchy\\n'\n"
         "  exit 0\n"
@@ -137,6 +140,7 @@ def _run_monitor(
         "PYNCHY_RELEASE_AGENT_IMAGE": "registry.example/pynchy-agent",
         "PYNCHY_RELEASE_CHECKOUT": str(checkout),
         "PYNCHY_RELEASE_HOST_IMAGE": "registry.example/pynchy-host",
+        "PYNCHY_RELEASE_PATCH": str(release_patch),
         "PYNCHY_RELEASE_REPOSITORY": "owner/pynchy",
         "PYNCHY_KUBECONFIG": str(tmp_path / "kubeconfig"),
         "PYNCHY_TEST_APPLY_COUNT": str(apply_count),
