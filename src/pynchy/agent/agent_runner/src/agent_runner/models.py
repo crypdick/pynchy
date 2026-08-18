@@ -91,6 +91,7 @@ class ContainerInput:
     mcp_gateway_url: str | None = None
     mcp_gateway_key: str | None = None
     mcp_direct_servers: list[dict[str, Any]] | None = None
+    agent_tool_grants: list[str] | None = None
 
     def __post_init__(self) -> None:
         # Normalize empty string to None (JSON has no null distinction for

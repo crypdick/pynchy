@@ -11,7 +11,13 @@ from dataclasses import dataclass, replace
 from pynchy.config.merge import (  # noqa: TC001 - beartype resolves tool-access annotations at runtime.
     ResolvedWorkspaceConfig,
 )
-from pynchy.config.models import LinearTool, ToolConfig, WorkspaceTool
+from pynchy.config.models import (
+    BuiltinTool,
+    CalDAVTool,
+    LinearTool,
+    ToolConfig,
+    WorkspaceTool,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +28,7 @@ class ResolvedToolAccess:
     companion_skills: tuple[str, ...]
     workspace_env: dict[str, str]
     missing_requirements: dict[str, tuple[str, ...]]
+    agent_tool_grants: tuple[str, ...] = ()
 
     @property
     def notices(self) -> tuple[str, ...]:
@@ -44,6 +51,7 @@ def resolve_tool_access(
     skills: list[str] = []
     workspace_env: dict[str, str] = {}
     missing: dict[str, tuple[str, ...]] = {}
+    agent_tool_grants: list[str] = []
 
     for name in resolved.tools:
         tool = configured_tools.get(name)
@@ -58,6 +66,7 @@ def resolve_tool_access(
             missing[name] = absent
             continue
         tools.append(name)
+        agent_tool_grants.extend(_agent_tool_grants(name, tool))
         skills.extend(tool.skills)
         if isinstance(tool, WorkspaceTool) or tool.expose_env_to_workspace:
             workspace_env.update(_declared_environment(tool, source))
@@ -67,7 +76,17 @@ def resolve_tool_access(
         companion_skills=tuple(dict.fromkeys(skills)),
         workspace_env=workspace_env,
         missing_requirements=missing,
+        agent_tool_grants=tuple(dict.fromkeys(agent_tool_grants)),
     )
+
+
+def _agent_tool_grants(name: str, tool: ToolConfig) -> tuple[str, ...]:
+    """Return stable aliases that expose matching built-in agent tools."""
+    if isinstance(tool, BuiltinTool):
+        return (name, tool.name) if tool.name and tool.name != name else (name,)
+    if isinstance(tool, (LinearTool, CalDAVTool)):
+        return (name, tool.type)
+    return (name,)
 
 
 def apply_tool_access(

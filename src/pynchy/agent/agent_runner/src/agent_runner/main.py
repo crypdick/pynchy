@@ -103,11 +103,20 @@ def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, object]:
     for name in ("PYNCHY_IPC_DIR", "PYNCHY_SKILLS_ROOT"):
         if value := os.environ.get(name):
             env[name] = value
-    return {
+    result: dict[str, object] = {
         "command": "python",
         "args": ["-m", "agent_runner.agent_tools"],
         "env": env,
     }
+    if (
+        container_input.agent_core_module == "agent_runner.cores.codex"
+        and container_input.agent_tool_grants is not None
+    ):
+        from agent_runner.agent_tools import enabled_agent_tools  # noqa: PLC0415
+
+        result["enabled_tools"] = enabled_agent_tools(container_input.agent_tool_grants)
+        result["required"] = True
+    return result
 
 
 def _direct_mcp_server_entry(server: dict[str, object]) -> dict[str, object]:
