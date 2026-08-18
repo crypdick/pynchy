@@ -1,0 +1,6 @@
+include <tunables/global>
+
+# Kubernetes applies this profile to the isolated desktop container by name.
+profile pynchy-chromium flags=(unconfined) {
+  userns,
+}

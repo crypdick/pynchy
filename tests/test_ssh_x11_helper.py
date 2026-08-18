@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import socket
 import subprocess  # noqa: S404 - tests construct inert CompletedProcess results.
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from pynchy.plugins.integrations import ssh_x11_helper
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _run_recorder(calls: list[list[str]]):
@@ -70,6 +75,67 @@ def test_launch_app_opens_web_urls_with_requested_app(monkeypatch: pytest.Monkey
     assert popen.call_args.kwargs["env"] == {"PATH": "/bin", "DISPLAY": ":0"}
     assert calls == []
     assert result == {"launched": True, "urls": ["https://myedd.edd.ca.gov/"]}
+
+
+def test_launch_chromium_removes_lock_from_prior_pod(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    profile = tmp_path / ".config" / "chromium"
+    profile.mkdir(parents=True)
+    (profile / "SingletonLock").symlink_to("old-pod-42")
+    (profile / "SingletonSocket").touch()
+    (profile / "SingletonCookie").touch()
+    monkeypatch.setattr(
+        ssh_x11_helper,
+        "_x11_environment",
+        lambda: {"PATH": "/bin", "DISPLAY": ":0", "HOME": str(tmp_path)},
+    )
+    monkeypatch.setattr(ssh_x11_helper.shutil, "which", lambda *args, **kwargs: "/usr/bin/chromium")
+    monkeypatch.setattr(ssh_x11_helper.subprocess, "Popen", MagicMock())
+
+    ssh_x11_helper.command(
+        {"action": "launch_app", "app": "chromium", "urls": ["https://example.com"]}
+    )
+
+    assert list(profile.iterdir()) == []
+    ssh_x11_helper.command(
+        {"action": "launch_app", "app": "chromium", "urls": ["https://example.com"]}
+    )
+
+
+@pytest.mark.parametrize(
+    ("lock_target", "locks_remain"),
+    [
+        ("malformed", False),
+        ("active", True),
+    ],
+)
+def test_launch_chromium_distinguishes_stale_and_live_same_pod_locks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    lock_target: str,
+    locks_remain: bool,
+) -> None:
+    profile = tmp_path / ".config" / "chromium"
+    profile.mkdir(parents=True)
+    if lock_target == "active":
+        lock_target = f"{socket.gethostname()}-{os.getpid()}"
+    (profile / "SingletonLock").symlink_to(lock_target)
+    (profile / "SingletonSocket").touch()
+    (profile / "SingletonCookie").touch()
+    monkeypatch.setattr(
+        ssh_x11_helper,
+        "_x11_environment",
+        lambda: {"PATH": "/bin", "DISPLAY": ":0", "HOME": str(tmp_path)},
+    )
+    monkeypatch.setattr(ssh_x11_helper.shutil, "which", lambda *args, **kwargs: "/usr/bin/chromium")
+    monkeypatch.setattr(ssh_x11_helper.subprocess, "Popen", MagicMock())
+
+    ssh_x11_helper.command(
+        {"action": "launch_app", "app": "chromium", "urls": ["https://example.com"]}
+    )
+
+    assert bool(list(profile.iterdir())) is locks_remain
 
 
 @pytest.mark.parametrize(

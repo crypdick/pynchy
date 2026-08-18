@@ -51,7 +51,8 @@ Chromium profile. The desktop Pod receives no application Secrets,
 service-account token, host mount, Docker socket, or network Service.
 
 Apply `deploy/k3s/application/desktop.yaml`, provision the `pynchy-desktop`
-claim from the storage example, and select the provider:
+claim from the storage example, install `deploy/k3s/pynchy-chromium.apparmor`
+as described in the Kubernetes installation guide, and select the provider:
 
 ```toml
 [plugins.computer-use.options]

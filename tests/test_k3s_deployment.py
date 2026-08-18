@@ -19,7 +19,7 @@ def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
 def test_host_image_installs_locked_dependencies() -> None:
     dockerfile = Path("deploy/k3s/host.Dockerfile").read_text(encoding="utf-8")
 
-    assert "chromium-sandbox" in dockerfile
+    assert "chromium-sandbox" not in dockerfile
     assert "uv sync --locked --no-dev --all-extras --no-editable" in dockerfile
     assert "uv pip install --system --no-cache-dir '.[all]'" not in dockerfile
     assert "ARG PYNCHY_RELEASE_SHA" in dockerfile
@@ -67,8 +67,14 @@ def test_linux_desktop_is_isolated_and_persistent() -> None:
     assert pod["imagePullSecrets"] == [{"name": "pynchy-ghcr"}]
     assert "envFrom" not in container
     assert "ports" not in container
-    assert container["securityContext"]["allowPrivilegeEscalation"] is True
+    assert container["securityContext"]["allowPrivilegeEscalation"] is False
     assert container["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+    assert container["securityContext"]["appArmorProfile"] == {
+        "type": "Localhost",
+        "localhostProfile": "pynchy-chromium",
+    }
+    assert container["securityContext"]["seccompProfile"] == {"type": "Unconfined"}
+    assert Path("deploy/k3s/pynchy-chromium.apparmor").is_file()
     assert container["image"].startswith("pynchy-host:")
     assert container["volumeMounts"] == [
         {"name": "browser-profile", "mountPath": "/home/pynchy/.config/chromium"}

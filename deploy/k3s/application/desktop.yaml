@@ -51,10 +51,15 @@ spec:
                 - 'printf ''{"action":"check_permissions"}'' | pynchy-x11-computer-use'
             periodSeconds: 10
           securityContext:
-            # Debian Chromium uses its setuid helper when AppArmor blocks user namespaces.
-            allowPrivilegeEscalation: true
+            allowPrivilegeEscalation: false
+            appArmorProfile:
+              type: Localhost
+              localhostProfile: pynchy-chromium
             capabilities:
               drop: [ALL]
+            # Chromium creates a user namespace, then sandboxes renderers with seccomp.
+            seccompProfile:
+              type: Unconfined
           resources:
             requests:
               cpu: 250m

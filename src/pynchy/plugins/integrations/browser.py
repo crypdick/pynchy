@@ -425,7 +425,7 @@ def cleanup_lock_files(profile: Path) -> None:
     """
     for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
         lock = profile / name
-        if lock.exists():
+        if lock.exists() or lock.is_symlink():
             with contextlib.suppress(OSError):
                 lock.unlink()
 

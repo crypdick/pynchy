@@ -63,7 +63,20 @@ installation.
    inside the scoped shared volume. Keep repository names, owners, paths, and
    credentials in the deployment-specific overlay or Secret, not in the public
    base.
-5. Apply the deployment-specific Kustomize overlay and wait for all workloads
+5. Install the desktop browser's AppArmor profile on every node that can run
+   `pynchy-desktop`:
+
+   ```bash
+   sudo install -m 0644 deploy/k3s/pynchy-chromium.apparmor \
+     /etc/apparmor.d/pynchy-chromium
+   sudo apparmor_parser -r /etc/apparmor.d/pynchy-chromium
+   ```
+
+   The desktop container has no Linux capabilities and cannot gain privileges.
+   Its container seccomp profile is unconfined only so Chromium can create a
+   user namespace; Chromium then applies its own seccomp filters to renderer
+   processes.
+6. Apply the deployment-specific Kustomize overlay and wait for all workloads
    to become ready.
 
 ## Release from main
