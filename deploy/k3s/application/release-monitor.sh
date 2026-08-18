@@ -265,7 +265,7 @@ render_application "$checkout" "$target_sha" "$target_manifest" \
 
 rollout_application() {
     k rollout status statefulset/pynchy-postgres --timeout=300s \
-        && k rollout status statefulset/pynchy-temporal --timeout=300s \
+        && k rollout status deployment/pynchy-temporal --timeout=300s \
         && k rollout status deployment/pynchy --timeout=300s \
         && k rollout status deployment/pynchy-desktop --timeout=300s
 }

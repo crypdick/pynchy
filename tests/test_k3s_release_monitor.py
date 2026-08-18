@@ -10,6 +10,13 @@ _TARGET_SHA = "a" * 40
 _CURRENT_SHA = "b" * 40
 
 
+def test_monitor_rolls_out_temporal_deployment() -> None:
+    script = Path("deploy/k3s/application/release-monitor.sh").read_text(encoding="utf-8")
+
+    assert "rollout status deployment/pynchy-temporal" in script
+    assert "rollout status statefulset/pynchy-temporal" not in script
+
+
 def _write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
