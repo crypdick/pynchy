@@ -111,12 +111,30 @@ def _declared_child_profile(
     )
 
 
-async def reconcile_workspace_threads(
+def _child_registration_fn(
+    parent: WorkspaceProfile,
+    declared_thread: WorkspaceThreadConfig,
+    existing: WorkspaceProfile | None,
+    register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
+    rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None,
+) -> Callable[[WorkspaceProfile], Awaitable[None]]:
+    if (
+        rebind_fn is not None
+        and declared_thread.workspace is not None
+        and existing is not None
+        and existing.folder == dynamic_thread_folder(parent.folder, existing.jid)
+    ):
+        return rebind_fn
+    return register_fn
+
+
+async def reconcile_workspace_threads(  # noqa: PLR0913 - registration and optional rebind are distinct persistence operations.
     workspaces: dict[str, WorkspaceProfile],
     configs: dict[str, WorkspaceConfig],
     channels: list[Channel],
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     *,
+    rebind_fn: Callable[[WorkspaceProfile], Awaitable[None]] | None = None,
     dry_run: bool = False,
 ) -> list[WorkspaceThreadAction]:
     """Ensure configured child threads exist and inherit their parent workspace.
@@ -177,8 +195,9 @@ async def reconcile_workspace_threads(
 
             child_jid = cast("str", ensured.jid)
             existing = workspaces.get(child_jid)
+            parent = workspaces[parent_jid]
             profile = _declared_child_profile(
-                workspaces[parent_jid],
+                parent,
                 child_jid,
                 declared_thread,
                 existing,
@@ -192,7 +211,14 @@ async def reconcile_workspace_threads(
                 )
                 continue
             try:
-                await register_fn(profile)
+                update_fn = _child_registration_fn(
+                    parent,
+                    declared_thread,
+                    existing,
+                    register_fn,
+                    rebind_fn,
+                )
+                await update_fn(profile)
             except Exception as exc:  # noqa: BLE001 - allow: exception-handling; one conflicting child must not block startup.
                 detail = f"workspace registration failed: {type(exc).__name__}"
                 actions.append(
