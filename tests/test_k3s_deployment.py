@@ -94,6 +94,15 @@ def test_linux_desktop_removes_retired_pod_browser_locks_before_startup() -> Non
     assert entrypoint.index(cleanup) < entrypoint.index('Xvfb "$display"')
 
 
+def test_linux_desktop_waits_for_x_display_before_openbox() -> None:
+    entrypoint = Path("deploy/k3s/desktop-entrypoint.sh").read_text(encoding="utf-8")
+
+    wait_for_display = "while ! xdotool getmouselocation"
+    assert wait_for_display in entrypoint
+    assert entrypoint.index('Xvfb "$display"') < entrypoint.index(wait_for_display)
+    assert entrypoint.index(wait_for_display) < entrypoint.index("openbox &")
+
+
 def test_runtime_can_exec_only_namespace_pods() -> None:
     manifest = Path("deploy/k3s/bootstrap/rbac.yaml").read_text(encoding="utf-8")
 
