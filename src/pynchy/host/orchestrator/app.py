@@ -19,8 +19,9 @@ from collections.abc import (  # noqa: TC003 - beartype resolves composition cal
 )
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
 
@@ -305,6 +306,9 @@ from pynchy.identifiers import (
     RuntimeId,
     SessionId,
 )
+from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
+    LearningPacket,
+)
 from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves app annotations at runtime.
     LinearPlanReviewAdmission,
     LinearPlanReviewRequest,
@@ -373,13 +377,6 @@ from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this resul
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.host.container_manager.ipc.deps import IpcDeps
-
-from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
-    LearningPacket,
-)
 
 
 async def _fresh_container_name(group_folder: str) -> str:
@@ -708,12 +705,22 @@ def _persist_skill_access_choice(pending: dict[str, Any], answer: dict[str, Any]
 
 
 async def _persist_and_process_approval(
-    source_group: str, decision_data: dict[str, object], deps: object
+    app: PynchyApp,
+    source_group: str,
+    decision_data: dict[str, object],
 ) -> None:
     """Persist an operator decision in host-only state, then replay it."""
+    from pynchy.host.orchestrator.dep_factory import (  # noqa: PLC0415 - dep factory imports this composition root.
+        make_ipc_deps,
+    )
+
     decision_file = _approval_decisions_dir(source_group) / f"{decision_data['request_id']}.json"
     write_json_atomic(decision_file, decision_data, indent=2)
-    await process_approval_decision(decision_file, source_group, deps=cast("IpcDeps", deps))
+    await process_approval_decision(
+        decision_file,
+        source_group,
+        deps=make_ipc_deps(app),
+    )
 
 
 def _scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
@@ -915,7 +922,7 @@ class PynchyApp(ThreadRouting):
         self.approval_runtime_operations = ApprovalRuntimeOperations(
             find_pending_by_short_id=find_pending_by_short_id,
             list_pending_approvals=list_pending_approvals,
-            persist_and_process=_persist_and_process_approval,
+            persist_and_process=partial(_persist_and_process_approval, self),
         )
         self.agent_execution_runtime = _agent_execution_runtime_config(settings)
         self.queue.set_process_messages_fn(

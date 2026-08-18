@@ -57,7 +57,7 @@ async def handle_approval_command(
         "decided_at": datetime.now(UTC).isoformat(),
     }
 
-    await operations.persist_and_process(source_group, decision_data, deps)
+    await operations.persist_and_process(source_group, decision_data)
 
     verb = "Approved" if approved else "Denied"
     await deps.broadcast_host_message(

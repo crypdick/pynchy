@@ -52,9 +52,8 @@ class TestHandleApprovalCommand:
         await handle_approval_command(deps, "j@g.us", action, "ab", "testuser")
 
         deps.persist_and_process.assert_awaited_once()
-        source_group, decision, decision_deps = deps.persist_and_process.call_args.args
+        source_group, decision = deps.persist_and_process.call_args.args
         assert source_group == "grp"
-        assert decision_deps is deps
         assert decision == {
             "request_id": "aabb001122334455",
             "guarded_action_id": "action-123",

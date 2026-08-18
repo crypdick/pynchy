@@ -13,6 +13,7 @@ from conftest import make_settings
 import pynchy.host.orchestrator.app as app_module
 from pynchy.config.api import JobConfig
 from pynchy.host.container_manager.security.approval import configure_approval_state_root
+from pynchy.host.orchestrator import dep_factory
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import (
@@ -79,14 +80,15 @@ async def test_application_persists_and_replays_approval_decision(
 ) -> None:
     app = PynchyApp()
     decision = {"request_id": "request-1", "approved": True}
-    deps = object()
+    ipc_deps = object()
     write_decision = Mock()
     process_decision = AsyncMock()
     configure_approval_state_root(tmp_path)
     monkeypatch.setattr(app_module, "write_json_atomic", write_decision)
     monkeypatch.setattr(app_module, "process_approval_decision", process_decision)
+    monkeypatch.setattr(dep_factory, "make_ipc_deps", lambda _current_app: ipc_deps)
 
-    await app.approval_runtime_operations.persist_and_process("chat", decision, deps)
+    await app.approval_runtime_operations.persist_and_process("chat", decision)
 
     decision_path = tmp_path / "chat" / "approval_decisions" / "request-1.json"
     assert (tmp_path / "chat" / "approval_decisions").is_dir()
@@ -94,7 +96,7 @@ async def test_application_persists_and_replays_approval_decision(
     process_decision.assert_awaited_once_with(
         decision_path,
         "chat",
-        deps=deps,
+        deps=ipc_deps,
     )
 
 
