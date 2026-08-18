@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pynchy-desktop
+  namespace: pynchy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: pynchy-desktop
+  template:
+    metadata:
+      labels:
+        app: pynchy-desktop
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: pynchy-ghcr
+      securityContext:
+        fsGroup: 3000
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 3000
+        runAsGroup: 3000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: desktop
+          image: pynchy-host:shadow
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/pynchy-desktop"]
+          env:
+            - name: DISPLAY
+              value: :0
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - 'printf ''{"action":"check_permissions"}'' | pynchy-x11-computer-use'
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - 'printf ''{"action":"check_permissions"}'' | pynchy-x11-computer-use'
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: browser-profile
+              mountPath: /home/pynchy/.config/chromium
+      volumes:
+        - name: browser-profile
+          persistentVolumeClaim:
+            claimName: pynchy-desktop

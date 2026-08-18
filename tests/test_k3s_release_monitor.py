@@ -17,6 +17,8 @@ def _write_executable(path: Path, content: str) -> None:
 def _run_monitor(
     tmp_path: Path,
     *,
+    current_sha: str | None = None,
+    desktop_current_sha: str | None = None,
     fail_preflight: bool = False,
     fail_rollout: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
@@ -35,11 +37,19 @@ def _run_monitor(
         "#!/bin/sh\n"
         'while [ "$1" = "--kubeconfig" ] || [ "$1" = "-n" ]; do shift 2; done\n'
         'printf "%s\\n" "$*" >> "$PYNCHY_TEST_CALL_LOG"\n'
+        'if [ "$1" = "get" ] && [ "$3" = "pynchy-desktop" ]; then\n'
+        '  printf "%s" "$PYNCHY_TEST_DESKTOP_CURRENT_SHA"\n'
+        "  exit 0\n"
+        "fi\n"
         'if [ "$1" = "get" ] && [ "$2" = "deployment" ]; then\n'
         '  printf "%s" "$PYNCHY_TEST_CURRENT_SHA"\n'
         "  exit 0\n"
         "fi\n"
         'if [ "$1" = "exec" ]; then\n'
+        '  if [ "$2" = "-i" ] && [ "$3" = "deployment/pynchy-desktop" ]; then\n'
+        '    printf \'{"protocol_version":1,"supported_actions":[],"ready":true}\\n\'\n'
+        "    exit 0\n"
+        "  fi\n"
         '  if [ -e "$PYNCHY_TEST_PATCHED" ]; then\n'
         "    printf '"
         '{"service":{"status":"ok"},'
@@ -76,7 +86,8 @@ def _run_monitor(
         "PYNCHY_RELEASE_REPOSITORY": "owner/pynchy",
         "PYNCHY_KUBECONFIG": str(tmp_path / "kubeconfig"),
         "PYNCHY_TEST_CALL_LOG": str(call_log),
-        "PYNCHY_TEST_CURRENT_SHA": "b" * 40,
+        "PYNCHY_TEST_CURRENT_SHA": current_sha or "b" * 40,
+        "PYNCHY_TEST_DESKTOP_CURRENT_SHA": desktop_current_sha or "b" * 40,
         "PYNCHY_TEST_FAIL_PREFLIGHT": "1" if fail_preflight else "0",
         "PYNCHY_TEST_FAIL_ROLLOUT": "1" if fail_rollout else "0",
         "PYNCHY_TEST_PATCHED": str(patched),
@@ -99,10 +110,16 @@ def test_monitor_releases_one_healthy_main_revision(tmp_path: Path) -> None:
     result, calls = _run_monitor(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    patch = next(call for call in calls if call.startswith("patch deployment pynchy"))
+    patch = next(call for call in calls if call.startswith("patch deployment pynchy --"))
+    desktop_patch = next(
+        call for call in calls if call.startswith("patch deployment pynchy-desktop")
+    )
     assert f"registry.example/pynchy-host:{_TARGET_SHA}" in patch
     assert f"registry.example/pynchy-agent:{_TARGET_SHA}" in patch
+    assert f"registry.example/pynchy-host:{_TARGET_SHA}" in desktop_patch
     assert _TARGET_SHA in patch
+    assert any(call.startswith("rollout status deployment/pynchy-desktop") for call in calls)
+    assert any(call.startswith("exec -i deployment/pynchy-desktop -c desktop") for call in calls)
     assert not any(call.startswith("rollout undo") for call in calls)
 
 
@@ -113,9 +130,22 @@ def test_monitor_keeps_current_release_when_preflight_fails(tmp_path: Path) -> N
     assert not any(call.startswith("patch deployment") for call in calls)
 
 
+def test_monitor_repairs_desktop_release_drift(tmp_path: Path) -> None:
+    result, calls = _run_monitor(
+        tmp_path,
+        current_sha=_TARGET_SHA,
+        desktop_current_sha="b" * 40,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(call.startswith("patch deployment pynchy-desktop") for call in calls)
+    assert not any(call.startswith("patch deployment pynchy --") for call in calls)
+
+
 def test_monitor_rolls_back_when_rollout_fails(tmp_path: Path) -> None:
     result, calls = _run_monitor(tmp_path, fail_rollout=True)
 
     assert result.returncode != 0
     assert any(call.startswith("patch deployment pynchy") for call in calls)
     assert any(call.startswith("rollout undo deployment/pynchy") for call in calls)
+    assert any(call.startswith("rollout undo deployment/pynchy-desktop") for call in calls)

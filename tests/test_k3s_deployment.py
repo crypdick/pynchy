@@ -2,6 +2,12 @@
 
 from pathlib import Path
 
+import yaml
+
+
+def _documents(path: str) -> list[dict]:
+    return list(yaml.safe_load_all(Path(path).read_text(encoding="utf-8")))
+
 
 def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
     kustomization = Path("deploy/k3s/kustomization.yaml").read_text(encoding="utf-8")
@@ -44,6 +50,34 @@ def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
     assert "ClusterRole" not in manifest
     assert "hostPath:" not in manifest
     assert "docker.sock" not in manifest
+
+
+def test_linux_desktop_is_isolated_and_persistent() -> None:
+    documents = _documents("deploy/k3s/desktop.yaml")
+    deployment = next(document for document in documents if document["kind"] == "Deployment")
+    pod = deployment["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+
+    assert deployment["metadata"]["name"] == "pynchy-desktop"
+    assert pod["automountServiceAccountToken"] is False
+    assert "serviceAccountName" not in pod
+    assert pod["imagePullSecrets"] == [{"name": "pynchy-ghcr"}]
+    assert "envFrom" not in container
+    assert "ports" not in container
+    assert container["image"].startswith("pynchy-host:")
+    assert container["volumeMounts"] == [
+        {"name": "browser-profile", "mountPath": "/home/pynchy/.config/chromium"}
+    ]
+    assert pod["volumes"] == [
+        {"name": "browser-profile", "persistentVolumeClaim": {"claimName": "pynchy-desktop"}}
+    ]
+
+
+def test_runtime_can_exec_only_namespace_pods() -> None:
+    manifest = Path("deploy/k3s/rbac.yaml").read_text(encoding="utf-8")
+
+    assert 'resources: ["pods/exec"]' in manifest
+    assert "ClusterRole" not in manifest
 
 
 def test_android_usb_bridge_is_unprivileged_and_k3s_local() -> None:

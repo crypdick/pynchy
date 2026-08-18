@@ -107,6 +107,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "ssh-x11",
     ),
     (
+        "pynchy.plugins.integrations.linux_x11",
+        "LinuxX11ComputerUsePlugin",
+        "linux-x11",
+    ),
+    (
         "pynchy.plugins.integrations.linear",
         "LinearMcpPlugin",
         "linear",

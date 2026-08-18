@@ -1,14 +1,18 @@
 # Computer Use
 
-`computer_use` lets agents inspect and operate a host desktop when browser
-automation is the wrong shape: native apps, sensitive logged-in sites, and
-permission or login flows that need the real local desktop.
+`computer_use` lets agents inspect and operate the selected deployment desktop
+when browser automation is the wrong shape: native apps, sensitive logged-in
+sites, and permission or login flows that need the real local desktop.
 
 The agent container never receives raw desktop access. A backend-neutral service
 accepts the request through Pynchy's policy-enforced IPC boundary, preserves
 workspace attribution, and sends it to one explicitly selected provider plugin
-on the host. This keeps computer use optional and replaceable without silently
-changing automation implementations.
+on the Pynchy host. This keeps computer use optional and replaceable without
+silently changing automation implementations.
+
+The selected provider defines the machine. Pynchy never treats the operator's
+workstation as an implicit desktop target. A Pynchy deployment on Linux should
+normally select `linux-x11`, whose desktop lives in the same Kubernetes cluster.
 
 ## Select a provider
 
@@ -24,9 +28,9 @@ implementation. Fix the provider or change this setting explicitly. Pynchy
 never retries a failed action through another provider because doing so could
 repeat a partially completed click, keystroke, or other mutation.
 
-Peekaboo and Cua Driver require macOS. Pynchy also includes an SSH X11
-provider for controlling an existing Linux desktop session without relaunching
-its applications or browser profile.
+Peekaboo and Cua Driver require macOS. Linux Kubernetes deployments can use an
+isolated in-cluster desktop. The SSH X11 provider remains available when an
+explicitly remote, existing Linux desktop is intended.
 
 ```toml
 [plugins.peekaboo]
@@ -36,8 +40,34 @@ enabled = false
 enabled = false
 
 [plugins.computer-use.options]
-provider = "my-linux-provider"
+provider = "linux-x11"
 ```
+
+## Built-in: Linux X11
+
+`linux-x11` controls the dedicated `pynchy-desktop` Deployment through
+namespace-scoped `kubectl exec`. It uses the packaged X11 helper and a persistent
+Chromium profile. The desktop Pod receives no application Secrets,
+service-account token, host mount, Docker socket, or network Service.
+
+Apply `deploy/k3s/desktop.yaml`, provision the `pynchy-desktop` claim from the
+storage example, and select the provider:
+
+```toml
+[plugins.computer-use.options]
+provider = "linux-x11"
+
+[plugins.linux-x11.options]
+namespace = "pynchy"
+deployment = "pynchy-desktop"
+container = "desktop"
+```
+
+The defaults above match the checked-in K3s manifests. The Pynchy controller
+needs namespace-scoped `pods/exec` permission. Browser actions run on the K3s
+host, not on the machine from which an operator connected to Pynchy. Generic
+Playwright MCP browsing remains a separate managed Pod; use this provider for
+sites that require a persistent, headed browser instead.
 
 ## Built-in: SSH X11
 
@@ -187,10 +217,10 @@ policy precedence.
 Screenshots are saved under the workspace IPC directory and exposed inside the
 agent container at `/run/pynchy/computer-use/<file>.png`.
 
-This tool controls the real host desktop. Gate it with workspace security
-policy for non-admin workspaces. When policy requires approval, the approval
-covers only `computer_use` for the active agent session and clears when that
-session ends. Other tools keep their own approval scope, and no approval
+This tool controls the selected provider's real desktop. Gate it with workspace
+security policy for non-admin workspaces. When policy requires approval, the
+approval covers only `computer_use` for the active agent session and clears when
+that session ends. Other tools keep their own approval scope, and no approval
 overrides a later policy denial.
 Agents should not enter secrets, payment details, 2FA codes, or destructive
 confirmations unless the user explicitly authorized that exact action.

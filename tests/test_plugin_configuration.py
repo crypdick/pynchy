@@ -18,6 +18,7 @@ from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
 from pynchy.plugins.integrations.cua_driver import CuaDriverComputerUsePlugin
 from pynchy.plugins.integrations.desktop_screenshot import DesktopScreenshotPlugin
 from pynchy.plugins.integrations.google_setup import GoogleSetupPlugin
+from pynchy.plugins.integrations.linux_x11 import LinuxX11ComputerUsePlugin
 from pynchy.plugins.integrations.marketplace_health import MarketplaceHealthPlugin
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin
 from pynchy.plugins.integrations.ssh_x11 import SshX11ComputerUsePlugin
@@ -37,11 +38,13 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
     cua = CuaDriverComputerUsePlugin()
     peekaboo = PeekabooComputerUsePlugin()
     ssh_x11 = SshX11ComputerUsePlugin()
+    linux_x11 = LinuxX11ComputerUsePlugin()
     manager = _plugin_manager(
         ("builtin-computer-use", computer_use),
         ("builtin-cua-driver", cua),
         ("builtin-peekaboo", peekaboo),
         ("builtin-ssh-x11", ssh_x11),
+        ("builtin-linux-x11", linux_x11),
     )
     settings = make_settings(
         plugins={
@@ -56,6 +59,7 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
                     "known_hosts": "/run/secrets/x11/known_hosts",
                 }
             ),
+            "linux-x11": PluginConfig(options={"deployment": "private-desktop"}),
         },
     )
 
@@ -65,6 +69,7 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
     assert cua.pynchy_computer_use_backend().config.timeout_seconds == 12
     assert peekaboo.pynchy_computer_use_backend().config.binary == "/opt/peekaboo"
     assert ssh_x11.pynchy_computer_use_backend().config.host == "desktop"
+    assert linux_x11.pynchy_computer_use_backend().config.deployment == "private-desktop"
     backend = cua.pynchy_computer_use_backend()
     assert computer_use.pynchy_service_handler(computer_use_backends=(backend,)).actions
 
