@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     adb \
     ca-certificates \
     chromium \
+    chromium-sandbox \
     curl \
     ffmpeg \
     gh \
