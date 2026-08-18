@@ -181,6 +181,10 @@ def test_monitor_applies_one_healthy_published_revision(tmp_path: Path) -> None:
     assert any(call.startswith("apply -f ") for call in kubectl_calls)
     assert not any(call.startswith("patch deployment") for call in kubectl_calls)
     assert any("pynchy doctor --json" in call for call in kubectl_calls)
+    assert any(
+        call.endswith("fetch --quiet origin +refs/heads/main:refs/remotes/origin/main")
+        for call in git_calls
+    )
     assert any(call.endswith(f"merge --ff-only --quiet {_TARGET_SHA}") for call in git_calls)
     assert f"Released {_TARGET_SHA}." in result.stdout
 
