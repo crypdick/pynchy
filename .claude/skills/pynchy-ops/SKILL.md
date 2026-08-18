@@ -22,7 +22,14 @@ For Kubernetes deployments:
 - Read [Kubernetes installation and operations](../../../docs/installation/kubernetes.md).
 - Treat `SCHEDULER__AUTO_DEPLOY=false` as authoritative. A Git pull updates the persistent checkout but does not replace the running image.
 - Use `sudo k3s kubectl -n pynchy`; do not use `pynchy deploy`, LaunchAgent commands, standalone systemd commands, or direct container deletion.
-- Release through the Deployment and wait for rollout completion. Do not use `kubectl delete pod` as a deploy mechanism.
+- A successful push to `main` publishes immutable images. The namespace-scoped
+  `pynchy-release-monitor` CronJob preflights and releases them.
+- Do not manually patch the Deployment or delete a Pod for a normal release.
+  Observe the monitor Job, rollout, exact release annotation, and application
+  status.
+- Apply Kubernetes manifest, storage, Secret, RBAC, Pocket TTS, and private MCP
+  image changes manually after review; the application release monitor does
+  not apply infrastructure.
 - Keep unrelated Docker Compose and Dockge services outside Kubernetes.
 
 The standalone sections below apply only when the live host has no Kubernetes
@@ -105,29 +112,22 @@ change separately when needed, but source changes always go through a commit.
 
 ### Kubernetes
 
-Pull the clean live checkout as its runtime user. Build the host image with
-both an immutable release tag and the manifest's local `shadow` tag, import
-both into K3s containerd, then trigger and verify a Deployment rollout:
+Push a tested commit to `main`, then observe the image workflow and
+namespace-owned release:
 
 ```bash
-cd "$PYNCHY_REMOTE_ROOT"
-git pull --ff-only origin main
-pynchy_release="$(git rev-parse --short=12 HEAD)"
-sudo docker build \
-  -f deploy/k3s/host.Dockerfile \
-  -t "pynchy-host:$pynchy_release" \
-  -t pynchy-host:shadow \
-  .
-sudo docker save "pynchy-host:$pynchy_release" pynchy-host:shadow \
-  | sudo k3s ctr images import -
-sudo k3s kubectl -n pynchy rollout restart deployment/pynchy
-sudo k3s kubectl -n pynchy rollout status deployment/pynchy --timeout=300s
+gh run list --workflow Test --limit 3
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get cronjob pynchy-release-monitor'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get jobs --sort-by=.metadata.creationTimestamp'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy rollout status deployment/pynchy --timeout=300s'
 ```
 
-After rollout, verify the Pod image ID, live Git SHA, application status,
-startup warning/error lines, channel delivery, LiteLLM, and Temporal. Merely
-overwriting a mutable local tag does not change the Pod template and therefore
-does not deploy anything.
+After rollout, verify the full `pynchy.dev/release-sha` Deployment annotation,
+Pod image digest, application `last_deploy_sha`, startup warning/error lines,
+channel delivery, LiteLLM, and Temporal. Inspect the latest monitor Job logs
+when a release does not advance. A failed preflight intentionally leaves the
+current Deployment unchanged; a failed rollout or application health check
+must show a completed rollback.
 
 ### Standalone
 

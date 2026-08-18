@@ -35,8 +35,10 @@ from pynchy.state.api import (
     clear_pending_deployment,
     complete_deployment,
     get_active_task_for_group,
+    get_deployment_state,
     get_in_flight_turns,
     get_messages_since,
+    get_router_state,
     prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
     set_chat_cleared_at,
@@ -415,6 +417,12 @@ async def resolve_deploy_startup(
             await complete_deployment(active_revision)
         else:
             await complete_deployment(revision)
+        return
+
+    deployment_state = await get_deployment_state()
+    last_deploy_sha = await get_router_state("last_deploy_sha")
+    if deployment_state.applied != active_revision or last_deploy_sha != active_revision.commit_sha:
+        await complete_deployment(active_revision)
 
 
 async def finalize_deploy_startup(recovery: InterruptedTurnRecovery) -> None:

@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: pynchy
+imagePullSecrets:
+  - name: pynchy-ghcr
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pynchy-release-monitor
+  namespace: pynchy
+automountServiceAccountToken: true
+imagePullSecrets:
+  - name: pynchy-ghcr
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pynchy-release-monitor
+  namespace: pynchy
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pynchy-release-monitor
+  namespace: pynchy
+subjects:
+  - kind: ServiceAccount
+    name: pynchy-release-monitor
+    namespace: pynchy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pynchy-release-monitor
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pynchy-release-monitor
+  namespace: pynchy
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          serviceAccountName: pynchy-release-monitor
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 3000
+            runAsGroup: 3000
+          containers:
+            - name: monitor
+              image: pynchy-host:shadow
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "/opt/pynchy-release/release-monitor.sh"]
+              env:
+                - name: GH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: pynchy-env
+                      key: GITHUB_TOKEN
+                - name: PYNCHY_RELEASE_REPOSITORY
+                  valueFrom:
+                    secretKeyRef:
+                      name: pynchy-env
+                      key: PYNCHY_RELEASE_REPOSITORY
+                - name: PYNCHY_RELEASE_HOST_IMAGE
+                  valueFrom:
+                    secretKeyRef:
+                      name: pynchy-env
+                      key: PYNCHY_RELEASE_HOST_IMAGE
+                - name: PYNCHY_RELEASE_AGENT_IMAGE
+                  valueFrom:
+                    secretKeyRef:
+                      name: pynchy-env
+                      key: PYNCHY_RELEASE_AGENT_IMAGE
+                - name: PYNCHY_KUBERNETES_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: GH_CONFIG_DIR
+                  value: /tmp/gh
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 64Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: monitor
+                  mountPath: /opt/pynchy-release
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: monitor
+              configMap:
+                name: pynchy-release-monitor
+                defaultMode: 365
+            - name: tmp
+              emptyDir: {}

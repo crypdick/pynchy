@@ -7,3 +7,9 @@ resources:
   - temporal.yaml
   - pynchy.yaml
   - network-policy.yaml
+  - release-monitor.yaml
+configMapGenerator:
+  - name: pynchy-release-monitor
+    namespace: pynchy
+    files:
+      - release-monitor.sh

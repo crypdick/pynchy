@@ -49,6 +49,38 @@ def test_current_deploy_revision_requires_configured_runtime(
         current_deploy_revision()
 
 
+def test_current_deploy_revision_uses_image_release_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    release_sha = "a" * 40
+    monkeypatch.setenv("PYNCHY_RELEASE_SHA", release_sha)
+    configure_deploy_git_runtime(
+        DeployGitRuntime(
+            get_head_sha=lambda: "checkout-sha",
+            get_deploy_config_hash=lambda: _CONFIG_HASH,
+            run_git=MagicMock(),
+        )
+    )
+
+    assert current_deploy_revision().commit_sha == release_sha
+
+
+def test_current_deploy_revision_rejects_invalid_image_release_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_RELEASE_SHA", "mutable-tag")
+    configure_deploy_git_runtime(
+        DeployGitRuntime(
+            get_head_sha=lambda: "checkout-sha",
+            get_deploy_config_hash=lambda: _CONFIG_HASH,
+            run_git=MagicMock(),
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="PYNCHY_RELEASE_SHA"):
+        current_deploy_revision()
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 

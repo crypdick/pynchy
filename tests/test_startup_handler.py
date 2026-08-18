@@ -20,12 +20,14 @@ from pynchy.deployments import (
 )
 from pynchy.host.orchestrator import startup_handler, startup_rollback
 from pynchy.host.orchestrator.startup_handler import (
+    InterruptedTurnRecovery,
     auto_rollback,
     check_deploy_continuation,
     claim_deploy_continuation,
     confirm_deploy_startup,
     finalize_deploy_startup,
     prepare_interrupted_turn_recovery,
+    resolve_deploy_startup,
     send_boot_notification,
     terminate_failed_startup,
     validate_plugin_credentials,
@@ -45,6 +47,19 @@ from pynchy.state import (
 from pynchy.workspace.api import WorkspaceProfile
 
 _ACTIVE_REVISION = DeployRevision("active-sha", "active-config")
+
+
+def _startup_without_deploy_continuation() -> InterruptedTurnRecovery:
+    return InterruptedTurnRecovery(
+        turns=(),
+        commit_sha="unknown",
+        resume_prompt="",
+        had_deploy_continuation=False,
+        deploy_revision=None,
+        rolled_back=False,
+        continuation_path=None,
+    )
+
 
 # ---------------------------------------------------------------------------
 # validate_plugin_credentials
@@ -575,6 +590,39 @@ class TestCheckDeployContinuation:
 
 
 class TestConfirmDeployStartup:
+    @pytest.mark.asyncio
+    async def test_promotes_a_healthy_external_release(self) -> None:
+        await init_test_database()
+        applied = DeployRevision("old-sha", "config-a")
+        active = DeployRevision("new-sha", "config-b")
+        await initialize_deployment_state(applied)
+
+        await resolve_deploy_startup(
+            _startup_without_deploy_continuation(),
+            active_revision=active,
+        )
+
+        assert await get_deployment_state() == DeploymentState(applied=active, pending=None)
+        assert await get_router_state("last_deploy_sha") == active.commit_sha
+        assert await get_router_state("last_deploy_at") is not None
+
+    @pytest.mark.asyncio
+    async def test_does_not_rewrite_metadata_for_same_external_release(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await init_test_database()
+        active = DeployRevision("active-sha", "config-a")
+        recovery = _startup_without_deploy_continuation()
+        await initialize_deployment_state(active)
+        await resolve_deploy_startup(recovery, active_revision=active)
+        complete = AsyncMock()
+        monkeypatch.setattr(startup_handler, "complete_deployment", complete)
+
+        await resolve_deploy_startup(recovery, active_revision=active)
+
+        complete.assert_not_awaited()
+
     """Tests for promoting a claimed revision only after a successful boot."""
 
     @staticmethod

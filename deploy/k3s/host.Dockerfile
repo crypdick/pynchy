@@ -3,6 +3,9 @@ FROM registry.k8s.io/kubectl:v1.36.3 AS kubectl
 
 FROM python:3.13-slim
 
+ARG PYNCHY_RELEASE_SHA
+LABEL org.opencontainers.image.revision=${PYNCHY_RELEASE_SHA}
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY --from=kubectl /bin/kubectl /usr/local/bin/kubectl
 
@@ -45,6 +48,7 @@ RUN groupadd --gid 3000 pynchy \
 
 ENV HOME=/home/pynchy \
     PATH=/opt/pynchy/.venv/bin:$PATH \
+    PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA} \
     PYTHONUNBUFFERED=1
 USER pynchy
 WORKDIR /srv/pynchy/app
