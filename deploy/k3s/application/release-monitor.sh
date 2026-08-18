@@ -165,11 +165,11 @@ render_application() {
             apiVersion: "kustomize.config.k8s.io/v1beta1",
             kind: "Kustomization",
             resources: [$resource],
-            patches: [
+            patches: ([
                 {path: "pynchy-release.yaml"},
                 {path: "desktop-release.yaml"},
                 {path: "monitor-release.yaml"}
-            ] + (if $patch == "" then [] else [{path: $patch}] end)
+            ] + (if $patch == "" then [] else [{path: $patch}] end))
         }
     ' > "$overlay/kustomization.yaml"
     jq -n --arg sha "$sha" --arg host "$host" --arg agent "$agent" '
