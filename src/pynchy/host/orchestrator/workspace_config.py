@@ -454,6 +454,7 @@ async def reconcile_workspaces(  # noqa: PLR0913 - lifecycle cleanup joins exist
         {folder: _workspace_spec_config(spec) for folder, spec in specs.items()},
         channels,
         register_fn,
+        rebind_fn=rebind_fn,
     )
     if thread_actions:
         logger.info("Workspace child threads reconciled", count=len(thread_actions))

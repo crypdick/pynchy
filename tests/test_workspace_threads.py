@@ -287,6 +287,51 @@ async def test_declared_child_workspace_uses_its_resolved_policy(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_declared_child_workspace_rebinds_existing_inherited_thread(monkeypatch) -> None:
+    settings = make_settings(
+        profiles={"child": ProfileConfig(is_admin=True)},
+        workspaces={"family-space": WorkspaceConfig(profiles=["child"])},
+    )
+    monkeypatch.setattr(workspace_threads, "get_settings", lambda: settings)
+    parent = _parent()
+    child_jid = "discord:channel:family"
+    inherited = WorkspaceProfile(
+        jid=child_jid,
+        name="Relationships/family",
+        folder=dynamic_thread_folder(parent.folder, child_jid),
+        trigger=parent.trigger,
+        added_at="2024-01-01T00:00:00+00:00",
+    )
+    workspaces = {parent.jid: parent, child_jid: inherited}
+    register = AsyncMock()
+    rebind = AsyncMock(side_effect=lambda profile: workspaces.update({profile.jid: profile}))
+
+    actions = await reconcile_workspace_threads(
+        workspaces,
+        {
+            "relationships": WorkspaceConfig(
+                threads=[
+                    WorkspaceThreadConfig(
+                        name="family", workspace="family-space", profiles=["child"]
+                    )
+                ]
+            )
+        },
+        [_ThreadChannel({"family": child_jid})],
+        register,
+        rebind_fn=rebind,
+    )
+
+    assert actions == [
+        WorkspaceThreadAction("reuse", "relationships", "family", child_jid),
+        WorkspaceThreadAction("register", "relationships", "family", child_jid),
+    ]
+    register.assert_not_awaited()
+    rebind.assert_awaited_once()
+    assert workspaces[child_jid].folder == "family-space"
+
+
+@pytest.mark.asyncio
 async def test_declared_child_workspace_requires_a_resolved_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
