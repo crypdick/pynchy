@@ -69,8 +69,6 @@ spec:
               value: pynchy
             - name: PYNCHY_KUBERNETES_PVC
               value: pynchy-data
-            - name: PYNCHY_KUBERNETES_VAULT_PVC
-              value: pynchy-vault
             - name: PYNCHY_KUBERNETES_SHARED_ROOT
               value: /srv/pynchy
           ports:
@@ -97,8 +95,6 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /srv/pynchy
-            - name: vault
-              mountPath: /srv/pynchy/vault
             - name: android-adb
               mountPath: /run/pynchy-adb
               readOnly: true
@@ -189,9 +185,6 @@ spec:
         - name: shared
           persistentVolumeClaim:
             claimName: pynchy-data
-        - name: vault
-          persistentVolumeClaim:
-            claimName: pynchy-vault
         - name: litellm-config
           persistentVolumeClaim:
             claimName: pynchy-data
