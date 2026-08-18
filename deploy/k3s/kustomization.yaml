@@ -6,6 +6,7 @@ resources:
   - postgres.yaml
   - temporal.yaml
   - pynchy.yaml
+  - desktop.yaml
   - network-policy.yaml
   - release-monitor.yaml
 configMapGenerator:

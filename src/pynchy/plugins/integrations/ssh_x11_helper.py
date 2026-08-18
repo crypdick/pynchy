@@ -42,12 +42,12 @@ def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911,PLR0912
     env = _x11_environment()
     if action == "check_permissions":
         _require_binaries("xdotool", "wmctrl", "import", path=env["PATH"])
-        active = _run(["xdotool", "getactivewindow"], env=env).stdout.decode().strip()
+        geometry = _run(["xdotool", "getdisplaygeometry"], env=env).stdout.decode().strip()
         return {
             "protocol_version": PROTOCOL_VERSION,
             "supported_actions": sorted(SUPPORTED_ACTIONS),
             "display": env["DISPLAY"],
-            "active_window": active,
+            "display_geometry": geometry,
             "ready": True,
         }
     if action == "launch_app":

@@ -47,7 +47,9 @@ fi
 
 current_sha=$(k get deployment pynchy \
     -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}')
-if [ "$current_sha" = "$target_sha" ]; then
+desktop_sha=$(k get deployment pynchy-desktop \
+    -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}')
+if [ "$current_sha" = "$target_sha" ] && [ "$desktop_sha" = "$target_sha" ]; then
     printf 'Release %s already active.\n' "$target_sha"
     exit 0
 fi
@@ -63,6 +65,8 @@ fi
 short_sha=$(printf '%s' "$target_sha" | cut -c1-12)
 host_probe="pynchy-host-preflight-$short_sha"
 agent_probe="pynchy-agent-preflight-$short_sha"
+# Invoked by trap.
+# shellcheck disable=SC2329
 cleanup() {
     k delete pod "$host_probe" "$agent_probe" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
@@ -111,16 +115,50 @@ patch=$(jq -cn \
             }]}
         }}
     }')
-k patch deployment pynchy --type=strategic -p "$patch" >/dev/null
+desktop_patch=$(jq -cn \
+    --arg sha "$target_sha" \
+    --arg host_image "$host_image" \
+    '{
+        spec: {template: {
+            metadata: {annotations: {"pynchy.dev/release-sha": $sha}},
+            spec: {containers: [{name: "desktop", image: $host_image}]}
+        }}
+    }')
+
+pynchy_patched=false
+desktop_patched=false
 
 rollback() {
     printf 'Release %s failed; rolling back.\n' "$target_sha" >&2
-    k rollout undo deployment/pynchy >/dev/null
-    k rollout status deployment/pynchy --timeout=300s
+    rollback_status=0
+    if [ "$pynchy_patched" = true ]; then
+        k rollout undo deployment/pynchy >/dev/null || rollback_status=1
+        k rollout status deployment/pynchy --timeout=300s || rollback_status=1
+    fi
+    if [ "$desktop_patched" = true ]; then
+        k rollout undo deployment/pynchy-desktop >/dev/null || rollback_status=1
+        k rollout status deployment/pynchy-desktop --timeout=300s || rollback_status=1
+    fi
+    return "$rollback_status"
 }
 
-if ! k rollout status deployment/pynchy --timeout=300s; then
-    rollback
+if [ "$desktop_sha" != "$target_sha" ]; then
+    if ! k patch deployment pynchy-desktop --type=strategic -p "$desktop_patch" >/dev/null; then
+        exit 1
+    fi
+    desktop_patched=true
+fi
+if [ "$current_sha" != "$target_sha" ]; then
+    if ! k patch deployment pynchy --type=strategic -p "$patch" >/dev/null; then
+        rollback || true
+        exit 1
+    fi
+    pynchy_patched=true
+fi
+
+if ! k rollout status deployment/pynchy --timeout=300s \
+    || ! k rollout status deployment/pynchy-desktop --timeout=300s; then
+    rollback || true
     exit 1
 fi
 
@@ -128,13 +166,18 @@ attempt=0
 while [ "$attempt" -lt 12 ]; do
     status=$(k exec deployment/pynchy -c pynchy -- \
         /opt/pynchy/.venv/bin/pynchy status 2>/dev/null || true)
+    desktop_status=$(printf '{"action":"check_permissions"}' \
+        | k exec -i deployment/pynchy-desktop -c desktop -- \
+            pynchy-x11-computer-use 2>/dev/null || true)
     if printf '%s' "$status" | jq -e --arg sha "$target_sha" '
         .service.status == "ok"
         and .deploy.last_deploy_sha == $sha
         and .gateway.ready == true
         and .temporal.cluster_healthy == true
         and .temporal.worker_running == true
-    ' >/dev/null 2>&1; then
+    ' >/dev/null 2>&1 \
+        && printf '%s' "$desktop_status" | jq -e \
+            '.ready == true and .protocol_version == 1' >/dev/null 2>&1; then
         printf 'Released %s.\n' "$target_sha"
         exit 0
     fi
@@ -142,5 +185,5 @@ while [ "$attempt" -lt 12 ]; do
     sleep 5
 done
 
-rollback
+rollback || true
 exit 1

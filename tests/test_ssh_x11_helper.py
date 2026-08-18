@@ -21,8 +21,8 @@ def _run_recorder(calls: list[list[str]]):
             stdout = b"malformed\n0x01 0 123 brave.Brave host myEDD - Brave\n"
         elif argv[0] == "import":
             stdout = b"png"
-        elif argv == ["xdotool", "getactivewindow"]:
-            stdout = b"1\n"
+        elif argv == ["xdotool", "getdisplaygeometry"]:
+            stdout = b"1920 1080\n"
         else:
             stdout = b""
         return subprocess.CompletedProcess(argv, 0, stdout, b"")
@@ -43,7 +43,7 @@ def test_permission_handshake_reports_version_and_actions(monkeypatch: pytest.Mo
     assert result["protocol_version"] == ssh_x11_helper.PROTOCOL_VERSION
     assert set(result["supported_actions"]) == ssh_x11_helper.SUPPORTED_ACTIONS
     assert result["ready"] is True
-    assert calls == [["xdotool", "getactivewindow"]]
+    assert calls == [["xdotool", "getdisplaygeometry"]]
 
 
 def test_launch_app_opens_web_urls_with_requested_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,7 +197,9 @@ def test_permission_handshake_builds_x11_environment_and_runs_closed_command(
     monkeypatch.delenv("XAUTHORITY", raising=False)
     monkeypatch.setattr(ssh_x11_helper.Path, "is_dir", lambda _path: local_xdotool)
     monkeypatch.setattr(ssh_x11_helper.shutil, "which", lambda _name, *, path: "/bin/tool")
-    completed = subprocess.CompletedProcess(["xdotool", "getactivewindow"], 0, b"1\n", b"")
+    completed = subprocess.CompletedProcess(
+        ["xdotool", "getdisplaygeometry"], 0, b"1920 1080\n", b""
+    )
     subprocess_run = MagicMock(return_value=completed)
     monkeypatch.setattr(ssh_x11_helper.subprocess, "run", subprocess_run)
 
@@ -205,7 +207,7 @@ def test_permission_handshake_builds_x11_environment_and_runs_closed_command(
 
     env = subprocess_run.call_args.kwargs["env"]
     assert result["ready"] is True
-    assert subprocess_run.call_args.args[0] == ["xdotool", "getactivewindow"]
+    assert subprocess_run.call_args.args[0] == ["xdotool", "getdisplaygeometry"]
     assert env["DISPLAY"] == ":0"
     assert env["XAUTHORITY"] == str(home / ".Xauthority")
     if local_xdotool:

@@ -144,6 +144,7 @@ from pynchy.plugins.integrations.linear_work_items import (
     LinearWorkItemsRuntime,
     configure_linear_work_items_runtime,
 )
+from pynchy.plugins.integrations.linux_x11 import LinuxX11ComputerUsePlugin, LinuxX11Config
 from pynchy.plugins.integrations.marketplace_health import (
     MarketplaceHealthOptions,
     MarketplaceHealthPlugin,
@@ -271,6 +272,11 @@ def configure_computer_use_plugins(
     if isinstance(ssh_x11, SshX11ComputerUsePlugin):
         ssh_x11.configure(
             SshX11Config.model_validate(getattr(settings.plugins.get("ssh-x11"), "options", {}))
+        )
+    linux_x11 = plugin_manager.get_plugin("builtin-linux-x11")
+    if isinstance(linux_x11, LinuxX11ComputerUsePlugin):
+        linux_x11.configure(
+            LinuxX11Config.model_validate(getattr(settings.plugins.get("linux-x11"), "options", {}))
         )
 
 

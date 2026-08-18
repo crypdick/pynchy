@@ -34,6 +34,39 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
+  name: pynchy-desktop-local
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: pynchy-local
+  local:
+    path: /var/lib/pynchy-k3s/desktop
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [pynchy-node]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pynchy-desktop
+  namespace: pynchy
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: pynchy-local
+  volumeName: pynchy-desktop-local
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
   name: pynchy-postgres-local
 spec:
   capacity:

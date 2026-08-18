@@ -18,12 +18,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gh \
     git \
     jq \
+    imagemagick \
     novnc \
+    openbox \
     openssh-client \
     procps \
     ripgrep \
     rsync \
     sqlite3 \
+    wmctrl \
+    xdotool \
     x11vnc \
     xvfb \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -32,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4 -o /usr/share/scrcpy/scrcpy-server \
     && echo "8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e  /usr/share/scrcpy/scrcpy-server" | sha256sum -c - \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --chmod=755 deploy/k3s/desktop-entrypoint.sh /usr/local/bin/pynchy-desktop
 
 COPY src/pynchy/agent/install_codex.sh /tmp/install_codex.sh
 RUN /bin/sh /tmp/install_codex.sh && rm /tmp/install_codex.sh

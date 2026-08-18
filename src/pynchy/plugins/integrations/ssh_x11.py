@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
-import json
 import shutil
 import subprocess  # noqa: S404 - fixed SSH argv, request travels over stdin.
 from dataclasses import dataclass
@@ -20,8 +17,8 @@ from pynchy.plugins.api import (
     ComputerUseBackendAvailability,
     ComputerUseRequest,
 )
-from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.plugins.integrations.ssh_x11_helper import PROTOCOL_VERSION
+from pynchy.plugins.integrations.x11_transport import Handshake, materialize_result, parse_response
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 PositiveTimeout = Annotated[float, Field(gt=0)]
@@ -38,14 +35,6 @@ class SshX11Config(BaseModel):
     private_key: Path = Path("/srv/pynchy/app/data/personalization/ssh/x11_ed25519")
     known_hosts: Path = Path("/srv/pynchy/app/data/personalization/ssh/known_hosts")
     timeout_seconds: PositiveTimeout = 30.0
-
-
-class _Handshake(BaseModel):
-    model_config = {"extra": "ignore"}
-
-    protocol_version: int
-    supported_actions: frozenset[str]
-    ready: bool
 
 
 @dataclass(frozen=True)
@@ -67,7 +56,7 @@ class SshX11Backend:
                 b'{"action":"check_permissions"}',
                 self.config.timeout_seconds,
             )
-            handshake = _Handshake.model_validate(response)
+            handshake = Handshake.model_validate(response)
         except (RuntimeError, TypeError, ValidationError) as exc:
             return ComputerUseBackendAvailability(available=False, reason=str(exc))
         if handshake.protocol_version != PROTOCOL_VERSION:
@@ -97,20 +86,12 @@ class SshX11Backend:
             payload,
             self.config.timeout_seconds,
         )
-        screenshot = output.pop("screenshot_png_base64", None)
-        if screenshot_path is not None:
-            if not isinstance(screenshot, str):
-                raise RuntimeError("SSH X11 helper did not return a screenshot")
-            try:
-                screenshot_bytes = base64.b64decode(screenshot, validate=True)
-            except (binascii.Error, ValueError) as exc:
-                raise RuntimeError("SSH X11 helper returned invalid screenshot data") from exc
-            await asyncio.to_thread(screenshot_path.parent.mkdir, parents=True, exist_ok=True)
-            await asyncio.to_thread(screenshot_path.write_bytes, screenshot_bytes)
-        result: dict[str, Any] = {"backend": self.name, "output": output}
-        if screenshot_path is not None:
-            result["screenshot"] = await screenshot_artifact(screenshot_path)
-        return result
+        return await materialize_result(
+            output,
+            backend=self.name,
+            transport="SSH X11",
+            screenshot_path=screenshot_path,
+        )
 
 
 class SshX11ComputerUsePlugin:
@@ -169,21 +150,7 @@ def _ssh_command(config: SshX11Config) -> list[str]:
 
 
 def _parse_ssh_response(returncode: int, stdout: bytes, stderr: bytes) -> dict[str, Any]:
-    parsed: object | None = None
-    if stdout:
-        try:
-            parsed = json.loads(stdout)
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            if not returncode:
-                raise RuntimeError("SSH X11 helper returned invalid JSON") from exc
-    if isinstance(parsed, dict) and (remote_error := parsed.get("error")):
-        raise RuntimeError(f"SSH X11 helper failed: {remote_error}")
-    if returncode:
-        error = stderr.decode(errors="replace").strip() or "unknown error"
-        raise RuntimeError(f"SSH X11 request failed: {error}")
-    if not isinstance(parsed, dict):
-        raise TypeError("SSH X11 helper returned a non-object response")
-    return parsed
+    return parse_response(returncode, stdout, stderr, transport="SSH")
 
 
 def _run_ssh_blocking(command: list[str], payload: bytes, timeout_seconds: float) -> dict[str, Any]:

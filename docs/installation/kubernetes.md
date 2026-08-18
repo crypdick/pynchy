@@ -15,9 +15,9 @@ the host root filesystem or Docker socket.
 The base Kustomization omits storage because local volume paths and node names
 belong to each deployment. Copy `deploy/k3s/storage.example.yaml` into a
 deployment-specific Kustomize overlay, then replace its sample volume names,
-node name, and local paths. Keep the `Retain` reclaim policy. Back up all three
-local volume paths and the namespace secrets. Pocket TTS uses its own volume
-only for downloaded model caches.
+node name, and local paths. Keep the `Retain` reclaim policy. Back up the shared,
+PostgreSQL, and desktop-profile paths plus the namespace secrets. Pocket TTS
+uses its own volume only for downloaded model caches.
 
 ## Prepare and deploy
 
@@ -37,7 +37,8 @@ only for downloaded model caches.
    `deploy/k3s/pocket-tts.Dockerfile`. Build the configured agent and private
    MCP images, then import the local images into K3s containerd. The release
    monitor replaces the host and agent bootstrap images after the first
-   successful release.
+   successful release. The isolated desktop reuses the host image so its
+   packaged X11 helper stays on the same protocol revision.
 3. Create `pynchy-env` from the migrated Pynchy environment file. Create
    `pynchy-runtime` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`,
    `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `UI_USERNAME`, and `UI_PASSWORD`.
@@ -63,14 +64,15 @@ The `Test` GitHub Actions workflow publishes immutable host and agent images
 tagged with the full commit SHA only after the Python and deterministic runtime
 jobs pass. The `pynchy-release-monitor` CronJob checks `main` every two minutes.
 It waits until the persistent checkout has the same commit, starts isolated
-host and agent preflight Pods, and changes both Deployment images in one
-revision.
+host and agent preflight Pods, then changes the Pynchy and desktop Deployments
+to the same host-image revision while updating Pynchy's agent image.
 
-The monitor waits for the Kubernetes rollout and then requires Pynchy service
-status, release accounting, LiteLLM, and Temporal to report healthy. A failed
-preflight leaves the running Deployment unchanged. A failed rollout or
-application health check triggers `kubectl rollout undo`, so the previous
-ReplicaSet becomes active again. The Deployment uses `Recreate`, so rollback
+The monitor waits for both Kubernetes rollouts and then requires the desktop
+helper, Pynchy service status, release accounting, LiteLLM, and Temporal to
+report healthy. A failed preflight leaves the running Deployments unchanged.
+A failed rollout or application health check triggers `kubectl rollout undo`
+for both Deployments, so the previous ReplicaSets become active again. Both use
+`Recreate`, so rollback
 protects availability but does not guarantee zero downtime.
 
 Check release state with:
@@ -80,6 +82,8 @@ kubectl -n pynchy get cronjob pynchy-release-monitor
 kubectl -n pynchy get jobs --sort-by=.metadata.creationTimestamp
 kubectl -n pynchy logs job/JOB_NAME
 kubectl -n pynchy get deployment pynchy \
+  -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}'
+kubectl -n pynchy get deployment pynchy-desktop \
   -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}'
 kubectl -n pynchy exec deploy/pynchy -c pynchy -- \
   /opt/pynchy/.venv/bin/pynchy status

@@ -20,6 +20,9 @@ rules:
     resources: ["pods/log"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
     resources: ["services"]
     verbs: ["get", "list", "create", "patch", "delete"]
 ---
