@@ -46,6 +46,25 @@ def test_permission_handshake_reports_version_and_actions(monkeypatch: pytest.Mo
     assert calls == [["xdotool", "getactivewindow"]]
 
 
+def test_launch_app_opens_web_urls_with_desktop_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ssh_x11_helper, "_x11_environment", lambda: {"PATH": "/bin", "DISPLAY": ":0"}
+    )
+    monkeypatch.setattr(ssh_x11_helper, "_run", _run_recorder(calls))
+
+    result = ssh_x11_helper.command(
+        {
+            "action": "launch_app",
+            "app": "Brave",
+            "urls": ["https://myedd.edd.ca.gov/"],
+        }
+    )
+
+    assert calls == [["xdg-open", "https://myedd.edd.ca.gov/"]]
+    assert result == {"launched": True, "urls": ["https://myedd.edd.ca.gov/"]}
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_command"),
     [
@@ -135,6 +154,8 @@ def test_window_index_rejects_untyped_remote_input(monkeypatch: pytest.MonkeyPat
         ({"action": "click"}, "coordinate"),
         ({"action": "capture", "app": "Firefox"}, "no matching"),
         ({"action": "capture", "app": "Brave", "window_index": 1}, "exceeds"),
+        ({"action": "launch_app", "app": "Brave", "urls": []}, "at least one URL"),
+        ({"action": "launch_app", "app": "Brave", "urls": ["file:///etc/passwd"]}, "HTTP"),
     ],
 )
 def test_helper_rejects_invalid_requests(

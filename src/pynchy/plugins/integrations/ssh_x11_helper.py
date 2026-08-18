@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 PROTOCOL_VERSION = 1
 SUPPORTED_ACTIONS = frozenset(
@@ -24,6 +25,7 @@ SUPPORTED_ACTIONS = frozenset(
         "right_click",
         "type",
         "key",
+        "launch_app",
         "scroll",
         "check_permissions",
     }
@@ -32,7 +34,7 @@ _BUTTONS = {"click": "1", "double_click": "1", "right_click": "3"}
 _KEY_NAMES = {"cmd": "super", "command": "super", "option": "alt", "control": "ctrl"}
 
 
-def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911 - closed action dispatch.
+def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911,PLR0912 - closed dispatch.
     """Execute one validated, allowlisted desktop action."""
     action = request.get("action")
     if action not in SUPPORTED_ACTIONS:
@@ -48,6 +50,8 @@ def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911 - close
             "active_window": active,
             "ready": True,
         }
+    if action == "launch_app":
+        return _launch_urls(request, env)
 
     windows = _windows(env)
     if action == "list_apps":
@@ -109,6 +113,18 @@ def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911 - close
     amount = request.get("amount") or max(1, abs(request.get("delta_y", 0)) // 120)
     _run(["xdotool", "click", "--repeat", str(amount), button], env=env)
     return {"direction": direction, "amount": amount}
+
+
+def _launch_urls(request: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    urls = request.get("urls")
+    if not isinstance(urls, list) or not urls:
+        raise ValueError("SSH X11 launch_app requires at least one URL")
+    for url in urls:
+        parsed = urlsplit(url) if isinstance(url, str) else None
+        if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("SSH X11 launch_app requires HTTP(S) URLs")
+        _run(["xdg-open", url], env=env)
+    return {"launched": True, "urls": urls}
 
 
 def _x11_environment() -> dict[str, str]:
