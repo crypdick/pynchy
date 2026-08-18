@@ -9,10 +9,12 @@ def test_process_environment_excludes_unselected_secrets_and_allows_explicit_val
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("PATH", "/safe/bin")
+    monkeypatch.setenv("PYNCHY_KUBERNETES_VAULT_PVC", "vault")
     monkeypatch.setenv("SECRET_TOKEN", "hidden")
 
     environment = filtered_process_environment({"DISPLAY_COLOR": "chosen", "PATH": "/override"})
 
     assert environment["PATH"] == "/override"
     assert environment["DISPLAY_COLOR"] == "chosen"
+    assert environment["PYNCHY_KUBERNETES_VAULT_PVC"] == "vault"
     assert "SECRET_TOKEN" not in environment
