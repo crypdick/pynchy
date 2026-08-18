@@ -132,7 +132,7 @@ def test_should_review_does_not_treat_long_casual_text_as_low_signal() -> None:
     "content",
     [
         "remember that this repo uses uvx ruff for linting",
-        "learn this: deploys happen from mac-mini",
+        "learn this: deploys happen from deployment-host",
         "save this in memory for next time",
     ],
 )

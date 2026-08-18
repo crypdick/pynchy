@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pynchy-data-dcloud
+  name: pynchy-data-local
 spec:
   capacity:
     storage: 100Gi
@@ -9,14 +9,14 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: pynchy-local
   local:
-    path: /mnt/tank-20/appdata/pynchy-k3s/shared
+    path: /var/lib/pynchy-k3s/shared
   nodeAffinity:
     required:
       nodeSelectorTerms:
         - matchExpressions:
             - key: kubernetes.io/hostname
               operator: In
-              values: [dcloud]
+              values: [pynchy-node]
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -26,7 +26,7 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: pynchy-local
-  volumeName: pynchy-data-dcloud
+  volumeName: pynchy-data-local
   resources:
     requests:
       storage: 100Gi
@@ -34,7 +34,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pynchy-postgres-dcloud
+  name: pynchy-postgres-local
 spec:
   capacity:
     storage: 20Gi
@@ -42,14 +42,14 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: pynchy-local
   local:
-    path: /mnt/tank-20/appdata/pynchy-k3s/postgres
+    path: /var/lib/pynchy-k3s/postgres
   nodeAffinity:
     required:
       nodeSelectorTerms:
         - matchExpressions:
             - key: kubernetes.io/hostname
               operator: In
-              values: [dcloud]
+              values: [pynchy-node]
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -59,7 +59,7 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: pynchy-local
-  volumeName: pynchy-postgres-dcloud
+  volumeName: pynchy-postgres-local
   resources:
     requests:
       storage: 20Gi
@@ -67,7 +67,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pynchy-pocket-tts-dcloud
+  name: pynchy-pocket-tts-local
 spec:
   capacity:
     storage: 20Gi
@@ -75,14 +75,14 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: pynchy-local
   local:
-    path: /mnt/tank-20/appdata/pynchy-k3s/pocket-tts
+    path: /var/lib/pynchy-k3s/pocket-tts
   nodeAffinity:
     required:
       nodeSelectorTerms:
         - matchExpressions:
             - key: kubernetes.io/hostname
               operator: In
-              values: [dcloud]
+              values: [pynchy-node]
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -92,7 +92,7 @@ metadata:
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: pynchy-local
-  volumeName: pynchy-pocket-tts-dcloud
+  volumeName: pynchy-pocket-tts-local
   resources:
     requests:
       storage: 20Gi

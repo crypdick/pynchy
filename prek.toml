@@ -170,6 +170,14 @@ types = ["python"]
 files = "(^tests/|/tests/)"
 
 [[repos.hooks]]
+id = "check-repository-hygiene"
+name = "Forbid maintainer-local markers"
+entry = "uv run pytest -q -n 0 tests/test_repository_hygiene.py"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
 id = "deptry-host"
 name = "Check host dependency declarations"
 entry = "uv run deptry src/pynchy"
