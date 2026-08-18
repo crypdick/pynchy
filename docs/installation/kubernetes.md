@@ -12,10 +12,12 @@ Pods can mount only subdirectories of that volume. The Kubernetes runtime
 rejects host paths outside `PYNCHY_KUBERNETES_SHARED_ROOT`; it does not expose
 the host root filesystem or Docker socket.
 
-`deploy/k3s/storage.yaml` uses static local volumes with a `Retain` reclaim
-policy. Change its node name and local paths before applying it on another
-host. Back up all three local volume paths and the namespace secrets. Pocket
-TTS uses its own volume only for downloaded model caches.
+The base Kustomization omits storage because local volume paths and node names
+belong to each deployment. Copy `deploy/k3s/storage.example.yaml` into a
+deployment-specific Kustomize overlay, then replace its sample volume names,
+node name, and local paths. Keep the `Retain` reclaim policy. Back up all three
+local volume paths and the namespace secrets. Pocket TTS uses its own volume
+only for downloaded model caches.
 
 ## Prepare and deploy
 
@@ -38,8 +40,8 @@ TTS uses its own volume only for downloaded model caches.
    `pynchy-runtime` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`,
    `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `UI_USERNAME`, and `UI_PASSWORD`.
    Do not commit either Secret.
-4. Apply `deploy/k3s` with Kustomize and wait for all workloads to become
-   ready.
+4. Apply the deployment-specific Kustomize overlay and wait for all workloads
+   to become ready.
 
 ### Mount a synchronized vault
 
@@ -60,7 +62,9 @@ Install `deploy/k3s/backup.sh` on the node and schedule it with
 `deploy/k3s/pynchy-k3s-backup.cron` before the host backup system. It creates
 SQLite-safe copies of `messages.db` and `neonize.db` plus native PostgreSQL
 dumps of the LiteLLM, Temporal, and Temporal visibility databases. The script
-keeps 14 local generations under the Pynchy storage root.
+keeps 14 local generations under `PYNCHY_K3S_STORAGE_ROOT`. Set that variable
+to the directory containing the `shared`, `postgres`, and `backups`
+subdirectories.
 
 Exclude the live `pynchy-k3s/postgres` directory and live SQLite database files
 from file-level backup plans. Back up the generated `pynchy-k3s/backups`

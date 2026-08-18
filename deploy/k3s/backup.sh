@@ -5,9 +5,10 @@ umask 077
 
 readonly namespace=pynchy
 readonly postgres_pod=pynchy-postgres-0
-readonly data_dir=/mnt/tank-20/appdata/pynchy-k3s/shared/app/data
-readonly postgres_volume=/mnt/tank-20/appdata/pynchy-k3s/postgres
-readonly backup_root=/mnt/tank-20/appdata/pynchy-k3s/backups
+: "${PYNCHY_K3S_STORAGE_ROOT:?set PYNCHY_K3S_STORAGE_ROOT}"
+readonly data_dir="$PYNCHY_K3S_STORAGE_ROOT/shared/app/data"
+readonly postgres_volume="$PYNCHY_K3S_STORAGE_ROOT/postgres"
+readonly backup_root="$PYNCHY_K3S_STORAGE_ROOT/backups"
 readonly keep=14
 readonly timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly partial="$backup_root/.partial-$timestamp"

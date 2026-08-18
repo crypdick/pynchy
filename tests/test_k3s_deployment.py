@@ -3,6 +3,13 @@
 from pathlib import Path
 
 
+def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
+    kustomization = Path("deploy/k3s/kustomization.yaml").read_text(encoding="utf-8")
+
+    assert Path("deploy/k3s/storage.example.yaml").is_file()
+    assert "storage.example.yaml" not in kustomization
+
+
 def test_host_image_installs_locked_dependencies() -> None:
     dockerfile = Path("deploy/k3s/host.Dockerfile").read_text(encoding="utf-8")
 
@@ -24,6 +31,10 @@ def test_android_usb_bridge_is_unprivileged_and_k3s_local() -> None:
 def test_k3s_backup_uses_logical_database_snapshots() -> None:
     script = Path("deploy/k3s/backup.sh").read_text(encoding="utf-8")
 
+    assert "PYNCHY_K3S_STORAGE_ROOT:?" in script
+    assert '"$PYNCHY_K3S_STORAGE_ROOT/shared/app/data"' in script
+    assert '"$PYNCHY_K3S_STORAGE_ROOT/postgres"' in script
+    assert '"$PYNCHY_K3S_STORAGE_ROOT/backups"' in script
     assert ".backup '$partial/$database'" in script
     assert "litellm temporal temporal_visibility" in script
     assert "pg_dump -U" in script

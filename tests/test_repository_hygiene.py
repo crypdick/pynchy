@@ -8,7 +8,13 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _GIT = shutil.which("git") or "/usr/bin/git"
-_FORBIDDEN_MARKERS = ("ri" + "cardo", "/" + "src" + "/" + "PERSONAL")
+_FORBIDDEN_MARKERS = (
+    "ri" + "cardo",
+    "/" + "src" + "/" + "PERSONAL",
+    "mac" + "-mini",
+    "d" + "cloud",
+    "tank" + "-20",
+)
 
 
 def _non_ignored_repo_paths() -> list[Path]:

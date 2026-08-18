@@ -1,4 +1,5 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PYNCHY_K3S_STORAGE_ROOT=/var/lib/pynchy-k3s
 
-45 4 * * * root flock -n /run/lock/pynchy-k3s-backup.lock /mnt/tank/apps-ds/bin/pynchy-k3s-backup.sh >> /var/log/pynchy-k3s-backup.log 2>&1
+45 4 * * * root flock -n /run/lock/pynchy-k3s-backup.lock /usr/local/bin/pynchy-k3s-backup.sh >> /var/log/pynchy-k3s-backup.log 2>&1
