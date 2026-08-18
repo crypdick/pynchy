@@ -41,6 +41,7 @@ from pynchy.config.models import (
     WorkspaceThreadConfig,
     WorkspaceTool,
 )
+from pynchy.config.permissions import PermissionConfig
 from pynchy.config.personalization import (
     LITELLM_FILENAME,
     PersonalizationError,
@@ -128,6 +129,7 @@ __all__ = [
     "NotificationsConfig",
     "ObsidianLearningConfig",
     "OwnerConfig",
+    "PermissionConfig",
     "PersonalizationError",
     "PersonalizationPaths",
     "PipelineConfig",

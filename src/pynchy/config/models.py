@@ -12,6 +12,7 @@ from typing import Annotated, Literal, NewType
 from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
 from pynchy.config.caldav import CalDAVConfig
+from pynchy.config.permissions import PermissionConfig
 from pynchy.config.refs import parse_chat_ref
 from pynchy.config.workspace_layout import (
     WorkspaceScopeConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
@@ -450,6 +451,7 @@ class RepoConfig(_StrictModel):
 
 class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
+    permissions: PermissionConfig = Field(default_factory=PermissionConfig)
     soul: ValidatedPromptId | None = None
     pipeline: str | None = None
     model: str | None = None
@@ -492,7 +494,20 @@ class RouteConfig(_StrictModel):
     activation: Literal["on_event", "on_demand"] | None = None
     outbound: Literal["read_only", "approval_required"] | None = None
     tools: tuple[ValidatedToolName, ...] | None = None
+    permissions: PermissionConfig = Field(default_factory=PermissionConfig)
     capabilities: dict[str, Literal["deny", "needs_human"]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def reject_mixed_permission_syntax(self) -> RouteConfig:
+        if self.permissions.decisions and self.capabilities:
+            raise ValueError("configure permissions or legacy capabilities, not both")
+        return self
+
+    @property
+    def permission_decisions(self) -> dict[str, Literal["allow", "deny", "needs_human"]]:
+        if self.permissions.decisions:
+            return self.permissions.decisions
+        return dict(self.capabilities)
 
 
 class ReposConfig(_StrictModel):

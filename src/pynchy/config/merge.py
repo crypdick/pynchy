@@ -71,8 +71,8 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
             cop_active = profile.cop_active
         capabilities.update(
             {
-                capability: CapabilityRule(decision=rule.decision)
-                for capability, rule in profile.capabilities.items()
+                capability: CapabilityRule(decision=decision)
+                for capability, decision in profile.permission_decisions.items()
             }
         )
 

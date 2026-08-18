@@ -9,6 +9,8 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from pynchy.config.permissions import PermissionConfig
+
 
 class _StrictWorkspaceLayoutModel(BaseModel):
     model_config = {"extra": "forbid"}
@@ -32,6 +34,7 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
     kind: Literal["automation", "planning", "testing", "topic"] = "topic"
     workspace: str | None = None
     profiles: list[str] = []
+    permissions: PermissionConfig = PermissionConfig()
     soul: str | None = None
     pipeline: str | None = None
     model: str | None = None
@@ -66,6 +69,7 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
     def validate_semantic_workspace_shape(self) -> WorkspaceThreadConfig:
         if self.workspace is None and (
             self.profiles
+            or self.permissions.decisions
             or self.soul is not None
             or self.pipeline is not None
             or self.model is not None
@@ -82,6 +86,7 @@ class WorkspaceScopeConfig(_StrictWorkspaceLayoutModel):
 
     workspace: str
     profiles: list[str]
+    permissions: PermissionConfig = PermissionConfig()
     soul: str | None = None
     pipeline: str | None = None
     model: str | None = None

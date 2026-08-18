@@ -72,6 +72,7 @@ from pynchy.config.settings_sources import (
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.config.workspace_layout import semantic_workspace_configs
 from pynchy.config.workspace_names import static_workspace_name
+from pynchy.workspace.api import CapabilityRule
 
 
 def _assert_admin_clean_room(
@@ -265,6 +266,13 @@ class Settings(BaseSettings):
             pipeline=workspace.pipeline or self.prompts.default_pipeline,
             model=workspace.model if workspace.model is not None else resolved.model,
             model_reasoning_effort=workspace.model_reasoning_effort,
+            capabilities={
+                **resolved.capabilities,
+                **{
+                    capability: CapabilityRule(decision=decision)
+                    for capability, decision in workspace.permissions.decisions.items()
+                },
+            },
         )
 
     def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:
@@ -280,6 +288,7 @@ class Settings(BaseSettings):
         return WorkspaceConfig.model_validate(
             {
                 "profiles": thread.profiles,
+                "permissions": thread.permissions,
                 "soul": thread.soul or parent_config.soul,
                 "pipeline": thread.pipeline or parent_config.pipeline,
                 "model": thread.model,
