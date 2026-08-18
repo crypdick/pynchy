@@ -40,21 +40,23 @@ def test_main_workflow_publishes_both_images_after_tests() -> None:
 
 
 def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
-    manifest = Path("deploy/k3s/release-monitor.yaml").read_text(encoding="utf-8")
+    workload = Path("deploy/k3s/application/release-monitor.yaml").read_text(encoding="utf-8")
+    permissions = Path("deploy/k3s/bootstrap/release-monitor-rbac.yaml").read_text(encoding="utf-8")
 
-    assert "kind: CronJob" in manifest
-    assert "concurrencyPolicy: Forbid" in manifest
-    assert 'resources: ["deployments"]' in manifest
-    assert 'resources: ["pods"]' in manifest
-    assert 'verbs: ["get", "list", "watch", "create", "delete"]' in manifest
-    assert 'resources: ["secrets"]' not in manifest
-    assert "ClusterRole" not in manifest
-    assert "hostPath:" not in manifest
-    assert "docker.sock" not in manifest
+    assert "kind: CronJob" in workload
+    assert "concurrencyPolicy: Forbid" in workload
+    assert 'resources: ["deployments", "statefulsets"]' in permissions
+    assert 'resources: ["pods"]' in permissions
+    assert 'verbs: ["get", "list", "watch", "create", "delete"]' in permissions
+    assert 'resources: ["secrets"]' not in permissions
+    assert "ClusterRole" not in permissions
+    assert "hostPath:" not in workload
+    assert "docker.sock" not in workload
+    assert "claimName: pynchy-data" in workload
 
 
 def test_linux_desktop_is_isolated_and_persistent() -> None:
-    documents = _documents("deploy/k3s/desktop.yaml")
+    documents = _documents("deploy/k3s/application/desktop.yaml")
     deployment = next(document for document in documents if document["kind"] == "Deployment")
     pod = deployment["spec"]["template"]["spec"]
     container = pod["containers"][0]
@@ -77,7 +79,7 @@ def test_linux_desktop_is_isolated_and_persistent() -> None:
 
 
 def test_runtime_can_exec_only_namespace_pods() -> None:
-    manifest = Path("deploy/k3s/rbac.yaml").read_text(encoding="utf-8")
+    manifest = Path("deploy/k3s/bootstrap/rbac.yaml").read_text(encoding="utf-8")
 
     assert 'resources: ["pods/exec"]' in manifest
     assert "ClusterRole" not in manifest
@@ -85,7 +87,7 @@ def test_runtime_can_exec_only_namespace_pods() -> None:
 
 def test_android_usb_bridge_is_unprivileged_and_k3s_local() -> None:
     service = Path("deploy/k3s/pynchy-adb.service").read_text(encoding="utf-8")
-    manifest = Path("deploy/k3s/pynchy.yaml").read_text(encoding="utf-8")
+    manifest = Path("deploy/k3s/application/pynchy.yaml").read_text(encoding="utf-8")
 
     assert "User=pynchy-adb" in service
     assert "NoNewPrivileges=true" in service
