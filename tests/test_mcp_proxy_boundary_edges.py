@@ -100,7 +100,7 @@ async def test_proxy_hides_denied_tools_from_event_stream_lists() -> None:
             "result": {"tools": [{"name": "read"}, {"name": "delete"}]},
         }
         return web.Response(
-            body=f"event: message\ndata: {json.dumps(payload)}\n\n",
+            body=f"event: ping\ndata: not-json\nevent: message\ndata: {json.dumps(payload)}\n\n",
             content_type="text/event-stream",
         )
 

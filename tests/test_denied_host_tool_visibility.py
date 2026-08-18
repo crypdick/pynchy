@@ -24,7 +24,7 @@ async def test_pre_container_setup_hides_explicitly_denied_host_tool() -> None:
     deps = _AgentRunnerDeps()
     resolved = ResolvedWorkspaceConfig(
         skills=[],
-        tools=["computer_use"],
+        tools=["computer_use", "linear", "safe_tool"],
         repo=[],
         model=None,
         execution_mode="container",
@@ -34,11 +34,11 @@ async def test_pre_container_setup_hides_explicitly_denied_host_tool() -> None:
         capabilities={"test.computer.use": CapabilityRule("deny")},
     )
     access = ResolvedToolAccess(
-        tools=("computer_use",),
+        tools=("computer_use", "linear", "safe_tool"),
         companion_skills=(),
         workspace_env={},
         missing_requirements={},
-        agent_tool_grants=("computer_use",),
+        agent_tool_grants=("computer_use", "linear", "safe_tool"),
     )
     with (
         patch(
@@ -69,7 +69,7 @@ async def test_pre_container_setup_hides_explicitly_denied_host_tool() -> None:
         ),
         patch(
             "pynchy.host.orchestrator._agent_runner_preflight.get_host_action_catalog",
-            return_value=make_host_action_catalog("computer_use", handler=AsyncMock()),
+            return_value=make_host_action_catalog("computer_use", "safe_tool", handler=AsyncMock()),
         ),
         patch(
             "pynchy.host.orchestrator._agent_runner_preflight.resolve_agent_core",
@@ -95,4 +95,4 @@ async def test_pre_container_setup_hides_explicitly_denied_host_tool() -> None:
             )
         )
 
-    assert result.agent_tool_grants == ()
+    assert result.agent_tool_grants == ("linear", "safe_tool")
