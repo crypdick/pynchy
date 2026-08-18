@@ -23,8 +23,10 @@ def parent_workspace_name(workspace_name: str) -> str | None:
 
 
 def routed_conversation_folder(parent_workspace: str, conversation_id: ConversationId) -> str:
-    """Return a stable child runtime folder independent of control-thread JID."""
-    return dynamic_thread_folder(parent_workspace, f"{_ROUTED_FRAGMENT_PREFIX}{conversation_id}")
+    """Return a reversible child folder independent of control-thread JID."""
+    return (
+        f"{parent_workspace}{_DYNAMIC_THREAD_DELIMITER}{_ROUTED_FRAGMENT_PREFIX}{conversation_id}"
+    )
 
 
 def conversation_id_from_folder(folder: str) -> ConversationId | None:
