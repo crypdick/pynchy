@@ -4,24 +4,25 @@
 automation is the wrong shape: native apps, sensitive logged-in sites, and
 permission or login flows that need the real local desktop.
 
-The agent container never receives raw desktop access. A backend-neutral router
-accepts the request through Pynchy's policy-enforced IPC boundary, preserves the
-workspace attribution, and sends it to an available provider plugin on the
-host. This makes computer use optional and replaceable on every platform.
+The agent container never receives raw desktop access. A backend-neutral service
+accepts the request through Pynchy's policy-enforced IPC boundary, preserves
+workspace attribution, and sends it to one explicitly selected provider plugin
+on the host. This keeps computer use optional and replaceable without silently
+changing automation implementations.
 
-## Configure provider order
+## Select a provider
 
-The built-in router tries providers in the configured order. Its defaults are
-Peekaboo followed by Cua Driver:
+Select exactly one provider:
 
 ```toml
 [plugins.computer-use.options]
-providers = ["peekaboo", "cua-driver"]
+provider = "peekaboo"
 ```
 
-Provider fallback happens only when a provider is unavailable. Pynchy does not
-retry a failed action through another provider because doing so could repeat a
-partially completed click, keystroke, or other mutation.
+Pynchy reports an unavailable selected provider instead of choosing another
+implementation. Fix the provider or change this setting explicitly. Pynchy
+never retries a failed action through another provider because doing so could
+repeat a partially completed click, keystroke, or other mutation.
 
 Peekaboo and Cua Driver require macOS. Pynchy also includes an SSH X11
 provider for controlling an existing Linux desktop session without relaunching
@@ -35,34 +36,45 @@ enabled = false
 enabled = false
 
 [plugins.computer-use.options]
-providers = ["my-linux-provider"]
+provider = "my-linux-provider"
 ```
 
 ## Built-in: SSH X11
 
 `ssh-x11` controls a real X11 desktop through a pinned SSH credential and the
-allowlisted `scripts/pynchy_x11_computer_use.py` helper. The remote machine
-needs `wmctrl`, ImageMagick `import`, and `xdotool`. Install the helper as an
-executable on that machine, then configure the endpoint:
+packaged `pynchy-x11-computer-use` helper. The remote machine needs `wmctrl`,
+ImageMagick `import`, and `xdotool`. Install the same Pynchy release on that
+machine so the helper command stays versioned with the host.
+
+Restrict a dedicated SSH public key to the helper in the remote account's
+`authorized_keys`. Replace the placeholders with the installed helper's
+absolute path and public key:
+
+```text
+restrict,command="<helper-path>/pynchy-x11-computer-use" ssh-ed25519 <public-key>
+```
+
+Then configure the endpoint:
 
 ```toml
 [plugins.computer-use.options]
-providers = ["ssh-x11", "peekaboo", "cua-driver"]
+provider = "ssh-x11"
 
 [plugins.ssh-x11.options]
 host = "100.64.0.10"
 user = "desktop-user"
 private_key = "/run/secrets/pynchy-x11/id_ed25519"
 known_hosts = "/run/secrets/pynchy-x11/known_hosts"
-remote_command = "/home/desktop-user/.local/bin/pynchy-x11-computer-use"
 timeout_seconds = 30
 ```
 
-Use a dedicated key, pin the host key, and restrict reachability with the SSH
-server and tailnet policy. Supported actions are capture, app/window listing,
-coordinate clicks, text, shortcuts, scrolling, and permission checks. Captures
-focus a selected window but return the complete real desktop so X11 compositors
-cannot substitute a blank per-window image.
+The host requests no remote command; OpenSSH's forced-command policy chooses the
+helper. Pynchy checks helper protocol version, desktop binaries, and active X11
+session through a read-only handshake. Pin the host key and restrict reachability
+with SSH server and tailnet policy. Supported actions include capture,
+app/window listing, coordinate clicks, text, shortcuts, scrolling, and permission
+checks. Captures focus a selected window but return the complete real desktop so
+X11 compositors cannot substitute a blank per-window image.
 
 ## Built-in: Peekaboo
 

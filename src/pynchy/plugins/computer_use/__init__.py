@@ -8,9 +8,9 @@ from pynchy.plugins.computer_use.contract import (
 )
 from pynchy.plugins.computer_use.models import (
     ComputerUseAction,
+    ComputerUseConfig,
     ComputerUseInput,
     ComputerUseRequest,
-    ComputerUseRouterConfig,
     SourceGroup,
 )
 
@@ -18,8 +18,8 @@ __all__ = [
     "ComputerUseAction",
     "ComputerUseBackend",
     "ComputerUseBackendAvailability",
+    "ComputerUseConfig",
     "ComputerUseInput",
     "ComputerUseRequest",
-    "ComputerUseRouterConfig",
     "SourceGroup",
 ]

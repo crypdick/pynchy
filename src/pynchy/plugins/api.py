@@ -47,8 +47,8 @@ from pynchy.plugins.computer_use import (
     ComputerUseAction,
     ComputerUseBackend,
     ComputerUseBackendAvailability,
+    ComputerUseConfig,
     ComputerUseRequest,
-    ComputerUseRouterConfig,
     SourceGroup,
 )
 from pynchy.plugins.connections import (
@@ -133,8 +133,8 @@ __all__ = [
     "ComputerUseAction",
     "ComputerUseBackend",
     "ComputerUseBackendAvailability",
+    "ComputerUseConfig",
     "ComputerUseRequest",
-    "ComputerUseRouterConfig",
     "ConnectionRuntime",
     "ConnectionRuntimeContext",
     "HostActionAccess",

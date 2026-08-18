@@ -13,18 +13,21 @@ import time
 from pathlib import Path
 from typing import Any
 
-_SUPPORTED = {
-    "capture",
-    "list_apps",
-    "list_windows",
-    "click",
-    "double_click",
-    "right_click",
-    "type",
-    "key",
-    "scroll",
-    "check_permissions",
-}
+PROTOCOL_VERSION = 1
+SUPPORTED_ACTIONS = frozenset(
+    {
+        "capture",
+        "list_apps",
+        "list_windows",
+        "click",
+        "double_click",
+        "right_click",
+        "type",
+        "key",
+        "scroll",
+        "check_permissions",
+    }
+)
 _BUTTONS = {"click": "1", "double_click": "1", "right_click": "3"}
 _KEY_NAMES = {"cmd": "super", "command": "super", "option": "alt", "control": "ctrl"}
 
@@ -32,13 +35,19 @@ _KEY_NAMES = {"cmd": "super", "command": "super", "option": "alt", "control": "c
 def command(request: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911 - closed action dispatch.
     """Execute one validated, allowlisted desktop action."""
     action = request.get("action")
-    if action not in _SUPPORTED:
+    if action not in SUPPORTED_ACTIONS:
         raise ValueError(f"SSH X11 helper does not implement {action}")
     env = _x11_environment()
     if action == "check_permissions":
         _require_binaries("xdotool", "wmctrl", "import", path=env["PATH"])
         active = _run(["xdotool", "getactivewindow"], env=env).stdout.decode().strip()
-        return {"display": env["DISPLAY"], "active_window": active, "ready": True}
+        return {
+            "protocol_version": PROTOCOL_VERSION,
+            "supported_actions": sorted(SUPPORTED_ACTIONS),
+            "display": env["DISPLAY"],
+            "active_window": active,
+            "ready": True,
+        }
 
     windows = _windows(env)
     if action == "list_apps":
@@ -180,6 +189,8 @@ def _target_window(windows: list[dict[str, Any]], request: dict[str, Any]) -> di
     if not matches:
         raise ValueError("no matching X11 window")
     index = request.get("window_index", 0)
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+        raise ValueError("window_index must be a non-negative integer")
     if index >= len(matches):
         raise ValueError(f"window_index {index} exceeds {len(matches)} matching windows")
     return matches[index]

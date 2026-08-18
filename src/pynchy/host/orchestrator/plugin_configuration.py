@@ -68,7 +68,7 @@ from pynchy.identifiers import (
 from pynchy.integration_contracts import (
     is_matrix_connection,  # beartype resolves composition callback annotations at runtime.
 )
-from pynchy.plugins.api import ComputerUseRouterConfig, ConnectionRuntimeContext
+from pynchy.plugins.api import ComputerUseConfig, ConnectionRuntimeContext
 from pynchy.plugins.integrations.api import linear_account_for_workspace
 from pynchy.plugins.integrations.caldav import (
     CalDAVRuntime,
@@ -249,15 +249,12 @@ def configure_computer_use_plugins(
     plugin_manager: pluggy.PluginManager,
     settings: Settings,
 ) -> None:
-    """Inject the router and provider options resolved at composition."""
-    router = plugin_manager.get_plugin("builtin-computer-use")
-    if isinstance(router, ComputerUsePlugin):
-        router.configure(
-            ComputerUseRouterConfig.model_validate(
-                getattr(settings.plugins.get("computer-use"), "options", {})
-            ),
-            data_dir=settings.data_dir,
-        )
+    """Inject the selected computer-use provider and its options."""
+    computer_use = plugin_manager.get_plugin("builtin-computer-use")
+    if isinstance(computer_use, ComputerUsePlugin):
+        configured = settings.plugins.get("computer-use")
+        config = ComputerUseConfig.model_validate(configured.options) if configured else None
+        computer_use.configure(config, data_dir=settings.data_dir)
     cua = plugin_manager.get_plugin("builtin-cua-driver")
     if isinstance(cua, CuaDriverComputerUsePlugin):
         cua.configure(

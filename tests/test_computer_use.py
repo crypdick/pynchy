@@ -1,4 +1,4 @@
-"""Tests for the backend-neutral computer-use router plugin."""
+"""Tests for the backend-neutral computer-use service."""
 
 from __future__ import annotations
 
@@ -8,15 +8,14 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
 
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.api import (
     ApprovalMode,
     CapabilityProbeContext,
     ComputerUseBackendAvailability,
+    ComputerUseConfig,
     ComputerUseRequest,
-    ComputerUseRouterConfig,
     HostActionHandler,
     ProbeStatus,
     get_host_action_catalog,
@@ -68,11 +67,10 @@ class _FailingBackend(_RecordingBackend):
 
 def _handler(
     *backends: _RecordingBackend,
-    config: ComputerUseRouterConfig | None = None,
+    config: ComputerUseConfig | None = None,
 ) -> HostActionHandler:
-    registration = ComputerUsePlugin(config or ComputerUseRouterConfig()).pynchy_service_handler(
-        tuple(backends)
-    )
+    selected = config or (ComputerUseConfig(provider=backends[0].name) if backends else None)
+    registration = ComputerUsePlugin(selected).pynchy_service_handler(tuple(backends))
     return registration.actions[0].handler
 
 
@@ -106,18 +104,22 @@ def test_provider_plugins_can_be_disabled_independently() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_uses_the_first_available_provider() -> None:
+async def test_service_uses_only_the_configured_provider() -> None:
     unavailable = _RecordingBackend("peekaboo", False, "not installed")
-    fallback = _RecordingBackend("cua-driver")
-    result = await _handler(unavailable, fallback)({"source_group": "admin", "action": "list_apps"})
+    selected = _RecordingBackend("cua-driver")
+    result = await _handler(
+        unavailable,
+        selected,
+        config=ComputerUseConfig(provider="cua-driver"),
+    )({"source_group": "admin", "action": "list_apps"})
 
     assert result["result"]["backend"] == "cua-driver"
     assert unavailable.requests == []
-    assert [request.action.value for request in fallback.requests] == ["list_apps"]
+    assert [request.action.value for request in selected.requests] == ["list_apps"]
 
 
 @pytest.mark.asyncio
-async def test_router_accepts_canonical_ipc_transport_fields() -> None:
+async def test_service_accepts_canonical_ipc_transport_fields() -> None:
     backend = _RecordingBackend("peekaboo")
 
     result = await _handler(backend)(
@@ -138,10 +140,10 @@ async def test_router_accepts_canonical_ipc_transport_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_honors_configured_provider_order() -> None:
+async def test_service_ignores_unselected_available_provider() -> None:
     peekaboo = _RecordingBackend("peekaboo")
     cua = _RecordingBackend("cua-driver")
-    config = ComputerUseRouterConfig(providers=("cua-driver", "peekaboo"))
+    config = ComputerUseConfig(provider="cua-driver")
     result = await _handler(peekaboo, cua, config=config)(
         {"source_group": "admin", "action": "list_apps"}
     )
@@ -151,47 +153,41 @@ async def test_router_honors_configured_provider_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_does_not_retry_a_failed_mutation_through_another_provider() -> None:
+async def test_service_does_not_retry_a_failed_mutation() -> None:
     selected = _FailingBackend("peekaboo")
-    fallback = _RecordingBackend("cua-driver")
+    unselected = _RecordingBackend("cua-driver")
 
-    result = await _handler(selected, fallback)(
-        {"source_group": "admin", "action": "click", "coordinate": [10, 20]}
-    )
+    result = await _handler(
+        selected,
+        unselected,
+        config=ComputerUseConfig(provider="peekaboo"),
+    )({"source_group": "admin", "action": "click", "coordinate": [10, 20]})
 
     assert result == {"error": "provider failed after starting the action"}
     assert [request.action.value for request in selected.requests] == ["click"]
-    assert fallback.requests == []
+    assert unselected.requests == []
 
 
-@pytest.mark.asyncio
-async def test_router_reports_all_unavailable_provider_reasons() -> None:
-    peekaboo = _RecordingBackend("peekaboo", False, "requires macOS")
-    result = await _handler(peekaboo)({"source_group": "admin", "action": "list_apps"})
-
-    assert result == {
-        "error": (
-            "No configured computer-use provider is available: "
-            "peekaboo: requires macOS; cua-driver: plugin is not loaded"
+def test_service_rejects_unknown_configured_provider() -> None:
+    with pytest.raises(ValueError, match="provider 'missing' is not loaded"):
+        ComputerUsePlugin(ComputerUseConfig(provider="missing")).pynchy_service_handler(
+            (_RecordingBackend("peekaboo"),)
         )
-    }
 
 
 @pytest.mark.asyncio
 async def test_capability_probe_reports_unavailable_without_a_provider() -> None:
     unavailable = _RecordingBackend("peekaboo", False, "requires macOS")
-    registration = ComputerUsePlugin(
-        ComputerUseRouterConfig(providers=("peekaboo",))
-    ).pynchy_service_handler((unavailable,))
+    registration = ComputerUsePlugin(ComputerUseConfig(provider="peekaboo")).pynchy_service_handler(
+        (unavailable,)
+    )
     probe = registration.actions[0].capability.probe
     assert probe is not None
 
     result = await probe(CapabilityProbeContext(workspace="admin"))
 
     assert result.status is ProbeStatus.UNAVAILABLE
-    assert result.reason == (
-        "No configured computer-use provider is available: peekaboo: requires macOS"
-    )
+    assert result.reason == "computer-use provider peekaboo is unavailable: requires macOS"
 
 
 @pytest.mark.action("desktop.computer.wait")
@@ -206,14 +202,14 @@ async def test_wait_does_not_require_a_platform_provider() -> None:
 async def test_capture_requires_lifecycle_data_directory() -> None:
     result = await _handler(
         _RecordingBackend("configured"),
-        config=ComputerUseRouterConfig(providers=("configured",)),
+        config=ComputerUseConfig(provider="configured"),
     )({"source_group": "admin", "action": "capture", "label": "shot"})
 
     assert result == {"error": "computer-use capture requires lifecycle configuration"}
 
 
 @pytest.mark.asyncio
-async def test_router_rejects_fields_outside_the_closed_contract() -> None:
+async def test_service_rejects_fields_outside_the_closed_contract() -> None:
     result = await _handler()(
         {"source_group": "admin", "action": "list_apps", "raw_cli_args": ["--dangerous"]}
     )
@@ -223,7 +219,7 @@ async def test_router_rejects_fields_outside_the_closed_contract() -> None:
 
 @pytest.mark.parametrize("keys", [[], "+"])
 @pytest.mark.asyncio
-async def test_router_rejects_empty_shortcuts(keys: object) -> None:
+async def test_service_rejects_empty_shortcuts(keys: object) -> None:
     result = await _handler()({"source_group": "admin", "action": "key", "keys": keys})
 
     assert "key requires keys" in result["error"]
@@ -261,24 +257,19 @@ async def test_router_rejects_empty_shortcuts(keys: object) -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_router_rejects_invalid_request_boundaries(payload, message) -> None:
+async def test_service_rejects_invalid_request_boundaries(payload, message) -> None:
     result = await _handler()(payload)
 
     assert message in result["error"]
 
 
-def test_router_config_rejects_duplicate_providers() -> None:
-    with pytest.raises(ValidationError, match="computer-use providers must be unique"):
-        ComputerUseRouterConfig(providers=("peekaboo", "peekaboo"))
-
-
-def test_router_rejects_duplicate_backend_catalog_entries() -> None:
+def test_service_rejects_duplicate_backend_catalog_entries() -> None:
     duplicate = _RecordingBackend("same")
     with pytest.raises(ValueError, match="duplicate computer-use provider: same"):
         ComputerUsePlugin().pynchy_service_handler((duplicate, duplicate))
 
 
-def test_router_rejects_invalid_backend_catalog_entry() -> None:
+def test_service_rejects_invalid_backend_catalog_entry() -> None:
     with (
         pytest.warns(UserWarning, match="violates type hint"),
         pytest.raises(TypeError, match="invalid provider"),
@@ -288,10 +279,10 @@ def test_router_rejects_invalid_backend_catalog_entry() -> None:
 
 @pytest.mark.action("desktop.computer.capture")
 @pytest.mark.asyncio
-async def test_router_uses_lifecycle_configuration(tmp_path: Path) -> None:
+async def test_service_uses_lifecycle_configuration(tmp_path: Path) -> None:
     backend = _RecordingBackend("configured")
     plugin = ComputerUsePlugin()
-    plugin.configure(ComputerUseRouterConfig(providers=("configured",)), data_dir=tmp_path)
+    plugin.configure(ComputerUseConfig(provider="configured"), data_dir=tmp_path)
 
     handler = plugin.pynchy_service_handler((backend,)).actions[0].handler
     result = await handler({"source_group": "admin", "action": "capture", "label": "shot"})
@@ -303,10 +294,10 @@ async def test_router_uses_lifecycle_configuration(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_captures_after_a_non_capture_action(tmp_path: Path) -> None:
+async def test_service_captures_after_a_non_capture_action(tmp_path: Path) -> None:
     backend = _RecordingBackend("configured")
     plugin = ComputerUsePlugin()
-    plugin.configure(ComputerUseRouterConfig(providers=("configured",)), data_dir=tmp_path)
+    plugin.configure(ComputerUseConfig(provider="configured"), data_dir=tmp_path)
 
     handler = plugin.pynchy_service_handler((backend,)).actions[0].handler
     result = await handler(
@@ -323,22 +314,31 @@ async def test_router_captures_after_a_non_capture_action(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_capability_probe_reports_fallback_degradation() -> None:
-    unavailable = _RecordingBackend("peekaboo", False, "not installed")
-    fallback = _RecordingBackend("cua-driver")
-    registration = ComputerUsePlugin().pynchy_service_handler((unavailable, fallback))
+async def test_capability_probe_reports_unconfigured_provider() -> None:
+    registration = ComputerUsePlugin().pynchy_service_handler((_RecordingBackend("peekaboo"),))
     probe = registration.actions[0].capability.probe
     assert probe is not None
 
     result = await probe(CapabilityProbeContext(workspace="admin"))
 
-    assert result.status is ProbeStatus.DEGRADED
-    assert result.reason == "Using fallback provider cua-driver: peekaboo: not installed"
+    assert result.status is ProbeStatus.UNAVAILABLE
+    assert result.reason == "computer-use provider is not configured"
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_provider_rejects_non_wait_action() -> None:
+    registration = ComputerUsePlugin().pynchy_service_handler((_RecordingBackend("peekaboo"),))
+
+    result = await registration.actions[0].handler({"source_group": "admin", "action": "list_apps"})
+
+    assert result == {"error": "computer-use provider is not configured"}
 
 
 @pytest.mark.asyncio
 async def test_capability_probe_reports_ready_primary_provider() -> None:
-    registration = ComputerUsePlugin().pynchy_service_handler((_RecordingBackend("peekaboo"),))
+    registration = ComputerUsePlugin(ComputerUseConfig(provider="peekaboo")).pynchy_service_handler(
+        (_RecordingBackend("peekaboo"),)
+    )
     probe = registration.actions[0].capability.probe
     assert probe is not None
 

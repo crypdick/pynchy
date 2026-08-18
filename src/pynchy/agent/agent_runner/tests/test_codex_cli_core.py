@@ -357,11 +357,8 @@ def test_query_sends_system_prompt_to_codex_stdin(tmp_path, monkeypatch):
 
     _events, _spawn = _run_public_query(core, proc)
 
-    prompt = proc.stdin.writes[0].decode()
-    bridge_command = "python -m agent_runner.agent_tools call-hex"
-    assert prompt.startswith("Follow the local Pynchy prompts.\n\n")
-    assert bridge_command in prompt
-    assert prompt.endswith("User message:\nhello\n")
+    expected = f"{core.config.system_prompt_append}\n\nUser message:\nhello\n".encode()
+    assert proc.stdin.writes == [expected]
 
 
 def test_resumed_query_does_not_repeat_system_prompt_in_user_input(tmp_path, monkeypatch):

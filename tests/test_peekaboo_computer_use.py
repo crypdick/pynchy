@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.plugins.api import ComputerUseRouterConfig
+from pynchy.plugins.api import ComputerUseConfig
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
 from pynchy.plugins.integrations.peekaboo import (
     PeekabooBackend,
@@ -43,7 +43,7 @@ class _FakeProcess:
 
 def _handler(data_dir: Path | None = None) -> HostActionHandler:
     backend = PeekabooBackend(PeekabooConfig(binary="peekaboo", timeout_seconds=5))
-    config = ComputerUseRouterConfig(providers=("peekaboo",))
+    config = ComputerUseConfig(provider="peekaboo")
     registration = ComputerUsePlugin(config, data_dir=data_dir).pynchy_service_handler((backend,))
     return registration.actions[0].handler
 

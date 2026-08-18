@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import pluggy
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from pynchy.plugins.api import (
     ComputerUseBackend,
@@ -21,6 +21,7 @@ from pynchy.plugins.api import (
     ComputerUseRequest,
 )
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
+from pynchy.plugins.integrations.ssh_x11_helper import PROTOCOL_VERSION
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 PositiveTimeout = Annotated[float, Field(gt=0)]
@@ -36,8 +37,15 @@ class SshX11Config(BaseModel):
     binary: Annotated[str, Field(min_length=1)] = "ssh"
     private_key: Path = Path("/srv/pynchy/app/data/personalization/ssh/x11_ed25519")
     known_hosts: Path = Path("/srv/pynchy/app/data/personalization/ssh/known_hosts")
-    remote_command: Annotated[str, Field(min_length=1)] = "pynchy-x11-computer-use"
     timeout_seconds: PositiveTimeout = 30.0
+
+
+class _Handshake(BaseModel):
+    model_config = {"extra": "ignore"}
+
+    protocol_version: int
+    supported_actions: frozenset[str]
+    ready: bool
 
 
 @dataclass(frozen=True)
@@ -51,24 +59,30 @@ class SshX11Backend:
         return "ssh-x11"
 
     def availability(self) -> ComputerUseBackendAvailability:
-        if not self.config.host:
-            return ComputerUseBackendAvailability(
-                available=False, reason="SSH X11 host is not configured"
+        if unavailable := _local_unavailability(self.config):
+            return unavailable
+        try:
+            response = _run_ssh_blocking(
+                _ssh_command(self.config),
+                b'{"action":"check_permissions"}',
+                self.config.timeout_seconds,
             )
-        if shutil.which(self.config.binary) is None:
+            handshake = _Handshake.model_validate(response)
+        except (RuntimeError, TypeError, ValidationError) as exc:
+            return ComputerUseBackendAvailability(available=False, reason=str(exc))
+        if handshake.protocol_version != PROTOCOL_VERSION:
             return ComputerUseBackendAvailability(
                 available=False,
-                reason=f"SSH is not installed at {self.config.binary!r}",
+                reason=(
+                    f"SSH X11 protocol mismatch: host expects {PROTOCOL_VERSION}, "
+                    f"helper returned {handshake.protocol_version}"
+                ),
             )
-        for label, path in (
-            ("private key", self.config.private_key),
-            ("known-hosts file", self.config.known_hosts),
-        ):
-            if not path.is_file():
-                return ComputerUseBackendAvailability(
-                    available=False,
-                    reason=f"SSH {label} is missing at {path}",
-                )
+        if not handshake.ready:
+            return ComputerUseBackendAvailability(
+                available=False,
+                reason="SSH X11 helper reported not ready",
+            )
         return ComputerUseBackendAvailability(available=True)
 
     async def execute(
@@ -77,24 +91,12 @@ class SshX11Backend:
         *,
         screenshot_path: Path | None = None,
     ) -> dict[str, Any]:
-        target = f"{self.config.user}@{self.config.host}" if self.config.user else self.config.host
-        command = [
-            self.config.binary,
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "StrictHostKeyChecking=yes",
-            "-o",
-            f"UserKnownHostsFile={self.config.known_hosts}",
-            "-i",
-            str(self.config.private_key),
-            target,
-            self.config.remote_command,
-        ]
         payload = request.model_dump_json(exclude_none=True).encode()
-        output = await _run_ssh(command, payload, self.config.timeout_seconds)
+        output = await _run_ssh(
+            _ssh_command(self.config),
+            payload,
+            self.config.timeout_seconds,
+        )
         screenshot = output.pop("screenshot_png_base64", None)
         if screenshot_path is not None:
             if not isinstance(screenshot, str):
@@ -125,6 +127,79 @@ class SshX11ComputerUsePlugin:
         return SshX11Backend(self._config)
 
 
+def _local_unavailability(config: SshX11Config) -> ComputerUseBackendAvailability | None:
+    if not config.host:
+        return ComputerUseBackendAvailability(
+            available=False, reason="SSH X11 host is not configured"
+        )
+    if shutil.which(config.binary) is None:
+        return ComputerUseBackendAvailability(
+            available=False,
+            reason=f"SSH is not installed at {config.binary!r}",
+        )
+    for label, path in (
+        ("private key", config.private_key),
+        ("known-hosts file", config.known_hosts),
+    ):
+        if not path.is_file():
+            return ComputerUseBackendAvailability(
+                available=False,
+                reason=f"SSH {label} is missing at {path}",
+            )
+    return None
+
+
+def _ssh_command(config: SshX11Config) -> list[str]:
+    target = f"{config.user}@{config.host}" if config.user else config.host
+    return [
+        config.binary,
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        f"UserKnownHostsFile={config.known_hosts}",
+        "-i",
+        str(config.private_key),
+        target,
+    ]
+
+
+def _parse_ssh_response(returncode: int, stdout: bytes, stderr: bytes) -> dict[str, Any]:
+    parsed: object | None = None
+    if stdout:
+        try:
+            parsed = json.loads(stdout)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if not returncode:
+                raise RuntimeError("SSH X11 helper returned invalid JSON") from exc
+    if isinstance(parsed, dict) and (remote_error := parsed.get("error")):
+        raise RuntimeError(f"SSH X11 helper failed: {remote_error}")
+    if returncode:
+        error = stderr.decode(errors="replace").strip() or "unknown error"
+        raise RuntimeError(f"SSH X11 request failed: {error}")
+    if not isinstance(parsed, dict):
+        raise TypeError("SSH X11 helper returned a non-object response")
+    return parsed
+
+
+def _run_ssh_blocking(command: list[str], payload: bytes, timeout_seconds: float) -> dict[str, Any]:
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed SSH argv; request travels over stdin.
+            command,
+            input=payload,
+            check=False,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"SSH X11 request timed out after {timeout_seconds:g}s") from exc
+    return _parse_ssh_response(result.returncode, result.stdout, result.stderr)
+
+
 async def _run_ssh(command: list[str], payload: bytes, timeout_seconds: float) -> dict[str, Any]:
     process = await asyncio.create_subprocess_exec(
         *command,
@@ -140,15 +215,4 @@ async def _run_ssh(command: list[str], payload: bytes, timeout_seconds: float) -
         process.kill()
         await process.communicate()
         raise RuntimeError(f"SSH X11 request timed out after {timeout_seconds:g}s") from exc
-    if process.returncode:
-        error = stderr.decode(errors="replace").strip() or "unknown error"
-        raise RuntimeError(f"SSH X11 request failed: {error}")
-    try:
-        parsed = json.loads(stdout)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise RuntimeError("SSH X11 helper returned invalid JSON") from exc
-    if not isinstance(parsed, dict):
-        raise TypeError("SSH X11 helper returned a non-object response")
-    if remote_error := parsed.get("error"):
-        raise RuntimeError(f"SSH X11 helper failed: {remote_error}")
-    return parsed
+    return _parse_ssh_response(process.returncode or 0, stdout, stderr)
