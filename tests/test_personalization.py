@@ -112,34 +112,20 @@ def test_each_automation_directory_becomes_a_job_and_personalization_replaces_de
     assert settings.jobs["weekly"].pre_run_cwd == str(personal_weekly.resolve())
 
 
-def test_legacy_flat_automation_files_still_load(tmp_path: Path) -> None:
+def test_rejects_flat_automation_files(tmp_path: Path) -> None:
     _, personalization = _write_tree(tmp_path)
     automations = personalization / "automations"
     automations.mkdir()
     (automations / "weekly.toml").write_text(
         'schema_version = 1\n[job]\nschedule = "0 9 * * 1"\n'
-        'workspace = "pynchy"\nprompt = "legacy"\n',
+        'workspace = "pynchy"\nprompt = "invalid layout"\n',
         encoding="utf-8",
     )
 
-    mapping = load_layered_settings_mapping(tmp_path, personalization_root=personalization)
-
-    assert mapping["jobs"]["weekly"]["prompt"] == "legacy"
-
-
-def test_rejects_flat_and_directory_automation_name_collision(tmp_path: Path) -> None:
-    _, personalization = _write_tree(tmp_path)
-    automations = personalization / "automations"
-    directory = automations / "weekly"
-    directory.mkdir(parents=True)
-    content = (
-        'schema_version = 1\n[job]\nschedule = "0 9 * * 1"\n'
-        'workspace = "pynchy"\nprompt = "duplicate"\n'
-    )
-    (automations / "weekly.toml").write_text(content, encoding="utf-8")
-    (directory / "config.toml").write_text(content, encoding="utf-8")
-
-    with pytest.raises(PersonalizationError, match="Duplicate automation name"):
+    with pytest.raises(
+        PersonalizationError,
+        match=r"must use automations/<name>/config\.toml; found flat files: weekly\.toml",
+    ):
         load_layered_settings_mapping(tmp_path, personalization_root=personalization)
 
 
@@ -211,8 +197,9 @@ def test_rejects_automation_and_jobs_name_collision(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     automations = defaults / "automations"
-    automations.mkdir()
-    (automations / "weekly.toml").write_text(
+    automation = automations / "weekly"
+    automation.mkdir(parents=True)
+    (automation / "config.toml").write_text(
         'schema_version = 1\n[job]\nschedule = "0 10 * * 1"\n'
         'workspace = "pynchy"\nprompt = "automation"\n',
         encoding="utf-8",
@@ -284,9 +271,9 @@ def test_requires_an_existing_personalization_repository(tmp_path: Path) -> None
 
 def test_rejects_removed_automation_prompt_file_field(tmp_path: Path) -> None:
     _, personalization = _write_tree(tmp_path)
-    automations = personalization / "automations"
-    automations.mkdir()
-    (automations / "weekly.toml").write_text(
+    automation = personalization / "automations" / "weekly"
+    automation.mkdir(parents=True)
+    (automation / "config.toml").write_text(
         "schema_version = 1\n"
         "\n[job]\n"
         'workspace = "pynchy"\n'
@@ -349,9 +336,9 @@ def test_loads_defaults_without_an_optional_personalization_directory(tmp_path: 
 
 def test_rejects_non_mapping_jobs_when_automation_is_declared(tmp_path: Path) -> None:
     defaults, personalization = _write_tree(tmp_path)
-    automations = defaults / "automations"
-    automations.mkdir()
-    (automations / "weekly.toml").write_text(
+    automation = defaults / "automations" / "weekly"
+    automation.mkdir(parents=True)
+    (automation / "config.toml").write_text(
         "schema_version = 1\n"
         "\n[job]\n"
         'workspace = "pynchy"\n'
@@ -387,9 +374,9 @@ def test_rejects_non_mapping_workspaces_when_workspace_is_declared(tmp_path: Pat
 
 def test_rejects_malformed_automation_documents(tmp_path: Path) -> None:
     defaults, personalization = _write_tree(tmp_path)
-    automations = defaults / "automations"
-    automations.mkdir()
-    (automations / "weekly.toml").write_text("schema_version =\n", encoding="utf-8")
+    automation = defaults / "automations" / "weekly"
+    automation.mkdir(parents=True)
+    (automation / "config.toml").write_text("schema_version =\n", encoding="utf-8")
 
     with pytest.raises(PersonalizationError, match="Invalid automation"):
         load_layered_settings_mapping(tmp_path, personalization_root=personalization)
@@ -521,12 +508,6 @@ def test_loads_workspace_and_pipeline_documents(tmp_path: Path) -> None:
             "delivery.toml",
             "schema_version = 1\n[pipeline]\nstages = []\n",
             "Invalid pipeline",
-        ),
-        (
-            "automations",
-            ".broken.toml",
-            "schema_version = 1\n[job]\n",
-            "Invalid automation name",
         ),
     ],
 )

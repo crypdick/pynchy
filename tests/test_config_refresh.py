@@ -472,9 +472,9 @@ def test_automation_projection_ignores_files_absent_from_loaded_settings(
     _write_runtime_tree(tmp_path)
     monkeypatch.chdir(tmp_path)
     settings = load_runtime_candidate()
-    automations = tmp_path / "data/personalization/automations"
-    automations.mkdir()
-    (automations / "not-loaded.toml").touch()
+    automation = tmp_path / "data/personalization/automations/not-loaded"
+    automation.mkdir(parents=True)
+    (automation / "config.toml").touch()
 
     assert automation_projection(settings) == ()
 
