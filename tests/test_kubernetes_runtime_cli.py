@@ -198,18 +198,69 @@ def test_rejects_mount_outside_shared_pvc(tmp_path: Path) -> None:
         )
 
 
+def test_routes_vault_mounts_to_dedicated_pvc(tmp_path: Path) -> None:
+    shared_root = tmp_path / "shared"
+    vault_root = shared_root / "vault"
+    workspace = shared_root / "groups" / "admin"
+    automation_memory = vault_root / "wiki" / "systems" / "pynchy" / "automation-memory"
+    workspace.mkdir(parents=True)
+    automation_memory.mkdir(parents=True)
+    vault_root.chmod(0o750)
+
+    resources = build_resources(
+        [
+            "run",
+            "--name",
+            "pynchy-admin",
+            "-v",
+            f"{vault_root}:/home/agent/memory",
+            "-v",
+            f"{automation_memory}:/home/agent/automation-memory",
+            "-v",
+            f"{workspace}:/home/agent/workspace",
+            "pynchy-agent:latest",
+        ],
+        shared_root=shared_root,
+        pvc_name="pynchy-data",
+        vault_pvc_name="pynchy-vault",
+        namespace="pynchy",
+    )
+
+    pod = resources[0]
+    assert pod["spec"]["containers"][0]["volumeMounts"] == [
+        {"name": "vault", "mountPath": "/home/agent/memory"},
+        {
+            "name": "vault",
+            "mountPath": "/home/agent/automation-memory",
+            "subPath": "wiki/systems/pynchy/automation-memory",
+        },
+        {
+            "name": "shared",
+            "mountPath": "/home/agent/workspace",
+            "subPath": "groups/admin",
+        },
+    ]
+    assert pod["spec"]["volumes"] == [
+        {"name": "shared", "persistentVolumeClaim": {"claimName": "pynchy-data"}},
+        {"name": "vault", "persistentVolumeClaim": {"claimName": "pynchy-vault"}},
+    ]
+    assert vault_root.stat().st_mode & 0o7777 == 0o750
+
+
 def test_runtime_settings_and_name_normalization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYNCHY_KUBERNETES_NAMESPACE", "agents")
     monkeypatch.setenv("PYNCHY_KUBERNETES_PVC", "shared")
+    monkeypatch.setenv("PYNCHY_KUBERNETES_VAULT_PVC", "vault")
     monkeypatch.setenv("PYNCHY_KUBERNETES_SHARED_ROOT", str(tmp_path))
     monkeypatch.setenv("PYNCHY_KUBERNETES_PULL_POLICY", "Always")
 
     assert kubernetes_cli.runtime_settings() == kubernetes_cli.RuntimeSettings(
         namespace="agents",
         pvc_name="shared",
+        vault_pvc_name="vault",
         shared_root=tmp_path,
         pull_policy="Always",
     )
