@@ -26,6 +26,9 @@ def test_main_workflow_publishes_both_images_after_tests() -> None:
     assert "packages: write" in workflow
     assert "ghcr.io/$owner/pynchy-host:$RELEASE_SHA" in workflow
     assert "ghcr.io/$owner/pynchy-agent:$RELEASE_SHA" in workflow
+    assert workflow.index("touch src/pynchy/agent/requirements-plugins.txt") < workflow.index(
+        "--build-arg AGENT_UID=3000"
+    )
     assert workflow.index("docker run --rm") < workflow.index('docker push "$host_image"')
 
 
