@@ -178,7 +178,7 @@ profiles = ["token-refresh"]
 ```
 
 ```toml
-# data/personalization/automations/refresh-slack-tokens.toml
+# data/personalization/automations/refresh-slack-tokens/config.toml
 schema_version = 1
 
 [job]

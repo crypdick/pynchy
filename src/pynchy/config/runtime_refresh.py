@@ -247,6 +247,7 @@ def _automation_names(project_root: Path) -> set[str]:
     ):
         if directory.is_dir():
             names.update(path.stem for path in directory.glob("*.toml"))
+            names.update(path.parent.name for path in directory.glob("*/config.toml"))
     return names
 
 

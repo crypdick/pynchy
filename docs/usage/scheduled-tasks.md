@@ -113,7 +113,7 @@ model = "chatgpt/gpt-5.3-codex-spark"
 ```
 
 ```toml
-# data/personalization/automations/daily-triage.toml
+# data/personalization/automations/daily-triage/config.toml
 schema_version = 1
 
 [job]
@@ -144,7 +144,7 @@ workspaces backed by LiteLLM's ChatGPT subscription provider, keep the
 One-time agent jobs use `at` instead of `schedule`:
 
 ```toml
-# data/personalization/automations/cancel-youtube-premium.toml
+# data/personalization/automations/cancel-youtube-premium/config.toml
 schema_version = 1
 
 [job]
@@ -160,7 +160,7 @@ Use `interval_minutes` for config-backed interval jobs. An agent job can also
 run a host-side gate before starting its agent:
 
 ```toml
-# data/personalization/automations/marketplace-poller.toml
+# data/personalization/automations/marketplace-poller/config.toml
 schema_version = 1
 
 [job]
@@ -168,8 +168,7 @@ workspace = "marketplace-inbox-poller"
 interval_minutes = 30
 display_name = "marketplace inbox poller"
 prompt = "Review the gate output and act on actionable messages."
-pre_run_command = "scripts/marketplace_gate.py"
-pre_run_cwd = "."
+pre_run_command = "./scripts/marketplace_gate.py"
 pre_run_timeout_seconds = 300
 ```
 
@@ -184,7 +183,7 @@ Set `agent = false` for a script that does not need an LLM but still belongs to
 a conversational workspace:
 
 ```toml
-# data/personalization/automations/scheduler-watchdog.toml
+# data/personalization/automations/scheduler-watchdog/config.toml
 schema_version = 1
 
 [job]
@@ -192,8 +191,7 @@ workspace = "cron"
 schedule = "0 23 * * *"
 display_name = "scheduler health watchdog"
 agent = false
-command = "scripts/scheduler_watchdog.py"
-cwd = "."
+command = "./scripts/scheduler_watchdog.py"
 timeout_seconds = 300
 ```
 
@@ -215,15 +213,14 @@ Personalized config wins on name collisions. A plugin should store logical
 Host jobs use the reserved workspace name `host`:
 
 ```toml
-# data/personalization/automations/backup-runtime-dbs.toml
+# data/personalization/automations/backup-runtime-dbs/config.toml
 schema_version = 1
 
 [job]
 enabled = true
 schedule = "0 3 * * *"
 workspace = "host"
-command = "scripts/backup_runtime_dbs.sh"
-cwd = "."
+command = "./scripts/backup_runtime_dbs.sh"
 timeout_seconds = 600
 quiet_on_success = true
 ```
@@ -363,15 +360,14 @@ Static host jobs belong in `data/personalization/automations/`. They are useful
 for always-on maintenance jobs that are part of the deployment.
 
 ```toml
-# data/personalization/automations/backup-db.toml
+# data/personalization/automations/backup-db/config.toml
 schema_version = 1
 
 [job]
 enabled = true
 workspace = "host"
 schedule = "0 3 * * *"          # daily at 3am
-command = "scripts/backup.sh"
-cwd = "."                       # relative to project root (optional)
+command = "./scripts/backup.sh"
 timeout_seconds = 600           # default: 600
 quiet_on_success = true         # suppress clean-run output logging
 ```

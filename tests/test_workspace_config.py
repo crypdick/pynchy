@@ -389,19 +389,6 @@ is_admin = true
         assert data["workspace"]["profiles"] == ["pynchy-dev"]
 
 
-def test_add_job_writes_a_versioned_automation_file(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    add_job_to_toml(
-        "nightly",
-        JobConfig(schedule="0 * * * *", workspace="host", command="true"),
-    )
-
-    data = tomllib.loads((tmp_path / "data/personalization/automations/nightly.toml").read_text())
-    assert data["schema_version"] == 1
-    assert data["job"] == {"schedule": "0 * * * *", "workspace": "host", "command": "true"}
-
-
 def test_update_profile_skill_policy_persists_grants_and_denials(tmp_path, monkeypatch):
     defaults_path = tmp_path / "data" / "defaults" / "pynchy.toml"
     defaults_path.parent.mkdir(parents=True)

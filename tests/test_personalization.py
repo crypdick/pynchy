@@ -81,7 +81,7 @@ def test_changing_a_discriminated_mapping_replaces_the_lower_layer(tmp_path: Pat
     assert mapping["tools"]["search"] == {"type": "linear", "workspace": "PYN"}
 
 
-def test_each_automation_file_becomes_a_job_and_personalization_replaces_default(
+def test_each_automation_directory_becomes_a_job_and_personalization_replaces_default(
     tmp_path: Path,
 ) -> None:
     defaults, personalization = _write_tree(tmp_path)
@@ -89,14 +89,19 @@ def test_each_automation_file_becomes_a_job_and_personalization_replaces_default
     personal_automations = personalization / "automations"
     default_automations.mkdir()
     personal_automations.mkdir()
-    (default_automations / "weekly.toml").write_text(
+    default_weekly = default_automations / "weekly"
+    personal_weekly = personal_automations / "weekly"
+    default_weekly.mkdir()
+    personal_weekly.mkdir()
+    (default_weekly / "config.toml").write_text(
         'schema_version = 1\n[job]\nschedule = "0 9 * * 1"\n'
         'workspace = "pynchy"\nprompt = "default"\n',
         encoding="utf-8",
     )
-    (personal_automations / "weekly.toml").write_text(
+    (personal_weekly / "config.toml").write_text(
         'schema_version = 1\n[job]\nschedule = "0 10 * * 1"\n'
-        'workspace = "pynchy"\nprompt = "personal prompt"\n',
+        'workspace = "pynchy"\nprompt = "personal prompt"\n'
+        'pre_run_command = "./scripts/gate.py"\n',
         encoding="utf-8",
     )
 
@@ -104,6 +109,38 @@ def test_each_automation_file_becomes_a_job_and_personalization_replaces_default
 
     assert settings.jobs["weekly"].schedule == "0 10 * * 1"
     assert settings.jobs["weekly"].prompt == "personal prompt"
+    assert settings.jobs["weekly"].pre_run_cwd == str(personal_weekly.resolve())
+
+
+def test_legacy_flat_automation_files_still_load(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    automations = personalization / "automations"
+    automations.mkdir()
+    (automations / "weekly.toml").write_text(
+        'schema_version = 1\n[job]\nschedule = "0 9 * * 1"\n'
+        'workspace = "pynchy"\nprompt = "legacy"\n',
+        encoding="utf-8",
+    )
+
+    mapping = load_layered_settings_mapping(tmp_path, personalization_root=personalization)
+
+    assert mapping["jobs"]["weekly"]["prompt"] == "legacy"
+
+
+def test_rejects_flat_and_directory_automation_name_collision(tmp_path: Path) -> None:
+    _, personalization = _write_tree(tmp_path)
+    automations = personalization / "automations"
+    directory = automations / "weekly"
+    directory.mkdir(parents=True)
+    content = (
+        'schema_version = 1\n[job]\nschedule = "0 9 * * 1"\n'
+        'workspace = "pynchy"\nprompt = "duplicate"\n'
+    )
+    (automations / "weekly.toml").write_text(content, encoding="utf-8")
+    (directory / "config.toml").write_text(content, encoding="utf-8")
+
+    with pytest.raises(PersonalizationError, match="Duplicate automation name"):
+        load_layered_settings_mapping(tmp_path, personalization_root=personalization)
 
 
 def test_full_validation_rejects_invalid_settings(tmp_path: Path) -> None:
@@ -489,7 +526,7 @@ def test_loads_workspace_and_pipeline_documents(tmp_path: Path) -> None:
             "automations",
             ".broken.toml",
             "schema_version = 1\n[job]\n",
-            "Invalid automation filename",
+            "Invalid automation name",
         ),
     ],
 )

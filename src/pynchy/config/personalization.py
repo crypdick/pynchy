@@ -11,10 +11,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from pynchy.config.automations import load_automations
 from pynchy.config.errors import PersonalizationError
-from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
-)
 from pynchy.config.models import (
     WorkspaceConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
 )
@@ -44,15 +42,6 @@ _INLINE_SECRET_KEYS = frozenset(
         "secret_access_key",
     }
 )
-
-
-class AutomationDocument(BaseModel):
-    """One versioned automation declaration."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    schema_version: Literal[1]
-    job: JobConfig
 
 
 class WorkspaceDocument(BaseModel):
@@ -264,8 +253,8 @@ def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[st
 
 
 def _load_automation_layers(paths: PersonalizationPaths) -> dict[str, dict[str, Any]]:
-    defaults = _load_automations(paths.defaults / AUTOMATIONS_DIRNAME)
-    personalized = _load_automations(paths.personalization / AUTOMATIONS_DIRNAME)
+    defaults = load_automations(paths.defaults / AUTOMATIONS_DIRNAME)
+    personalized = load_automations(paths.personalization / AUTOMATIONS_DIRNAME)
     return {**defaults, **personalized}
 
 
@@ -379,25 +368,6 @@ def _validate_prompt_configuration(
         raise PersonalizationError(
             f"Selected pipeline names do not resolve: {', '.join(unknown_pipelines)}"
         )
-
-
-def _load_automations(directory: Path) -> dict[str, dict[str, Any]]:
-    if not directory.is_dir():
-        return {}
-    automations: dict[str, dict[str, Any]] = {}
-    for path in sorted(directory.glob("*.toml")):
-        name = path.stem
-        if not name or name.startswith("."):
-            raise PersonalizationError(f"Invalid automation filename: {path.name}")
-        try:
-            document = AutomationDocument.model_validate(
-                tomllib.loads(path.read_text(encoding="utf-8"))
-            )
-        except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
-            raise PersonalizationError(f"Invalid automation {path}: {exc}") from exc
-        job = document.job.model_dump(exclude_none=True)
-        automations[name] = job
-    return automations
 
 
 def _wire_litellm_config(
