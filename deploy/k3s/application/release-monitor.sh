@@ -157,10 +157,15 @@ render_application() {
     host="$PYNCHY_RELEASE_HOST_IMAGE:$sha"
     agent="$PYNCHY_RELEASE_AGENT_IMAGE:$sha"
     mkdir -p "$overlay"
+    resource=$(realpath --relative-to="$overlay" "$source_root/deploy/k3s/application")
+    patch=""
+    if [ -n "$release_patch" ]; then
+        patch=$(realpath --relative-to="$overlay" "$release_patch")
+    fi
 
     jq -n \
-        --arg resource "$source_root/deploy/k3s/application" \
-        --arg patch "$release_patch" '
+        --arg resource "$resource" \
+        --arg patch "$patch" '
         {
             apiVersion: "kustomize.config.k8s.io/v1beta1",
             kind: "Kustomization",
