@@ -19,6 +19,7 @@ from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.state import init_test_database
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -68,6 +69,7 @@ def _make_request(tool_name: str, request_id: str = "req-1", **extra) -> dict:
 def _register_safe_gate(tool_name: str) -> None:
     """Register a SecurityGate with all-safe trust for a tool."""
     security = WorkspaceSecurity(
+        capabilities={"*": CapabilityRule("allow")},
         services={
             tool_name: ServiceTrustConfig(
                 public_source=False,

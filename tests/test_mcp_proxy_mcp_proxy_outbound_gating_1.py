@@ -278,7 +278,9 @@ class TestMcpProxyOutboundGating:
 
     async def test_safe_write_allowed_through(self, mock_backend):
         """A tools/call to a fully-safe service should pass through."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -328,7 +330,9 @@ class TestMcpProxyOutboundGating:
 
     async def test_malformed_json_body_passes_through(self, mock_backend):
         """Non-JSON request bodies should be forwarded without write gating."""
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -364,7 +368,9 @@ class TestMcpProxyLifecycle:
         Uses TestClient (in-process) instead of real TCP to avoid
         port-binding issues under pytest-xdist workers.
         """
-        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")}, services={"browser": _SAFE_TRUST}
+        )
         create_gate("test-ws", 1000.0, security)
 
         # No routes configured -- should 404

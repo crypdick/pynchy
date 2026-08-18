@@ -161,6 +161,7 @@ def test_container_config_parses_mounts_and_rejects_invalid_shapes():
 
 
 def test_capability_matching_and_restrictive_intersection():
+    assert capability_pattern_matches("*", "mcp.calendar.create")
     assert capability_pattern_matches("mcp.calendar.*", "mcp.calendar.create")
     assert capability_pattern_matches("mcp.calendar.read", "mcp.calendar.read")
     assert not capability_pattern_matches("mcp.calendar.*", "mcp.email.send")

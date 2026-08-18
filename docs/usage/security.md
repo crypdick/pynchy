@@ -79,21 +79,21 @@ shell approval.
 
 Text-only channels show the command fallback in the prompt, for example `approve a1` or `deny a1`. Prompts expire after five minutes if no decision arrives.
 
-## Capability Rules
+## Permissions
 
-Use tool trust fields for broad service risk. Use profile capability rules when
-a specific host action or MCP tool call needs a sharper policy than the rest
-of the service.
+Selecting a tool makes it available to a workspace. Calls default to `ask`
+unless an explicit permission matches. Put reusable tool selection in a
+profile, then put authorization on the profile or exact workspace that should
+receive it.
 
 ```toml
 [profiles.finance-assistant]
 tools = ["email"]
+permissions = { ask = ["mcp.email.send"], deny = ["mcp.email.delete"] }
 
-[profiles.finance-assistant.capabilities."mcp.email.send"]
-decision = "needs_human"
-
-[profiles.finance-assistant.capabilities."mcp.email.delete"]
-decision = "deny"
+[workspaces.automated-reports]
+profiles = ["finance-assistant"]
+permissions = { allow = ["mcp.email.preview"] }
 ```
 
 Capability IDs use dotted segments. Host actions publish their IDs through the
@@ -101,9 +101,11 @@ capability status surface; MCP tool calls use
 `mcp.<tool-name>.<call-name>`. A trailing `.*` applies to all matching calls,
 such as `mcp.email.*`.
 
-Pynchy intersects every exact and wildcard rule that matches a capability. The
-most restrictive decision wins (`deny`, then `needs_human`, then `allow`), so a
-narrow child route cannot weaken a broader parent denial.
+Pynchy accepts `allow`, `ask`, and `deny` arrays. Duplicate values within an
+array or across arrays in one permission object fail validation. Pynchy
+intersects every exact and wildcard rule that matches a capability. The most
+restrictive explicit decision wins (`deny`, then `ask`, then `allow`),
+independent of profile order.
 
 Each decision has authoritative semantics:
 
@@ -112,10 +114,18 @@ Each decision has authoritative semantics:
   request. It does not override a service property set to `"forbidden"` or
   disable Cop review.
 - `deny` blocks the matching capability.
-- `needs_human` requires approval. The tool's approval contract determines
+- `ask` requires approval. The tool's approval contract determines
   whether that approval covers one exact request or the active session.
 
-An unspecified capability rule remains neutral and falls back to service trust.
+An unspecified permission defaults to `ask`. A runtime policy can replace that
+implicit default with `allow`, but configuration fails if it tries to weaken an
+explicit `ask` or `deny`. Service properties set to `"forbidden"`, Cop review,
+and `always` approval contracts remain authoritative.
+
+Denied MCP calls do not appear in `tools/list`, and direct calls remain blocked.
+Denying `mcp.<tool-name>.*` removes the whole MCP server from that workspace.
+Put narrower domains, paths, apps, or similar scopes in the tool's typed options;
+generic permissions decide only `allow`, `ask`, or `deny`.
 
 ## Configuration Examples
 

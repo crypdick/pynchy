@@ -105,6 +105,7 @@ def test_capability_only_contract_explains_suppressed_service_approval() -> None
     gate = SecurityGate(
         WorkspaceSecurity(
             services={"send_email": ServiceTrustConfig(dangerous_writes=True)},
+            capabilities={"test.send.email": CapabilityRule("allow")},
         )
     )
 

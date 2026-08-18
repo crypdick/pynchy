@@ -14,9 +14,9 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_all_instances,
 )
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    clear_runtime_workspace_restrictions,
-    register_runtime_workspace_restriction,
+    RuntimeWorkspacePolicy,
+    clear_runtime_workspace_policies,
+    register_runtime_workspace_policy,
 )
 from pynchy.plugins.api import McpServerConfig
 
@@ -254,15 +254,15 @@ class TestResolveAllInstancesPortOffset:
         manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         await manager.sync()
         child = "admin__thread_discord-channel-restricted"
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             child,
-            RuntimeWorkspaceRestriction(parent_workspace="admin", tools=()),
+            RuntimeWorkspacePolicy(parent_workspace="admin", tools=()),
         )
 
         try:
             instance_ids = manager.get_workspace_instance_ids(child)
         finally:
-            clear_runtime_workspace_restrictions()
+            clear_runtime_workspace_policies()
 
         assert instance_ids == []
 

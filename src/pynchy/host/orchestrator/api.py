@@ -56,12 +56,12 @@ from pynchy.host.orchestrator.workspace_artifacts import (
     cleanup_workspace_artifacts,
 )
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
+    RuntimeWorkspacePolicy,
     load_resolved_config,
     load_resolved_tool_access,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
     static_workspace_folder,
-    unregister_runtime_workspace_restriction,
+    unregister_runtime_workspace_policy,
     update_profile_skill_policy,
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
@@ -120,7 +120,7 @@ __all__ = [
     "ConversationWorkspaceContext",
     "GroupQueue",
     "RenderedMessage",
-    "RuntimeWorkspaceRestriction",
+    "RuntimeWorkspacePolicy",
     "ScheduledTaskTerminalError",
     "SessionManager",
     "TextFormatter",
@@ -145,7 +145,7 @@ __all__ = [
     "prepare_action_intent",
     "reconcile_all_channels",
     "refresh_host_config",
-    "register_runtime_workspace_restriction",
+    "register_runtime_workspace_policy",
     "resolve_admin_notification_jid",
     "resolve_agent_core",
     "resolve_container_timeout",
@@ -154,6 +154,6 @@ __all__ = [
     "run_scheduled_agent",
     "static_workspace_folder",
     "sweep_expired_questions",
-    "unregister_runtime_workspace_restriction",
+    "unregister_runtime_workspace_policy",
     "update_profile_skill_policy",
 ]

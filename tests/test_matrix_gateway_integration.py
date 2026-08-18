@@ -150,7 +150,7 @@ def _resolve_matrix_routes(settings) -> tuple[ResolvedMatrixRoute, ...]:
             activation=route.activation,
             outbound=route.outbound,
             tools=tuple(route.tools) if route.tools is not None else None,
-            capabilities=dict(route.capabilities),
+            capabilities=dict(route.permissions.decisions),
         )
         for name, route in settings.routes.items()
     )
@@ -328,8 +328,8 @@ def test_route_references_fail_closed(case: str, error: str) -> None:
     [
         ("admin-on-event", "untrusted events to an admin workspace"),
         ("tool-expansion", "tools must be a restriction"),
-        ("capability-weakening", "cannot weaken workspace denial"),
-        ("wildcard-capability-weakening", "cannot weaken workspace denial"),
+        ("capability-weakening", "cannot weaken workspace permissions"),
+        ("wildcard-capability-weakening", "cannot weaken workspace permissions"),
     ],
 )
 def test_route_policy_can_only_reduce_parent_workspace_privilege(
@@ -345,12 +345,12 @@ def test_route_policy_can_only_reduce_parent_workspace_privilege(
         raw["routes"]["family"]["tools"] = ["matrix_route_read"]
     elif case == "capability-weakening":
         capability = "chat.matrix.route.read"
-        raw["profiles"]["support"]["capabilities"] = {capability: {"decision": "deny"}}
-        raw["routes"]["family"]["capabilities"] = {capability: "needs_human"}
+        raw["profiles"]["support"]["permissions"] = {"deny": [capability]}
+        raw["routes"]["family"]["permissions"] = {"ask": [capability]}
     else:
         capability = "chat.matrix.route.read"
-        raw["profiles"]["support"]["capabilities"] = {"chat.matrix.*": {"decision": "deny"}}
-        raw["routes"]["family"]["capabilities"] = {capability: "needs_human"}
+        raw["profiles"]["support"]["permissions"] = {"deny": ["chat.matrix.*"]}
+        raw["routes"]["family"]["permissions"] = {"ask": [capability]}
     settings = validate_settings_mapping(raw)
 
     with pytest.raises(ValueError, match=error):

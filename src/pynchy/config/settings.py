@@ -72,7 +72,7 @@ from pynchy.config.settings_sources import (
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.config.workspace_layout import semantic_workspace_configs
 from pynchy.config.workspace_names import static_workspace_name
-from pynchy.workspace.api import CapabilityRule
+from pynchy.workspace.api import CapabilityRule, most_restrictive_capability_rule
 
 
 def _assert_admin_clean_room(
@@ -93,6 +93,19 @@ def _assert_admin_clean_room(
                 "cannot use public-source tools."
             )
             raise ValueError(message)
+
+
+def _merge_workspace_permissions(
+    resolved: ResolvedWorkspaceConfig, workspace: WorkspaceConfig
+) -> dict[str, CapabilityRule]:
+    capabilities = dict(resolved.capabilities)
+    for capability, decision in workspace.permissions.decisions.items():
+        rule = CapabilityRule(decision=decision)
+        existing = capabilities.get(capability)
+        capabilities[capability] = (
+            most_restrictive_capability_rule((existing, rule)) if existing else rule
+        ) or rule
+    return capabilities
 
 
 def _validated_command_center_connection(settings: Settings) -> None:
@@ -266,13 +279,7 @@ class Settings(BaseSettings):
             pipeline=workspace.pipeline or self.prompts.default_pipeline,
             model=workspace.model if workspace.model is not None else resolved.model,
             model_reasoning_effort=workspace.model_reasoning_effort,
-            capabilities={
-                **resolved.capabilities,
-                **{
-                    capability: CapabilityRule(decision=decision)
-                    for capability, decision in workspace.permissions.decisions.items()
-                },
-            },
+            capabilities=_merge_workspace_permissions(resolved, workspace),
         )
 
     def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:

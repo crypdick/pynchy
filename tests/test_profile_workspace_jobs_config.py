@@ -10,13 +10,13 @@ from pydantic import ValidationError
 from pynchy.config.api import (
     BuiltinTool,
     CanaryConfig,
-    CapabilityTomlConfig,
     ChannelOverrideConfig,
     DiscordConnectionConfig,
     JobConfig,
     MatrixConnectionConfig,
     McpTool,
     McpToolConfig,
+    PermissionConfig,
     ProfileConfig,
     RepoConfig,
     ReposConfig,
@@ -67,8 +67,8 @@ def test_profile_repository_none_normalizes_to_an_empty_list() -> None:
     assert profile.repo == []
 
 
-def test_capability_toml_config_lazy_export_remains_available() -> None:
-    assert CapabilityTomlConfig.__name__ == "CapabilityTomlConfig"
+def test_permission_config_lazy_export_remains_available() -> None:
+    assert PermissionConfig.__name__ == "PermissionConfig"
 
 
 def test_repo_config_resolves_relative_paths_and_accepts_default_path() -> None:
@@ -453,14 +453,14 @@ def test_one_time_agent_job_rejects_invalid_at_timestamp() -> None:
         )
 
 
-def test_profile_capability_rules_resolve_into_workspace_policy() -> None:
+def test_profile_permission_rules_resolve_into_workspace_policy() -> None:
     settings = _settings(
         profiles={
             "worker": {
                 "tools": ["email"],
-                "capabilities": {
-                    "mcp.email.send": {"decision": "deny"},
-                    "mcp.email.preview": {"decision": "allow"},
+                "permissions": {
+                    "deny": ["mcp.email.send"],
+                    "allow": ["mcp.email.preview"],
                 },
             }
         },

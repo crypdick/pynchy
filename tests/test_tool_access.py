@@ -17,11 +17,11 @@ from pynchy.host.container_manager.credentials import (
     configure_workspace_environment,
 )
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    clear_runtime_workspace_restrictions,
+    RuntimeWorkspacePolicy,
+    clear_runtime_workspace_policies,
     load_resolved_config,
     load_resolved_tool_access,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
 )
 
 _GITHUB_SECRET = "github-secret"  # noqa: S105  # pragma: allowlist secret
@@ -309,9 +309,9 @@ def test_route_restriction_precedes_companion_and_environment_resolution(
 ) -> None:
     settings = _settings()
     monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings)
-    register_runtime_workspace_restriction(
+    register_runtime_workspace_policy(
         "dev-child",
-        RuntimeWorkspaceRestriction(parent_workspace="dev", tools=()),
+        RuntimeWorkspacePolicy(parent_workspace="dev", tools=()),
     )
     monkeypatch.setenv("GITHUB_TOKEN", _GITHUB_SECRET)
     monkeypatch.setenv("LINEAR_SYNAPSE_API_KEY", _LINEAR_SECRET)
@@ -321,7 +321,7 @@ def test_route_restriction_precedes_companion_and_environment_resolution(
         effective = load_resolved_config("dev-child")
         access = load_resolved_tool_access("dev-child")
     finally:
-        clear_runtime_workspace_restrictions()
+        clear_runtime_workspace_policies()
 
     assert effective is not None
     assert access is not None

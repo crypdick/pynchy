@@ -217,21 +217,13 @@ async def _maybe_gate_outbound_call(
             {"error": f"Policy denied: {capability_decision.reason}"},
             status=403,
         )
-    if capability_decision.needs_human:
-        approval_response = await _await_human_approval(
-            state,
-            proxy_request.group_folder,
-            proxy_request.instance_id,
-            rpc,
-            capability_decision.reason or "",
-        )
-        if approval_response is not None:
-            return approval_response
-
     decision = gate.evaluate_write(service_name, rpc.get("params", {}))
     if not decision.allowed:
         return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
-    if not decision.needs_human or capability_decision.overrides_human_approval:
+    needs_human = capability_decision.needs_human or (
+        decision.needs_human and not capability_decision.overrides_human_approval
+    )
+    if not needs_human:
         return None
 
     return await _await_human_approval(
@@ -239,7 +231,7 @@ async def _maybe_gate_outbound_call(
         proxy_request.group_folder,
         proxy_request.instance_id,
         rpc,
-        decision.reason or "",
+        "; ".join(reason for reason in (capability_decision.reason, decision.reason) if reason),
     )
 
 
@@ -281,6 +273,8 @@ async def _backend_response(
             if key.lower() not in ("content-length", "transfer-encoding")
         }
 
+        response_body = _filter_denied_tools_list(response_body, context)
+
         trust = context.state.trust_map.get(context.instance_id, {})
         if trust.get("public_source"):
             response_body = await _apply_fencing(
@@ -295,6 +289,46 @@ async def _backend_response(
             body=response_body,
             headers=response_headers,
         )
+
+
+def _filter_denied_tools_list(response_body: bytes, context: _BackendForwardContext) -> bytes:
+    if _rpc_payload(context.body).get("method") != "tools/list":
+        return response_body
+    payload = _filtered_tools_payload(_rpc_payload(response_body), context)
+    if payload is not None:
+        return _json.dumps(payload).encode()
+    lines = response_body.splitlines(keepends=True)
+    changed = False
+    for index, line in enumerate(lines):
+        stripped = line.rstrip(b"\r\n")
+        ending = line[len(stripped) :]
+        if not stripped.startswith(b"data:"):
+            continue
+        filtered = _filtered_tools_payload(_rpc_payload(stripped[5:].lstrip()), context)
+        if filtered is None:
+            continue
+        lines[index] = b"data: " + _json.dumps(filtered).encode() + ending
+        changed = True
+    return b"".join(lines) if changed else response_body
+
+
+def _filtered_tools_payload(
+    payload: dict[str, Any], context: _BackendForwardContext
+) -> dict[str, Any] | None:
+    result = payload.get("result")
+    if not isinstance(result, dict) or not isinstance(result.get("tools"), list):
+        return None
+    service_name = context.state.service_names.get(context.instance_id, context.instance_id)
+    result["tools"] = [
+        tool
+        for tool in result["tools"]
+        if not isinstance(tool, dict)
+        or not isinstance(tool.get("name"), str)
+        or context.gate.evaluate_capability(
+            _mcp_capability_id(service_name, {"params": {"name": tool["name"]}})
+        ).allowed
+    ]
+    return payload
 
 
 async def _forward_to_backend(

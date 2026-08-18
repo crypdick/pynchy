@@ -373,9 +373,9 @@ class TestResolveSecurity:
                 "profiles": {
                     "worker": {
                         "tools": ["email"],
-                        "capabilities": {
-                            "mcp.email.send": {"decision": "deny"},
-                            "mcp.email.preview": {"decision": "allow"},
+                        "permissions": {
+                            "deny": ["mcp.email.send"],
+                            "allow": ["mcp.email.preview"],
                         },
                     }
                 },

@@ -204,7 +204,7 @@ async def test_matrix_route_control_rejects_unknown_then_ensures_registered_work
         "resolve_conversation",
         AsyncMock(return_value=conversation),
     )
-    monkeypatch.setattr(plugin_configuration, "register_runtime_workspace_restriction", Mock())
+    monkeypatch.setattr(plugin_configuration, "register_runtime_workspace_policy", Mock())
     ensured = Mock()
     ensured.control.binding.thread_jid = ChatJid("discord:thread:control")
     monkeypatch.setattr(

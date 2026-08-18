@@ -19,6 +19,7 @@ from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, get_gate
 from pynchy.workspace.api import (
+    CapabilityRule,
     ServiceTrustConfig,
     WorkspaceSecurity,
 )
@@ -68,6 +69,7 @@ async def test_full_mcp_security_flow():
     try:
         # 2. Create SecurityGate with browser as public_source
         security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")},
             services={
                 "browser": ServiceTrustConfig(
                     public_source=True,
@@ -75,7 +77,7 @@ async def test_full_mcp_security_flow():
                     public_sink=False,
                     dangerous_writes=False,
                 ),
-            }
+            },
         )
         gate = create_gate("e2e-ws", 42.0, security)
         assert not gate.policy.corruption_tainted
@@ -138,12 +140,13 @@ async def test_no_fencing_without_public_source():
 
     try:
         security = WorkspaceSecurity(
+            capabilities={"*": CapabilityRule("allow")},
             services={
                 "notebook": ServiceTrustConfig(
                     public_source=False,
                     dangerous_writes=False,
                 ),
-            }
+            },
         )
         gate = create_gate("e2e-ws", 42.0, security)
 

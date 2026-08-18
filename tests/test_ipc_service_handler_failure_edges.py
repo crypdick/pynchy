@@ -45,7 +45,7 @@ def _safe_gate(tool: str, *, capabilities: dict[str, CapabilityRule] | None = No
         1000.0,
         WorkspaceSecurity(
             services={tool: ServiceTrustConfig(dangerous_writes=False)},
-            capabilities=capabilities or {},
+            capabilities=capabilities or {"*": CapabilityRule("allow")},
         ),
     )
 
@@ -135,7 +135,10 @@ async def test_resolved_workspace_without_registered_gate_uses_ephemeral_policy(
     handler = AsyncMock(return_value={"result": "ok"})
     tool = "ephemeral_edge"
     settings = make_settings(data_dir=tmp_path)
-    safe_security = WorkspaceSecurity(services={tool: ServiceTrustConfig(dangerous_writes=False)})
+    safe_security = WorkspaceSecurity(
+        capabilities={"*": CapabilityRule("allow")},
+        services={tool: ServiceTrustConfig(dangerous_writes=False)},
+    )
 
     with (
         patch(
@@ -168,7 +171,9 @@ async def test_action_intent_approval_marks_intent_awaiting_approval(tmp_path):
     create_gate(
         _GROUP,
         1000.0,
-        WorkspaceSecurity(services={tool: ServiceTrustConfig(dangerous_writes=True)}),
+        WorkspaceSecurity(
+            services={tool: ServiceTrustConfig(dangerous_writes=True)},
+        ),
     )
     deps = NullIpcDeps()
     intent, replay = await prepare_action_intent(
@@ -201,7 +206,11 @@ async def test_action_intent_approval_marks_intent_awaiting_approval(tmp_path):
         await registry.dispatch(_request(tool), _GROUP, False, deps)
 
     deps.mark_action_intent_awaiting_approval.assert_awaited_once_with(
-        "request-1", policy_decision="human confirmation"
+        "request-1",
+        policy_decision=(
+            "Capability 'test.transactional.send' requires human approval by default; "
+            "human confirmation"
+        ),
     )
     assert not (tmp_path / "ipc" / _GROUP / "responses/request-1.json").exists()
 

@@ -495,19 +495,6 @@ class RouteConfig(_StrictModel):
     outbound: Literal["read_only", "approval_required"] | None = None
     tools: tuple[ValidatedToolName, ...] | None = None
     permissions: PermissionConfig = Field(default_factory=PermissionConfig)
-    capabilities: dict[str, Literal["deny", "needs_human"]] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def reject_mixed_permission_syntax(self) -> RouteConfig:
-        if self.permissions.decisions and self.capabilities:
-            raise ValueError("configure permissions or legacy capabilities, not both")
-        return self
-
-    @property
-    def permission_decisions(self) -> dict[str, Literal["allow", "deny", "needs_human"]]:
-        if self.permissions.decisions:
-            return self.permissions.decisions
-        return dict(self.capabilities)
 
 
 class ReposConfig(_StrictModel):

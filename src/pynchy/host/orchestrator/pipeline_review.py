@@ -14,10 +14,10 @@ from typing import Any, Protocol, runtime_checkable
 from pynchy.agent_protocol.api import ContainerOutput  # noqa: TC001 - see above.
 from pynchy.host.orchestrator.pipeline_context import reviewer_ids_for_context
 from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
+    RuntimeWorkspacePolicy,
     get_settings,
     load_resolved_config,
-    register_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves scheduler annotations.
@@ -87,9 +87,9 @@ def _reviewer_profile(
 ) -> WorkspaceProfile:
     digest = hashlib.sha256(f"{task_id}\0{reviewer}".encode()).hexdigest()[:16]
     folder = f"pipeline-review-{digest}"
-    register_runtime_workspace_restriction(
+    register_runtime_workspace_policy(
         folder,
-        RuntimeWorkspaceRestriction(
+        RuntimeWorkspacePolicy(
             parent_workspace=parent_workspace,
             tools=(),
             capabilities={"*": CapabilityRule(decision="deny")},

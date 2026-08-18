@@ -32,13 +32,13 @@ from pynchy.conversation.models import (
 from pynchy.host.orchestrator.api import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
-    RuntimeWorkspaceRestriction,
+    RuntimeWorkspacePolicy,
     ensure_conversation_workspace,
-    register_runtime_workspace_restriction,
-    unregister_runtime_workspace_restriction,
+    register_runtime_workspace_policy,
+    unregister_runtime_workspace_policy,
 )
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
-from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_restrictions
+from pynchy.host.orchestrator.workspace_config import clear_runtime_workspace_policies
 from pynchy.identifiers import GroupFolder
 from pynchy.plugins.api import (
     ConnectionRuntimeContext,
@@ -92,10 +92,10 @@ _PARENT_JID = "discord:channel:support"
 async def _database_and_registries() -> None:
     await init_test_database()
     clear_active_matrix_routes()
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
     yield
     clear_active_matrix_routes()
-    clear_runtime_workspace_restrictions()
+    clear_runtime_workspace_policies()
 
 
 async def test_provider_cursor_rejects_blank_values_and_replaces_existing_value() -> None:
@@ -237,9 +237,9 @@ def _operations() -> MatrixConnectionOperations:
             matrix_route_subject(route), GroupFolder(route.workspace)
         )
         folder = routed_conversation_folder(route.workspace, conversation.id)
-        register_runtime_workspace_restriction(
+        register_runtime_workspace_policy(
             folder,
-            RuntimeWorkspaceRestriction(
+            RuntimeWorkspacePolicy(
                 parent_workspace=route.workspace,
                 tools=route.tools,
                 capabilities={
@@ -284,7 +284,7 @@ def _operations() -> MatrixConnectionOperations:
         claim_delivery=claim_delivery,
         release_delivery_claim=release_conversation_delivery_claim,
         conversation_exists=conversation_exists,
-        unregister_workspace_restriction=unregister_runtime_workspace_restriction,
+        unregister_workspace_restriction=unregister_runtime_workspace_policy,
     )
 
 
