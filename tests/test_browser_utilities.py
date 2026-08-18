@@ -348,7 +348,8 @@ def test_stop_procs_kills_a_process_that_ignores_termination() -> None:
 
 
 def test_cleanup_lock_files_removes_stale_chromium_locks(tmp_path: Path) -> None:
-    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+    (tmp_path / "SingletonLock").symlink_to("old-pod-42")
+    for name in ("SingletonSocket", "SingletonCookie"):
         (tmp_path / name).touch()
 
     browser.cleanup_lock_files(tmp_path)

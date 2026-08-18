@@ -7,12 +7,15 @@ import base64
 import json
 import os
 import shutil
+import socket
 import subprocess  # noqa: S404 - allowlisted argv only; no shell execution.
 import sys
 import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+
+from pynchy.plugins.integrations.browser import cleanup_lock_files
 
 PROTOCOL_VERSION = 1
 SUPPORTED_ACTIONS = frozenset(
@@ -128,8 +131,25 @@ def _launch_urls(request: dict[str, Any], env: dict[str, str]) -> dict[str, Any]
     executable = shutil.which(candidate, path=f"{env['PATH']}:/snap/bin")
     if executable is None:
         raise ValueError(f"SSH X11 application is not installed: {app}")
+    _cleanup_stale_chromium_profile(executable, env)
     _spawn([executable, *urls], env=env)
     return {"launched": True, "urls": urls}
+
+
+def _cleanup_stale_chromium_profile(executable: str, env: dict[str, str]) -> None:
+    if Path(executable).name not in {"chromium", "chromium-browser"}:
+        return
+    profile = Path(env.get("HOME", "~")).expanduser() / ".config" / "chromium"
+    lock = profile / "SingletonLock"
+    if not lock.is_symlink():
+        return
+    try:
+        host, raw_pid = str(lock.readlink()).rsplit("-", maxsplit=1)
+    except ValueError:
+        cleanup_lock_files(profile)
+        return
+    if host != socket.gethostname() or not Path(f"/proc/{raw_pid}").exists():
+        cleanup_lock_files(profile)
 
 
 def _x11_environment() -> dict[str, str]:
