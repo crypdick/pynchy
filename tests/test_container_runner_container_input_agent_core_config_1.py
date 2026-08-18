@@ -93,6 +93,7 @@ class TestContainerInputAgentCoreConfig:
         session_id: str | None = None,
         *,
         turn_id: str | None = None,
+        agent_tool_grants: tuple[str, ...] = (),
     ) -> PreContainerResult:
         return PreContainerResult(
             is_admin=False,
@@ -107,6 +108,7 @@ class TestContainerInputAgentCoreConfig:
             config_timeout=30.0,
             snapshot_ms=0.0,
             turn_id=turn_id,
+            agent_tool_grants=agent_tool_grants,
         )
 
     def test_agent_runner_queue_double_satisfies_host_process_contract(self) -> None:
@@ -138,6 +140,17 @@ class TestContainerInputAgentCoreConfig:
 
         assert result.agent_core_config is not None
         assert "model" not in result.agent_core_config
+
+    def test_agent_tool_grants_flow_to_agent_runner(self):
+        result = build_container_input(
+            [],
+            self._ctx(agent_tool_grants=("linear", "computer_use")),
+            "chat",
+            TEST_GROUP,
+            runtime=_agent_runtime(make_settings()),
+        )
+
+        assert result.agent_tool_grants == ["linear", "computer_use"]
 
     def test_missing_workspace_config_keeps_global_model(self):
         settings = make_settings(agent=AgentConfig(model="chatgpt/gpt-5.3-codex"))

@@ -62,6 +62,30 @@ class TestBuildCoreConfig:
         assert "pynchy" in config.mcp_servers
         assert config.mcp_servers["pynchy"]["command"] == "python"
 
+    def test_codex_limits_pynchy_mcp_to_agent_tool_grants(self):
+        ci = self._make_input(
+            agent_core_module="agent_runner.cores.codex",
+            agent_tool_grants=["computer_use"],
+        )
+
+        server = build_core_config(ci).mcp_servers["pynchy"]
+
+        assert server["required"] is True
+        assert "computer_use" in server["enabled_tools"]
+        assert "search_skills" in server["enabled_tools"]
+        assert "list_calendars" not in server["enabled_tools"]
+
+    def test_other_cores_keep_full_pynchy_mcp_server(self):
+        ci = self._make_input(
+            agent_core_module="agent_runner.cores.claude",
+            agent_tool_grants=["computer_use"],
+        )
+
+        server = build_core_config(ci).mcp_servers["pynchy"]
+
+        assert "enabled_tools" not in server
+        assert "required" not in server
+
     def test_mcp_env_includes_chat_jid(self):
         ci = self._make_input(chat_jid="456@g.us")
         config = build_core_config(ci)

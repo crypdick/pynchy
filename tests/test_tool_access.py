@@ -120,6 +120,20 @@ def test_disabled_tool_does_not_receive_a_credential_grant() -> None:
     assert access.missing_requirements == {}
 
 
+def test_agent_tool_grants_include_canonical_type_for_custom_tool_name() -> None:
+    settings = _settings()
+    resolved = settings.resolved_workspace_config("dev")
+    assert resolved is not None
+
+    access = resolve_tool_access(
+        {"linear-synapse": settings.tools["linear"]},
+        replace(resolved, tools=["linear-synapse"]),
+        environ={"LINEAR_SYNAPSE_API_KEY": _LINEAR_SECRET},
+    )
+
+    assert access.agent_tool_grants == ("linear-synapse", "linear")
+
+
 def test_agent_process_receives_only_selected_workspace_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

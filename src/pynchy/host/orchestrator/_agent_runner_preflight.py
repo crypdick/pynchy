@@ -62,6 +62,7 @@ class PreContainerResult:
     automation_memory_dir: str | None = None
     corruption_tainted: bool = False
     secret_tainted: bool = False
+    agent_tool_grants: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ def build_container_input(  # noqa: PLR0913 - explicit runner wire inputs keep t
         agent_core_module=ctx.agent_core_module,
         agent_core_class=ctx.agent_core_class,
         agent_core_config=resolved_core_config,
+        agent_tool_grants=list(ctx.agent_tool_grants),
     )
 
 
@@ -255,6 +257,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         automation_memory_dir=request.automation_memory_dir,
         corruption_tainted=taint.corruption_tainted,
         secret_tainted=taint.secret_tainted,
+        agent_tool_grants=access.agent_tool_grants if access is not None else (),
     )
 
 

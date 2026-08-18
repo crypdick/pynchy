@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_runner.agent_tools import list_tools
+from agent_runner.agent_tools import enabled_agent_tools, list_tools
 
 
 @pytest.mark.asyncio
@@ -50,3 +50,10 @@ async def test_computer_use_tool_is_advertised() -> None:
         {"type": "integer", "minimum": 1},
     ]
     assert schema["properties"]["keys"]["oneOf"][1]["minItems"] == 1
+
+
+def test_computer_use_grant_limits_workspace_tool_families() -> None:
+    tools = set(enabled_agent_tools(["computer_use"]))
+
+    assert {"computer_use", "take_screenshot", "search_skills"} <= tools
+    assert {"list_calendars", "gog_gmail_search", "linear_submit_plan"}.isdisjoint(tools)
