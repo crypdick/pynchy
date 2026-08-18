@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from unittest.mock import patch
 
 import pytest
@@ -10,6 +11,20 @@ from conftest import make_settings
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config.api import JobConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import add_job_to_toml, add_workspace_to_toml
+
+
+def test_add_job_writes_a_versioned_automation_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    add_job_to_toml(
+        "nightly",
+        JobConfig(schedule="0 * * * *", workspace="host", command="true"),
+    )
+
+    config = tmp_path / "data/personalization/automations/nightly/config.toml"
+    data = tomllib.loads(config.read_text())
+    assert data["schema_version"] == 1
+    assert data["job"] == {"schedule": "0 * * * *", "workspace": "host", "command": "true"}
 
 
 def test_add_workspace_preserves_existing_file_when_publish_fails(tmp_path, monkeypatch) -> None:
@@ -31,7 +46,7 @@ def test_add_workspace_preserves_existing_file_when_publish_fails(tmp_path, monk
 
 def test_add_job_preserves_existing_file_when_publish_fails(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    automation_path = tmp_path / "data/personalization/automations/nightly.toml"
+    automation_path = tmp_path / "data/personalization/automations/nightly/config.toml"
     automation_path.parent.mkdir(parents=True)
     original = 'schema_version = 1\n[job]\nschedule = "old"\n'
     automation_path.write_text(original, encoding="utf-8")

@@ -58,7 +58,7 @@ model = "chatgpt/gpt-5.3-codex-spark"
 ```
 
 ```toml
-# data/personalization/automations/daily-triage.toml
+# data/personalization/automations/daily-triage/config.toml
 schema_version = 1
 
 [job]

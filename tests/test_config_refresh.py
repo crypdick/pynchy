@@ -107,9 +107,9 @@ def _write_runtime_tree(root: Path, *, personalized: str = "") -> Path:
 
 
 def _write_automation(root: Path, *, prompt: str = "initial prompt") -> Path:
-    automations = root / "data/personalization/automations"
-    automations.mkdir(exist_ok=True)
-    automation_path = automations / "weekly.toml"
+    automation_dir = root / "data/personalization/automations/weekly"
+    automation_dir.mkdir(parents=True, exist_ok=True)
+    automation_path = automation_dir / "config.toml"
     automation_path.write_text(
         "schema_version = 1\n"
         "\n[job]\n"

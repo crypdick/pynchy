@@ -137,11 +137,11 @@ running. Changes to `.env` remain restart-sensitive.
 
 ## Automations
 
-Each direct `automations/*.toml` file declares one automation. Its filename
-without `.toml` is the stable job ID:
+Each `automations/<name>/config.toml` file declares one automation. Directory
+name supplies stable job ID and keeps executable helpers beside their config:
 
 ```toml
-# data/personalization/automations/weekly-review.toml
+# data/personalization/automations/weekly-review/config.toml
 schema_version = 1
 
 [job]
@@ -153,6 +153,13 @@ three highest-leverage priorities for the coming week.
 """
 display_name = "Weekly review"
 ```
+
+Put automation-owned executables in that automation's `scripts/` directory.
+Relative `command` and `pre_run_command` values run with automation directory
+as working directory, so `./scripts/review.py` works in local validation and
+every deployment. Explicit relative `cwd` values also start from automation
+directory. Legacy direct `automations/<name>.toml` files keep project-root
+working-directory semantics during migration.
 
 Agent jobs require an inline `prompt`. Host and deterministic jobs reject it.
 A personalized automation replaces a same-named public default automation as

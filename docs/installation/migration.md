@@ -29,7 +29,7 @@ For an installation that still uses root `config.toml` and
 their contents to `pynchy.toml` and `litellm.yaml`, and remove
 `gateway.litellm_config` from the TOML. Pynchy no longer reads the root files.
 Move durable `[jobs.<name>]` declarations into
-`automations/<name>.toml` documents when convenient; the validator still
+`automations/<name>/config.toml` documents when convenient; the validator still
 accepts non-colliding `[jobs]` declarations during migration.
 
 Convert legacy credential delivery before starting the new service:

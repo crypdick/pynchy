@@ -528,7 +528,7 @@ def add_job_to_toml(job_name: str, config: JobConfig) -> None:
     """Programmatically add one file-backed automation."""
     if Path(job_name).name != job_name or not job_name or job_name.startswith("."):
         raise ValueError(f"Invalid automation name: {job_name!r}")
-    automation_path = Path("data/personalization/automations") / f"{job_name}.toml"
+    automation_path = Path("data/personalization/automations") / job_name / "config.toml"
     automation_path.parent.mkdir(parents=True, exist_ok=True)
     doc = tomlkit.document()
     doc.add("schema_version", tomlkit.item(1))

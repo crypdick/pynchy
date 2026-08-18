@@ -73,7 +73,7 @@ Scheduled-task definitions and run evidence live in the database, but the **sour
 
 1. Merges plugin specs with layered `workspaces/*.toml` documents
 2. Creates chat groups for workspaces missing database entries
-3. Creates or updates scheduled tasks from `automations/*.toml`
+3. Creates or updates scheduled tasks from `automations/*/config.toml`
 4. Creates channel aliases across messaging platforms
 
 ### Automatic config-to-database sync
