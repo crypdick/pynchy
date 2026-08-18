@@ -335,6 +335,7 @@ class MockHttpDeps:
         self.broadcasts: list[tuple[str, str]] = []
         self.capability_status_operations = Mock()
         self.runtime_messages: list[tuple[str, str]] = []
+        self.synthetic_user_inputs: list[tuple[str, str]] = []
         self._admin_jid = "admin-1@g.us"
         self.data_dir = Path.cwd() / "data"
         self.project_root = Path.cwd()
@@ -345,6 +346,9 @@ class MockHttpDeps:
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
+
+    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None:
+        self.synthetic_user_inputs.append((jid, content))
 
     def admin_chat_jid(self) -> str:
         return self._admin_jid
@@ -461,6 +465,45 @@ async def test_runtime_harness_ingress_calls_real_ingestion_dependency(
         assert response.status == 200
         assert await response.json() == {"status": "accepted"}
         assert deps.runtime_messages == [("runtime:pynchy", "hello")]
+    finally:
+        await client.close()
+
+
+async def test_canary_message_uses_existing_channel_broadcast() -> None:
+    deps = MockHttpDeps()
+    client = TestClient(TestServer(create_http_app(deps, runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/canaries/messages",
+            json={
+                "jid": "discord:channel:1532671814738776174",
+                "content": "use native search_skills",
+            },
+        )
+        assert response.status == 200
+        assert await response.json() == {"status": "accepted"}
+        assert deps.synthetic_user_inputs == [
+            ("discord:channel:1532671814738776174", "use native search_skills")
+        ]
+    finally:
+        await client.close()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        ["not", "an", "object"],
+        {"jid": "discord:channel:1"},
+        {"jid": "slack:C1", "content": "wrong channel"},
+    ],
+)
+async def test_canary_message_rejects_invalid_bodies(body: object) -> None:
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
+    await client.start_server()
+    try:
+        response = await client.post("/canaries/messages", json=body)
+        assert response.status == 400
     finally:
         await client.close()
 

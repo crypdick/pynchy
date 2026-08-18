@@ -49,6 +49,10 @@ else:
 
 
 _QUEUE_APPLICATION_COMMANDS = ("q", "queue", "btw")
+# Canary input deliberately uses this visible prefix as its only intent marker.
+# The adapter strips it before the agent sees the prompt, so ordinary agent replies
+# do not inherit it and the personal deployment accepts the small accidental-loop risk.
+SYNTHETIC_USER_PREFIX = "🦜"
 
 
 @runtime_checkable
@@ -506,17 +510,23 @@ class DiscordEvents:
         ch = self._channel
         if is_thread_created_system_message(message):
             return
-        if message.author.id == ch.bot_user_id:
+        synthetic_content: str | None = None
+        if message.author.id == ch.bot_user_id and message.content.startswith(
+            SYNTHETIC_USER_PREFIX
+        ):
+            synthetic_content = message.content.removeprefix(SYNTHETIC_USER_PREFIX).lstrip()
+        if message.author.id == ch.bot_user_id and not synthetic_content:
             return  # our own message
         ctx = build_inbound_context(message, ch.bot_user_id)
         if self._dedup(message.id):
             return
         jid = jid_for(ctx)
-        if ch.access.decide(ctx) != "allow":
+        if synthetic_content is None and ch.access.decide(ctx) != "allow":
             registered_destination = ch.allows_registered_workspace_jid(jid, is_dm=ctx.is_dm)
             if not registered_destination or ch.access.decide_registered_workspace(ctx) != "allow":
                 return
 
+        sender = ctx.author_id
         sender_name = message.author.display_name or message.author.rendered_name
         created = message.created_at
         timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
@@ -524,24 +534,34 @@ class DiscordEvents:
 
         ch.on_chat_metadata(jid, timestamp, chat_name)
         metadata = build_message_metadata(message, ctx)
+        if synthetic_content is not None:
+            sender = "discord-canary"
+            sender_name = "Canary User"
+            metadata.update(
+                {
+                    "source": "discord_canary",
+                    "synthetic_user_input": True,
+                    "discord_synthetic_author_id": message.author.id,
+                }
+            )
         content = await _transcribe_audio_attachments(
             message,
             metadata,
-            normalized_message_content(message),
+            synthetic_content or normalized_message_content(message),
             cache_dir=self._audio_cache_dir,
             process_inbound_audio=self._process_inbound_audio,
         )
         msg = NewMessage(
             id=f"discord-{message.id}",
             chat_jid=jid,
-            sender=ctx.author_id,
+            sender=sender,
             sender_name=sender_name,
             content=content,
             timestamp=timestamp,
             is_from_me=False,
             metadata=metadata,
         )
-        logger.info("Discord inbound message", jid=jid, sender=ctx.author_id)
+        logger.info("Discord inbound message", jid=jid, sender=sender)
         ch.on_message(jid, msg)
 
     async def handle_reaction(self, payload: object) -> None:

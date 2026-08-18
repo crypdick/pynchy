@@ -119,6 +119,8 @@ class HttpDeps(Protocol):
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
+    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None: ...
+
     def admin_chat_jid(self) -> str: ...
 
     async def get_canary_report(self, *, history_limit: int) -> dict[str, object]: ...
@@ -400,17 +402,38 @@ async def _handle_canary_runs(request: web.Request) -> web.Response:
     return web.json_response({"runs": [deps.canary_run_to_dict(run) for run in runs]})
 
 
-async def _handle_runtime_harness_message(request: web.Request) -> web.Response:
-    """Drive the real channel-ingress boundary in isolated runtime tests."""
-    body = await request.json()
+def _message_request(body: object) -> tuple[str, str]:
+    """Parse the shared JID/content request used by synthetic ingress controls."""
     if not isinstance(body, dict):
-        return web.json_response({"error": "request body must be an object"}, status=400)
+        raise TypeError("request body must be an object")
     jid = body.get("jid")
     content = body.get("content")
     if not isinstance(jid, str) or not jid or not isinstance(content, str) or not content:
-        return web.json_response({"error": "jid and content are required strings"}, status=400)
+        raise ValueError("jid and content are required strings")
+    return jid, content
+
+
+async def _handle_runtime_harness_message(request: web.Request) -> web.Response:
+    """Drive the real channel-ingress boundary in isolated runtime tests."""
+    try:
+        jid, content = _message_request(await request.json())
+    except (TypeError, ValueError) as exc:
+        return web.json_response({"error": str(exc)}, status=400)
     deps = cast("RuntimeHarnessIngress", request.app[deps_key])
     await deps.ingest_runtime_harness_message(jid, content)
+    return web.json_response({"status": "accepted"})
+
+
+async def _handle_canary_message(request: web.Request) -> web.Response:
+    """Send one synthetic user input through the configured Discord channel."""
+    # NOTE: Update docs/usage/control-plane.md if this request contract changes.
+    try:
+        jid, content = _message_request(await request.json())
+    except (TypeError, ValueError) as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    if not jid.startswith("discord:channel:"):
+        return web.json_response({"error": "jid must identify a Discord channel"}, status=400)
+    await request.app[deps_key].broadcast_synthetic_user_input(jid, content)
     return web.json_response({"status": "accepted"})
 
 
@@ -533,6 +556,7 @@ def create_http_app(
     app.router.add_get("/capabilities", _handle_capabilities)
     app.router.add_get("/canaries/report", _handle_canary_report)
     app.router.add_get("/canaries/runs", _handle_canary_runs)
+    app.router.add_post("/canaries/messages", _handle_canary_message)
     app.router.add_post("/deploy", _handle_deploy)
     if os.environ.get(_RUNTIME_HARNESS_ENV) == "1":
         if not isinstance(deps, RuntimeHarnessIngress):

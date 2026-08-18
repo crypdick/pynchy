@@ -316,6 +316,58 @@ async def test_duplicate_and_self_messages_are_not_delivered():
     assert [item.content for item in delivered] == ["hello"]
 
 
+async def test_prefixed_self_message_becomes_synthetic_user_input():
+    delivered: list[Any] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, group_policy="open"
+        ).to_runtime_settings(),
+        "token",
+        lambda _jid, message: delivered.append(message),
+        lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
+    )
+    channel.bot_user_id = BOT_ID
+
+    await channel.events.handle_inbound_message(
+        _message(
+            author=_user(BOT_ID, bot=True, display_name="Pynchy"),
+            guild_id="g1",
+            channel_id="c1",
+            content="🦜 use native search_skills",
+        )
+    )
+
+    assert len(delivered) == 1
+    message = delivered[0]
+    assert message.content == "use native search_skills"
+    assert message.sender == "discord-canary"
+    assert message.sender_name == "Canary User"
+    assert message.message_type == "user"
+    assert message.is_from_me is False
+    assert message.metadata["synthetic_user_input"] is True
+    assert message.metadata["source"] == "discord_canary"
+    assert message.metadata["discord_synthetic_author_id"] == BOT_ID
+
+
+async def test_prefixed_human_message_remains_ordinary_user_input():
+    _jid, message, _metadata = await _deliver(
+        _message(
+            author=_user("5", display_name="Alice"),
+            guild_id="g1",
+            channel_id="c1",
+            content="🦜 hello",
+            mentions=(BOT_ID,),
+        ),
+        group_policy="open",
+    )
+
+    assert message.content == "🦜 hello"
+    assert message.sender == "5"
+    assert "synthetic_user_input" not in message.metadata
+
+
 async def test_recent_redelivery_stays_deduplicated_after_cache_pruning():
     delivered: list[Any] = []
     channel = DiscordChannel(
