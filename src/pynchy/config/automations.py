@@ -24,22 +24,20 @@ class AutomationDocument(BaseModel):
 
 
 def load_automations(directory: Path) -> dict[str, dict[str, Any]]:
-    """Load direct files and directory-scoped automation documents."""
+    """Load directory-scoped automation documents."""
     if not directory.is_dir():
         return {}
+    flat_files = sorted(directory.glob("*.toml"))
+    if flat_files:
+        names = ", ".join(path.name for path in flat_files)
+        raise PersonalizationError(
+            f"Automation files must use automations/<name>/config.toml; found flat files: {names}"
+        )
     automations: dict[str, dict[str, Any]] = {}
-    documents: list[tuple[str, Path, Path | None]] = [
-        (path.stem, path, None) for path in sorted(directory.glob("*.toml"))
-    ]
-    documents.extend(
-        (path.parent.name, path, path.parent.resolve())
-        for path in sorted(directory.glob("*/config.toml"))
-    )
-    for name, path, automation_root in documents:
+    for path in sorted(directory.glob("*/config.toml")):
+        name = path.parent.name
         if not name or name.startswith("."):
             raise PersonalizationError(f"Invalid automation name: {name!r}")
-        if name in automations:
-            raise PersonalizationError(f"Duplicate automation name: {name}")
         try:
             document = AutomationDocument.model_validate(
                 tomllib.loads(path.read_text(encoding="utf-8"))
@@ -47,13 +45,13 @@ def load_automations(directory: Path) -> dict[str, dict[str, Any]]:
         except (OSError, tomllib.TOMLDecodeError, ValueError) as exc:
             raise PersonalizationError(f"Invalid automation {path}: {exc}") from exc
         job = document.job
-        if automation_root is not None:
-            updates: dict[str, str] = {}
-            if job.command is not None:
-                updates["cwd"] = _resolve_automation_cwd(automation_root, job.cwd)
-            if job.pre_run_command is not None:
-                updates["pre_run_cwd"] = _resolve_automation_cwd(automation_root, job.pre_run_cwd)
-            job = job.model_copy(update=updates)
+        automation_root = path.parent.resolve()
+        updates: dict[str, str] = {}
+        if job.command is not None:
+            updates["cwd"] = _resolve_automation_cwd(automation_root, job.cwd)
+        if job.pre_run_command is not None:
+            updates["pre_run_cwd"] = _resolve_automation_cwd(automation_root, job.pre_run_cwd)
+        job = job.model_copy(update=updates)
         automations[name] = job.model_dump(exclude_none=True)
     return automations
 

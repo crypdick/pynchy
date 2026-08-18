@@ -130,7 +130,7 @@
 # IPC file polling interval (seconds)
 # ipc_poll = 1.0
 
-# Put host jobs in separate automations/*.toml files.
+# Put host jobs in separate automations/<name>/config.toml files.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Queue Configuration
@@ -281,8 +281,8 @@
 # tools = ["gog"]
 # contains_secrets = true  # pragma: allowlist secret
 
-# Define scheduled work in one automations/<name>.toml file per automation.
-# See automations/weekly-review.toml for the versioned document format.
+# Define scheduled work in one automations/<name>/config.toml file per automation.
+# See automations/weekly-review/config.toml for the versioned document format.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Words (magic commands)

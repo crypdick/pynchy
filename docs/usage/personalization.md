@@ -158,8 +158,7 @@ Put automation-owned executables in that automation's `scripts/` directory.
 Relative `command` and `pre_run_command` values run with automation directory
 as working directory, so `./scripts/review.py` works in local validation and
 every deployment. Explicit relative `cwd` values also start from automation
-directory. Legacy direct `automations/<name>.toml` files keep project-root
-working-directory semantics during migration.
+directory.
 
 Agent jobs require an inline `prompt`. Host and deterministic jobs reject it.
 A personalized automation replaces a same-named public default automation as
