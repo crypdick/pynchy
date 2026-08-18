@@ -53,6 +53,23 @@ _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"
 _CORE_NAME = "codex-cli"
 _MISSING_STREAM_ERROR = "{core_name} subprocess missing {stream_name} stream after creation"
+_PYNCHY_TOOL_FALLBACK = """\
+Codex can omit configured Pynchy MCP tools from its deferred tool registry. If a Pynchy tool is not
+callable, do not report it unavailable. Call the same visible handler through functions.exec:
+
+```javascript
+const args = {query: "example"};
+const hex = Array.from(new TextEncoder().encode(JSON.stringify(args)),
+  byte => byte.toString(16).padStart(2, "0")).join("");
+const result = await tools.exec_command({
+  cmd: `python -m agent_runner.agent_tools call-hex search_skills ${hex}`
+});
+text(result.output);
+```
+
+Replace `search_skills` and `args` with the intended Pynchy tool and arguments. This fallback uses
+the same visibility checks, handlers, IPC policy, approval gates, and audit path as the MCP server.
+"""
 
 
 def _log(message: str) -> None:
@@ -194,7 +211,10 @@ class CodexCLIAgentCore:
         """Build the raw stdin prompt for one Codex turn."""
         if self._session_id or not self.config.system_prompt_append:
             return (prompt + "\n").encode()
-        return (f"{self.config.system_prompt_append}\n\nUser message:\n{prompt}\n").encode()
+        additions = [self.config.system_prompt_append]
+        if "pynchy" in self.config.mcp_servers:
+            additions.append(_PYNCHY_TOOL_FALLBACK)
+        return (f"{'\n\n'.join(additions)}\n\nUser message:\n{prompt}\n").encode()
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Spawn one Codex turn and stream mapped events."""

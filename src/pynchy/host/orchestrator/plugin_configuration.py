@@ -179,6 +179,7 @@ from pynchy.plugins.integrations.operational_canaries import (
     register_operational_canary_scenarios,
 )
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin, PeekabooConfig
+from pynchy.plugins.integrations.ssh_x11 import SshX11ComputerUsePlugin, SshX11Config
 from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.process_environment import filtered_process_environment
 from pynchy.state.api import (
@@ -268,6 +269,11 @@ def configure_computer_use_plugins(
     if isinstance(peekaboo, PeekabooComputerUsePlugin):
         peekaboo.configure(
             PeekabooConfig.model_validate(getattr(settings.plugins.get("peekaboo"), "options", {}))
+        )
+    ssh_x11 = plugin_manager.get_plugin("builtin-ssh-x11")
+    if isinstance(ssh_x11, SshX11ComputerUsePlugin):
+        ssh_x11.configure(
+            SshX11Config.model_validate(getattr(settings.plugins.get("ssh-x11"), "options", {}))
         )
 
 

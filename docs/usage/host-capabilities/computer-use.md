@@ -23,9 +23,9 @@ Provider fallback happens only when a provider is unavailable. Pynchy does not
 retry a failed action through another provider because doing so could repeat a
 partially completed click, keystroke, or other mutation.
 
-Both built-in providers require macOS. On Linux or another host platform,
-disable them and install a provider plugin for that platform; the
-`computer_use` tool and its policy contract do not change.
+Peekaboo and Cua Driver require macOS. Pynchy also includes an SSH X11
+provider for controlling an existing Linux desktop session without relaunching
+its applications or browser profile.
 
 ```toml
 [plugins.peekaboo]
@@ -37,6 +37,32 @@ enabled = false
 [plugins.computer-use.options]
 providers = ["my-linux-provider"]
 ```
+
+## Built-in: SSH X11
+
+`ssh-x11` controls a real X11 desktop through a pinned SSH credential and the
+allowlisted `scripts/pynchy_x11_computer_use.py` helper. The remote machine
+needs `wmctrl`, ImageMagick `import`, and `xdotool`. Install the helper as an
+executable on that machine, then configure the endpoint:
+
+```toml
+[plugins.computer-use.options]
+providers = ["ssh-x11", "peekaboo", "cua-driver"]
+
+[plugins.ssh-x11.options]
+host = "100.64.0.10"
+user = "desktop-user"
+private_key = "/run/secrets/pynchy-x11/id_ed25519"
+known_hosts = "/run/secrets/pynchy-x11/known_hosts"
+remote_command = "/home/desktop-user/.local/bin/pynchy-x11-computer-use"
+timeout_seconds = 30
+```
+
+Use a dedicated key, pin the host key, and restrict reachability with the SSH
+server and tailnet policy. Supported actions are capture, app/window listing,
+coordinate clicks, text, shortcuts, scrolling, and permission checks. Captures
+focus a selected window but return the complete real desktop so X11 compositors
+cannot substitute a blank per-window image.
 
 ## Built-in: Peekaboo
 

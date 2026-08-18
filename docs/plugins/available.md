@@ -37,6 +37,7 @@ installed; add the named extra without pruning existing packages with
 | `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/host-capabilities/computer-use.md) |
 | `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-peekaboo) |
 | `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-cua-driver) |
+| `ssh-x11` | Computer-use provider | Existing Linux X11 desktop over pinned SSH | SSH credential plus remote `wmctrl`, `import`, and `xdotool` helper | [Computer use](../usage/host-capabilities/computer-use.md#built-in-ssh-x11) |
 | `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../integrations/linear.md) |
 | `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |

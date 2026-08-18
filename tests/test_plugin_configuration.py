@@ -20,6 +20,7 @@ from pynchy.plugins.integrations.desktop_screenshot import DesktopScreenshotPlug
 from pynchy.plugins.integrations.google_setup import GoogleSetupPlugin
 from pynchy.plugins.integrations.marketplace_health import MarketplaceHealthPlugin
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin
+from pynchy.plugins.integrations.ssh_x11 import SshX11ComputerUsePlugin
 
 CALDAV_ENV_NAME = "CALDAV_PASSWORD"
 
@@ -35,16 +36,26 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
     router = ComputerUsePlugin()
     cua = CuaDriverComputerUsePlugin()
     peekaboo = PeekabooComputerUsePlugin()
+    ssh_x11 = SshX11ComputerUsePlugin()
     manager = _plugin_manager(
         ("builtin-computer-use", router),
         ("builtin-cua-driver", cua),
         ("builtin-peekaboo", peekaboo),
+        ("builtin-ssh-x11", ssh_x11),
     )
     settings = make_settings(
         plugins={
             "computer-use": PluginConfig(options={"providers": ["cua-driver"]}),
             "cua-driver": PluginConfig(options={"binary": "/opt/cua", "timeout_seconds": 12}),
             "peekaboo": PluginConfig(options={"binary": "/opt/peekaboo", "timeout_seconds": 8}),
+            "ssh-x11": PluginConfig(
+                options={
+                    "host": "desktop",
+                    "user": "operator",
+                    "private_key": "/run/secrets/x11/key",
+                    "known_hosts": "/run/secrets/x11/known_hosts",
+                }
+            ),
         },
     )
 
@@ -53,6 +64,7 @@ def test_configure_computer_use_plugins_applies_provider_options() -> None:
     assert cua.pynchy_computer_use_backend().config.binary == "/opt/cua"
     assert cua.pynchy_computer_use_backend().config.timeout_seconds == 12
     assert peekaboo.pynchy_computer_use_backend().config.binary == "/opt/peekaboo"
+    assert ssh_x11.pynchy_computer_use_backend().config.host == "desktop"
     assert router.pynchy_service_handler(computer_use_backends=()).actions
 
 
