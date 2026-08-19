@@ -68,7 +68,12 @@ from pynchy.identifiers import (
 from pynchy.integration_contracts import (
     is_matrix_connection,  # beartype resolves composition callback annotations at runtime.
 )
-from pynchy.plugins.api import ComputerUseConfig, ConnectionRuntimeContext
+from pynchy.plugins.api import (
+    ComputerUseConfig,
+    ConnectionRuntimeContext,
+    HostActionCatalog,
+    initialize_host_action_catalog,
+)
 from pynchy.plugins.integrations.api import linear_account_for_workspace
 from pynchy.plugins.integrations.caldav import (
     CalDAVRuntime,
@@ -173,6 +178,7 @@ from pynchy.plugins.integrations.matrix_route_resolution import (
 )
 from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
+    ComputerUseRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
     linear_client_context,
@@ -740,7 +746,10 @@ def configure_google_setup_plugin(plugin_manager: pluggy.PluginManager, settings
         plugin.configure(tuple(settings.chrome_profiles))
 
 
-def configure_builtin_canaries(settings: Settings) -> None:
+def configure_builtin_canaries(
+    settings: Settings,
+    action_catalog: HostActionCatalog | None = None,
+) -> None:
     """Register concrete assurance checks from the named composition root."""
     registered = set(registered_canary_scenarios())
 
@@ -757,6 +766,12 @@ def configure_builtin_canaries(settings: Settings) -> None:
         registered.add(scenario_id)
 
     canary = settings.canary
+    computer_use = action_catalog.action_for("computer_use") if action_catalog is not None else None
+    if computer_use is not None:
+        register(
+            "desktop.computer.round.trip",
+            ComputerUseRoundTripCanary(computer_use.handler),
+        )
     proton_tool = settings.tools.get("proton-mail")
     proton_environment = (
         filtered_process_environment(
@@ -797,6 +812,14 @@ def configure_builtin_canaries(settings: Settings) -> None:
     register_security_canary_scenarios(register_security)
 
 
+def configure_startup_canaries(
+    plugin_manager: pluggy.PluginManager,
+    settings: Settings,
+) -> None:
+    """Initialize host actions, then bind their operational canaries."""
+    configure_builtin_canaries(settings, initialize_host_action_catalog(plugin_manager))
+
+
 def configure_startup_plugins(
     plugin_manager: pluggy.PluginManager,
     settings: Settings,
@@ -818,4 +841,3 @@ def configure_startup_plugins(
     configure_marketplace_health_plugin(plugin_manager, settings)
     configure_matrix_gateway_plugin(settings)
     configure_google_setup_plugin(plugin_manager, settings)
-    configure_builtin_canaries(settings)

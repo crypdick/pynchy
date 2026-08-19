@@ -15,6 +15,7 @@ from pynchy.host.orchestrator import plugin_configuration
 from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
 )
+from pynchy.plugins.api import HostActionCatalog
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.work_items.api import WorkItemExecution
 
@@ -169,9 +170,10 @@ async def test_linear_terminal_retirement_defaults_to_host_operation(
 
 
 def test_builtin_canary_registration_is_idempotent() -> None:
-    plugin_configuration.configure_builtin_canaries(make_settings())
+    catalog = HostActionCatalog(actions=())
+    plugin_configuration.configure_builtin_canaries(make_settings(), catalog)
     registered = plugin_configuration.registered_canary_scenarios()
 
-    plugin_configuration.configure_builtin_canaries(make_settings())
+    plugin_configuration.configure_builtin_canaries(make_settings(), catalog)
 
     assert plugin_configuration.registered_canary_scenarios() == registered

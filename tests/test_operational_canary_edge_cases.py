@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,6 +16,7 @@ from pynchy.plugins.integrations.linear import WorkspaceContext
 from pynchy.plugins.integrations.linear_accounts import LinearAccount
 from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
+    ComputerUseRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
     linear_client_context,
@@ -49,6 +51,90 @@ async def _calendar_exercise() -> CanaryExercise:
         list_calendars=AsyncMock(return_value={"result": {}}),
         create_event=AsyncMock(return_value={"result": {"uid": "event-1"}}),
     ).exercise(_context())
+
+
+@pytest.mark.parametrize(
+    ("screenshot", "message"),
+    [
+        (None, "no screenshot"),
+        ({"host_path": 1, "bytes": 3}, "invalid screenshot"),
+        ({"host_path": "capture.png", "bytes": "3"}, "invalid screenshot"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_computer_use_canary_rejects_malformed_artifacts(
+    screenshot: object,
+    message: str,
+) -> None:
+    scenario = ComputerUseRoundTripCanary(
+        AsyncMock(return_value={"result": {"screenshot": screenshot}})
+    )
+
+    with pytest.raises(canaries.CanaryServiceError, match=message):
+        await scenario.exercise(_context())
+
+
+@pytest.mark.asyncio
+async def test_computer_use_canary_rejects_missing_mismatched_and_unexpected_artifacts(
+    tmp_path: Path,
+) -> None:
+    screenshot = tmp_path / "capture.png"
+    screenshot.write_bytes(b"png")
+    scenario = ComputerUseRoundTripCanary(
+        AsyncMock(
+            return_value={
+                "result": {
+                    "screenshot": {"host_path": str(screenshot), "bytes": 3},
+                }
+            }
+        )
+    )
+    exercise = await scenario.exercise(_context())
+    screenshot.unlink()
+    with pytest.raises(canaries.CanaryServiceError, match="missing"):
+        await scenario.verify(_context(), exercise)
+
+    screenshot.write_bytes(b"long")
+    with pytest.raises(canaries.CanaryServiceError, match="size"):
+        await scenario.verify(_context(), exercise)
+
+    zero = await ComputerUseRoundTripCanary(
+        AsyncMock(
+            return_value={
+                "result": {
+                    "screenshot": {"host_path": str(screenshot), "bytes": 0},
+                }
+            }
+        )
+    ).exercise(_context())
+    with pytest.raises(canaries.CanaryServiceError, match="size"):
+        await scenario.verify(_context(), zero)
+
+    with pytest.raises(canaries.CanaryServiceError, match="unexpected type"):
+        await scenario.verify(_context(), CanaryExercise(object()))
+
+
+@pytest.mark.asyncio
+async def test_computer_use_canary_rejects_retained_screenshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    screenshot = tmp_path / "capture.png"
+    screenshot.write_bytes(b"png")
+    scenario = ComputerUseRoundTripCanary(
+        AsyncMock(
+            return_value={
+                "result": {
+                    "screenshot": {"host_path": str(screenshot), "bytes": 3},
+                }
+            }
+        )
+    )
+    exercise = await scenario.exercise(_context())
+    monkeypatch.setattr(Path, "unlink", lambda _path, *, missing_ok: None)
+
+    with pytest.raises(canaries.CanaryServiceError, match="retained"):
+        await scenario.cleanup(_context(), exercise)
 
 
 @pytest.mark.asyncio

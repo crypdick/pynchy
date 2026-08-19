@@ -65,8 +65,7 @@ async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path
     monkeypatch.setattr(
         lifecycle.plugin_configuration, "configure_google_setup_plugin", MagicMock()
     )
-    monkeypatch.setattr(lifecycle.plugin_configuration, "configure_builtin_canaries", MagicMock())
-    monkeypatch.setattr(lifecycle, "initialize_host_action_catalog", MagicMock())
+    monkeypatch.setattr(lifecycle.plugin_configuration, "configure_startup_canaries", MagicMock())
     monkeypatch.setattr(
         lifecycle.speech_plugins, "get_speech_synthesizer", MagicMock(return_value=None)
     )

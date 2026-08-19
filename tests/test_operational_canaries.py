@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,9 +23,11 @@ from pynchy.host.container_manager.mcp.google_canaries import (
 )
 from pynchy.host.container_manager.security.artifact_canaries import FileSecretTaintCanary
 from pynchy.host.orchestrator.plugin_configuration import configure_builtin_canaries
+from pynchy.plugins.api import get_host_action_catalog
 from pynchy.plugins.integrations.linear import WorkspaceContext
 from pynchy.plugins.integrations.operational_canaries import (
     CalendarRoundTripCanary,
+    ComputerUseRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
     ProtonMailRoundTripCanary,
     linear_client_context,
@@ -41,6 +44,9 @@ from pynchy.plugins.integrations.proton_bridge import (
 from pynchy.process_environment import filtered_process_environment
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 _TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 
 
@@ -51,6 +57,41 @@ def _context(scenario_id: str) -> CanaryRunContext:
         target_profile="external-canary",
         scheduler_deps=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_computer_use_canary_captures_verifies_and_removes_artifact(
+    tmp_path: Path,
+) -> None:
+    screenshot = tmp_path / "capture.png"
+    screenshot.write_bytes(b"png")
+    handler = AsyncMock(
+        return_value={
+            "result": {
+                "screenshot": {
+                    "host_path": str(screenshot),
+                    "bytes": screenshot.stat().st_size,
+                }
+            }
+        }
+    )
+    scenario = ComputerUseRoundTripCanary(handler)
+    context = _context("desktop.computer.round.trip")
+
+    exercise = await scenario.exercise(context)
+    verified = await scenario.verify(context, exercise)
+    cleaned = await scenario.cleanup(context, exercise)
+
+    handler.assert_awaited_once_with(
+        {
+            "action": "capture",
+            "label": "canary-test-run",
+            "source_group": "external-canary",
+        }
+    )
+    assert verified == ("desktop:capture:verified",)
+    assert cleaned == ("desktop:capture:removed",)
+    assert not screenshot.exists()
 
 
 @pytest.mark.asyncio
@@ -545,8 +586,9 @@ async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
 
 
 def test_built_in_operational_canaries_register_only_safe_supported_services():
-    configure_builtin_canaries(make_settings())
+    configure_builtin_canaries(make_settings(), get_host_action_catalog())
     assert set(registered_canary_scenarios()) == {
+        "desktop.computer.round.trip",
         "calendar.round.trip",
         "calendar.google.round.trip",
         "drive.google.round.trip",

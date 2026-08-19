@@ -213,6 +213,12 @@ Without the workspace `allow`, each action asks for approval. A service property
 set to `"forbidden"` still blocks the action. See
 [Permissions](../security.md#permissions) for full policy precedence.
 
+To establish durable capability evidence, select
+`desktop.computer.round.trip` in `[canary].scenario_ids` and use a target
+profile that enables `computer_use`. The runner captures, verifies, and removes
+one screenshot. See [Action coverage](../../architecture/action-coverage.md#agentic-canary-runner)
+for canary configuration and evidence semantics.
+
 ## Artifacts and safety
 
 Screenshots are saved under the workspace IPC directory and exposed inside the
