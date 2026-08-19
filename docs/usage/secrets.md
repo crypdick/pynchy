@@ -68,6 +68,47 @@ a Kubernetes service origin ending in `.svc.cluster.local`. Startup and requests
 fail closed when the configured server differs from the CLI profile, credentials
 are missing, collection IDs are invalid, or the provider returns malformed data.
 
+## Administer the vault
+
+Bind a locked Discord channel to a dedicated workspace and grant only that
+workspace the `vaultwarden-admin` tool:
+
+```toml
+[profiles.secrets-admin]
+tools = ["vaultwarden-admin"]
+contains_secrets = true
+
+# data/personalization/workspaces/secrets.toml
+schema_version = 1
+
+[workspace]
+profiles = ["secrets-admin"]
+chat = "connection.discord.synapse.chat.example.channels.secrets"
+permissions = { ask = ["secret.vaultwarden.admin"] }
+```
+
+Mount `PYNCHY_VAULTWARDEN_ADMIN_EMAIL` and
+`PYNCHY_VAULTWARDEN_ADMIN_PASSWORD` only into the trusted host process. Every
+administration request requires exact human approval. The tool can:
+
+- verify each channel account sees exactly its configured collections;
+- create or update login items from another exact-name vault item or a protected
+  host file;
+- assign one item to multiple collections;
+- create collections and grant them to selected channel member accounts; and
+- change a channel's collection list while updating member grants and private
+  personalization configuration together.
+
+Never pass usernames, passwords, TOTP values, or other secret values in tool
+arguments or Discord messages. Browser-captured logins already exist as vault
+items and need only collection assignment. For protected local input, place one
+JSON login object in `data/vaultwarden-admin-input/` with mode `0600`, then pass
+only its basename. The broker excludes TOTP when it copies an item.
+
+Use normal Vaultwarden pages only for initial account creation and invitation
+acceptance. Use the administration tool for later item, collection, grant, and
+access-verification work.
+
 ## Deploy Vaultwarden
 
 The K3s application pins Vaultwarden and the host image pins Bitwarden CLI.

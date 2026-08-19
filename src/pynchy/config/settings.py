@@ -245,6 +245,19 @@ class Settings(BaseSettings):
         if existing is not None and existing != tool:
             raise ValueError("tools.vaultwarden is reserved for channel-scoped secret access")
         self.tools["vaultwarden"] = tool
+        admin_tool = BuiltinTool(
+            type="builtin",
+            public_source=False,
+            secret_data=True,
+            public_sink="forbidden",
+            dangerous_writes=True,
+        )
+        existing_admin = self.tools.get("vaultwarden-admin")
+        if existing_admin is not None and existing_admin != admin_tool:
+            raise ValueError(
+                "tools.vaultwarden-admin is reserved for channel-scoped secret administration"
+            )
+        self.tools["vaultwarden-admin"] = admin_tool
         channel_names = [
             channel_name
             for connection in self.connections.values()

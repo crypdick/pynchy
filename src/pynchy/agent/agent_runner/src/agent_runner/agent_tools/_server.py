@@ -66,6 +66,7 @@ _TOOLS_BY_AGENT_GRANT = {
     ),
     "marketplace-health": frozenset({"marketplace_health_snapshot"}),
     "vaultwarden": frozenset({"get_secret"}),
+    "vaultwarden-admin": frozenset({"manage_vaultwarden"}),
     "matrix_route_read": frozenset({"matrix_route_read"}),
     "matrix_route_send": frozenset({"matrix_route_send"}),
     "slack_token_extractor": frozenset({"setup_slack_session", "refresh_slack_tokens"}),

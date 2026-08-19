@@ -8,8 +8,9 @@ from collections.abc import (  # noqa: TC003 - beartype resolves callback annota
     Callable,
 )
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
+import tomlkit  # noqa: TC002 - beartype resolves mutation annotations at runtime.
 from temporalio.service import RPCError
 
 from pynchy.canaries.api import (
@@ -24,6 +25,7 @@ from pynchy.config.api import (  # beartype resolves composition annotations at 
     CalDAVTool,
     McpTool,
     Settings,
+    mutate_config_toml,
     read_prompt,
     tool_process_environment,
 )
@@ -188,6 +190,7 @@ from pynchy.plugins.integrations.operational_canaries import (
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin, PeekabooConfig
 from pynchy.plugins.integrations.ssh_x11 import SshX11ComputerUsePlugin, SshX11Config
 from pynchy.plugins.integrations.vaultwarden import (
+    VaultwardenAdminRuntime,
     VaultwardenOptions,
     VaultwardenRuntime,
     configure_vaultwarden_runtime,
@@ -595,11 +598,68 @@ def configure_vaultwarden_plugin(settings: Settings) -> None:
     plugin_config = settings.plugins.get("vaultwarden")
     if plugin_config is None or not plugin_config.options:
         return
+    channel_paths: dict[str, tuple[str, str, str]] = {}
+    channel_collections: dict[str, tuple[str, ...]] = {}
+    ambiguous_channels: set[str] = set()
+    for connection_name, connection in settings.connections.items():
+        if connection.type != "discord":
+            continue
+        for guild_name, guild in connection.chat.items():
+            for channel_name, channel in guild.channels.items():
+                if channel_name in channel_paths or channel_name in ambiguous_channels:
+                    ambiguous_channels.add(channel_name)
+                    channel_paths.pop(channel_name, None)
+                    channel_collections.pop(channel_name, None)
+                    continue
+                channel_paths[channel_name] = (connection_name, guild_name, channel_name)
+                channel_collections[channel_name] = tuple(channel.secret_collections)
+
+    config_path = settings.data_dir / "personalization" / "pynchy.toml"
+
+    def update_channel_collections(channel_name: str, aliases: tuple[str, ...]) -> None:
+        connection_name, guild_name, key = channel_paths[channel_name]
+
+        def mutate(document: tomlkit.TOMLDocument) -> None:
+            connections = cast("Any", document["connections"])
+            channel = connections[connection_name]["chat"][guild_name]["channels"][key]
+            if aliases:
+                channel["secret_collections"] = list(aliases)
+            elif "secret_collections" in channel:
+                del channel["secret_collections"]
+
+        mutate_config_toml(config_path, mutate)
+
+    def add_collection(alias: str, identifier: str, channels: tuple[str, ...]) -> None:
+        def mutate(document: tomlkit.TOMLDocument) -> None:
+            plugins = cast("Any", document["plugins"])
+            plugins["vaultwarden"]["options"]["collections"][alias] = identifier
+            connections = cast("Any", document["connections"])
+            for channel_name in channels:
+                connection_name, guild_name, key = channel_paths[channel_name]
+                channel = connections[connection_name]["chat"][guild_name]["channels"][key]
+                channel["secret_collections"] = [
+                    *channel_collections[channel_name],
+                    alias,
+                ]
+
+        mutate_config_toml(config_path, mutate)
+
+    options = VaultwardenOptions.model_validate(plugin_config.options)
     configure_vaultwarden_runtime(
         VaultwardenRuntime(
-            options=VaultwardenOptions.model_validate(plugin_config.options),
+            options=options,
             data_dir=settings.data_dir,
             resolve_access=settings.secret_access_for_workspace,
+            admin=VaultwardenAdminRuntime(
+                server_url=options.server_url,
+                collections={
+                    alias: str(identifier) for alias, identifier in options.collections.items()
+                },
+                data_dir=settings.data_dir,
+                channel_collections=channel_collections,
+                update_channel_collections=update_channel_collections,
+                add_collection=add_collection,
+            ),
         )
     )
 
