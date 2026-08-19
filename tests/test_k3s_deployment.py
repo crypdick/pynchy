@@ -95,6 +95,21 @@ def test_channel_browser_uses_persistent_profile_and_managed_policy() -> None:
     assert policy_volume["configMap"]["optional"] is True
 
 
+def test_pynchy_startup_probe_allows_workspace_recovery() -> None:
+    deployment = _documents("deploy/k3s/application/pynchy.yaml")[0]
+    container = next(
+        item
+        for item in deployment["spec"]["template"]["spec"]["containers"]
+        if item["name"] == "pynchy"
+    )
+
+    assert container["startupProbe"] == {
+        "tcpSocket": {"port": "web"},
+        "failureThreshold": 60,
+        "periodSeconds": 5,
+    }
+
+
 def test_main_workflow_publishes_both_images_after_tests() -> None:
     workflow = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
 
