@@ -120,13 +120,27 @@ def test_channel_collection_requires_an_enabled_plugin() -> None:
         Settings.model_validate(data)
 
 
-@pytest.mark.parametrize("reserved_tool", ["vaultwarden", "vaultwarden-browser.finance"])
+@pytest.mark.parametrize(
+    "reserved_tool", ["vaultwarden", "vaultwarden-admin", "vaultwarden-browser.finance"]
+)
 def test_channel_collection_rejects_reserved_tool_overrides(reserved_tool: str) -> None:
     data = _settings_data(collections=["finance"])
     data["tools"] = {reserved_tool: {"type": "builtin"}}
 
     with pytest.raises(ValidationError, match="reserved for channel-scoped"):
         Settings.model_validate(data)
+
+
+def test_vaultwarden_admin_requires_an_explicit_profile_grant() -> None:
+    data = _settings_data(collections=["finance"])
+    data["profiles"]["admin"] = {"tools": ["vaultwarden-admin"]}
+    data["workspaces"]["admin"] = {"profiles": ["admin"]}
+
+    settings = Settings.model_validate(data)
+
+    assert "vaultwarden-admin" in settings.tools
+    assert "vaultwarden-admin" not in settings.resolved_workspace_config("finance").tools
+    assert settings.resolved_workspace_config("admin").tools == ["vaultwarden-admin"]
 
 
 def test_secret_enabled_channel_keys_must_be_globally_unique() -> None:

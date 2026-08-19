@@ -26,6 +26,7 @@ from pynchy.atomic_json import write_json_atomic
 from pynchy.host.paths import PYNCHY_SECRETS_CONTAINER_PATH
 from pynchy.plugins.api import (
     ApprovalContract,
+    ApprovalTrigger,
     AuditContract,
     CapabilityDescriptor,
     CapabilityId,
@@ -41,6 +42,8 @@ from pynchy.plugins.api import (
 )
 from pynchy.plugins.integrations._service import service_tool
 from pynchy.process_environment import filtered_process_environment
+
+from ._vaultwarden_admin import VaultwardenAdminBroker, VaultwardenAdminRuntime
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -85,6 +88,7 @@ class VaultwardenRuntime:
     options: VaultwardenOptions
     data_dir: Path
     resolve_access: Callable[[str], tuple[str, tuple[str, ...]] | None]
+    admin: VaultwardenAdminRuntime | None = None
 
 
 type BwRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -280,6 +284,7 @@ def _normalized_secret(item: dict[str, Any]) -> dict[str, str]:
 @dataclass
 class _RuntimeState:
     broker: VaultwardenBroker | None = None
+    admin_broker: VaultwardenAdminBroker | None = None
 
 
 _runtime = _RuntimeState()
@@ -287,6 +292,9 @@ _runtime = _RuntimeState()
 
 def configure_vaultwarden_runtime(runtime: VaultwardenRuntime) -> None:
     _runtime.broker = VaultwardenBroker(runtime)
+    _runtime.admin_broker = (
+        VaultwardenAdminBroker(runtime.admin) if runtime.admin is not None else None
+    )
 
 
 @service_tool
@@ -298,6 +306,18 @@ async def _handle_get_secret(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(source_group, str) or not isinstance(name, str):
         raise TypeError("get_secret requires a secret name")
     result = await asyncio.to_thread(_runtime.broker.get_secret, source_group, name)
+    return {"result": result}
+
+
+@service_tool
+async def _handle_manage_vaultwarden(data: dict[str, Any]) -> dict[str, Any]:
+    if _runtime.admin_broker is None:
+        raise RuntimeError("Vaultwarden administration runtime has not been configured")
+    source_group = data.get("source_group")
+    if not isinstance(source_group, str):
+        raise TypeError("manage_vaultwarden requires a source workspace")
+    request = {key: value for key, value in data.items() if key != "source_group"}
+    result = await asyncio.to_thread(_runtime.admin_broker.execute, request)
     return {"result": result}
 
 
@@ -331,6 +351,35 @@ VAULTWARDEN_HOST_ACTIONS = HostActionRegistration(
             idempotency=IdempotencyContract(IdempotencyMode.NOT_REQUIRED),
             audit=AuditContract(),
             policy_service=_PLUGIN_NAME,
+        ),
+        HostActionDescriptor(
+            capability=CapabilityDescriptor(
+                id=CapabilityId("secret.vaultwarden.admin"),
+                kind=CapabilityKind.HOST_ACTION,
+                owner=_PLUGIN_NAME,
+                summary="Administer Vaultwarden from metadata and protected secret sources.",
+                action_ids=(ActionId("secret.vaultwarden.admin"),),
+                requirements=(
+                    CapabilityRequirement(
+                        kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                        name="vaultwarden-admin",
+                        description="Grant only to the locked secrets administration workspace.",
+                    ),
+                    CapabilityRequirement(
+                        kind=CapabilityRequirementKind.HOST_BINARY,
+                        name="bw",
+                        description="Install the pinned Bitwarden CLI in the host runtime.",
+                    ),
+                ),
+                documentation="docs/usage/secrets.md",
+            ),
+            tool_name=HostToolName("manage_vaultwarden"),
+            handler=_handle_manage_vaultwarden,
+            access=HostActionAccess.WRITE,
+            approval=ApprovalContract(trigger=ApprovalTrigger.ALWAYS),
+            idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),
+            audit=AuditContract(),
+            policy_service="vaultwarden-admin",
         ),
     )
 )

@@ -240,6 +240,12 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "get_secret",
     ),
     agent_action(
+        "secret.vaultwarden.admin",
+        "vaultwarden-admin",
+        "Administer Vaultwarden without secret-valued tool arguments.",
+        "manage_vaultwarden",
+    ),
+    agent_action(
         "chat.matrix.route.read",
         "matrix-gateway",
         "Read messages from this conversation's configured Matrix route.",
