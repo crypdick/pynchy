@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
+from threading import Event, Thread
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from conftest import make_settings
 from pynchy.host.git_ops.api import (
     RepoContext,
     RoutedHostWorktreeError,
+    RoutedHostWorktreeResult,
     WorktreeError,
     WorktreeResult,
     ensure_worktree,
@@ -257,6 +259,53 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    def test_serializes_provisioning_for_routes_in_one_repository(self, git_env: dict):
+        """Two routed children must not mutate one Git repository concurrently."""
+        repo_ctx = git_env["repo_ctx"]
+        first_folder = "host__thread_conversation-conv_first"
+        second_folder = "host__thread_conversation-conv_second"
+        first_entered = Event()
+        release_first = Event()
+        second_entered = Event()
+        results: list[RoutedHostWorktreeResult] = []
+
+        def provision(folder: str, repo: RepoContext) -> WorktreeResult:
+            if folder == first_folder:
+                first_entered.set()
+                assert release_first.wait(timeout=2)
+            else:
+                second_entered.set()
+            path = repo.worktrees_dir / folder
+            path.mkdir(parents=True)
+            return WorktreeResult(path)
+
+        def resolve(folder: str) -> None:
+            results.append(
+                resolve_routed_host_worktree_cwd(
+                    folder,
+                    git_env["project"],
+                    [repo_ctx],
+                    recovered=False,
+                )
+            )
+
+        with patch("pynchy.host.git_ops.worktree.ensure_worktree", side_effect=provision):
+            first = Thread(target=resolve, args=(first_folder,))
+            second = Thread(target=resolve, args=(second_folder,))
+            first.start()
+            assert first_entered.wait(timeout=2)
+            second.start()
+            try:
+                assert not second_entered.wait(timeout=0.1)
+            finally:
+                release_first.set()
+                first.join(timeout=2)
+                second.join(timeout=2)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert {result.cwd.name for result in results} == {first_folder, second_folder}
+
     def test_selects_repository_that_owns_source_checkout(self, git_env: dict):
         assert (
             select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
