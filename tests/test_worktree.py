@@ -5,10 +5,11 @@ Uses real git repos via tmp_path to validate actual git behavior.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -283,8 +284,16 @@ class TestRoutedHostWorktrees:
         second_folder = "host__thread_conversation-conv_second"
         first_entered = Event()
         release_first = Event()
+        second_lock_attempted = Event()
         second_entered = Event()
         results: list[RoutedHostWorktreeResult] = []
+        thread_errors: list[Exception] = []
+        original_flock = fcntl.flock
+
+        def tracked_flock(fd: int, operation: int) -> None:
+            if current_thread().name == "routed-second-contender":
+                second_lock_attempted.set()
+            original_flock(fd, operation)
 
         def provision(folder: str, repo: RepoContext) -> WorktreeResult:
             if folder == first_folder:
@@ -297,23 +306,37 @@ class TestRoutedHostWorktrees:
             return WorktreeResult(path)
 
         def resolve(folder: str) -> None:
-            results.append(
-                resolve_routed_host_worktree_cwd(
-                    folder,
-                    git_env["project"],
-                    [repo_ctx],
-                    recovered=False,
+            try:
+                results.append(
+                    resolve_routed_host_worktree_cwd(
+                        folder,
+                        git_env["project"],
+                        [repo_ctx],
+                        recovered=False,
+                    )
                 )
-            )
+            except Exception as exc:  # noqa: BLE001  # allow: exception-handling; thread result
+                thread_errors.append(exc)
 
-        with patch("pynchy.host.git_ops.worktree.ensure_worktree", side_effect=provision):
+        with (
+            patch("pynchy.host.git_ops.worktree.ensure_worktree", side_effect=provision),
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.fcntl.flock",
+                side_effect=tracked_flock,
+            ),
+        ):
             first = Thread(target=resolve, args=(first_folder,))
-            second = Thread(target=resolve, args=(second_folder,))
+            second = Thread(
+                target=resolve,
+                args=(second_folder,),
+                name="routed-second-contender",
+            )
             first.start()
             assert first_entered.wait(timeout=2)
             second.start()
             try:
-                assert not second_entered.wait(timeout=0.1)
+                assert second_lock_attempted.wait(timeout=2)
+                assert not second_entered.is_set()
             finally:
                 release_first.set()
                 first.join(timeout=2)
@@ -321,6 +344,7 @@ class TestRoutedHostWorktrees:
 
         assert not first.is_alive()
         assert not second.is_alive()
+        assert thread_errors == []
         assert {result.cwd.name for result in results} == {first_folder, second_folder}
 
     def test_selects_repository_that_owns_source_checkout(self, git_env: dict):
