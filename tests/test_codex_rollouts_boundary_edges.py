@@ -4,24 +4,35 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from pynchy.host.orchestrator import codex_rollouts
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from typing import Any
 
 THREAD_ID = "019f6106-fd23-7292-bac5-7dbb7da29002"
 
 
-class _CasMissConnection(sqlite3.Connection):
+class _InterleavingCursor(sqlite3.Cursor):
+    def fetchone(self) -> Any | None:
+        row = super().fetchone()
+        connection = cast("_InterleavingConnection", self.connection)
+        if connection.interleave is not None:
+            interleave, connection.interleave = connection.interleave, None
+            interleave()
+        return row
+
+
+class _InterleavingConnection(sqlite3.Connection):
+    interleave: Callable[[], None] | None = None
+
     def execute(self, statement: str, parameters: Iterable[Any] = (), /) -> sqlite3.Cursor:
-        if statement.startswith("UPDATE threads SET rollout_path"):
-            return super().execute("UPDATE threads SET rollout_path = rollout_path WHERE 0")
-        return super().execute(statement, parameters)
+        cursor = self.cursor(factory=_InterleavingCursor)
+        return cursor.execute(statement, parameters)
 
 
 def _write_rollout(home: Path, *, thread_id: str = THREAD_ID, body: str = "") -> Path:
@@ -145,18 +156,33 @@ def test_prepare_resume_refuses_to_replace_available_stored_rollout(tmp_path: Pa
         ).fetchone() == (str(stored_rollout),)
 
 
-def test_prepare_resume_cas_miss_fails_without_changing_state(
+def test_prepare_resume_concurrent_path_survives_cas_update(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     codex_home = tmp_path / ".codex"
     _write_rollout(codex_home)
     stale_rollout = Path("/missing/old-rollout.jsonl")
+    concurrent_rollout = Path("/concurrent/new-rollout.jsonl")
     database = _write_state(codex_home, stale_rollout)
     real_connect = sqlite3.connect
+
+    def racing_connect(path: Path) -> sqlite3.Connection:
+        connection = real_connect(path, factory=_InterleavingConnection)
+
+        def replace_stale_path() -> None:
+            with real_connect(database) as concurrent:
+                concurrent.execute(
+                    "UPDATE threads SET rollout_path = ? WHERE id = ?",
+                    (str(concurrent_rollout), THREAD_ID),
+                )
+
+        connection.interleave = replace_stale_path
+        return connection
+
     monkeypatch.setattr(
         codex_rollouts.sqlite3,
         "connect",
-        lambda path: real_connect(path, factory=_CasMissConnection),
+        racing_connect,
     )
 
     with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="state changed"):
@@ -165,4 +191,4 @@ def test_prepare_resume_cas_miss_fails_without_changing_state(
     with real_connect(database) as verifier:
         assert verifier.execute(
             "SELECT rollout_path FROM threads WHERE id = ?", (THREAD_ID,)
-        ).fetchone() == (str(stale_rollout),)
+        ).fetchone() == (str(concurrent_rollout),)
