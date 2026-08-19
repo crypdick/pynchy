@@ -61,12 +61,20 @@ class VaultwardenOptions(BaseModel):
 
     @field_validator("server_url")
     @classmethod
-    def require_https_server(cls, value: str) -> str:
+    def require_cluster_https_server(cls, value: str) -> str:
         parsed = urlsplit(value)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.username is not None:
-            raise ValueError("Vaultwarden server_url must be an HTTPS origin")
-        if parsed.query or parsed.fragment:
-            raise ValueError("Vaultwarden server_url must not contain a query or fragment")
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.hostname is None
+            or not parsed.hostname.endswith(".svc.cluster.local")
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Vaultwarden server_url must be a cluster-local HTTPS origin")
         return value.rstrip("/")
 
 

@@ -48,7 +48,7 @@ def _settings_data(*, collections: list[str]) -> dict[str, Any]:
         "plugins": {
             "vaultwarden": {
                 "options": {
-                    "server_url": "https://vault.example.test",
+                    "server_url": "https://vault.pynchy.svc.cluster.local",
                     "collections": {
                         "finance": COLLECTION_ID,
                         "shared": SHARED_ID,
@@ -163,21 +163,33 @@ def test_empty_vaultwarden_plugin_options_need_no_runtime_configuration() -> Non
     "server_url",
     [
         "http://vault.example.test",
-        "https://user@vault.example.test",
-        "https://vault.example.test?query=yes",
-        "https://vault.example.test#fragment",
+        "http://vault.pynchy.svc.cluster.local",
+        "https://vault.example.test",
+        "https://vault.svc.cluster.local.example.test",
+        "https://user@vault.pynchy.svc.cluster.local",
+        "https://vault.pynchy.svc.cluster.local/path",
+        "https://vault.pynchy.svc.cluster.local?query=yes",
+        "https://vault.pynchy.svc.cluster.local#fragment",
     ],
 )
-def test_vaultwarden_server_requires_a_plain_https_origin(server_url: str) -> None:
+def test_vaultwarden_server_rejects_non_cluster_origins(server_url: str) -> None:
     with pytest.raises(ValidationError, match="Vaultwarden server_url"):
         VaultwardenOptions(server_url=server_url, collections={"finance": COLLECTION_ID})
+
+
+def test_vaultwarden_server_allows_cluster_local_https_origin() -> None:
+    server_url = "https://pynchy-vaultwarden.pynchy.svc.cluster.local/"
+
+    options = VaultwardenOptions(server_url=server_url, collections={"finance": COLLECTION_ID})
+
+    assert options.server_url == server_url.rstrip("/")
 
 
 class _FakeBw:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
         self.environments: list[dict[str, str]] = []
-        self.server = "https://vault.example.test"
+        self.server = "https://vault.pynchy.svc.cluster.local"
         self.status: object = {"status": "locked"}
         self.status_output: str | None = None
         self.unlock_output = "session-key\n"
@@ -243,7 +255,7 @@ def _broker(
     return VaultwardenBroker(
         VaultwardenRuntime(
             options=VaultwardenOptions(
-                server_url="https://vault.example.test",
+                server_url="https://vault.pynchy.svc.cluster.local",
                 collections={"finance": COLLECTION_ID, "shared": SHARED_ID},
             ),
             data_dir=tmp_path,
@@ -267,7 +279,7 @@ def test_get_secret_searches_only_granted_collections_and_writes_mode_0600(
     broker = VaultwardenBroker(
         VaultwardenRuntime(
             options=VaultwardenOptions(
-                server_url="https://vault.example.test",
+                server_url="https://vault.pynchy.svc.cluster.local",
                 collections={"finance": COLLECTION_ID, "shared": SHARED_ID},
             ),
             data_dir=tmp_path,
@@ -324,7 +336,7 @@ def test_get_secret_rejects_ambiguous_exact_names(tmp_path: Path, monkeypatch) -
     broker = VaultwardenBroker(
         VaultwardenRuntime(
             options=VaultwardenOptions(
-                server_url="https://vault.example.test",
+                server_url="https://vault.pynchy.svc.cluster.local",
                 collections={"finance": COLLECTION_ID, "shared": SHARED_ID},
             ),
             data_dir=tmp_path,
@@ -387,7 +399,7 @@ def test_get_secret_initializes_and_logs_in_a_new_cli_profile(
     result = broker.get_secret("finance", "Example")
 
     assert result["keys"] == ["email", "login", "password"]
-    assert ("config", "server", "https://vault.example.test") in fake_bw.calls
+    assert ("config", "server", "https://vault.pynchy.svc.cluster.local") in fake_bw.calls
     assert (
         "login",
         "finance@example.test",
@@ -506,7 +518,7 @@ async def test_vaultwarden_service_handler_validates_and_delegates(
     configure_vaultwarden_runtime(
         VaultwardenRuntime(
             options=VaultwardenOptions(
-                server_url="https://vault.example.test",
+                server_url="https://vault.pynchy.svc.cluster.local",
                 collections={"finance": COLLECTION_ID},
             ),
             data_dir=tmp_path,
