@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     unzip \
     wmctrl \
+    xauth \
     xdotool \
     x11vnc \
     xvfb \
