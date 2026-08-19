@@ -354,9 +354,12 @@ def test_rejects_invalid_run_arguments(
         build_resources(args, shared_root=tmp_path, pvc_name="shared", namespace="agents")
 
 
-def test_kubectl_command_writes_private_in_cluster_config(tmp_path: Path) -> None:
+def test_kubectl_command_writes_private_in_cluster_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config_path = tmp_path / "config" / "kubeconfig.json"
     service_account = tmp_path / "service-account"
+    monkeypatch.setenv("PYNCHY_KUBERNETES_NAMESPACE", "agents")
     with (
         patch.object(kubernetes_cli, "_KUBECONFIG_PATH", config_path),
         patch.object(kubernetes_cli, "_SERVICE_ACCOUNT_ROOT", service_account),
@@ -365,6 +368,8 @@ def test_kubectl_command_writes_private_in_cluster_config(tmp_path: Path) -> Non
             "kubectl",
             "--kubeconfig",
             str(config_path),
+            "--namespace",
+            "agents",
         ]
 
     config = json.loads(config_path.read_text())
