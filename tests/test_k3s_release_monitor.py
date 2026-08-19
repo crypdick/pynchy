@@ -26,6 +26,7 @@ def _run_monitor(
     tmp_path: Path,
     *,
     current_sha: str = _CURRENT_SHA,
+    current_host_image: str | None = None,
     desktop_sha: str | None = None,
     monitor_sha: str | None = None,
     fail_rollout: bool = False,
@@ -95,6 +96,20 @@ def _run_monitor(
         "  exit 1\n"
         "fi\n"
         'if [ "$1" = "get" ] && [ "$2" = "deployment" ]; then\n'
+        '  case "$5" in\n'
+        '    *"containers[0].image"*)\n'
+        '      if [ "$3" = "pynchy-desktop" ]; then\n'
+        '        printf "%s" "$PYNCHY_TEST_DESKTOP_IMAGE"\n'
+        "      else\n"
+        '        printf "%s" "$PYNCHY_TEST_HOST_IMAGE"\n'
+        "      fi\n"
+        "      exit 0\n"
+        "      ;;\n"
+        '    *"CONTAINER__IMAGE"*)\n'
+        '      printf "%s" "$PYNCHY_TEST_AGENT_IMAGE"\n'
+        "      exit 0\n"
+        "      ;;\n"
+        "  esac\n"
         '  if [ "$3" = "pynchy-desktop" ]; then\n'
         '    printf "%s" "$PYNCHY_TEST_DESKTOP_SHA"\n'
         "  else\n"
@@ -103,6 +118,10 @@ def _run_monitor(
         "  exit 0\n"
         "fi\n"
         'if [ "$1" = "get" ] && [ "$2" = "cronjob" ]; then\n'
+        '  if printf "%s" "$5" | grep -q "containers\\[0\\].image"; then\n'
+        '    printf "%s" "$PYNCHY_TEST_MONITOR_IMAGE"\n'
+        "    exit 0\n"
+        "  fi\n"
         '  printf "%s" "$PYNCHY_TEST_MONITOR_SHA"\n'
         "  exit 0\n"
         "fi\n"
@@ -164,6 +183,10 @@ def _run_monitor(
         "PYNCHY_KUBECONFIG": str(tmp_path / "kubeconfig"),
         "PYNCHY_TEST_APPLY_COUNT": str(apply_count),
         "PYNCHY_TEST_CURRENT_SHA": current_sha,
+        "PYNCHY_TEST_HOST_IMAGE": current_host_image
+        or f"registry.example/pynchy-host:{current_sha}",
+        "PYNCHY_TEST_AGENT_IMAGE": f"registry.example/pynchy-agent:{current_sha}",
+        "PYNCHY_TEST_DESKTOP_IMAGE": f"registry.example/pynchy-host:{desktop_sha or current_sha}",
         "PYNCHY_TEST_DESKTOP_SHA": desktop_sha or current_sha,
         "PYNCHY_TEST_FAIL_ROLLOUT": "1" if fail_rollout else "0",
         "PYNCHY_TEST_FAIL_PROBE_RUN": "1" if fail_probe_run else "0",
@@ -173,6 +196,7 @@ def _run_monitor(
         "PYNCHY_TEST_IMAGE_PENDING": "1" if image_pending else "0",
         "PYNCHY_TEST_KUBECTL_LOG": str(kubectl_log),
         "PYNCHY_TEST_MONITOR_SHA": monitor_sha or current_sha,
+        "PYNCHY_TEST_MONITOR_IMAGE": f"registry.example/pynchy-host:{monitor_sha or current_sha}",
         "PYNCHY_TEST_NO_RELEASE": "1" if no_successful_release else "0",
         "PYNCHY_TEST_STALE_PROBE": "1" if stale_probe else "0",
         "PYNCHY_TEST_STALE_PROBE_MARKER": str(stale_probe_marker),
@@ -260,6 +284,20 @@ def test_monitor_repairs_desktop_or_monitor_drift(tmp_path: Path) -> None:
         current_sha=_TARGET_SHA,
         desktop_sha=_CURRENT_SHA,
         monitor_sha=_CURRENT_SHA,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(call.startswith("apply -f ") for call in kubectl_calls)
+    assert not any("merge --ff-only" in call for call in git_calls)
+
+
+def test_monitor_repairs_image_drift_despite_current_annotations(tmp_path: Path) -> None:
+    result, kubectl_calls, git_calls = _run_monitor(
+        tmp_path,
+        current_sha=_TARGET_SHA,
+        current_host_image="pynchy-host:shadow",
+        desktop_sha=_TARGET_SHA,
+        monitor_sha=_TARGET_SHA,
     )
 
     assert result.returncode == 0, result.stderr

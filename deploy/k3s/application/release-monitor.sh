@@ -75,9 +75,23 @@ desktop_sha=$(k get deployment pynchy-desktop \
     -o 'jsonpath={.spec.template.metadata.annotations.pynchy\.dev/release-sha}')
 monitor_sha=$(k get cronjob pynchy-release-monitor \
     -o 'jsonpath={.metadata.annotations.pynchy\.dev/release-sha}')
+current_host_image=$(k get deployment pynchy \
+    -o 'jsonpath={.spec.template.spec.containers[0].image}')
+current_agent_image=$(k get deployment pynchy \
+    -o 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="CONTAINER__IMAGE")].value}')
+desktop_image=$(k get deployment pynchy-desktop \
+    -o 'jsonpath={.spec.template.spec.containers[0].image}')
+monitor_image=$(k get cronjob pynchy-release-monitor \
+    -o 'jsonpath={.spec.jobTemplate.spec.template.spec.containers[0].image}')
+target_host_image="$PYNCHY_RELEASE_HOST_IMAGE:$target_sha"
+target_agent_image="$PYNCHY_RELEASE_AGENT_IMAGE:$target_sha"
 if [ "$current_sha" = "$target_sha" ] \
     && [ "$desktop_sha" = "$target_sha" ] \
-    && [ "$monitor_sha" = "$target_sha" ]; then
+    && [ "$monitor_sha" = "$target_sha" ] \
+    && [ "$current_host_image" = "$target_host_image" ] \
+    && [ "$current_agent_image" = "$target_agent_image" ] \
+    && [ "$desktop_image" = "$target_host_image" ] \
+    && [ "$monitor_image" = "$target_host_image" ]; then
     printf 'Release %s already active.\n' "$target_sha"
     exit 0
 fi
