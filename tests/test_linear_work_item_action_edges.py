@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.plugins.integrations.api import attach_work_item_pull_request
 from pynchy.plugins.integrations.linear_work_items import handle_list_work_items
 from pynchy.work_items.api import WorkItemTransitionStatus
 from tests.linear_work_items_support import (
@@ -137,6 +138,148 @@ async def test_linked_move_rejects_malformed_outcome_evidence(
     )
 
     assert error in result["error"]
+
+
+async def test_awaiting_review_preserves_pr_evidence_without_attaching(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-with-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready for review.",
+            "evidence_refs": [
+                "https://github.com/crypdick/pynchy/pull/104",
+                "ddfdace8",
+            ],
+        },
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert result["result"]["work_item"]["evidence_refs"] == [
+        "https://github.com/crypdick/pynchy/pull/104",
+        "ddfdace8",
+    ]
+    assert lifecycle.state.attachments == []
+
+
+async def test_awaiting_review_does_not_attach_agent_supplied_foreign_pr(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-with-foreign-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready for review.",
+            "evidence_refs": ["https://github.com/foreign/repository/pull/7"],
+        },
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert lifecycle.state.attachments == []
+
+
+async def test_host_publication_attachment_supports_routing_lookup(
+    lifecycle: Lifecycle,
+) -> None:
+    error = await attach_work_item_pull_request(
+        "pynchy",
+        "issue-1",
+        "crypdick/pynchy",
+        "https://github.com/crypdick/pynchy/pull/104",
+    )
+
+    assert error is None
+    linked = await lifecycle.client.find_issues_by_attachment_url(
+        "https://github.com/crypdick/pynchy/pull/104"
+    )
+    assert linked[0]["title"] == "crypdick/pynchy #104"
+    assert linked[0]["issue"]["id"] == "issue-1"
+
+
+async def test_host_publication_attachment_reports_provider_failure(
+    lifecycle: Lifecycle,
+) -> None:
+    lifecycle.state.attachment_success = False
+
+    error = await attach_work_item_pull_request(
+        "pynchy",
+        "issue-1",
+        "crypdick/pynchy",
+        "https://github.com/crypdick/pynchy/pull/104",
+    )
+
+    assert error == "Linear did not create the attachment"
+    assert lifecycle.state.attachments == []
+
+
+async def test_awaiting_review_preserves_omitted_evidence(lifecycle: Lifecycle) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    blocked = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked-with-pr",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "Waiting for provider review.",
+            "evidence_refs": ["https://github.com/crypdick/pynchy/pull/104"],
+        },
+    )
+    assert blocked["result"]["work_item"]["status"] == "blocked"
+    assert lifecycle.state.attachments == []
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-ready-with-preserved-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Provider review arrived."},
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert result["result"]["work_item"]["evidence_refs"] == [
+        "https://github.com/crypdick/pynchy/pull/104"
+    ]
+    assert lifecycle.state.attachments == []
+
+
+async def test_awaiting_review_does_not_use_evidence_as_attachment_authority(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    lifecycle.state.attachment_success = False
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-with-failed-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready for review.",
+            "evidence_refs": ["https://github.com/crypdick/pynchy/pull/104"],
+        },
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert lifecycle.state.issue["state"]["name"] == "Awaiting Review"
+    assert lifecycle.state.attachments == []
 
 
 async def test_provider_move_rejects_an_issue_with_malformed_state(lifecycle: Lifecycle) -> None:

@@ -70,7 +70,7 @@ def host_create_pr_from_worktree(
     Idempotent: if a PR already exists for the branch, just pushes (PR
     auto-updates). No duplicate PRs.
 
-    Returns {"success": bool, "message": str}.
+    Successful PR creation or update also returns its canonical ``pr_url``.
     """
     ctx = _validate_sync_preconditions(group_folder, repo_ctx, compare_with_origin=True)
     if isinstance(ctx, dict):
@@ -237,6 +237,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 }
             return {
                 "success": True,
+                "pr_url": existing_pr_url,
                 "message": (
                     f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {existing_pr_url}"
                 ),
@@ -265,6 +266,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             pr_url = pr_check.stdout.strip()
             return {
                 "success": True,
+                "pr_url": pr_url,
                 "message": (f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {pr_url}"),
             }
 
@@ -404,6 +406,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             ):
                 return {
                     "success": True,
+                    "pr_url": verified_pr_url,
                     "message": (
                         f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}. "
                         f"PR updated: {verified_pr_url}"
@@ -470,5 +473,6 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     )
     return {
         "success": True,
+        "pr_url": pr_url,
         "message": f"Pushed {ctx.ahead} commit(s) to {branch_name} and opened PR: {pr_url}",
     }

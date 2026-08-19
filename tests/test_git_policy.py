@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
@@ -41,6 +42,19 @@ def commit_feature(
     git(worktree, "config", "user.email", "test@test.com")
     git(worktree, "config", "user.name", "Test")
     git(worktree, "commit", "-m", message)
+
+
+def publication_turn(turn_id: str, source_group: str) -> InFlightTurn:
+    return InFlightTurn(
+        turn_id=turn_id,
+        chat_jid="publication:test",
+        group_folder=source_group,
+        work_kind=InFlightWorkKind.SCHEDULED,
+        input_messages=[],
+        input_start_cursor="",
+        input_end_cursor="",
+        started_at="2026-08-19T21:00:00+00:00",
+    )
 
 
 class TestResolveGitPolicy:
@@ -102,6 +116,7 @@ class TestHostCreatePrFromWorktree:
             result = host_create_pr_from_worktree("agent-1", git_env["repo_ctx"])
 
         assert result["success"] is True
+        assert result["pr_url"] == "https://github.com/owner/repo/pull/1"
         assert "1 commit(s)" in result["message"]
         assert "PR" in result["message"]
         assert urlparse(result["message"].rpartition(" ")[2]).hostname == "github.com"
@@ -458,6 +473,11 @@ class TestIpcPolicyRouting:
                 return_value=[source_repo],
             ) as resolve_publication_repos,
             patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
+                new_callable=AsyncMock,
+                return_value=publication_turn("turn-source", source_group),
+            ),
+            patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
                 new_callable=AsyncMock,
                 return_value=ReceiptVerification.VALID,
@@ -508,6 +528,11 @@ class TestIpcPolicyRouting:
                 "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
                 side_effect=PublicationRepositoryError("Routed host turn is no longer active"),
             ) as resolve_publication_repos,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
+                new_callable=AsyncMock,
+                return_value=publication_turn("turn-stale", source_group),
+            ),
             patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
                 new_callable=AsyncMock,

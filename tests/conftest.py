@@ -136,7 +136,13 @@ from pynchy.state import (
     record_canary_run,
     store_message_direct,
 )
-from pynchy.state.api import get_work_item_execution_for_turn
+from pynchy.state.api import (
+    get_conversation,
+    get_in_flight_turn_for_group,
+    get_unfinished_work_item_execution,
+    get_work_item_execution_for_task,
+    get_work_item_execution_for_turn,
+)
 from pynchy.workspace.api import WorkspaceProfile
 from tests.conftest_helpers import (
     NullChannel,
@@ -599,6 +605,11 @@ def reset_settings(monkeypatch):
                 settings=settings_source,
                 resolve_publication_repos=resolve_repositories,
                 get_work_item_execution_for_turn=get_work_item_execution_for_turn,
+                get_work_item_execution_for_task=get_work_item_execution_for_task,
+                get_unfinished_work_item_execution=get_unfinished_work_item_execution,
+                get_current_turn=get_in_flight_turn_for_group,
+                get_conversation=get_conversation,
+                attach_work_item_pull_request=AsyncMock(return_value=None),
                 detect_main_branch=detect_main_branch,
                 host_create_pr_from_worktree=host_create_pr_from_worktree,
                 redact_git_diagnostic=redact_git_diagnostic,

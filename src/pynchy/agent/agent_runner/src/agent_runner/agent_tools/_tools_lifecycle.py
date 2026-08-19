@@ -79,8 +79,9 @@ async def _request_publication(
         "checks run; never mention the workspace path or call the PR automated. For a Linear "
         "work item, the host derives its branch as team-key/issue-number/title-slug. "
         "The host adds a `Resolves TEAM-123` footer so Linear treats the PR as closing work. "
-        "Do not attach the PR as a generic Linear resource. Resolve any reported conflict or "
-        "publication failure and retry."
+        "After publication, the host attaches the canonical PR to the exact Linear issue. "
+        "Include the returned URL in the work-item outcome evidence; do not attach it through "
+        "a generic Linear tool. Resolve any reported conflict or publication failure and retry."
     ),
     {
         "type": "object",

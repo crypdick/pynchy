@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -33,11 +33,34 @@ class FakeLinearState:
     issue: dict[str, Any]
     fail_after_update: bool = False
     update_calls: int = 0
+    attachments: list[dict[str, object]] = field(default_factory=list)
+    attachment_success: bool = True
 
     async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
         return deepcopy(self.issue) if issue_id == self.issue["id"] else None
 
     async def query(self, _query: str, **variables: object) -> dict[str, Any]:
+        if "attachmentsForURL" in _query:
+            return {
+                "attachmentsForURL": {
+                    "nodes": [
+                        {**attachment, "issue": deepcopy(self.issue)}
+                        for attachment in self.attachments
+                        if attachment["url"] == variables["url"]
+                    ]
+                }
+            }
+        if "attachmentCreate" in _query:
+            if not self.attachment_success:
+                return {"attachmentCreate": {"success": False}}
+            attachment = {
+                "id": f"attachment-{len(self.attachments) + 1}",
+                "url": variables["url"],
+                "title": variables["title"],
+                "subtitle": variables.get("subtitle"),
+            }
+            self.attachments.append(attachment)
+            return {"attachmentCreate": {"success": True, "attachment": attachment}}
         self.update_calls += 1
         state_id = variables.get("state_id")
         if not isinstance(state_id, str):

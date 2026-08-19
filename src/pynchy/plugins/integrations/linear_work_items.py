@@ -58,6 +58,22 @@ class _MoveOutcome:
     evidence_refs: tuple[str, ...] | None
 
 
+async def attach_work_item_pull_request(
+    workspace: str,
+    issue_id: str,
+    repository: str,
+    pr_url: str,
+) -> str | None:
+    """Attach one host-validated publication to its exact Linear execution."""
+    try:
+        async with linear_client(workspace=workspace) as client:
+            number = pr_url.rsplit("/", maxsplit=1)[-1]
+            await client.create_attachment(issue_id, pr_url, f"{repository} #{number}")
+    except (LinearError, ValueError) as exc:
+        return str(exc)
+    return None
+
+
 @dataclass(frozen=True)
 class LinearWorkItemsRuntime:
     """Durable work-item queries and bindings selected during plugin composition."""
