@@ -7,16 +7,11 @@ mkdir -p "$profile"
 chmod 0700 "$profile"
 
 display_file=$(mktemp)
-xvfb_pid=
-cleanup() {
-    if [ -n "$xvfb_pid" ]; then
-        kill "$xvfb_pid" 2>/dev/null || true
-        wait "$xvfb_pid" 2>/dev/null || true
-    fi
-    rm -f "$display_file"
-}
-trap cleanup EXIT
+config_file=$(mktemp)
+trap 'rm -f "$display_file" "$config_file"' EXIT
+printf '%s\n' '{"browser":{"launchOptions":{"ignoreDefaultArgs":["--disable-background-networking","--disable-component-update","--disable-extensions"]}}}' >"$config_file"
 
+# NOTE: K3s blocks peer signals; pod teardown owns this pod-lifetime Xvfb process.
 Xvfb -displayfd 3 -screen 0 1280x1024x24 -nolisten tcp 3>"$display_file" &
 xvfb_pid=$!
 tries=200
@@ -41,6 +36,7 @@ case "$display" in
 esac
 
 DISPLAY=":$display" playwright-mcp \
+    --config "$config_file" \
     --executable-path /usr/bin/chromium \
     --no-sandbox \
     --shared-browser-context \
