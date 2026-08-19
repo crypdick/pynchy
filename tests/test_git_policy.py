@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepositoryError
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
@@ -41,6 +42,19 @@ def commit_feature(
     git(worktree, "config", "user.email", "test@test.com")
     git(worktree, "config", "user.name", "Test")
     git(worktree, "commit", "-m", message)
+
+
+def publication_turn(turn_id: str, source_group: str) -> InFlightTurn:
+    return InFlightTurn(
+        turn_id=turn_id,
+        chat_jid="publication:test",
+        group_folder=source_group,
+        work_kind=InFlightWorkKind.SCHEDULED,
+        input_messages=[],
+        input_start_cursor="",
+        input_end_cursor="",
+        started_at="2026-08-19T21:00:00+00:00",
+    )
 
 
 class TestResolveGitPolicy:
@@ -461,7 +475,7 @@ class TestIpcPolicyRouting:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
                 new_callable=AsyncMock,
-                return_value=Mock(turn_id="turn-source"),
+                return_value=publication_turn("turn-source", source_group),
             ),
             patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
@@ -517,7 +531,7 @@ class TestIpcPolicyRouting:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
                 new_callable=AsyncMock,
-                return_value=Mock(turn_id="turn-stale"),
+                return_value=publication_turn("turn-stale", source_group),
             ),
             patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",

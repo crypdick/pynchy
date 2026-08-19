@@ -10,9 +10,19 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
+from pynchy.conversation.api import (
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+    routed_conversation_folder,
+)
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import RepoContext
+from pynchy.identifiers import GroupFolder
+from pynchy.state import begin_in_flight_turn, create_work_item_claim, resolve_conversation
+from pynchy.state.api import WorkItemClaimRequest
 
 pytest_plugins = ("tests.git_policy_support",)
 
@@ -23,42 +33,76 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Turn:
-    turn_id: str
-
-
-@dataclass(frozen=True)
-class Execution:
+class ExecutionFixture:
     workspace: str
     linear_issue_id: str
     linear_issue_identifier: str
+
+
+def _turn(turn_id: str, source_group: str) -> InFlightTurn:
+    return InFlightTurn(
+        turn_id=turn_id,
+        chat_jid="linear:test",
+        group_folder=source_group,
+        work_kind=InFlightWorkKind.SCHEDULED,
+        input_messages=[],
+        input_start_cursor="",
+        input_end_cursor="",
+        started_at="2026-08-19T21:00:00+00:00",
+    )
 
 
 async def test_warm_follow_up_uses_host_turn_and_attaches_published_pr(
     git_policy_deps: GitPolicyDeps,
     tmp_path: Path,
 ) -> None:
-    source_group = "agent-1__thread_conversation-conv_1"
+    execution = await create_work_item_claim(
+        WorkItemClaimRequest(
+            workspace="agent-1",
+            issue={
+                "id": "linear-issue-1",
+                "identifier": "SYN-173",
+                "url": "https://linear.app/example/issue/SYN-173",
+                "updatedAt": "2026-08-19T20:00:00+00:00",
+                "state": {"id": "state-in-progress", "name": "In Progress"},
+            },
+            turn_id="turn-initial",
+            task_id="task-initial",
+            initiated_by="linear-webhook:test",
+            request_id="claim-1",
+        )
+    )
+    conversation = await resolve_conversation(
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:synapse:issue"),
+            key=ConversationSubjectKey(execution.linear_issue_id),
+        ),
+        GroupFolder(execution.workspace),
+    )
+    source_group = routed_conversation_folder(execution.workspace, conversation.id)
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="turn-follow-up",
+            chat_jid="linear:follow-up",
+            group_folder=source_group,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-08-19T21:00:00+00:00",
+            task_id="task-follow-up",
+        )
+    )
+    assert execution.turn_id == "turn-initial"
     result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
     result_dir.mkdir(parents=True)
     repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
-    execution = Execution("agent-1", "linear-issue-1", "SYN-173")
 
     with (
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
             return_value=make_settings(data_dir=tmp_path / "data"),
         ),
-        patch(
-            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
-            new_callable=AsyncMock,
-            return_value=Turn("turn-follow-up"),
-        ),
-        patch(
-            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-            new_callable=AsyncMock,
-            return_value=execution,
-        ) as get_execution,
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
             return_value=[repo_ctx],
@@ -95,7 +139,6 @@ async def test_warm_follow_up_uses_host_turn_and_attaches_published_pr(
             git_policy_deps,
         )
 
-    get_execution.assert_awaited_once_with("turn-follow-up")
     resolve_publication_repos.assert_called_once_with(source_group, "turn-follow-up")
     create_pr.assert_called_once_with(
         source_group,
@@ -130,7 +173,7 @@ async def test_warm_follow_up_rejects_stale_agent_turn(
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
             new_callable=AsyncMock,
-            return_value=Turn("turn-follow-up"),
+            return_value=_turn("turn-follow-up", source_group),
         ),
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree"
@@ -193,7 +236,7 @@ async def test_publication_reports_missing_url_or_attachment_failure(
     attachment_error: str | None,
     expected: str,
 ) -> None:
-    source_group = "agent-1__thread_conversation-conv_1"
+    source_group = "agent-1"
     result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
     result_dir.mkdir(parents=True)
     repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
@@ -206,12 +249,12 @@ async def test_publication_reports_missing_url_or_attachment_failure(
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
             new_callable=AsyncMock,
-            return_value=Turn("turn-follow-up"),
+            return_value=_turn("turn-follow-up", source_group),
         ),
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
             new_callable=AsyncMock,
-            return_value=Execution("agent-1", "linear-issue-1", "SYN-173"),
+            return_value=ExecutionFixture("agent-1", "linear-issue-1", "SYN-173"),
         ),
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",

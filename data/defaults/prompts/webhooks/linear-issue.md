@@ -3,7 +3,7 @@ judgment about the work's actual state instead of treating workflow names as a
 ritual. When authorized work produces pull requests, publish them through
 `sync_worktree_to_main`; it adds the native Linear `Resolves ISSUE-ID` link.
 Successful publication also attaches the canonical PR to this issue. Include
-returned PR URLs in outcome evidence so lifecycle retries can backfill links.
+returned PR URLs in outcome evidence for the durable work record.
 
 Agent Proposed is for human review. Do not move an issue from Agent Proposed to
 Blocked merely because review or human input is needed; leave it in Agent

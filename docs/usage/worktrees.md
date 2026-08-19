@@ -57,5 +57,6 @@ conversation's child branch, never its parent workspace branch.
 The tool returns the canonical PR URL or an actionable failure. The agent
 includes every returned PR URL in the `Awaiting Review` outcome's evidence.
 For Linear-owned work, successful publication attaches the host-validated PR
-to the exact in-flight issue; the transition can idempotently backfill it from
-preserved evidence. Returning a final response doesn't publish automatically.
+to the exact in-flight issue. Outcome evidence records returned PR URLs but
+doesn't authorize attachments. Returning a final response doesn't publish
+automatically.

@@ -152,10 +152,9 @@ chooses how to investigate, plan, execute, validate, publish, and report. It can
 add evidence or context with `linear_create_comment` and use `linear_move_todo`
 to keep the issue's state accurate. Successful `sync_worktree_to_main`
 publication immediately creates a native Linear attachment from the host's
-validated PR URL and exact in-flight execution. An `Awaiting Review` move also
-idempotently backfills every GitHub pull request in effective `evidence_refs`
-before changing issue state. Returning a final response doesn't imply a state
-transition.
+validated PR URL and exact in-flight execution. Outcome `evidence_refs` remain
+durable reporting evidence; they don't authorize new provider attachments.
+Returning a final response doesn't imply a state transition.
 
 `Awaiting Review`, `Follow-ups`, `Blocked`, and `Done` are agent-managed
 outcomes. The agent exercises judgment rather than satisfying a harness rule.
