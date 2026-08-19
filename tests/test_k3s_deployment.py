@@ -1,5 +1,8 @@
 """Checks for reproducible K3s deployment inputs."""
 
+import os
+import sqlite3
+import subprocess  # noqa: S404 - test executes repository and system binaries with fixed arguments.
 from pathlib import Path
 
 import yaml
@@ -261,3 +264,63 @@ def test_k3s_backup_uses_logical_database_snapshots() -> None:
     assert "pg_restore -l" in script
     assert "/var/lib/postgresql/data/.pynchy-backup-$timestamp" in script
     assert '"$vaultwarden_volume/db.sqlite3"' in script
+
+
+def test_k3s_backup_checksums_nested_vaultwarden_files(tmp_path: Path) -> None:
+    storage = tmp_path / "storage"
+    for directory in ("shared/app/data", "postgres", "vaultwarden"):
+        (storage / directory).mkdir(parents=True)
+    for database in ("messages.db", "neonize.db"):
+        with sqlite3.connect(storage / "shared/app/data" / database) as connection:
+            connection.execute("CREATE TABLE canary (value TEXT)")
+    with sqlite3.connect(storage / "vaultwarden/db.sqlite3") as connection:
+        connection.execute("CREATE TABLE canary (value TEXT)")
+    (storage / "vaultwarden/SHA256SUMS").write_text("attachment", encoding="utf-8")
+    timestamp = "20000101T000000Z"
+    postgres_staging = storage / f"postgres/.pynchy-backup-{timestamp}"
+    postgres_staging.mkdir()
+    for database in ("litellm", "temporal", "temporal_visibility"):
+        (postgres_staging / f"{database}.dump").write_text("dump", encoding="utf-8")
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_k3s = fake_bin / "k3s"
+    fake_k3s.write_text(
+        """#!/bin/sh
+case " $* " in
+  *" get secret pynchy-runtime "*) printf 'dGVzdA==' ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    fake_k3s.chmod(0o755)
+    for command, body in (("chown", "exit 0"), ("date", f"printf {timestamp}")):
+        executable = fake_bin / command
+        executable.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+        executable.chmod(0o755)
+
+    environment = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "PYNCHY_K3S_STORAGE_ROOT": str(storage),
+    }
+    result = subprocess.run(
+        ["/usr/bin/bash", "deploy/k3s/backup.sh"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    snapshot = storage / "backups" / timestamp
+    assert (snapshot / "vaultwarden/db.sqlite3").is_file()
+    verified = subprocess.run(
+        ["/usr/bin/sha256sum", "-c", "SHA256SUMS"],
+        cwd=snapshot,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert verified.returncode == 0, verified.stderr
+    assert "./vaultwarden/SHA256SUMS: OK" in verified.stdout

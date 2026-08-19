@@ -61,7 +61,7 @@ k3s kubectl -n "$namespace" exec "$postgres_pod" -- rm -rf -- "$postgres_staging
 
 (
     cd "$partial"
-    sha256sum ./* >SHA256SUMS
+    find . -type f ! -path ./SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS
 )
 chown -R 568:568 "$partial"
 find "$partial" -type d -exec chmod 0750 {} +
