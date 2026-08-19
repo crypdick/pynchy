@@ -209,18 +209,8 @@ class TestEnsureWorktree:
             monkeypatch.delenv(variable, raising=False)
         monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(project / "missing-global-config"))
         monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-        identity_env = {
-            "GIT_AUTHOR_NAME": "Pynchy",
-            "GIT_AUTHOR_EMAIL": "pynchy@example.invalid",
-            "GIT_COMMITTER_NAME": "Pynchy",
-            "GIT_COMMITTER_EMAIL": "pynchy@example.invalid",
-        }
 
-        with patch(
-            "pynchy.host.git_ops.worktree.git_env_with_token",
-            return_value=identity_env,
-        ):
-            result = ensure_worktree("code-improver", repo_ctx)
+        result = ensure_worktree("code-improver", repo_ctx)
 
         assert all("merge of origin/main failed" not in notice for notice in result.notices)
         assert (worktree_path / "remote.txt").read_text() == "remote"
@@ -228,6 +218,14 @@ class TestEnsureWorktree:
             worktree_path, "rev-list", "--parents", "-n", "1", "HEAD"
         ).stdout.split()
         assert len(merge_commit) == 3
+        identity = _git(
+            worktree_path,
+            "show",
+            "-s",
+            "--format=%an <%ae>|%cn <%ce>",
+            "HEAD",
+        ).stdout.strip()
+        assert identity == "Pynchy <pynchy@localhost>|Pynchy <pynchy@localhost>"
 
     def test_no_notice_when_already_up_to_date(self, git_env: dict):
         """No notice when worktree is already current with origin."""
