@@ -39,7 +39,11 @@ class ExecutionFixture:
     linear_issue_identifier: str
 
 
-def _turn(turn_id: str, source_group: str) -> InFlightTurn:
+def _turn(
+    turn_id: str,
+    source_group: str,
+    task_id: str | None = None,
+) -> InFlightTurn:
     return InFlightTurn(
         turn_id=turn_id,
         chat_jid="linear:test",
@@ -49,6 +53,7 @@ def _turn(turn_id: str, source_group: str) -> InFlightTurn:
         input_start_cursor="",
         input_end_cursor="",
         started_at="2026-08-19T21:00:00+00:00",
+        task_id=task_id,
     )
 
 
@@ -157,6 +162,146 @@ async def test_warm_follow_up_uses_host_turn_and_attaches_published_pr(
     assert result["success"] is True
 
 
+async def test_non_routed_follow_up_resolves_execution_by_stable_task(
+    git_policy_deps: GitPolicyDeps,
+    tmp_path: Path,
+) -> None:
+    source_group = "agent-1"
+    execution = await create_work_item_claim(
+        WorkItemClaimRequest(
+            workspace=source_group,
+            issue={
+                "id": "linear-issue-task",
+                "identifier": "SYN-174",
+                "url": "https://linear.app/example/issue/SYN-174",
+                "updatedAt": "2026-08-19T20:00:00+00:00",
+                "state": {"id": "state-in-progress", "name": "In Progress"},
+            },
+            turn_id="turn-initial",
+            task_id="task-stable",
+            initiated_by="linear-webhook:test",
+            request_id="claim-task",
+        )
+    )
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="turn-follow-up",
+            chat_jid="linear:follow-up",
+            group_folder=source_group,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-08-19T21:00:00+00:00",
+            task_id="task-stable",
+        )
+    )
+    result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+    result_dir.mkdir(parents=True)
+    repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+            return_value=make_settings(data_dir=tmp_path / "data"),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+            return_value=[repo_ctx],
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+            new_callable=AsyncMock,
+            return_value=ReceiptVerification.VALID,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+            return_value={
+                "success": True,
+                "message": "Opened PR",
+                "pr_url": "https://github.com/owner/repo/pull/105",
+            },
+        ) as create_pr,
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.attach_work_item_pull_request",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as attach_pr,
+    ):
+        await dispatch(
+            {
+                "type": "sync_worktree_to_main",
+                "request_id": "req-task-follow-up",
+                "publication": "pull-request",
+                "title": "Fix task publication",
+                "body": "Summary",
+            },
+            source_group,
+            False,
+            git_policy_deps,
+        )
+
+    assert execution.turn_id == "turn-initial"
+    create_pr.assert_called_once_with(
+        source_group,
+        repo_ctx,
+        publication_branch="syn/174/fix-task-publication",
+        pr_title="Fix task publication",
+        pr_body="Summary\n\nResolves SYN-174",
+    )
+    attach_pr.assert_awaited_once_with(
+        source_group,
+        execution.linear_issue_id,
+        repo_ctx.slug,
+        "https://github.com/owner/repo/pull/105",
+    )
+    result = json.loads((result_dir / "req-task-follow-up.json").read_text())
+    assert result["success"] is True
+
+
+@pytest.mark.parametrize("task_id", [None, "task-without-execution"])
+async def test_non_routed_publication_without_owned_execution(
+    git_policy_deps: GitPolicyDeps,
+    tmp_path: Path,
+    task_id: str | None,
+) -> None:
+    source_group = "agent-1"
+    await begin_in_flight_turn(_turn("turn-without-execution", source_group, task_id))
+    result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
+    result_dir.mkdir(parents=True)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+            return_value=make_settings(data_dir=tmp_path / "data"),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
+            return_value=[],
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+            new_callable=AsyncMock,
+            return_value=ReceiptVerification.VALID,
+        ),
+    ):
+        await dispatch(
+            {
+                "type": "sync_worktree_to_main",
+                "request_id": "req-without-execution",
+                "publication": "pull-request",
+                "title": "Publish unrelated work",
+                "body": "Summary",
+            },
+            source_group,
+            False,
+            git_policy_deps,
+        )
+
+    result = json.loads((result_dir / "req-without-execution.json").read_text())
+    assert result == {"success": False, "message": "No repo configured for this group."}
+
+
 async def test_warm_follow_up_rejects_stale_agent_turn(
     git_policy_deps: GitPolicyDeps,
     tmp_path: Path,
@@ -227,6 +372,11 @@ async def test_warm_follow_up_rejects_stale_agent_turn(
             "Linear did not create the attachment",
             "Linear attachment failed",
         ),
+        (
+            {"success": False, "message": "Push failed"},
+            None,
+            "Push failed",
+        ),
     ],
 )
 async def test_publication_reports_missing_url_or_attachment_failure(
@@ -291,5 +441,5 @@ async def test_publication_reports_missing_url_or_attachment_failure(
     result = json.loads((result_dir / "req-publication-failure.json").read_text())
     assert result["success"] is False
     assert expected in result["repos"]["owner/repo"]["message"]
-    if expected == "host returned no valid canonical PR URL":
+    if expected in {"host returned no valid canonical PR URL", "Push failed"}:
         attach_pr.assert_not_awaited()
