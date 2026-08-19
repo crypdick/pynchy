@@ -103,13 +103,16 @@ preflight() {
     name=$1
     image=$2
     shift 2
-    k delete pod "$name" --ignore-not-found --wait=false >/dev/null
-    k run "$name" \
+    k delete pod "$name" --ignore-not-found >/dev/null
+    # preflight is called from an OR-list, so POSIX shells disable errexit in its body.
+    if ! k run "$name" \
         --restart=Never \
         --image="$image" \
         --image-pull-policy=IfNotPresent \
         --overrides='{"spec":{"serviceAccountName":"pynchy-release-monitor","automountServiceAccountToken":false}}' \
-        --command -- "$@" >/dev/null
+        --command -- "$@" >/dev/null; then
+        return 1
+    fi
     if k wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$name" --timeout=300s; then
         return 0
     fi
