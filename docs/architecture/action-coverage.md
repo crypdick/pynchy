@@ -37,6 +37,7 @@ enabled = true
 target_profile = "external-canary"
 schedule = "0 5 * * *"
 scenario_ids = [
+  "desktop.computer.round.trip",
   "calendar.round.trip",
   "calendar.google.round.trip",
   "drive.google.round.trip",
@@ -74,6 +75,10 @@ cleanup step. The runner retries cleanup separately. A declared scenario
 without an executable implementation records `not_established`; it never
 reports a false pass.
 
+The desktop check requires `computer_use` on the target profile. It captures
+one screenshot through the configured provider, verifies the attributed host
+artifact and byte count, then removes the screenshot.
+
 Google Calendar checks use the named managed MCP server and dedicated calendar:
 they list provider tools and calendars, create a tagged event with a generated
 event ID, retrieve it through a fresh MCP session, then delete it without
@@ -83,11 +88,12 @@ read tools against a configured harmless fixture file, without creating or
 changing remote content. The exact server names make multi-account targets
 unambiguous.
 
-The built-in operational checks cover CalDAV and Google Calendar lifecycle,
-Google Drive search/read access, Linear issue and workspace-todo lifecycle,
-and Proton Mail delivery, receipt, read, and deletion. Credential setup,
-token refresh, social posting, desktop control, and channel interaction remain
-separate scenarios because they need their own dedicated test targets.
+The built-in operational checks cover desktop screenshot capture, CalDAV and
+Google Calendar lifecycle, Google Drive search/read access, Linear issue and
+workspace-todo lifecycle, and Proton Mail delivery, receipt, read, and
+deletion. Credential setup, token refresh, social posting, and channel
+interaction remain separate scenarios because they need dedicated test
+targets.
 
 Six harmless local scenarios use the same runner, durable evidence rows,
 regression handling, report, and history endpoints to exercise deterministic

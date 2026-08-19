@@ -322,6 +322,20 @@ def test_enabled_calendar_canary_requires_its_mcp_tool() -> None:
         )
 
 
+def test_enabled_computer_use_canary_requires_its_tool() -> None:
+    with pytest.raises(ValueError, match="required tools: computer_use"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {}},
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["desktop.computer.round.trip"],
+                },
+            }
+        )
+
+
 def test_enabled_linear_canary_requires_an_existing_workspace() -> None:
     with pytest.raises(ValueError, match="linear_workspace references unknown workspace"):
         validate_settings_mapping(

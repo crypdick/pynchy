@@ -63,7 +63,6 @@ from pynchy.plugins.api import (
     OutboundEventType,
     attach_observers,
     get_plugin_manager,
-    initialize_host_action_catalog,
     load_channels,
     load_connection_runtimes,
     resolve_default_channel,
@@ -187,7 +186,7 @@ async def _initialize_core(app: PynchyApp) -> None:
         app.start_linear_work_item_reconciliation,
         dep_factory.make_provider_execution_retirement(app),
     )
-    initialize_host_action_catalog(app.plugin_manager)
+    plugin_configuration.configure_startup_canaries(app.plugin_manager, settings)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     job_sources.configure_plugin_jobs(app.plugin_manager)

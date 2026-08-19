@@ -171,8 +171,10 @@ def validate_canary_target_profile(
 
 def _validate_canary_tools(scenario_ids: list[str], resolved_tools: set[str]) -> None:
     """Ensure each selected scenario has its declared integration enabled."""
+    # NOTE: Update docs/architecture/action-coverage.md § Agentic canary runner.
     required_tools = {
         "calendar.round.trip": "caldav",
+        "desktop.computer.round.trip": "computer_use",
         "calendar.google.round.trip": "gcal",
         "drive.google.round.trip": "gdrive",
         "linear.workspace.round.trip": "linear",

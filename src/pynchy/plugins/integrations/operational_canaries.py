@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import aiohttp
@@ -98,6 +99,60 @@ class _LinearArtifact:
 class _ProtonArtifact:
     mailbox: str
     message_id: str
+
+
+@dataclass(frozen=True)
+class _ComputerUseArtifact:
+    path: Path
+    expected_bytes: int
+
+
+class ComputerUseRoundTripCanary:
+    """Capture, verify, then remove one desktop screenshot."""
+
+    def __init__(self, handler: ServiceHandler) -> None:
+        self._handler = handler
+
+    async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
+        result = _service_result(
+            await self._handler(
+                {
+                    "action": "capture",
+                    "label": f"canary-{context.run_id}",
+                    "source_group": context.target_profile,
+                }
+            )
+        )
+        screenshot = result.get("screenshot")
+        if not isinstance(screenshot, dict):
+            raise CanaryServiceError("Computer use returned no screenshot artifact")
+        path = screenshot.get("host_path")
+        expected_bytes = screenshot.get("bytes")
+        if not isinstance(path, str) or not isinstance(expected_bytes, int):
+            raise CanaryServiceError("Computer use returned an invalid screenshot artifact")
+        return CanaryExercise(
+            artifact=_ComputerUseArtifact(Path(path), expected_bytes),
+            evidence_refs=("desktop:capture:completed",),
+        )
+
+    async def verify(self, _context: CanaryRunContext, exercise: CanaryExercise) -> tuple[str, ...]:
+        artifact = _computer_use_artifact(exercise)
+        try:
+            actual_bytes = (await asyncio.to_thread(artifact.path.stat)).st_size
+        except FileNotFoundError as exc:
+            raise CanaryServiceError("Computer use screenshot artifact is missing") from exc
+        if artifact.expected_bytes <= 0 or actual_bytes != artifact.expected_bytes:
+            raise CanaryServiceError("Computer use screenshot artifact size is invalid")
+        return ("desktop:capture:verified",)
+
+    async def cleanup(
+        self, _context: CanaryRunContext, exercise: CanaryExercise
+    ) -> tuple[str, ...]:
+        artifact = _computer_use_artifact(exercise)
+        await asyncio.to_thread(artifact.path.unlink, missing_ok=True)
+        if await asyncio.to_thread(artifact.path.exists):
+            raise CanaryServiceError("Computer use retained the canary screenshot")
+        return ("desktop:capture:removed",)
 
 
 class CalendarRoundTripCanary:
@@ -407,6 +462,12 @@ def _service_result(response: dict[str, Any]) -> dict[str, Any]:
 def _calendar_artifact(exercise: CanaryExercise) -> _CalendarArtifact:
     if not isinstance(exercise.artifact, _CalendarArtifact):
         raise CanaryServiceError("Calendar canary artifact has an unexpected type")
+    return exercise.artifact
+
+
+def _computer_use_artifact(exercise: CanaryExercise) -> _ComputerUseArtifact:
+    if not isinstance(exercise.artifact, _ComputerUseArtifact):
+        raise CanaryServiceError("Computer use canary artifact has an unexpected type")
     return exercise.artifact
 
 
