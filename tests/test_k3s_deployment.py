@@ -107,6 +107,8 @@ def test_channel_browser_uses_persistent_profile_and_managed_policy() -> None:
     assert "--shared-browser-context" in script
     assert '--user-data-dir "$profile"' in script
     assert "--no-sandbox" in script
+    assert "-displayfd 3" in script
+    assert "xvfb-run" not in script
     assert {
         "name": "bitwarden-policy",
         "mountPath": "/etc/chromium/policies/managed",
