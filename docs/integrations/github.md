@@ -85,16 +85,17 @@ The plugin emits concise direct host notifications for:
 - Failed check runs associated with several pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
 
-Development agents attach every pull request to the Linear issue with
-`linear_create_attachment`. For new or edited top-level PR comments, actionable
-submitted or edited reviews, inline review comments, and a failed check associated
-with one PR, the webhook resolves that exact attachment. One matching issue on the
-route's workspace receives the event in its canonical Linear conversation. The
-agent fetches current review details, triages them, applies warranted changes in
-the existing worktree, and runs local CI. It doesn't rerun GitHub CI, merge, or
-deploy solely because of the event. Missing, ambiguous, off-board, or unconfigured
-Linear links fall back to a direct workspace notification instead of creating a
-separate agent turn.
+Development agents include every pull request URL in the `evidence_refs` for
+their `Awaiting Review` outcome. The transition creates the native Linear
+attachment before changing state. For new or edited top-level PR comments,
+actionable submitted or edited reviews, inline review comments, and a failed check
+associated with one PR, the webhook resolves that exact attachment. One matching
+issue on the route's workspace receives the event in its canonical Linear
+conversation. The agent fetches current review details, triages them, applies
+warranted changes in the existing worktree, and runs local CI. It doesn't rerun
+GitHub CI, merge, or deploy solely because of the event. Missing, ambiguous,
+off-board, or unconfigured Linear links fall back to a direct workspace
+notification instead of creating a separate agent turn.
 
 A merged-PR event starts an isolated agent turn, which resolves the URL with
 `linear_find_issues_by_attachment_url`, inspects the linked work and runtime

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import (  # noqa: TC003 - beartype resolves configured work-item callbacks at runtime.
     Awaitable,
     Callable,
@@ -10,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.conversation.api import parent_workspace_name
-from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_SETTABLE_STATUSES,
     TERMINAL_STATE_TYPES,
@@ -39,6 +40,9 @@ _PLAN_REQUIRED = "plan is required"
 _DIRECT_USER_REQUIRED = "Human Approved and Rejected require a current direct-human instruction"
 _TERMINAL_USER_REQUIRED = "Only a current direct-human instruction can reopen terminal work"
 _HOST_MANAGED_STATUS = "In Progress is managed by the host execution lease"
+_GITHUB_PULL_REQUEST_URL = re.compile(
+    r"https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)/?"
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,25 @@ class _MoveOutcome:
     blocker: str | None
     handoff_to: str | None
     evidence_refs: tuple[str, ...] | None
+
+
+async def _attach_github_pull_request_evidence(
+    client: LinearClient,
+    issue_id: str,
+    target_status: str,
+    evidence_refs: tuple[str, ...] | None,
+) -> None:
+    if target_status != "awaiting_review":
+        return
+    for evidence_ref in evidence_refs or ():
+        match = _GITHUB_PULL_REQUEST_URL.fullmatch(evidence_ref)
+        if match is not None:
+            owner, repository, number = match.groups()
+            await client.create_attachment(
+                issue_id,
+                f"https://github.com/{owner}/{repository}/pull/{number}",
+                f"{owner}/{repository} #{number}",
+            )
 
 
 @dataclass(frozen=True)
@@ -225,6 +248,12 @@ async def _move_linked(
                 task_id=turn.task_id,
             )
         async with linear_client(workspace=execution.workspace) as client:
+            await _attach_github_pull_request_evidence(
+                client,
+                execution.linear_issue_id,
+                move.target_status,
+                outcome.evidence_refs,
+            )
             updated = await transition_linked_work_item(
                 client,
                 execution.workspace,

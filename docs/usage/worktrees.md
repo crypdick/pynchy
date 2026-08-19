@@ -55,5 +55,6 @@ branch and opens or updates a pull request; it does not merge into `main`.
 For a routed host conversation, that pull request always comes from the
 conversation's child branch, never its parent workspace branch.
 The tool returns the canonical PR URL or an actionable failure. The agent
-attaches every returned PR to the current Linear issue before moving it to
-`Awaiting Review`. Returning a final response doesn't publish automatically.
+includes every returned PR URL in the `Awaiting Review` outcome's evidence.
+That transition attaches the PR to the current Linear issue before changing
+state. Returning a final response doesn't publish automatically.

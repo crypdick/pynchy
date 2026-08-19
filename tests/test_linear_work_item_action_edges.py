@@ -139,6 +139,59 @@ async def test_linked_move_rejects_malformed_outcome_evidence(
     assert error in result["error"]
 
 
+async def test_awaiting_review_attaches_github_pr_evidence(lifecycle: Lifecycle) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-with-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready for review.",
+            "evidence_refs": [
+                "https://github.com/crypdick/pynchy/pull/104",
+                "ddfdace8",
+            ],
+        },
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert lifecycle.state.attachments == [
+        {
+            "id": "attachment-1",
+            "url": "https://github.com/crypdick/pynchy/pull/104",
+            "title": "crypdick/pynchy #104",
+            "subtitle": None,
+        }
+    ]
+
+
+async def test_awaiting_review_stays_in_progress_when_pr_attachment_fails(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    lifecycle.state.attachment_success = False
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-with-failed-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready for review.",
+            "evidence_refs": ["https://github.com/crypdick/pynchy/pull/104"],
+        },
+    )
+
+    assert result == {"error": "Linear did not create the attachment"}
+    assert lifecycle.state.issue["state"]["name"] == "In Progress"
+
+
 async def test_provider_move_rejects_an_issue_with_malformed_state(lifecycle: Lifecycle) -> None:
     lifecycle.state.issue["state"] = None
 
