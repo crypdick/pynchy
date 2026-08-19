@@ -115,6 +115,12 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         "publish_managed_feature",
     ),
     agent_action(
+        "lifecycle.managed.feature.rebase",
+        "agent-tools",
+        "Rebase one manifest-bound managed feature onto its remote default branch.",
+        "rebase_managed_feature",
+    ),
+    agent_action(
         "lifecycle.context.reset",
         "agent-tools",
         "Clear an agent session and start a new context.",

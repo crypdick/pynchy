@@ -20,6 +20,7 @@ from pynchy.host.git_ops._worktree_notify import (
 from pynchy.host.git_ops.managed_feature import (
     ManagedFeaturePublication,
     ManagedFeatureResolution,
+    host_rebase_managed_feature,  # noqa: F401 - curated Git adapter surface.
     read_managed_feature_patch,
     resolve_managed_feature_publication,
 )

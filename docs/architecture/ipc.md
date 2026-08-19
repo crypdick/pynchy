@@ -123,6 +123,7 @@ outside the group's `responses/` directory.
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |
 | `sync_worktree_to_main` | Push worktree commits and open or update a PR | No |
+| `rebase_managed_feature` | Rebase one managed feature onto its remote default branch | No |
 | `publish_managed_feature` | Open or update a PR for one managed feature | No |
 
 #### Managed feature PR publication
@@ -138,6 +139,13 @@ under one configured repository root and writes the publication result to
 records; it never scans or falls back across worktree directories. See the
 [security model](security.md#5c-host-mutating-operations-cop-gate) for the
 manifest binding, approval receipt, and pre-push check.
+
+`rebase_managed_feature` accepts the same canonical slug and derives the same
+manifest-bound repository, worktree, branch, and remote default branch. It
+rejects dirty or invalid worktrees, rebases only onto the host-verified remote
+SHA, and never pushes, opens a pull request, merges, or deploys. If it leaves a
+conflict, the agent resolves it with `git rebase --continue`, `--abort`, or
+`--skip` before publishing.
 
 ## Authorization
 
