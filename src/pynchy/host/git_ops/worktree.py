@@ -34,6 +34,7 @@ from pynchy.host.git_ops.utils import (
     count_commits,
     detect_main_branch,
     git_env_with_token,
+    git_env_without_credentials,
     run_git,
 )
 from pynchy.host.git_ops.worktree_venv import mark_worktree_used
@@ -184,7 +185,18 @@ def _sync_existing_worktree(
         logger.warning("Worktree fetch failed", group=group_folder, error=fetch.stderr.strip())
     else:
         head_before = run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
-        merge = run_git("merge", "--no-edit", f"origin/{main_branch}", cwd=worktree_path)
+        merge = run_git(
+            "-c",
+            "user.name=Pynchy",
+            "-c",
+            "user.email=pynchy@localhost",
+            "merge",
+            "--no-edit",
+            f"origin/{main_branch}",
+            cwd=worktree_path,
+            env=git_env_without_credentials(include_identity=False),
+            inherit_env=False,
+        )
         if merge.returncode != 0:
             notices.append(
                 f"Failed to pull latest changes: merge of origin/{main_branch} failed "
