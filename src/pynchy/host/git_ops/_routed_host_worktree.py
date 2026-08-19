@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import fcntl
+import os
+import stat
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
+    Iterator,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
     Sequence,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
 )
+from contextlib import contextmanager
 from pathlib import Path
+from typing import IO
 
 from pynchy.host.git_ops._worktree_models import (
     RoutedHostWorktreeError,
@@ -36,30 +42,34 @@ def resolve_routed_host_worktree_cwd(
     )
     repo_ctx = _select_routed_host_repo(source_common_dir, repo_contexts)
 
-    worktree_path = repo_ctx.worktrees_dir / group_folder
-    if worktree_path.is_symlink():
-        raise RoutedHostWorktreeError(
-            "Routed conversation worktree path is a symbolic link; leave it untouched and "
-            "recover it manually."
-        )
-    if worktree_path.exists():
-        _validate_routed_worktree_slot(worktree_path, repo_ctx, group_folder)
-    elif recovered:
-        _reject_unsafe_legacy_source(source_root, repo_ctx)
+    # Git worktree metadata and remote-tracking refs are shared by every child.
+    # Recheck the slot after acquiring the repository-wide lock so waiters never
+    # act on the pre-lock filesystem state.
+    with _routed_worktree_lock(source_common_dir):
+        worktree_path = repo_ctx.worktrees_dir / group_folder
+        if worktree_path.is_symlink():
+            raise RoutedHostWorktreeError(
+                "Routed conversation worktree path is a symbolic link; leave it untouched and "
+                "recover it manually."
+            )
+        if worktree_path.exists():
+            _validate_routed_worktree_slot(worktree_path, repo_ctx, group_folder)
+        elif recovered:
+            _reject_unsafe_legacy_source(source_root, repo_ctx)
 
-    try:
-        worktree = ensure_worktree_fn(group_folder, repo_ctx)
-    except (OSError, WorktreeError) as exc:
-        logger.warning(
-            "Failed to prepare routed host worktree",
-            group=group_folder,
-            slug=repo_ctx.slug,
-            error=str(exc),
-        )
-        raise RoutedHostWorktreeError(
-            "Could not prepare the routed conversation's isolated worktree. "
-            "Check repository access and retry."
-        ) from exc
+        try:
+            worktree = ensure_worktree_fn(group_folder, repo_ctx)
+        except (OSError, WorktreeError) as exc:
+            logger.warning(
+                "Failed to prepare routed host worktree",
+                group=group_folder,
+                slug=repo_ctx.slug,
+                error=str(exc),
+            )
+            raise RoutedHostWorktreeError(
+                "Could not prepare the routed conversation's isolated worktree. "
+                "Check repository access and retry."
+            ) from exc
 
     relative_cwd = source_cwd.resolve().relative_to(source_root)
     routed_cwd = worktree.path / relative_cwd
@@ -68,6 +78,50 @@ def resolve_routed_host_worktree_cwd(
             "Configured host working directory is unavailable in the routed worktree."
         )
     return RoutedHostWorktreeResult(routed_cwd, tuple(worktree.notices), repo_ctx.slug)
+
+
+@contextmanager
+def _routed_worktree_lock(git_common_dir: Path) -> Iterator[None]:
+    """Serialize routed provisioning that mutates one Git common directory."""
+    with _acquire_routed_worktree_lock(git_common_dir):
+        yield
+
+
+def _acquire_routed_worktree_lock(git_common_dir: Path) -> IO[str]:
+    """Open and exclusively lock the Git-common-dir lock file."""
+    lock_path = git_common_dir / "pynchy-routed-worktree.lock"
+    try:
+        fd = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o600,
+        )
+    except OSError as exc:
+        raise RoutedHostWorktreeError(
+            "Could not lock the routed conversation's repository worktrees. "
+            "Check repository access and retry."
+        ) from exc
+    try:
+        lock_stat = os.fstat(fd)
+        if not stat.S_ISREG(lock_stat.st_mode):
+            raise OSError("routed worktree lock is not a regular file")
+        os.fchmod(fd, 0o600)
+        lock_file = os.fdopen(fd, "r+", encoding="utf-8")
+    except OSError as exc:
+        os.close(fd)
+        raise RoutedHostWorktreeError(
+            "Could not lock the routed conversation's repository worktrees. "
+            "Check repository access and retry."
+        ) from exc
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    except OSError as exc:
+        lock_file.close()
+        raise RoutedHostWorktreeError(
+            "Could not lock the routed conversation's repository worktrees. "
+            "Check repository access and retry."
+        ) from exc
+    return lock_file
 
 
 def select_routed_host_repo(source_cwd: Path, repo_contexts: Sequence[RepoContext]) -> RepoContext:

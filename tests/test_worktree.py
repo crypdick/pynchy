@@ -5,9 +5,12 @@ Uses real git repos via tmp_path to validate actual git behavior.
 
 from __future__ import annotations
 
+import fcntl
+import os
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
-from typing import TYPE_CHECKING
+from threading import Event, Thread, current_thread
+from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +19,7 @@ from conftest import make_settings
 from pynchy.host.git_ops.api import (
     RepoContext,
     RoutedHostWorktreeError,
+    RoutedHostWorktreeResult,
     WorktreeError,
     WorktreeResult,
     ensure_worktree,
@@ -257,6 +261,123 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    @pytest.mark.parametrize("kind", ["symlink", "fifo"])
+    def test_rejects_unsafe_routed_worktree_lock_file(self, git_env: dict, kind: str):
+        lock_path = git_env["project"] / ".git" / "pynchy-routed-worktree.lock"
+        if kind == "symlink":
+            lock_path.symlink_to(git_env["project"] / "README.md")
+        else:
+            os.mkfifo(lock_path)
+
+        with pytest.raises(RoutedHostWorktreeError, match="Could not lock"):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_unsafe-lock",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+    def test_lock_failure_closes_file_and_maps_error(self, git_env: dict):
+        opened_files: list[IO[str]] = []
+        original_fdopen = os.fdopen
+
+        def capture_fdopen(fd: int, mode: str, *, encoding: str) -> IO[str]:
+            lock_file = original_fdopen(fd, mode, encoding=encoding)
+            opened_files.append(lock_file)
+            return lock_file
+
+        with (
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.os.fdopen",
+                side_effect=capture_fdopen,
+            ),
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.fcntl.flock",
+                side_effect=OSError("lock failed"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not lock") as exc_info,
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_lock-failure",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert isinstance(exc_info.value.__cause__, OSError)
+        assert len(opened_files) == 1
+        assert opened_files[0].closed
+
+    def test_serializes_provisioning_for_routes_in_one_repository(self, git_env: dict):
+        """Two routed children must not mutate one Git repository concurrently."""
+        repo_ctx = git_env["repo_ctx"]
+        first_folder = "host__thread_conversation-conv_first"
+        second_folder = "host__thread_conversation-conv_second"
+        first_entered = Event()
+        release_first = Event()
+        second_lock_attempted = Event()
+        second_entered = Event()
+        results: list[RoutedHostWorktreeResult] = []
+        thread_errors: list[Exception] = []
+        original_flock = fcntl.flock
+
+        def tracked_flock(fd: int, operation: int) -> None:
+            if current_thread().name == "routed-second-contender":
+                second_lock_attempted.set()
+            original_flock(fd, operation)
+
+        def provision(folder: str, repo: RepoContext) -> WorktreeResult:
+            if folder == first_folder:
+                first_entered.set()
+                assert release_first.wait(timeout=2)
+            else:
+                second_entered.set()
+            path = repo.worktrees_dir / folder
+            path.mkdir(parents=True)
+            return WorktreeResult(path)
+
+        def resolve(folder: str) -> None:
+            try:
+                results.append(
+                    resolve_routed_host_worktree_cwd(
+                        folder,
+                        git_env["project"],
+                        [repo_ctx],
+                        recovered=False,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001  # allow: exception-handling; thread result
+                thread_errors.append(exc)
+
+        with (
+            patch("pynchy.host.git_ops.worktree.ensure_worktree", side_effect=provision),
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.fcntl.flock",
+                side_effect=tracked_flock,
+            ),
+        ):
+            first = Thread(target=resolve, args=(first_folder,))
+            second = Thread(
+                target=resolve,
+                args=(second_folder,),
+                name="routed-second-contender",
+            )
+            first.start()
+            assert first_entered.wait(timeout=2)
+            second.start()
+            try:
+                assert second_lock_attempted.wait(timeout=2)
+                assert not second_entered.is_set()
+            finally:
+                release_first.set()
+                first.join(timeout=2)
+                second.join(timeout=2)
+
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert thread_errors == []
+        assert {result.cwd.name for result in results} == {first_folder, second_folder}
+
     def test_selects_repository_that_owns_source_checkout(self, git_env: dict):
         assert (
             select_routed_host_repo(git_env["project"], [git_env["repo_ctx"]])
