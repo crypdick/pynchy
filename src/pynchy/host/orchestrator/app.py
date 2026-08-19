@@ -325,6 +325,7 @@ from pynchy.plugins.api import (
 )
 from pynchy.plugins.integrations.api import (
     LinearIssueControl,
+    attach_work_item_pull_request,
     create_linear_workspace_todo,
     get_active_matrix_route,
     linear_workspace_boards,
@@ -355,6 +356,7 @@ from pynchy.state.api import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_conversation,
+    get_in_flight_turn_for_group,
     get_latest_canary_runs,
     get_messages_since,
     get_recent_canary_runs,
@@ -632,6 +634,8 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             settings=cast("Callable[[], LifecycleSettings]", get_settings),
             resolve_publication_repos=resolve_publication_repos,
             get_work_item_execution_for_turn=get_work_item_execution_for_turn,
+            get_current_turn=get_in_flight_turn_for_group,
+            attach_work_item_pull_request=attach_work_item_pull_request,
             detect_main_branch=detect_main_branch,
             host_create_pr_from_worktree=host_create_pr_from_worktree,
             redact_git_diagnostic=redact_git_diagnostic,

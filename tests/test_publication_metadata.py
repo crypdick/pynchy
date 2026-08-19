@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,21 +27,15 @@ class LinearExecutionFixture:
         ),
     ],
 )
-async def test_publication_metadata_rejects_empty_pr_fields(
-    data: dict[str, str], message: str
-) -> None:
-    assert await publication_metadata(data, None) == message
+def test_publication_metadata_rejects_empty_pr_fields(data: dict[str, str], message: str) -> None:
+    assert publication_metadata(data, None) == message
 
 
-async def test_linear_publication_metadata_derives_branch_name() -> None:
-    with patch(
-        "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-        new=AsyncMock(return_value=LinearExecutionFixture(linear_issue_identifier="SYN-247")),
-    ):
-        metadata = await publication_metadata(
-            {"title": "Fix login", "body": "## Summary\nFix the login flow."},
-            "turn-syn-247",
-        )
+def test_linear_publication_metadata_derives_branch_name() -> None:
+    metadata = publication_metadata(
+        {"title": "Fix login", "body": "## Summary\nFix the login flow."},
+        LinearExecutionFixture(linear_issue_identifier="SYN-247"),
+    )
 
     assert metadata == (
         "Fix login",
@@ -51,15 +44,11 @@ async def test_linear_publication_metadata_derives_branch_name() -> None:
     )
 
 
-async def test_linear_publication_metadata_keeps_existing_resolve_link() -> None:
-    with patch(
-        "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-        new=AsyncMock(return_value=LinearExecutionFixture(linear_issue_identifier="SYN-247")),
-    ):
-        metadata = await publication_metadata(
-            {"title": "Fix login", "body": "## Summary\n\nresolves syn-247"},
-            "turn-syn-247",
-        )
+def test_linear_publication_metadata_keeps_existing_resolve_link() -> None:
+    metadata = publication_metadata(
+        {"title": "Fix login", "body": "## Summary\n\nresolves syn-247"},
+        LinearExecutionFixture(linear_issue_identifier="SYN-247"),
+    )
 
     assert metadata == (
         "Fix login",
@@ -68,20 +57,19 @@ async def test_linear_publication_metadata_keeps_existing_resolve_link() -> None
     )
 
 
-async def test_linear_publication_metadata_rejects_oversized_resolve_link() -> None:
+def test_linear_publication_metadata_rejects_oversized_resolve_link() -> None:
     footer = "\n\nResolves SYN-247"
     body = "x" * (64 * 1024 - len(footer) + 1)
-    with patch(
-        "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-        new=AsyncMock(return_value=LinearExecutionFixture(linear_issue_identifier="SYN-247")),
-    ):
-        metadata = await publication_metadata({"title": "Fix login", "body": body}, "turn")
+    metadata = publication_metadata(
+        {"title": "Fix login", "body": body},
+        LinearExecutionFixture(linear_issue_identifier="SYN-247"),
+    )
 
     assert metadata == "Publication blocked: PR body with Linear resolve link exceeds 64 KiB."
 
 
-async def test_publication_metadata_keeps_generic_worktree_branch_unchanged() -> None:
-    assert await publication_metadata({"title": "Fix login", "body": "body"}, None) == (
+def test_publication_metadata_keeps_generic_worktree_branch_unchanged() -> None:
+    assert publication_metadata({"title": "Fix login", "body": "body"}, None) == (
         "Fix login",
         "body",
         None,
@@ -104,15 +92,11 @@ async def test_publication_metadata_keeps_generic_worktree_branch_unchanged() ->
         ),
     ],
 )
-async def test_linear_publication_metadata_rejects_unusable_branch_inputs(
+def test_linear_publication_metadata_rejects_unusable_branch_inputs(
     execution: LinearExecutionFixture | None,
     title: str,
     expected: tuple[str, str, None] | str,
 ) -> None:
-    with patch(
-        "pynchy.host.container_manager.ipc.handlers_lifecycle.get_work_item_execution_for_turn",
-        new=AsyncMock(return_value=execution),
-    ):
-        metadata = await publication_metadata({"title": title, "body": "body"}, "turn")
+    metadata = publication_metadata({"title": title, "body": "body"}, execution)
 
     assert metadata == expected

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import urlparse
 
 from conftest import make_settings
@@ -102,6 +102,7 @@ class TestHostCreatePrFromWorktree:
             result = host_create_pr_from_worktree("agent-1", git_env["repo_ctx"])
 
         assert result["success"] is True
+        assert result["pr_url"] == "https://github.com/owner/repo/pull/1"
         assert "1 commit(s)" in result["message"]
         assert "PR" in result["message"]
         assert urlparse(result["message"].rpartition(" ")[2]).hostname == "github.com"
@@ -458,6 +459,11 @@ class TestIpcPolicyRouting:
                 return_value=[source_repo],
             ) as resolve_publication_repos,
             patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
+                new_callable=AsyncMock,
+                return_value=Mock(turn_id="turn-source"),
+            ),
+            patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
                 new_callable=AsyncMock,
                 return_value=ReceiptVerification.VALID,
@@ -508,6 +514,11 @@ class TestIpcPolicyRouting:
                 "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
                 side_effect=PublicationRepositoryError("Routed host turn is no longer active"),
             ) as resolve_publication_repos,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_current_turn",
+                new_callable=AsyncMock,
+                return_value=Mock(turn_id="turn-stale"),
+            ),
             patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
                 new_callable=AsyncMock,

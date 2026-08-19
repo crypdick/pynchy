@@ -56,5 +56,6 @@ For a routed host conversation, that pull request always comes from the
 conversation's child branch, never its parent workspace branch.
 The tool returns the canonical PR URL or an actionable failure. The agent
 includes every returned PR URL in the `Awaiting Review` outcome's evidence.
-That transition attaches the PR to the current Linear issue before changing
-state. Returning a final response doesn't publish automatically.
+For Linear-owned work, successful publication attaches the host-validated PR
+to the exact in-flight issue; the transition can idempotently backfill it from
+preserved evidence. Returning a final response doesn't publish automatically.

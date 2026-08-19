@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.plugins.integrations.api import attach_work_item_pull_request
 from pynchy.plugins.integrations.linear_work_items import handle_list_work_items
 from pynchy.work_items.api import WorkItemTransitionStatus
 from tests.linear_work_items_support import (
@@ -167,6 +168,61 @@ async def test_awaiting_review_attaches_github_pr_evidence(lifecycle: Lifecycle)
             "subtitle": None,
         }
     ]
+    linked = await lifecycle.client.find_issues_by_attachment_url(
+        "https://github.com/crypdick/pynchy/pull/104"
+    )
+    assert linked[0]["issue"]["id"] == "issue-1"
+
+
+async def test_host_publication_attachment_supports_routing_lookup(
+    lifecycle: Lifecycle,
+) -> None:
+    error = await attach_work_item_pull_request(
+        "pynchy",
+        "issue-1",
+        "crypdick/pynchy",
+        "https://github.com/crypdick/pynchy/pull/104",
+    )
+
+    assert error is None
+    linked = await lifecycle.client.find_issues_by_attachment_url(
+        "https://github.com/crypdick/pynchy/pull/104"
+    )
+    assert linked[0]["title"] == "crypdick/pynchy #104"
+    assert linked[0]["issue"]["id"] == "issue-1"
+
+
+async def test_awaiting_review_backfills_preserved_pr_evidence(lifecycle: Lifecycle) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    blocked = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked-with-pr",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "Waiting for provider review.",
+            "evidence_refs": ["https://github.com/crypdick/pynchy/pull/104"],
+        },
+    )
+    assert blocked["result"]["work_item"]["status"] == "blocked"
+    assert lifecycle.state.attachments == []
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-ready-with-preserved-pr",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Provider review arrived."},
+    )
+
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
+    assert result["result"]["work_item"]["evidence_refs"] == [
+        "https://github.com/crypdick/pynchy/pull/104"
+    ]
+    assert lifecycle.state.attachments[0]["url"] == ("https://github.com/crypdick/pynchy/pull/104")
 
 
 async def test_awaiting_review_stays_in_progress_when_pr_attachment_fails(

@@ -34,7 +34,18 @@ class LifecycleSettings(Protocol):
 
 class LinearExecution(Protocol):
     @property
+    def workspace(self) -> str: ...
+
+    @property
+    def linear_issue_id(self) -> str: ...
+
+    @property
     def linear_issue_identifier(self) -> str: ...
+
+
+class CurrentTurn(Protocol):
+    @property
+    def turn_id(self) -> str: ...
 
 
 @runtime_checkable
@@ -71,6 +82,19 @@ async def _unconfigured_execution(_turn_id: str) -> LinearExecution | None:  # n
     raise RuntimeError("Lifecycle execution lookup has not been composed")
 
 
+async def _unconfigured_current_turn(_source_group: str) -> CurrentTurn | None:  # noqa: RUF029 - async callback contract.
+    raise RuntimeError("Lifecycle current-turn lookup has not been composed")
+
+
+async def _unconfigured_attachment(  # noqa: RUF029 - async callback contract.
+    _workspace: str,
+    _issue_id: str,
+    _repository: str,
+    _pr_url: str,
+) -> str | None:
+    raise RuntimeError("Lifecycle attachment creation has not been composed")
+
+
 def _unconfigured_git(*_args: object, **_kwargs: object) -> NoReturn:
     raise RuntimeError("Lifecycle Git operations have not been composed")
 
@@ -79,6 +103,10 @@ _get_settings: Callable[[], LifecycleSettings] = _unconfigured_settings
 _resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]] = _unconfigured_repos
 get_work_item_execution_for_turn: Callable[[str], Awaitable[LinearExecution | None]] = (
     _unconfigured_execution
+)
+get_current_turn: Callable[[str], Awaitable[CurrentTurn | None]] = _unconfigured_current_turn
+attach_work_item_pull_request: Callable[[str, str, str, str], Awaitable[str | None]] = (
+    _unconfigured_attachment
 )
 detect_main_branch: Callable[..., str] = _unconfigured_git
 host_create_pr_from_worktree: Callable[..., dict[str, Any]] = _unconfigured_git
@@ -91,6 +119,8 @@ class LifecycleRuntime:
     settings: Callable[[], LifecycleSettings]
     resolve_publication_repos: Callable[[str, str | None], Sequence[RepoContext]]
     get_work_item_execution_for_turn: Callable[[str], Awaitable[LinearExecution | None]]
+    get_current_turn: Callable[[str], Awaitable[CurrentTurn | None]]
+    attach_work_item_pull_request: Callable[[str, str, str, str], Awaitable[str | None]]
     detect_main_branch: Callable[..., str]
     host_create_pr_from_worktree: Callable[..., dict[str, Any]]
     redact_git_diagnostic: Callable[[str], str]
@@ -100,11 +130,14 @@ class LifecycleRuntime:
 def configure_lifecycle_runtime(runtime: LifecycleRuntime) -> None:
     """Bind settings and source-control operations at host composition."""
     global _get_settings, _resolve_publication_repos, get_work_item_execution_for_turn  # noqa: PLW0603 - one host process owns these composed operations.
+    global get_current_turn, attach_work_item_pull_request  # noqa: PLW0603 - one host process owns these composed operations.
     global detect_main_branch, host_create_pr_from_worktree  # noqa: PLW0603 - one host process owns these composed operations.
     global redact_git_diagnostic, run_git  # noqa: PLW0603 - one host process owns these composed operations.
     _get_settings = runtime.settings
     _resolve_publication_repos = runtime.resolve_publication_repos
     get_work_item_execution_for_turn = runtime.get_work_item_execution_for_turn
+    get_current_turn = runtime.get_current_turn
+    attach_work_item_pull_request = runtime.attach_work_item_pull_request
     detect_main_branch = runtime.detect_main_branch
     host_create_pr_from_worktree = runtime.host_create_pr_from_worktree
     redact_git_diagnostic = runtime.redact_git_diagnostic
@@ -134,8 +167,8 @@ def _aggregate_publication_results(
     }
 
 
-async def publication_metadata(  # noqa: PLR0911 - each validation error is user-actionable.
-    data: dict[str, Any], turn_id: str | None
+def publication_metadata(  # noqa: PLR0911 - each validation error is user-actionable.
+    data: dict[str, Any], execution: LinearExecution | None
 ) -> tuple[str | None, str | None, str | None] | str:
     """Validate agent-authored PR text and derive a Linear-readable branch."""
     title = data.get("title")
@@ -146,9 +179,6 @@ async def publication_metadata(  # noqa: PLR0911 - each validation error is user
         return "Publication blocked: PR title must be non-empty and at most 256 bytes."
     if not isinstance(body, str) or not body.strip() or len(body.encode()) > 64 * 1024:
         return "Publication blocked: PR body must be non-empty and at most 64 KiB."
-    if turn_id is None:
-        return title.strip(), body.strip(), None
-    execution = await get_work_item_execution_for_turn(turn_id)
     if execution is None:
         return title.strip(), body.strip(), None
     identifier = _LINEAR_IDENTIFIER.fullmatch(execution.linear_issue_identifier)
@@ -168,6 +198,66 @@ async def publication_metadata(  # noqa: PLR0911 - each validation error is user
         pr_body,
         f"{identifier.group('team').lower()}/{identifier.group('number')}/{slug}",
     )
+
+
+async def _current_publication_turn(
+    data: dict[str, Any], source_group: str
+) -> tuple[str | None, str | None]:
+    """Resolve current host turn; reject stale agent process metadata."""
+    current = await get_current_turn(source_group)
+    raw_turn_id = data.get("turn_id")
+    supplied_turn_id = raw_turn_id if isinstance(raw_turn_id, str) and raw_turn_id else None
+    if current is None:
+        return (
+            (None, None)
+            if supplied_turn_id is None
+            else (None, "request does not match the current agent turn.")
+        )
+    if supplied_turn_id is not None and supplied_turn_id != current.turn_id:
+        return None, "request does not match the current agent turn."
+    return current.turn_id, None
+
+
+def _validated_pull_request_url(result: dict[str, Any], repo_ctx: RepoContext) -> str | None:
+    pr_url = result.get("pr_url")
+    if not isinstance(pr_url, str):
+        return None
+    pattern = rf"https://github\.com/{re.escape(repo_ctx.slug)}/pull/[1-9][0-9]*"
+    return pr_url if re.fullmatch(pattern, pr_url) is not None else None
+
+
+async def _attach_published_pull_request(
+    execution: LinearExecution,
+    repo_ctx: RepoContext,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    if not result.get("success"):
+        return result
+    pr_url = _validated_pull_request_url(result, repo_ctx)
+    if pr_url is None:
+        return {
+            **result,
+            "success": False,
+            "message": (
+                "Pull request published, but host returned no valid canonical PR URL. "
+                "Retry publication."
+            ),
+        }
+    error = await attach_work_item_pull_request(
+        execution.workspace,
+        execution.linear_issue_id,
+        repo_ctx.slug,
+        pr_url,
+    )
+    if error is None:
+        return result
+    return {
+        **result,
+        "success": False,
+        "message": (
+            f"Pull request published, but Linear attachment failed: {error}. Retry publication."
+        ),
+    }
 
 
 def _publication_patch_context(
@@ -268,7 +358,7 @@ async def _handle_reset_context(
     )
 
 
-async def _handle_sync_worktree_to_main(
+async def _handle_sync_worktree_to_main(  # noqa: PLR0911 - rejections write responses.
     data: dict[str, Any],
     source_group: str,
     _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
@@ -309,9 +399,22 @@ async def _handle_sync_worktree_to_main(
         )
         return
 
-    raw_turn_id = data.get("turn_id")
-    turn_id = raw_turn_id if isinstance(raw_turn_id, str) and raw_turn_id else None
-    metadata = await publication_metadata(data, turn_id)
+    authoritative_turn_id, turn_error = await _current_publication_turn(data, source_group)
+    if turn_error is not None:
+        write_ipc_response(
+            result_dir / f"{request_id}.json",
+            {
+                "success": False,
+                "message": f"Publication blocked: {turn_error}",
+            },
+        )
+        return
+    execution = (
+        await get_work_item_execution_for_turn(authoritative_turn_id)
+        if authoritative_turn_id is not None
+        else None
+    )
+    metadata = publication_metadata(data, execution)
     if isinstance(metadata, str):
         write_ipc_response(
             result_dir / f"{request_id}.json", {"success": False, "message": metadata}
@@ -319,7 +422,7 @@ async def _handle_sync_worktree_to_main(
         return
     pr_title, pr_body, publication_branch = metadata
     try:
-        repo_contexts = _resolve_publication_repos(source_group, turn_id)
+        repo_contexts = _resolve_publication_repos(source_group, authoritative_turn_id)
     except PublicationRepositoryError as exc:
         message = f"Publication blocked: {exc}"
         write_ipc_response(
@@ -381,6 +484,8 @@ async def _handle_sync_worktree_to_main(
             repo_ctx,
             **publication_options,
         )
+        if execution is not None:
+            repo_result = await _attach_published_pull_request(execution, repo_ctx, repo_result)
         publication_results.append((repo_ctx, repo_result))
     result = _aggregate_publication_results(publication_results)
     write_ipc_response(result_dir / f"{request_id}.json", result)

@@ -81,6 +81,22 @@ async def _attach_github_pull_request_evidence(
             )
 
 
+async def attach_work_item_pull_request(
+    workspace: str,
+    issue_id: str,
+    repository: str,
+    pr_url: str,
+) -> str | None:
+    """Attach one host-validated publication to its exact Linear execution."""
+    try:
+        async with linear_client(workspace=workspace) as client:
+            number = pr_url.rsplit("/", maxsplit=1)[-1]
+            await client.create_attachment(issue_id, pr_url, f"{repository} #{number}")
+    except (LinearError, ValueError) as exc:
+        return str(exc)
+    return None
+
+
 @dataclass(frozen=True)
 class LinearWorkItemsRuntime:
     """Durable work-item queries and bindings selected during plugin composition."""
@@ -252,7 +268,9 @@ async def _move_linked(
                 client,
                 execution.linear_issue_id,
                 move.target_status,
-                outcome.evidence_refs,
+                outcome.evidence_refs
+                if outcome.evidence_refs is not None
+                else execution.evidence_refs,
             )
             updated = await transition_linked_work_item(
                 client,

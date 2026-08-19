@@ -40,6 +40,16 @@ class FakeLinearState:
         return deepcopy(self.issue) if issue_id == self.issue["id"] else None
 
     async def query(self, _query: str, **variables: object) -> dict[str, Any]:
+        if "attachmentsForURL" in _query:
+            return {
+                "attachmentsForURL": {
+                    "nodes": [
+                        {**attachment, "issue": deepcopy(self.issue)}
+                        for attachment in self.attachments
+                        if attachment["url"] == variables["url"]
+                    ]
+                }
+            }
         if "attachmentCreate" in _query:
             if not self.attachment_success:
                 return {"attachmentCreate": {"success": False}}
