@@ -150,6 +150,35 @@ async def _publish_managed_feature_handle(
     )
 
 
+@tool(
+    "rebase_managed_feature",
+    (
+        "Rebase one committed managed new-feature branch onto its verified remote default "
+        "branch. The host derives its repository, worktree, branch, and target from the "
+        "active feature manifest. This never pushes, opens a pull request, merges, or deploys."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "feature_slug": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            }
+        },
+        "required": ["feature_slug"],
+        "additionalProperties": False,
+    },
+)
+async def _rebase_managed_feature_handle(
+    arguments: dict[str, Any],
+) -> list[TextContent] | CallToolResult:
+    return await _request_publication(
+        "rebase_managed_feature",
+        {"feature_slug": arguments["feature_slug"]},
+    )
+
+
 def _exit_container() -> NoReturn:
     """Write the close sentinel and terminate after an explicit context reset."""
     close_sentinel = _ipc.get_agent_tool_runtime().ipc_dir / "input" / "_close"

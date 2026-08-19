@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import subprocess  # noqa: S404 - streams fixed Git commands between host-owned repositories.
 import tempfile
 from collections.abc import (
     Iterator,  # noqa: TC003 - beartype resolves managed-feature iterator annotations at runtime.
@@ -32,6 +33,7 @@ from pynchy.host.git_ops.repo import (
 )
 from pynchy.host.git_ops.utils import (
     git_env_with_token,
+    git_env_without_credentials,
     redact_git_diagnostic,
     run_git,
 )
@@ -97,6 +99,16 @@ def resolve_managed_feature_publication(
     The feature's worktree is always derived from its configured repository root;
     this function never enumerates or falls back across worktree directories.
     """
+    return _resolve_managed_feature(feature_slug, repo_contexts, require_rebased=True)
+
+
+def _resolve_managed_feature(
+    feature_slug: str,
+    repo_contexts: Sequence[RepoContext],
+    *,
+    require_rebased: bool,
+) -> ManagedFeatureResolution:
+    """Resolve one manifest-bound feature, optionally before it reaches the remote base."""
     if not is_managed_feature_slug(feature_slug):
         return ManagedFeatureResolution(
             publication=None,
@@ -106,7 +118,11 @@ def resolve_managed_feature_publication(
     publications: list[ManagedFeaturePublication] = []
     for repo_ctx in repo_contexts:
         try:
-            publication = _resolve_repo_feature(feature_slug, repo_ctx)
+            publication = _resolve_repo_feature(
+                feature_slug,
+                repo_ctx,
+                require_rebased=require_rebased,
+            )
         except _ManifestValidationError as exc:
             return ManagedFeatureResolution(publication=None, error=str(exc))
         if publication is not None:
@@ -134,6 +150,8 @@ def resolve_managed_feature_publication(
 def _resolve_repo_feature(
     feature_slug: str,
     repo_ctx: RepoContext,
+    *,
+    require_rebased: bool,
 ) -> ManagedFeaturePublication | None:
     repo_root = _configured_repo_root(repo_ctx)
     record = _load_feature_record(feature_slug, repo_ctx, repo_root)
@@ -198,7 +216,7 @@ def _resolve_repo_feature(
             raise _ManifestValidationError(
                 f"Publication blocked: could not verify base for managed feature {feature_slug!r}."
             )
-        if not _head_descends_from(base_sha, head_sha, transport):
+        if require_rebased and not _head_descends_from(base_sha, head_sha, transport):
             raise _ManifestValidationError(
                 "Publication blocked: managed feature must be rebased on the remote "
                 f"default branch {main_branch!r}."
@@ -230,6 +248,217 @@ def _resolve_repo_feature(
     )
     _validate_clean_worktree(publication)
     return publication
+
+
+def host_rebase_managed_feature(
+    feature_slug: str,
+    repo_contexts: Sequence[RepoContext],
+) -> dict[str, object]:
+    """Rebase one clean manifest-bound feature onto its verified remote default branch."""
+    resolution = _resolve_managed_feature(feature_slug, repo_contexts, require_rebased=False)
+    publication = resolution.publication
+    if publication is None:
+        return {"success": False, "message": resolution.error or "Rebase blocked."}
+    if not _managed_feature_head_is_current(publication):
+        return {
+            "success": False,
+            "message": "Rebase blocked: managed feature changed during validation. Retry.",
+        }
+    try:
+        _validate_clean_worktree(publication)
+        return _rebase_validated_managed_feature(publication)
+    except _ManifestValidationError as exc:
+        return {"success": False, "message": str(exc)}
+
+
+def _rebase_validated_managed_feature(
+    publication: ManagedFeaturePublication,
+) -> dict[str, object]:
+    """Fetch the exact base into host-owned metadata, then rebase once."""
+    with _isolated_managed_git(
+        publication.repo_ctx,
+        publication.git_common_dir,
+        publication.object_format,
+    ) as transport:
+        current_base = _fetch_remote_ref(
+            transport,
+            publication.remote_url,
+            f"refs/heads/{publication.main_branch}",
+            "refs/pynchy/managed-rebase-base",
+        )
+        if current_base != publication.base_sha:
+            return {
+                "success": False,
+                "message": (
+                    "Rebase blocked: remote default branch changed during validation. Retry."
+                ),
+            }
+        if _head_descends_from(publication.base_sha, publication.head_sha, transport):
+            return {
+                "success": True,
+                "message": (
+                    f"Managed feature {publication.feature_slug!r} already includes remote default "
+                    f"branch {publication.main_branch!r}."
+                ),
+            }
+        if not _persist_verified_base(publication, transport):
+            return {
+                "success": False,
+                "message": "Rebase blocked: could not prepare the verified remote base.",
+            }
+        result = _run_managed_feature_rebase(publication, _managed_rebase_environment())
+    if result.returncode == 0:
+        return {
+            "success": True,
+            "message": (
+                f"Rebased managed feature {publication.feature_slug!r} onto remote default branch "
+                f"{publication.main_branch!r}."
+            ),
+        }
+    if _has_rebase_in_progress(publication.worktree_path):
+        return {
+            "success": False,
+            "message": (
+                "Managed feature rebase has conflicts. Resolve them, then run "
+                "git rebase --continue or git rebase --abort."
+            ),
+        }
+    diagnostic = redact_git_diagnostic(result.stderr)
+    return {
+        "success": False,
+        "message": f"Rebase blocked: {diagnostic or 'git rebase failed.'}",
+    }
+
+
+def _run_managed_feature_rebase(
+    publication: ManagedFeaturePublication,
+    environment: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    """Run the fixed rebase command against the host-provided base object."""
+    return run_git(
+        "--no-replace-objects",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        f"core.worktree={publication.worktree_path}",
+        "rebase",
+        "--no-verify",
+        publication.base_sha,
+        cwd=publication.worktree_path,
+        env=environment,
+    )
+
+
+def _persist_verified_base(
+    publication: ManagedFeaturePublication,
+    transport: _ManagedGitTransport,
+) -> bool:
+    """Copy the isolated remote base into the validated object store for conflict recovery."""
+    try:
+        source = subprocess.Popen(  # noqa: S603 - fixed Git argv over host-owned metadata.
+            [  # noqa: S607 - Git executable is an application prerequisite.
+                "git",
+                *transport.args,
+                "pack-objects",
+                "--stdout",
+                "--revs",
+            ],
+            cwd=transport.root,
+            env=transport.environment(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
+    if source.stdin is None or source.stdout is None:
+        source.kill()
+        source.wait()
+        return False
+    try:
+        source.stdin.write(f"{publication.base_sha}\n".encode())
+        source.stdin.close()
+        indexed = subprocess.run(  # noqa: S603 - fixed Git argv into validated Git metadata.
+            [  # noqa: S607 - Git executable is an application prerequisite.
+                "git",
+                "--no-replace-objects",
+                f"--git-dir={publication.git_common_dir}",
+                "index-pack",
+                "--stdin",
+                "--fix-thin",
+                "--keep=pynchy-managed-rebase",
+            ],
+            stdin=source.stdout,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            cwd=publication.worktree_path,
+            env=_managed_rebase_environment(),
+            timeout=30,
+        )
+        source.stdout.close()
+        source_returncode = source.wait(timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        source.kill()
+        source.wait()
+        return False
+    return indexed.returncode == 0 and source_returncode == 0
+
+
+def _managed_feature_head_is_current(publication: ManagedFeaturePublication) -> bool:
+    """Reject a branch or checkout change after the host finished validation."""
+    head = run_git(
+        "--no-replace-objects",
+        "rev-parse",
+        "HEAD",
+        cwd=publication.worktree_path,
+        env=_NO_REPLACE_OBJECTS_ENV,
+    )
+    branch = run_git(
+        "--no-replace-objects",
+        "branch",
+        "--show-current",
+        cwd=publication.worktree_path,
+        env=_NO_REPLACE_OBJECTS_ENV,
+    )
+    return (
+        head.returncode == 0
+        and head.stdout.strip() == publication.head_sha
+        and branch.returncode == 0
+        and branch.stdout.strip() == publication.branch_name
+    )
+
+
+def _managed_rebase_environment() -> dict[str, str]:
+    """Disable ambient configuration and editors before rewriting agent-owned commits."""
+    env = git_env_without_credentials()
+    env.update(
+        {
+            "GIT_EDITOR": ":",
+            "GIT_SEQUENCE_EDITOR": ":",
+            "GIT_TERMINAL_PROMPT": "0",
+            **_NO_REPLACE_OBJECTS_ENV,
+        }
+    )
+    return env
+
+
+def _has_rebase_in_progress(worktree_path: Path) -> bool:
+    """Detect a recoverable rebase without reading worktree Git configuration."""
+    for state_dir in ("rebase-merge", "rebase-apply"):
+        state = run_git(
+            "--no-replace-objects",
+            "rev-parse",
+            "--git-path",
+            state_dir,
+            cwd=worktree_path,
+            env=_NO_REPLACE_OBJECTS_ENV,
+        )
+        if state.returncode == 0 and state.stdout.strip() and Path(state.stdout.strip()).exists():
+            return True
+    return False
 
 
 def _count_raw_commits(
