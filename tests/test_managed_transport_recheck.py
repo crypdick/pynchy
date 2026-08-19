@@ -208,6 +208,7 @@ def test_recovers_when_pr_creation_races_with_existing_pr(git_env: dict) -> None
 
     assert result == {
         "success": True,
+        "pr_url": "https://github.com/owner/repo/pull/1",
         "message": f"Pushed 1 commit(s) to {feature}. PR updated: https://github.com/owner/repo/pull/1",
     }
 
@@ -522,6 +523,7 @@ def test_updates_existing_approved_pr_without_creating_duplicate(git_env: dict) 
 
     assert result == {
         "success": True,
+        "pr_url": "https://github.com/owner/repo/pull/1",
         "message": f"Pushed 1 commit(s) to {feature}. PR updated: https://github.com/owner/repo/pull/1",
     }
     assert len(gh_calls) == 2

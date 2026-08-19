@@ -209,6 +209,22 @@ async def test_host_publication_attachment_supports_routing_lookup(
     assert linked[0]["issue"]["id"] == "issue-1"
 
 
+async def test_host_publication_attachment_reports_provider_failure(
+    lifecycle: Lifecycle,
+) -> None:
+    lifecycle.state.attachment_success = False
+
+    error = await attach_work_item_pull_request(
+        "pynchy",
+        "issue-1",
+        "crypdick/pynchy",
+        "https://github.com/crypdick/pynchy/pull/104",
+    )
+
+    assert error == "Linear did not create the attachment"
+    assert lifecycle.state.attachments == []
+
+
 async def test_awaiting_review_preserves_omitted_evidence(lifecycle: Lifecycle) -> None:
     await _lease(lifecycle)
     await _begin_turn(input_source="scheduled_task")
