@@ -18,7 +18,7 @@ name = "systems"
 secret_collections = ["systems", "shared"]
 
 [plugins.vaultwarden.options]
-server_url = "https://vault.example.com"
+server_url = "https://pynchy-vaultwarden.pynchy.svc.cluster.local"
 
 [plugins.vaultwarden.options.collections]
 finance = "11111111-1111-4111-8111-111111111111"
@@ -63,10 +63,10 @@ context. All child workspaces select the same MCP instance and profile. The
 browser tool retains normal web trust and approval gates; use Bitwarden's own
 autofill rather than copying passwords into browser tool arguments.
 
-The Bitwarden CLI and its session key stay in the host container. Startup and
-requests fail closed when the configured HTTPS server differs from the CLI
-profile, credentials are missing, collection IDs are invalid, or the provider
-returns malformed data.
+The Bitwarden CLI and its session key stay in the host container. Configure only
+a Kubernetes service origin ending in `.svc.cluster.local`. Startup and requests
+fail closed when the configured server differs from the CLI profile, credentials
+are missing, collection IDs are invalid, or the provider returns malformed data.
 
 ## Deploy Vaultwarden
 
@@ -77,9 +77,11 @@ a `pynchy-vaultwarden-tls` TLS Secret. Enable K3s Secret encryption and rotate
 existing Secret data before mounting channel account credentials into the
 Pynchy host container.
 
-For an internal CA, provision `pynchy-vaultwarden-ca` with its certificate in a
-`ca.crt` key. Also provision `pynchy-bitwarden-policy` with a `bitwarden.json`
-key. Use
+Keep the supplied `ClusterIP` Service private to the cluster. Do not add Ingress,
+NodePort, LoadBalancer, or tunnel exposure.
+
+Provision `pynchy-vaultwarden-ca` with the issuing CA certificate in a `ca.crt`
+key. Also provision `pynchy-bitwarden-policy` with a `bitwarden.json` key. Use
 Chromium's `ExtensionInstallForcelist` for extension ID
 `nngceckbapebfimnlniiiahkandclblb`, and set that extension's
 `3rdparty.extensions` `environment.base` policy to the same HTTPS Vaultwarden
