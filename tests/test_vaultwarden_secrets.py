@@ -139,6 +139,7 @@ def test_vaultwarden_admin_requires_an_explicit_profile_grant() -> None:
     settings = Settings.model_validate(data)
 
     assert "vaultwarden-admin" in settings.tools
+    assert settings.tools["vaultwarden-admin"].public_sink is False
     assert "vaultwarden-admin" not in settings.resolved_workspace_config("finance").tools
     assert settings.resolved_workspace_config("admin").tools == ["vaultwarden-admin"]
 

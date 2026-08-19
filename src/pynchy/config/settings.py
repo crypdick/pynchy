@@ -249,7 +249,7 @@ class Settings(BaseSettings):
             type="builtin",
             public_source=False,
             secret_data=True,
-            public_sink="forbidden",
+            public_sink=False,
             dangerous_writes=True,
         )
         existing_admin = self.tools.get("vaultwarden-admin")
