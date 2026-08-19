@@ -4,11 +4,27 @@ metadata:
   name: pynchy-ingress
   namespace: pynchy
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: NotIn
+        values: [pynchy-vaultwarden]
   policyTypes: [Ingress]
   ingress:
     - from:
         - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pynchy-web-ingress
+  namespace: pynchy
+spec:
+  podSelector:
+    matchLabels:
+      app: pynchy
+  policyTypes: [Ingress]
+  ingress:
     - ports:
         - protocol: TCP
           port: 8485
@@ -24,6 +40,10 @@ spec:
       app: pynchy-vaultwarden
   policyTypes: [Ingress]
   ingress:
-    - ports:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: pynchy
+      ports:
         - protocol: TCP
           port: 8080

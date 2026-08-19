@@ -72,15 +72,18 @@ returns malformed data.
 
 The K3s application pins Vaultwarden and the host image pins Bitwarden CLI.
 Before applying the application, provision the deployment-specific
-`pynchy-vaultwarden` PVC and a Kubernetes Secret with a `DOMAIN` key. Enable K3s
-Secret encryption and rotate existing Secret data before mounting channel
-account credentials into the Pynchy host container.
+`pynchy-vaultwarden` PVC, a `pynchy-vaultwarden` Secret with a `DOMAIN` key, and
+a `pynchy-vaultwarden-tls` TLS Secret. Enable K3s Secret encryption and rotate
+existing Secret data before mounting channel account credentials into the
+Pynchy host container.
 
-Also provision `pynchy-bitwarden-policy` with a `bitwarden.json` key. Use
+For an internal CA, provision `pynchy-vaultwarden-ca` with its certificate in a
+`ca.crt` key. Also provision `pynchy-bitwarden-policy` with a `bitwarden.json`
+key. Use
 Chromium's `ExtensionInstallForcelist` for extension ID
 `nngceckbapebfimnlniiiahkandclblb`, and set that extension's
 `3rdparty.extensions` `environment.base` policy to the same HTTPS Vaultwarden
-origin.
+origin. Add the issuing CA to Chromium's `CACertificates` policy.
 
 Keep Vaultwarden's `/data` volume on retained, backed-up storage. The supplied
 K3s backup script copies attachments and makes a consistent SQLite backup when

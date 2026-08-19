@@ -27,6 +27,8 @@ spec:
                 secretKeyRef:
                   name: pynchy-vaultwarden
                   key: DOMAIN
+            - name: ROCKET_TLS
+              value: '{certs="/tls/tls.crt",key="/tls/tls.key"}'
             - name: ROCKET_PORT
               value: "8080"
             - name: SIGNUPS_ALLOWED
@@ -34,18 +36,20 @@ spec:
             - name: INVITATIONS_ALLOWED
               value: "true"
           ports:
-            - name: http
+            - name: https
               containerPort: 8080
           startupProbe:
             httpGet:
               path: /alive
-              port: http
+              port: https
+              scheme: HTTPS
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /alive
-              port: http
+              port: https
+              scheme: HTTPS
             periodSeconds: 15
           securityContext:
             allowPrivilegeEscalation: false
@@ -56,10 +60,16 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: tls
+              mountPath: /tls
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: pynchy-vaultwarden
+        - name: tls
+          secret:
+            secretName: pynchy-vaultwarden-tls  # pragma: allowlist secret
 ---
 apiVersion: v1
 kind: Service
@@ -70,6 +80,6 @@ spec:
   selector:
     app: pynchy-vaultwarden
   ports:
-    - name: http
-      port: 80
-      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https

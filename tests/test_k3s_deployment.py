@@ -49,9 +49,20 @@ def test_vaultwarden_is_pinned_and_uses_external_retained_storage() -> None:
         "name": "pynchy-vaultwarden",
         "key": "DOMAIN",
     }
+    assert container["env"][1] == {
+        "name": "ROCKET_TLS",
+        "value": '{certs="/tls/tls.crt",key="/tls/tls.key"}',
+    }
+    assert container["ports"] == [{"name": "https", "containerPort": 8080}]
+    assert container["startupProbe"]["httpGet"]["scheme"] == "HTTPS"
+    assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTPS"
     assert container["securityContext"]["allowPrivilegeEscalation"] is False
     assert pod["volumes"][0]["persistentVolumeClaim"]["claimName"] == "pynchy-vaultwarden"
+    assert pod["volumes"][1]["secret"]["secretName"] == (
+        "pynchy-vaultwarden-tls"  # pragma: allowlist secret
+    )
     assert service["spec"].get("type", "ClusterIP") == "ClusterIP"
+    assert service["spec"]["ports"] == [{"name": "https", "port": 443, "targetPort": "https"}]
     assert "pynchy-vaultwarden-local" in Path("deploy/k3s/storage.example.yaml").read_text(
         encoding="utf-8"
     )
@@ -59,12 +70,23 @@ def test_vaultwarden_is_pinned_and_uses_external_retained_storage() -> None:
 
 def test_vaultwarden_ingress_is_limited_to_its_pods() -> None:
     policies = _documents("deploy/k3s/application/network-policy.yaml")
+    internal = next(item for item in policies if item["metadata"]["name"] == "pynchy-ingress")
+    web = next(item for item in policies if item["metadata"]["name"] == "pynchy-web-ingress")
     policy = next(
         item for item in policies if item["metadata"]["name"] == "pynchy-vaultwarden-ingress"
     )
 
     assert policy["spec"]["podSelector"]["matchLabels"] == {"app": "pynchy-vaultwarden"}
-    assert policy["spec"]["ingress"] == [{"ports": [{"protocol": "TCP", "port": 8080}]}]
+    assert internal["spec"]["podSelector"] == {
+        "matchExpressions": [{"key": "app", "operator": "NotIn", "values": ["pynchy-vaultwarden"]}]
+    }
+    assert web["spec"]["podSelector"]["matchLabels"] == {"app": "pynchy"}
+    assert policy["spec"]["ingress"] == [
+        {
+            "from": [{"podSelector": {"matchLabels": {"app": "pynchy"}}}],
+            "ports": [{"protocol": "TCP", "port": 8080}],
+        }
+    ]
 
 
 def test_agent_image_installs_locked_dependencies() -> None:
@@ -89,10 +111,20 @@ def test_channel_browser_uses_persistent_profile_and_managed_policy() -> None:
         "mountPath": "/etc/chromium/policies/managed",
         "readOnly": True,
     } in host["volumeMounts"]
+    assert {
+        "name": "vaultwarden-ca",
+        "mountPath": "/etc/pynchy-vaultwarden",
+        "readOnly": True,
+    } in host["volumeMounts"]
     policy_volume = next(
         volume for volume in pod["volumes"] if volume["name"] == "bitwarden-policy"
     )
     assert policy_volume["configMap"]["optional"] is True
+    ca_volume = next(volume for volume in pod["volumes"] if volume["name"] == "vaultwarden-ca")
+    assert ca_volume["configMap"] == {
+        "name": "pynchy-vaultwarden-ca",
+        "optional": True,
+    }
 
 
 def test_pynchy_startup_probe_allows_workspace_recovery() -> None:
