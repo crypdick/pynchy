@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING
 import pytest
 from scripts import runtime_harness as harness
 
+from pynchy.container_labels import (
+    NAMESPACE_LABEL,
+    PROVENANCE_LABEL,
+    PROVENANCE_LABEL_VALUE_TEST,
+)
 from tests.runtime_harness_support import (
     _dotenv_values,
     _process_marker,
@@ -420,6 +425,24 @@ def test_runtime_readiness_requires_every_critical_subsystem(
     assert not harness.is_runtime_ready(status)
 
 
+def _label_values(argv: list[str]) -> list[str]:
+    return [argv[i + 1] for i, arg in enumerate(argv) if arg == "--label"]
+
+
+def _without_labels(argv: list[str]) -> list[str]:
+    kept: list[str] = []
+    skip = False
+    for arg in argv:
+        if skip:
+            skip = False
+            continue
+        if arg == "--label":
+            skip = True
+            continue
+        kept.append(arg)
+    return kept
+
+
 def test_setup_starts_the_deterministic_openai_sidecar_on_its_private_network(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -429,7 +452,7 @@ def test_setup_starts_the_deterministic_openai_sidecar_on_its_private_network(
     server_path.touch()
     spec = _spec(root)
     calls: list[list[str]] = []
-    network_calls: list[tuple[str, str]] = []
+    network_calls: list[tuple[str, str, tuple[str, ...]]] = []
     image_calls: list[tuple[str, str]] = []
 
     def run_docker(docker: str, *args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -447,7 +470,7 @@ def test_setup_starts_the_deterministic_openai_sidecar_on_its_private_network(
     monkeypatch.setattr("scripts.runtime_harness._executable", lambda _name: "/usr/bin/docker")
     monkeypatch.setattr(
         "scripts.runtime_harness._ensure_docker_network",
-        lambda docker, network: network_calls.append((docker, network)),
+        lambda docker, network, labels: network_calls.append((docker, network, tuple(labels))),
     )
     monkeypatch.setattr(
         "scripts.runtime_harness._ensure_docker_image",
@@ -464,11 +487,23 @@ def test_setup_starts_the_deterministic_openai_sidecar_on_its_private_network(
 
     state = harness.setup(spec)
 
-    assert network_calls == [("/usr/bin/docker", spec.network_name)]
+    assert len(network_calls) == 1
+    network_docker, network_name, network_labels = network_calls[0]
+    assert (network_docker, network_name) == ("/usr/bin/docker", spec.network_name)
+    # Provenance labels let the reaper identify resources this run abandons even
+    # if harness state never lands on disk.
+    assert f"{PROVENANCE_LABEL}={PROVENANCE_LABEL_VALUE_TEST}" in network_labels
+    assert f"{NAMESPACE_LABEL}={spec.namespace}" in network_labels
     assert len(image_calls) == 1
     assert image_calls[0][0] == "/usr/bin/docker"
     litellm_image = image_calls[0][1]
     assert litellm_image.startswith("ghcr.io/berriai/litellm@sha256:")
+    # Labels carry a live PID and boot id, so assert them by content and compare
+    # the rest of the argv exactly.
+    sidecar_labels = _label_values(calls[1])
+    assert f"{PROVENANCE_LABEL}={PROVENANCE_LABEL_VALUE_TEST}" in sidecar_labels
+    assert f"{NAMESPACE_LABEL}={spec.namespace}" in sidecar_labels
+    calls[1] = _without_labels(calls[1])
     assert calls == [
         ["/usr/bin/docker", "rm", "-f", spec.fake_container_name],
         [

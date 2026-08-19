@@ -35,6 +35,7 @@ from urllib.parse import urlparse, urlunparse
 
 import aiohttp
 
+from pynchy.host.container_manager import reaper
 from pynchy.host.container_manager.docker import (
     HealthCheckRequest,
     docker_available,
@@ -392,7 +393,8 @@ class LiteLLMGateway:
             "-e", "POSTGRES_USER",
             "-e", "POSTGRES_PASSWORD",
             "-e", "POSTGRES_DB",
-            "--restart", "unless-stopped",
+            *reaper.runtime_restart_policy_args(),
+            *reaper.runtime_provenance_label_args(),
             self._postgres_image,
             environment=postgres_environment,
         )  # fmt: skip
@@ -531,7 +533,8 @@ class LiteLLMGateway:
             "-v", f"{filtered_config}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
             *env_args,
-            "--restart", "unless-stopped",
+            *reaper.runtime_restart_policy_args(),
+            *reaper.runtime_provenance_label_args(),
             self._image,
             "--config", "/app/config.yaml",
             "--port", str(_LITELLM_INTERNAL_PORT),

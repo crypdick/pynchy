@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from pynchy.host.container_manager import reaper
 from pynchy.state.schema import create_schema
 
 if TYPE_CHECKING:
@@ -528,11 +529,11 @@ def _run_docker(
     )
 
 
-def _ensure_docker_network(docker: str, network_name: str) -> None:
+def _ensure_docker_network(docker: str, network_name: str, labels: list[str]) -> None:
     result = _run_docker(docker, "network", "inspect", network_name, check=False)
     if result.returncode == 0:
         return
-    _run_docker(docker, "network", "create", network_name)
+    _run_docker(docker, "network", "create", *labels, network_name)
 
 
 def _ensure_docker_image(docker: str, image: str) -> None:
@@ -542,12 +543,22 @@ def _ensure_docker_image(docker: str, image: str) -> None:
     _run_docker(docker, "pull", image)
 
 
+def _provenance_labels(spec: RuntimeSpec) -> list[str]:
+    """Stamp test provenance so abandoned resources stay identifiable."""
+    return reaper.provenance_label_args(
+        namespace=spec.namespace,
+        pid=os.getpid(),
+        boot_id=reaper.current_boot_id(),
+    )
+
+
 def _start_fake_openai(spec: RuntimeSpec, state: dict[str, object]) -> None:
     docker = _executable("docker")
     server_path = spec.root / "scripts" / "deterministic_openai_server.py"
     if not server_path.is_file():
         raise RuntimeError(f"Deterministic OpenAI server is missing: {server_path}")
-    _ensure_docker_network(docker, spec.network_name)
+    labels = _provenance_labels(spec)
+    _ensure_docker_network(docker, spec.network_name, labels)
     _ensure_docker_image(docker, _LITELLM_IMAGE)
     _run_docker(docker, "rm", "-f", spec.fake_container_name, check=False)
     _run_docker(
@@ -561,6 +572,7 @@ def _start_fake_openai(spec: RuntimeSpec, state: dict[str, object]) -> None:
         spec.network_name,
         "--restart",
         "no",
+        *labels,
         "-v",
         f"{server_path}:/runtime/deterministic_openai_server.py:ro",
         "-e",
@@ -865,6 +877,10 @@ def _remove_runtime_agent_image(namespace: object, image: object) -> None:
 def stop(root: Path, *, preserve_state: bool = False) -> None:
     state = _read_state(root)
     if state is None:
+        # Without state the namespace is unknown, so name-derived cleanup can
+        # remove nothing. Provenance labels still identify what this host
+        # abandoned, which is what stranded resources permanently before.
+        reaper.reap_now()
         return
     _refuse_unverified_legacy_processes(state)
     namespace = state.get("namespace")

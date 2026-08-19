@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -615,6 +616,29 @@ def reset_settings(monkeypatch):
             )
         )
         yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _reap_orphaned_test_containers(request: pytest.FixtureRequest) -> None:
+    """Remove Docker resources abandoned by earlier runtime runs.
+
+    Runs only for sessions that provision Docker, so a default unit run pays no
+    cost. Resources owned by a live process are never touched, which keeps
+    concurrent suites in sibling worktrees safe.
+    """
+    from pynchy.host.container_manager import (  # noqa: PLC0415 - keep unit-run import surface small.
+        docker,
+        reaper,
+    )
+
+    marker_names = (marker.name for item in request.session.items for marker in item.iter_markers())
+    if not reaper.wants_reaping(marker_names) or not docker.docker_available():
+        return
+    reaped = reaper.reap_now()
+    if reaped:
+        logging.getLogger(__name__).info(
+            "Reaped %d orphaned test container(s): %s", len(reaped), ", ".join(reaped)
+        )
 
 
 @pytest.fixture(autouse=True, scope="session")
