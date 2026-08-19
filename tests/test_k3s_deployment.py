@@ -41,8 +41,8 @@ def test_vaultwarden_is_pinned_and_uses_external_retained_storage() -> None:
     container = pod["containers"][0]
 
     assert container["image"] == (
-        "vaultwarden/server:1.36.0@"
-        "sha256:ae4bcc7bf8ac933eb1854fe3b849c74bd94dffef56c2490f9fdeac0c3f916d92"
+        "vaultwarden/server:1.37.1@"
+        "sha256:ebdfe70701c60ac0c28c697e787cea767d7972940b786037b29fe0d507f821e8"
     )
     assert pod["automountServiceAccountToken"] is False
     assert container["env"][0]["valueFrom"]["secretKeyRef"] == {
