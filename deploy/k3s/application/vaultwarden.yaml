@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pynchy-vaultwarden
+  namespace: pynchy
+spec:
+  serviceName: pynchy-vaultwarden
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pynchy-vaultwarden
+  template:
+    metadata:
+      labels:
+        app: pynchy-vaultwarden
+        app.kubernetes.io/part-of: pynchy
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: vaultwarden
+          image: vaultwarden/server:1.36.0@sha256:ae4bcc7bf8ac933eb1854fe3b849c74bd94dffef56c2490f9fdeac0c3f916d92
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: pynchy-vaultwarden
+                  key: DOMAIN
+            - name: ROCKET_PORT
+              value: "8080"
+            - name: SIGNUPS_ALLOWED
+              value: "false"
+            - name: INVITATIONS_ALLOWED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /alive
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: http
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pynchy-vaultwarden
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pynchy-vaultwarden
+  namespace: pynchy
+spec:
+  selector:
+    app: pynchy-vaultwarden
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

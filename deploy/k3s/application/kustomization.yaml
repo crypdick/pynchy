@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - postgres.yaml
   - temporal.yaml
+  - vaultwarden.yaml
   - pynchy.yaml
   - desktop.yaml
   - network-policy.yaml

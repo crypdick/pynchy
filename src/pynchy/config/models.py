@@ -327,6 +327,7 @@ class DiscordChannelConfig(_StrictModel):
     roles: list[str] = []
     allow: list[str] = []
     deny: list[str] = []
+    secret_collections: list[str] = []
     security: ChannelOverrideConfig | None = None
 
 
@@ -401,6 +402,7 @@ class DiscordConnectionConfig(_StrictModel):
                             roles=list(channel.roles),
                             allow=list(channel.allow),
                             deny=list(channel.deny),
+                            secret_collections=list(channel.secret_collections),
                             security=_discord_access_settings(channel.security),
                         )
                         for channel_name, channel in guild.channels.items()

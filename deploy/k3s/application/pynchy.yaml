@@ -101,6 +101,9 @@ spec:
             - name: service-account
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
               readOnly: true
+            - name: bitwarden-policy
+              mountPath: /etc/chromium/policies/managed
+              readOnly: true
         - name: litellm
           image: ghcr.io/berriai/litellm@sha256:9c1f1889774a973ce650f712ace6753a9b6dd1182d25d837b858dbcac6ea3056
           imagePullPolicy: IfNotPresent
@@ -211,6 +214,10 @@ spec:
                     - path: namespace
                       fieldRef:
                         fieldPath: metadata.namespace
+        - name: bitwarden-policy
+          configMap:
+            name: pynchy-bitwarden-policy
+            optional: true
 ---
 apiVersion: v1
 kind: Service

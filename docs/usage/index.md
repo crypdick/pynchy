@@ -11,6 +11,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, and talkin
 - **[Persistent memory](memory.md)** — Agents search and update the mounted Obsidian vault across sessions and workspaces
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run the selected agent core and can message you back
 - **[Personalization repository](personalization.md)** — Keep settings, LiteLLM routes, skills, and automations in an independent private repository
+- **[Channel-scoped secrets](secrets.md)** — Grant Discord channels exact Vaultwarden collections without exposing vault credentials to agents
 - **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
 - **[Control plane](control-plane.md)** — Inspect local or remote operational state through fail-closed listeners and bearer authentication
 - **[Integrations](../integrations/index.md)** — Connect your workspaces to Google, GitHub, mail, Slack, Linear, and other external services

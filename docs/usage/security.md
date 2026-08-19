@@ -211,6 +211,9 @@ Result: reading Drive files sets the secret taint but not the corruption taint. 
 
 ## Profile Secret Classification
 
+Discord channels can instead receive automatic secret classification through
+named Vaultwarden collections. See [Channel-scoped secrets](secrets.md).
+
 Mark profiles whose workspaces contain sensitive information:
 
 ```toml

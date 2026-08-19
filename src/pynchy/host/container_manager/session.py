@@ -39,6 +39,7 @@ from pynchy.agent_protocol.api import (
 from pynchy.async_tasks import create_background_task
 from pynchy.host.container_manager.ipc.write import (
     clean_ipc_input_dir,
+    clean_secret_files,
     write_ipc_close_sentinel,
     write_ipc_message,
 )
@@ -279,6 +280,7 @@ class ContainerSession:
         finally:
             # IPC requests can still arrive while the worker is draining.
             self._destroy_security_gate()
+            clean_secret_files(self.group_folder)
 
         # Cancel background tasks
         for task in (self._proc_monitor_task, self._runtime_monitor_task, self._stderr_task):
@@ -418,6 +420,7 @@ class ContainerSession:
         self._runtime_alive_after_proc_exit = False
         self._dead = True
         self._destroy_security_gate()
+        clean_secret_files(self.group_folder)
 
         if was_stopping:
             self._query_done.set()

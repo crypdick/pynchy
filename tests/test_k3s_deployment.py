@@ -24,6 +24,47 @@ def test_host_image_installs_locked_dependencies() -> None:
     assert "uv pip install --system --no-cache-dir '.[all]'" not in dockerfile
     assert "ARG PYNCHY_RELEASE_SHA" in dockerfile
     assert "PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA}" in dockerfile
+    assert "npm install -g @playwright/mcp@0.0.79" in dockerfile
+    assert "cli-v2026.7.0/bw-linux-2026.7.0.zip" in dockerfile
+    checksum = (
+        "7a35145e205952f7434d2370da359543"  # pragma: allowlist secret
+        "145ae0c45ba1af0fe9bdd99d40a00180"  # pragma: allowlist secret
+    )
+    assert checksum in dockerfile
+
+
+def test_vaultwarden_is_pinned_and_uses_external_retained_storage() -> None:
+    documents = _documents("deploy/k3s/application/vaultwarden.yaml")
+    stateful_set = next(document for document in documents if document["kind"] == "StatefulSet")
+    service = next(document for document in documents if document["kind"] == "Service")
+    pod = stateful_set["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+
+    assert container["image"] == (
+        "vaultwarden/server:1.36.0@"
+        "sha256:ae4bcc7bf8ac933eb1854fe3b849c74bd94dffef56c2490f9fdeac0c3f916d92"
+    )
+    assert pod["automountServiceAccountToken"] is False
+    assert container["env"][0]["valueFrom"]["secretKeyRef"] == {
+        "name": "pynchy-vaultwarden",
+        "key": "DOMAIN",
+    }
+    assert container["securityContext"]["allowPrivilegeEscalation"] is False
+    assert pod["volumes"][0]["persistentVolumeClaim"]["claimName"] == "pynchy-vaultwarden"
+    assert service["spec"].get("type", "ClusterIP") == "ClusterIP"
+    assert "pynchy-vaultwarden-local" in Path("deploy/k3s/storage.example.yaml").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_vaultwarden_ingress_is_limited_to_its_pods() -> None:
+    policies = _documents("deploy/k3s/application/network-policy.yaml")
+    policy = next(
+        item for item in policies if item["metadata"]["name"] == "pynchy-vaultwarden-ingress"
+    )
+
+    assert policy["spec"]["podSelector"]["matchLabels"] == {"app": "pynchy-vaultwarden"}
+    assert policy["spec"]["ingress"] == [{"ports": [{"protocol": "TCP", "port": 8080}]}]
 
 
 def test_agent_image_installs_locked_dependencies() -> None:
@@ -32,6 +73,26 @@ def test_agent_image_installs_locked_dependencies() -> None:
     assert "uv export --frozen --no-dev --no-emit-project" in dockerfile
     assert "uv pip install --system --no-cache-dir --no-deps" in dockerfile
     assert "uv pip install --system --no-cache-dir /opt/pynchy/agent-runner" not in dockerfile
+
+
+def test_channel_browser_uses_persistent_profile_and_managed_policy() -> None:
+    script = Path("deploy/k3s/vaultwarden-browser.sh").read_text(encoding="utf-8")
+    deployment = _documents("deploy/k3s/application/pynchy.yaml")[0]
+    pod = deployment["spec"]["template"]["spec"]
+    host = pod["containers"][0]
+
+    assert "--shared-browser-context" in script
+    assert '--user-data-dir "$profile"' in script
+    assert "--no-sandbox" in script
+    assert {
+        "name": "bitwarden-policy",
+        "mountPath": "/etc/chromium/policies/managed",
+        "readOnly": True,
+    } in host["volumeMounts"]
+    policy_volume = next(
+        volume for volume in pod["volumes"] if volume["name"] == "bitwarden-policy"
+    )
+    assert policy_volume["configMap"]["optional"] is True
 
 
 def test_main_workflow_publishes_both_images_after_tests() -> None:
@@ -138,9 +199,11 @@ def test_k3s_backup_uses_logical_database_snapshots() -> None:
     assert "PYNCHY_K3S_STORAGE_ROOT:?" in script
     assert '"$PYNCHY_K3S_STORAGE_ROOT/shared/app/data"' in script
     assert '"$PYNCHY_K3S_STORAGE_ROOT/postgres"' in script
+    assert '"$PYNCHY_K3S_STORAGE_ROOT/vaultwarden"' in script
     assert '"$PYNCHY_K3S_STORAGE_ROOT/backups"' in script
     assert ".backup '$partial/$database'" in script
     assert "litellm temporal temporal_visibility" in script
     assert "pg_dump -U" in script
     assert "pg_restore -l" in script
     assert "/var/lib/postgresql/data/.pynchy-backup-$timestamp" in script
+    assert '"$vaultwarden_volume/db.sqlite3"' in script

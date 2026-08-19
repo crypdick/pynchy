@@ -25,6 +25,7 @@ from pynchy.host.paths import (
     PYNCHY_AGENT_RUNNER_CONTAINER_PATH,
     PYNCHY_IPC_CONTAINER_PATH,
     PYNCHY_SCRIPTS_CONTAINER_PATH,
+    PYNCHY_SECRETS_CONTAINER_PATH,
     SKILLS_DIRNAME,
 )
 from pynchy.plugins.api import agent_hook_mounts
@@ -199,9 +200,24 @@ def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str)
     # The host writes responses to security and service requests. Create the
     # directory as the host so its ownership remains valid even for a
     # root-running deterministic runtime container.
-    for sub in ("messages", "requests", "responses", "input", "output", "merge_results"):
+    for sub in (
+        "messages",
+        "requests",
+        "responses",
+        "input",
+        "output",
+        "merge_results",
+        "secrets",
+    ):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
     mounts.append(VolumeMount(str(group_ipc_dir), PYNCHY_IPC_CONTAINER_PATH, readonly=False))
+    mounts.append(
+        VolumeMount(
+            str(group_ipc_dir / "secrets"),
+            PYNCHY_SECRETS_CONTAINER_PATH,
+            readonly=False,
+        )
+    )
 
 
 def _add_raw_repo_mount(

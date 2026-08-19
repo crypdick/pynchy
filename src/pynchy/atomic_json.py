@@ -10,7 +10,7 @@ from contextlib import suppress
 from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
 
 
-def write_text_atomic(path: Path, payload: str) -> None:
+def write_text_atomic(path: Path, payload: str, *, mode: int | None = None) -> None:
     """Publish text without following shared-directory symlinks."""
     path.parent.mkdir(parents=True, exist_ok=True)
     # NOTE: Update docs/architecture/ipc.md "Atomic writes" if this changes.
@@ -24,16 +24,17 @@ def write_text_atomic(path: Path, payload: str) -> None:
             )
         except FileNotFoundError:
             existing_mode = None
+        final_mode = mode if mode is not None else existing_mode
         tmp_fd = os.open(
             tmp_name,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o666,
+            mode if mode is not None else 0o666,
             dir_fd=parent_fd,
         )
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_file:
-                if existing_mode is not None:
-                    os.fchmod(tmp_file.fileno(), existing_mode)
+                if final_mode is not None:
+                    os.fchmod(tmp_file.fileno(), final_mode)
                 tmp_file.write(payload)
             os.replace(tmp_name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
         except BaseException:
@@ -44,6 +45,12 @@ def write_text_atomic(path: Path, payload: str) -> None:
         os.close(parent_fd)
 
 
-def write_json_atomic(path: Path, data: object, *, indent: int | None = None) -> None:
+def write_json_atomic(
+    path: Path,
+    data: object,
+    *,
+    indent: int | None = None,
+    mode: int | None = None,
+) -> None:
     """Write JSON data through a temporary file and atomic rename."""
-    write_text_atomic(path, json.dumps(data, indent=indent))
+    write_text_atomic(path, json.dumps(data, indent=indent), mode=mode)

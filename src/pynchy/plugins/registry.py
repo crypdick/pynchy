@@ -132,6 +132,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "marketplace-health",
     ),
     (
+        "pynchy.plugins.integrations.vaultwarden",
+        "VaultwardenPlugin",
+        "vaultwarden",
+    ),
+    (
         "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",
