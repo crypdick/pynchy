@@ -5,6 +5,9 @@ profile=$1
 shift
 mkdir -p "$profile"
 chmod 0700 "$profile"
+for name in SingletonLock SingletonSocket SingletonCookie; do
+    rm -f "$profile/$name"
+done
 
 display_file=$(mktemp)
 config_file=$(mktemp)

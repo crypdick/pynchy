@@ -111,6 +111,7 @@ def test_channel_browser_uses_persistent_profile_and_managed_policy() -> None:
     assert '"--disable-background-networking"' in script
     assert '"--disable-component-update"' in script
     assert '"--disable-extensions"' in script
+    assert "SingletonLock SingletonSocket SingletonCookie" in script
     assert "xvfb-run" not in script
     assert {
         "name": "bitwarden-policy",
