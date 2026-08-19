@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path  # noqa: TC003 - beartype resolves rollout path annotations at runtime.
+import sqlite3
+from pathlib import Path
 
 from pynchy.logger import logger
 
@@ -15,6 +16,72 @@ class CodexRolloutInspectionError(RuntimeError):
 def rollout_exists(codex_home: Path, thread_id: str) -> bool:
     """Return whether a confined Codex home contains the exact durable rollout."""
     return bool(_find_rollouts(codex_home / "sessions", thread_id, confinement_root=codex_home))
+
+
+def prepare_rollout_resume(codex_home: Path, thread_id: str) -> bool:
+    """Verify one exact rollout and repair its stale Codex state path."""
+    rollouts = _find_rollouts(codex_home / "sessions", thread_id, confinement_root=codex_home)
+    if not rollouts:
+        return False
+    if len(rollouts) != 1:
+        raise CodexRolloutInspectionError(
+            f"Found multiple Codex rollouts for thread {thread_id} in {codex_home}"
+        )
+    _relocate_state_rollout(codex_home, thread_id, rollouts[0])
+    return True
+
+
+def _relocate_state_rollout(codex_home: Path, thread_id: str, rollout: Path) -> None:
+    """Point one exact Codex state row at its verified rollout after a host move."""
+    database = codex_home / "state_5.sqlite"
+    if not database.exists():
+        if database.is_symlink():
+            raise CodexRolloutInspectionError(
+                f"Codex state database is a broken symlink: {database}"
+            )
+        return
+    try:
+        resolved_database = database.resolve(strict=True)
+        resolved_database.relative_to(codex_home.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CodexRolloutInspectionError(
+            f"Codex state database is outside its home: {database}"
+        ) from exc
+    if not resolved_database.is_file():
+        raise CodexRolloutInspectionError(f"Codex state database is not a file: {database}")
+
+    try:
+        with sqlite3.connect(resolved_database) as connection:
+            relocated = _relocate_state_row(connection, thread_id, rollout)
+    except sqlite3.Error as exc:
+        raise CodexRolloutInspectionError(
+            f"Could not inspect Codex state for thread {thread_id}"
+        ) from exc
+    if relocated:
+        logger.info("Relocated Codex rollout state", thread_id=thread_id, rollout=str(rollout))
+
+
+def _relocate_state_row(connection: sqlite3.Connection, thread_id: str, rollout: Path) -> bool:
+    row = connection.execute(
+        "SELECT rollout_path FROM threads WHERE id = ?",
+        (thread_id,),
+    ).fetchone()
+    if row is None or row[0] == str(rollout):
+        return False
+    stale_path = Path(row[0])
+    if not stale_path.is_absolute() or stale_path.exists():
+        raise CodexRolloutInspectionError(
+            f"Refusing to replace available Codex rollout path for thread {thread_id}"
+        )
+    updated = connection.execute(
+        "UPDATE threads SET rollout_path = ? WHERE id = ? AND rollout_path = ?",
+        (str(rollout), thread_id, row[0]),
+    )
+    if updated.rowcount != 1:
+        raise CodexRolloutInspectionError(
+            f"Codex state changed while relocating thread {thread_id}"
+        )
+    return True
 
 
 def _find_rollouts(

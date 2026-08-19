@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -94,3 +95,15 @@ def test_rollout_exists_propagates_sessions_root_inspection_failure(
 
     with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="sessions root"):
         codex_rollouts.rollout_exists(codex_home, THREAD_ID)
+
+
+def test_prepare_resume_rejects_state_database_outside_codex_home(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    _write_rollout(codex_home)
+    outside = tmp_path / "state_5.sqlite"
+    with sqlite3.connect(outside) as connection:
+        connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)")
+    (codex_home / "state_5.sqlite").symlink_to(outside)
+
+    with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="outside"):
+        codex_rollouts.prepare_rollout_resume(codex_home, THREAD_ID)

@@ -18,7 +18,7 @@ from pynchy.conversation.api import conversation_id_from_folder
 from pynchy.host.orchestrator.codex_rollouts import (
     CodexRolloutInspectionError as _CodexRolloutInspectionError,
 )
-from pynchy.host.orchestrator.codex_rollouts import rollout_exists
+from pynchy.host.orchestrator.codex_rollouts import prepare_rollout_resume
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 from pynchy.identifiers import RuntimeId  # noqa: TC001
@@ -151,7 +151,7 @@ def codex_thread_exists_in_host_runtime(
 
     # session_index.jsonl is incomplete for `exec` threads; only the exact
     # rollout header proves that `codex exec resume` has durable state.
-    return rollout_exists(codex_home or _codex_home(), thread_id)
+    return prepare_rollout_resume(codex_home or _codex_home(), thread_id)
 
 
 def host_execution_cwd(

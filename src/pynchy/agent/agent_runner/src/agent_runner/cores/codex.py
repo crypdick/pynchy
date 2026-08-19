@@ -267,6 +267,17 @@ class CodexCLIAgentCore:
             self._terminal_error_emitted = True
             return self._map_error_result(self._pending_error, "error")
 
+        if return_code != 0:
+            result = stderr_text.strip() or f"codex CLI exited (code {return_code})."
+            return ResultEvent(
+                result=result,
+                result_metadata=ResultMetadata(
+                    subtype="error",
+                    is_error=True,
+                    session_id=self._session_id,
+                ),
+            )
+
         if not self._turn_completed or not self._last_agent_message:
             _log(f"codex exited rc={return_code} without a terminal agent response")
             return ResultEvent(
@@ -278,15 +289,11 @@ class CodexCLIAgentCore:
                 ),
             )
 
-        is_error = return_code != 0
-        result = self._last_agent_message
-        if is_error and not result:
-            result = f"codex CLI exited (code {return_code}). {stderr_text[:500]}"
         return ResultEvent(
-            result=result,
+            result=self._last_agent_message,
             result_metadata=ResultMetadata(
-                subtype="error" if is_error else "success",
-                is_error=is_error,
+                subtype="success",
+                is_error=False,
                 session_id=self._session_id,
                 extra=self._last_turn_metadata,
             ),
