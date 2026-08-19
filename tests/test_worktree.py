@@ -180,6 +180,55 @@ class TestEnsureWorktree:
         assert len(result2.notices) == 1
         assert "Auto-pulled remote changes" in result2.notices[0]
 
+    def test_sync_merge_uses_scoped_git_identity(
+        self,
+        git_env: dict,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project = git_env["project"]
+        repo_ctx = git_env["repo_ctx"]
+        worktree_path = ensure_worktree("code-improver", repo_ctx).path
+
+        (worktree_path / "local.txt").write_text("local")
+        _git(worktree_path, "add", "local.txt")
+        _git(worktree_path, "commit", "-m", "local change")
+        (project / "remote.txt").write_text("remote")
+        _git(project, "add", "remote.txt")
+        _git(project, "commit", "-m", "remote change")
+        _git(project, "push", "origin", "main")
+
+        _git(project, "config", "--unset-all", "user.name")
+        _git(project, "config", "--unset-all", "user.email")
+        _git(project, "config", "user.useConfigOnly", "true")
+        for variable in (
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+        ):
+            monkeypatch.delenv(variable, raising=False)
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(project / "missing-global-config"))
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        identity_env = {
+            "GIT_AUTHOR_NAME": "Pynchy",
+            "GIT_AUTHOR_EMAIL": "pynchy@example.invalid",
+            "GIT_COMMITTER_NAME": "Pynchy",
+            "GIT_COMMITTER_EMAIL": "pynchy@example.invalid",
+        }
+
+        with patch(
+            "pynchy.host.git_ops.worktree.git_env_with_token",
+            return_value=identity_env,
+        ):
+            result = ensure_worktree("code-improver", repo_ctx)
+
+        assert all("merge of origin/main failed" not in notice for notice in result.notices)
+        assert (worktree_path / "remote.txt").read_text() == "remote"
+        merge_commit = _git(
+            worktree_path, "rev-list", "--parents", "-n", "1", "HEAD"
+        ).stdout.split()
+        assert len(merge_commit) == 3
+
     def test_no_notice_when_already_up_to_date(self, git_env: dict):
         """No notice when worktree is already current with origin."""
         repo_ctx = git_env["repo_ctx"]

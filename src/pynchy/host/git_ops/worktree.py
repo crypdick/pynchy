@@ -184,7 +184,7 @@ def _sync_existing_worktree(
         logger.warning("Worktree fetch failed", group=group_folder, error=fetch.stderr.strip())
     else:
         head_before = run_git("rev-parse", "HEAD", cwd=worktree_path).stdout.strip()
-        merge = run_git("merge", "--no-edit", f"origin/{main_branch}", cwd=worktree_path)
+        merge = run_git("merge", "--no-edit", f"origin/{main_branch}", cwd=worktree_path, env=env)
         if merge.returncode != 0:
             notices.append(
                 f"Failed to pull latest changes: merge of origin/{main_branch} failed "
