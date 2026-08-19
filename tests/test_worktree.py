@@ -10,7 +10,7 @@ import os
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from threading import Event, Thread, current_thread
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -276,6 +276,37 @@ class TestRoutedHostWorktrees:
                 [git_env["repo_ctx"]],
                 recovered=False,
             )
+
+    def test_lock_failure_closes_file_and_maps_error(self, git_env: dict):
+        opened_files: list[IO[str]] = []
+        original_fdopen = os.fdopen
+
+        def capture_fdopen(fd: int, mode: str, *, encoding: str) -> IO[str]:
+            lock_file = original_fdopen(fd, mode, encoding=encoding)
+            opened_files.append(lock_file)
+            return lock_file
+
+        with (
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.os.fdopen",
+                side_effect=capture_fdopen,
+            ),
+            patch(
+                "pynchy.host.git_ops._routed_host_worktree.fcntl.flock",
+                side_effect=OSError("lock failed"),
+            ),
+            pytest.raises(RoutedHostWorktreeError, match="Could not lock") as exc_info,
+        ):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_lock-failure",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
+        assert isinstance(exc_info.value.__cause__, OSError)
+        assert len(opened_files) == 1
+        assert opened_files[0].closed
 
     def test_serializes_provisioning_for_routes_in_one_repository(self, git_env: dict):
         """Two routed children must not mutate one Git repository concurrently."""
