@@ -26,6 +26,14 @@ def test_host_image_installs_locked_dependencies() -> None:
     assert "PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA}" in dockerfile
 
 
+def test_agent_image_installs_locked_dependencies() -> None:
+    dockerfile = Path("src/pynchy/agent/Dockerfile").read_text(encoding="utf-8")
+
+    assert "uv export --frozen --no-dev --no-emit-project" in dockerfile
+    assert "uv pip install --system --no-cache-dir --no-deps" in dockerfile
+    assert "uv pip install --system --no-cache-dir /opt/pynchy/agent-runner" not in dockerfile
+
+
 def test_main_workflow_publishes_both_images_after_tests() -> None:
     workflow = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
 
@@ -37,6 +45,7 @@ def test_main_workflow_publishes_both_images_after_tests() -> None:
         "--build-arg AGENT_UID=3000"
     )
     assert workflow.index("docker run --rm") < workflow.index('docker push "$host_image"')
+    assert "-c 'import agent_runner.agent_tools'" in workflow
 
 
 def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:

@@ -109,6 +109,6 @@ jobs:
             --build-arg AGENT_GID=3000 \
             -t "$agent_image" \
             src/pynchy/agent
-          docker run --rm --entrypoint python "$agent_image" -c 'import agent_runner'
+          docker run --rm --entrypoint python "$agent_image" -c 'import agent_runner.agent_tools'
           docker push "$host_image"
           docker push "$agent_image"

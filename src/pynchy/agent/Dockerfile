@@ -45,7 +45,9 @@ WORKDIR /opt/pynchy/agent-runner
 
 # Copy Python agent runner and install with uv
 COPY agent_runner/ /opt/pynchy/agent-runner/
-RUN uv pip install --system --no-cache-dir /opt/pynchy/agent-runner
+RUN uv export --frozen --no-dev --no-emit-project --format requirements-txt \
+    | uv pip install --system --no-cache-dir -r - \
+    && uv pip install --system --no-cache-dir --no-deps /opt/pynchy/agent-runner
 
 # Pynchy uses prek for repository hooks.
 RUN uv pip install --system --no-cache-dir prek
