@@ -237,8 +237,7 @@ def _broker(
     *,
     access: tuple[str, tuple[str, ...]] | None = ("finance", ("finance",)),
 ) -> VaultwardenBroker:
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTID", "client-id")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTSECRET", "client-secret")
+    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
     monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "master-password")
     return VaultwardenBroker(
         VaultwardenRuntime(
@@ -262,8 +261,7 @@ def test_get_secret_searches_only_granted_collections_and_writes_mode_0600(
     appdata.mkdir(parents=True)
     (appdata / "data.json").write_text("{}")
     fake_bw = _FakeBw()
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTID", "client-id")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTSECRET", "client-secret")
+    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
     monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "master-password")
     broker = VaultwardenBroker(
         VaultwardenRuntime(
@@ -316,8 +314,7 @@ def test_get_secret_rejects_ambiguous_exact_names(tmp_path: Path, monkeypatch) -
     appdata = tmp_path / "vaultwarden-cli" / "finance"
     appdata.mkdir(parents=True)
     (appdata / "data.json").write_text("{}")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTID", "id")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTSECRET", "secret")
+    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
     monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "password")
     broker = VaultwardenBroker(
         VaultwardenRuntime(
@@ -386,7 +383,12 @@ def test_get_secret_initializes_and_logs_in_a_new_cli_profile(
 
     assert result["keys"] == ["email", "login", "password"]
     assert ("config", "server", "https://vault.example.test") in fake_bw.calls
-    assert ("login", "--apikey") in fake_bw.calls
+    assert (
+        "login",
+        "finance@example.test",
+        "--passwordenv",
+        "BW_PASSWORD",
+    ) in fake_bw.calls
 
 
 @pytest.mark.parametrize(
@@ -447,7 +449,7 @@ def test_bw_errors_redact_credentials_and_session(
 ) -> None:
     fake_bw = _FakeBw()
     fake_bw.fail_command = "sync"
-    fake_bw.failure_stderr = "client-secret master-password session-key useful failure"
+    fake_bw.failure_stderr = "finance@example.test master-password session-key useful failure"
     broker = _broker(tmp_path, monkeypatch, fake_bw)
 
     with pytest.raises(ValueError, match="useful failure") as raised:
@@ -494,8 +496,7 @@ async def test_vaultwarden_service_handler_validates_and_delegates(
     }
     fake_bw = _FakeBw()
     monkeypatch.setattr(subprocess, "run", fake_bw)
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTID", "client-id")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_CLIENTSECRET", "client-secret")
+    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
     monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "master-password")
     configure_vaultwarden_runtime(
         VaultwardenRuntime(
