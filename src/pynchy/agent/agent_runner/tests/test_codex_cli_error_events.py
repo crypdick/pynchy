@@ -38,8 +38,9 @@ class _FakeStdin:
 
 
 class _FinishedStream:
-    def __init__(self, lines: list[bytes]) -> None:
+    def __init__(self, lines: list[bytes], read_result: bytes = b"") -> None:
         self._lines = iter(lines)
+        self._read_result = read_result
 
     def __aiter__(self) -> _FinishedStream:
         return self
@@ -51,15 +52,20 @@ class _FinishedStream:
             raise StopAsyncIteration from None
 
     async def read(self) -> bytes:
-        return b""
+        return self._read_result
 
 
 class _FakeProc:
-    def __init__(self, events: list[dict[str, object]], returncode: int = 0) -> None:
+    def __init__(
+        self,
+        events: list[dict[str, object]],
+        returncode: int = 0,
+        stderr: bytes = b"",
+    ) -> None:
         self.returncode = returncode
         self.stdin = _FakeStdin()
         self.stdout = _FinishedStream([_json_line(event) for event in events])
-        self.stderr = _FinishedStream([])
+        self.stderr = _FinishedStream([], stderr)
 
     async def wait(self) -> int:
         return self.returncode
@@ -69,9 +75,11 @@ def _json_line(event: dict[str, object]) -> bytes:
     return (json.dumps(event) + "\n").encode()
 
 
-def _run_query(events: list[dict[str, object]], returncode: int = 0) -> list[object]:
+def _run_query(
+    events: list[dict[str, object]], returncode: int = 0, stderr: bytes = b""
+) -> list[object]:
     core = _core()
-    proc = _FakeProc(events, returncode)
+    proc = _FakeProc(events, returncode, stderr)
 
     async def run() -> list[object]:
         with patch(
@@ -148,6 +156,31 @@ def test_query_marks_clean_exit_without_terminal_turn_as_error():
     assert isinstance(events[-1], ResultEvent)
     assert events[-1].result is None
     assert events[-1].result_metadata.subtype == "missing_terminal_turn"
+    assert events[-1].result_metadata.is_error is True
+
+
+def test_query_preserves_stderr_when_process_fails_before_stream_events():
+    message = (
+        "Error: thread/resume failed: failed to resolve rollout path "
+        "/Users/old/.codex/sessions/rollout.jsonl: file does not exist (code -32600)"
+    )
+
+    events = _run_query([], returncode=1, stderr=message.encode())
+
+    assert isinstance(events[-1], ResultEvent)
+    assert events[-1].result == message
+    assert events[-1].result_metadata.subtype == "error"
+    assert events[-1].result_metadata.is_error is True
+
+
+def test_query_bounds_stderr_when_process_fails_before_stream_events():
+    stderr = "resume failed: " + "x" * 1_000
+
+    events = _run_query([], returncode=1, stderr=stderr.encode())
+
+    assert isinstance(events[-1], ResultEvent)
+    assert events[-1].result == stderr[:500]
+    assert events[-1].result_metadata.subtype == "error"
     assert events[-1].result_metadata.is_error is True
 
 

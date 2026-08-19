@@ -1,6 +1,7 @@
 """Tests for direct host-execution session discovery."""
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -160,6 +161,14 @@ def _write_rollout(
     return rollout
 
 
+def _write_codex_state(codex_home: Path, rows: list[tuple[str, str]]) -> Path:
+    database = codex_home / "state_5.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)")
+        connection.executemany("INSERT INTO threads VALUES (?, ?)", rows)
+    return database
+
+
 def test_host_codex_thread_exists_when_rollout_is_absent_from_stale_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -169,6 +178,33 @@ def test_host_codex_thread_exists_when_rollout_is_absent_from_stale_index(
     _write_rollout(tmp_path, thread_id)
 
     assert codex_thread_exists_in_host_runtime(f"codex:gpt-5.5:{thread_id}")
+
+
+def test_host_codex_thread_relocates_only_exact_stale_state_row(
+    tmp_path: Path,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    other_thread = "019f6106-fd23-7292-bac5-7dbb7da29003"
+    rollout = _write_rollout(tmp_path, thread_id)
+    database = _write_codex_state(
+        tmp_path,
+        [
+            (thread_id, f"/Users/old/.codex/sessions/{rollout.name}"),
+            (other_thread, "/Users/old/.codex/sessions/other.jsonl"),
+        ],
+    )
+
+    assert codex_thread_exists_in_host_runtime(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=tmp_path,
+    )
+
+    with sqlite3.connect(database) as connection:
+        rows = connection.execute("SELECT id, rollout_path FROM threads ORDER BY id").fetchall()
+    assert rows == [
+        (thread_id, str(rollout.resolve())),
+        (other_thread, "/Users/old/.codex/sessions/other.jsonl"),
+    ]
 
 
 def test_host_codex_thread_is_missing_without_rollout_even_when_index_claims_it(
