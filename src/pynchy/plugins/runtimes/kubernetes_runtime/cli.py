@@ -359,7 +359,13 @@ def _write_kubeconfig() -> None:
 
 def kubectl_command() -> list[str]:
     _write_kubeconfig()
-    return ["kubectl", "--kubeconfig", str(_KUBECONFIG_PATH)]
+    return [
+        "kubectl",
+        "--kubeconfig",
+        str(_KUBECONFIG_PATH),
+        "--namespace",
+        runtime_settings().namespace,
+    ]
 
 
 def _kubectl(*args: str, input_text: str | None = None, capture: bool = False) -> int:

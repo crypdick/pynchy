@@ -6,6 +6,7 @@ import json
 import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -134,6 +135,16 @@ def test_current_boot_id_falls_back_when_the_kernel_file_is_absent(
     assert boot_id == reaper.current_boot_id()
 
 
+def test_host_state_fallbacks_work_without_proc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(reaper, "BOOT_ID_PATH", tmp_path / "missing")
+    with patch.object(reaper.Path, "stat", side_effect=OSError):
+        assert reaper.current_boot_id() == "init-unknown"
+    with patch.object(reaper.Path, "iterdir", side_effect=OSError):
+        assert reaper.live_pids() == frozenset({os.getpid()})
+
+
 def test_live_pids_includes_the_running_process() -> None:
     assert os.getpid() in reaper.live_pids()
 
@@ -178,6 +189,18 @@ def test_sweep_removes_abandoned_resources_and_spares_live_ones() -> None:
     assert removed == ["orphan"]
 
 
+def test_sweep_with_no_resources_does_not_remove_anything() -> None:
+    assert (
+        reaper.reap_orphaned_test_resources(
+            run=_fake_docker({}, []),
+            live_pids=frozenset(),
+            boot_id=_BOOT,
+            now=0.0,
+        )
+        == []
+    )
+
+
 def test_sweep_parses_the_iso_timestamp_docker_actually_returns() -> None:
     """docker inspect reports Created as RFC3339 text, not an epoch number."""
     containers = {
@@ -197,6 +220,34 @@ def test_sweep_parses_the_iso_timestamp_docker_actually_returns() -> None:
     )
 
     assert reaped == ["stale-unowned"]
+
+
+def test_sweep_treats_missing_and_invalid_timestamps_as_old() -> None:
+    labels = {PROVENANCE_LABEL: PROVENANCE_LABEL_VALUE_TEST}
+    containers = {
+        "missing-created": {"Labels": labels, "Created": None},
+        "invalid-created": {"Labels": labels, "Created": "invalid"},
+    }
+
+    reaped = reaper.reap_orphaned_test_resources(
+        run=_fake_docker(containers, []),
+        live_pids=frozenset(),
+        boot_id=_BOOT,
+        now=_DAY_SECONDS,
+    )
+
+    assert reaped == ["missing-created", "invalid-created"]
+
+
+def test_default_docker_runner_returns_stdout() -> None:
+    with patch.object(
+        reaper.subprocess,
+        "run",
+        return_value=reaper.subprocess.CompletedProcess([], 0, stdout="container\n"),
+    ) as subprocess_run:
+        assert reaper.default_docker_run("podman")(["ps"]) == "container\n"
+
+    assert subprocess_run.call_args.args[0] == ["podman", "ps"]
 
 
 def test_only_docker_using_sessions_want_reaping() -> None:
