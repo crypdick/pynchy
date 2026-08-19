@@ -5,6 +5,7 @@ Uses real git repos via tmp_path to validate actual git behavior.
 
 from __future__ import annotations
 
+import os
 import subprocess  # noqa: S404 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from threading import Event, Thread
@@ -259,6 +260,22 @@ class TestEnsureWorktree:
 
 
 class TestRoutedHostWorktrees:
+    @pytest.mark.parametrize("kind", ["symlink", "fifo"])
+    def test_rejects_unsafe_routed_worktree_lock_file(self, git_env: dict, kind: str):
+        lock_path = git_env["project"] / ".git" / "pynchy-routed-worktree.lock"
+        if kind == "symlink":
+            lock_path.symlink_to(git_env["project"] / "README.md")
+        else:
+            os.mkfifo(lock_path)
+
+        with pytest.raises(RoutedHostWorktreeError, match="Could not lock"):
+            resolve_routed_host_worktree_cwd(
+                "host__thread_conversation-conv_unsafe-lock",
+                git_env["project"],
+                [git_env["repo_ctx"]],
+                recovered=False,
+            )
+
     def test_serializes_provisioning_for_routes_in_one_repository(self, git_env: dict):
         """Two routed children must not mutate one Git repository concurrently."""
         repo_ctx = git_env["repo_ctx"]

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import fcntl
+import os
+import stat
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
     Iterator,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
@@ -10,7 +12,7 @@ from collections.abc import (
 )
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TextIO
+from typing import IO
 
 from pynchy.host.git_ops._worktree_models import (
     RoutedHostWorktreeError,
@@ -85,11 +87,28 @@ def _routed_worktree_lock(git_common_dir: Path) -> Iterator[None]:
         yield
 
 
-def _acquire_routed_worktree_lock(git_common_dir: Path) -> TextIO:
+def _acquire_routed_worktree_lock(git_common_dir: Path) -> IO[str]:
     """Open and exclusively lock the Git-common-dir lock file."""
+    lock_path = git_common_dir / "pynchy-routed-worktree.lock"
     try:
-        lock_file = (git_common_dir / "pynchy-routed-worktree.lock").open("a", encoding="utf-8")
+        fd = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+            0o600,
+        )
     except OSError as exc:
+        raise RoutedHostWorktreeError(
+            "Could not lock the routed conversation's repository worktrees. "
+            "Check repository access and retry."
+        ) from exc
+    try:
+        lock_stat = os.fstat(fd)
+        if not stat.S_ISREG(lock_stat.st_mode):
+            raise OSError("routed worktree lock is not a regular file")
+        os.fchmod(fd, 0o600)
+        lock_file = os.fdopen(fd, "r+", encoding="utf-8")
+    except OSError as exc:
+        os.close(fd)
         raise RoutedHostWorktreeError(
             "Could not lock the routed conversation's repository worktrees. "
             "Check repository access and retry."
