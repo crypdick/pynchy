@@ -173,6 +173,17 @@ def test_query_preserves_stderr_when_process_fails_before_stream_events():
     assert events[-1].result_metadata.is_error is True
 
 
+def test_query_bounds_stderr_when_process_fails_before_stream_events():
+    stderr = "resume failed: " + "x" * 1_000
+
+    events = _run_query([], returncode=1, stderr=stderr.encode())
+
+    assert isinstance(events[-1], ResultEvent)
+    assert events[-1].result == stderr[:500]
+    assert events[-1].result_metadata.subtype == "error"
+    assert events[-1].result_metadata.is_error is True
+
+
 def test_query_discards_retry_notice_after_successful_turn():
     events = _run_query(
         [

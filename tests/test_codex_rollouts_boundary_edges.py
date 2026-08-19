@@ -4,12 +4,24 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from pynchy.host.orchestrator import codex_rollouts
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any
+
 THREAD_ID = "019f6106-fd23-7292-bac5-7dbb7da29002"
+
+
+class _CasMissConnection(sqlite3.Connection):
+    def execute(self, statement: str, parameters: Iterable[Any] = (), /) -> sqlite3.Cursor:
+        if statement.startswith("UPDATE threads SET rollout_path"):
+            return super().execute("UPDATE threads SET rollout_path = rollout_path WHERE 0")
+        return super().execute(statement, parameters)
 
 
 def _write_rollout(home: Path, *, thread_id: str = THREAD_ID, body: str = "") -> Path:
@@ -21,6 +33,14 @@ def _write_rollout(home: Path, *, thread_id: str = THREAD_ID, body: str = "") ->
         encoding="utf-8",
     )
     return path
+
+
+def _write_state(codex_home: Path, rollout_path: Path) -> Path:
+    database = codex_home / "state_5.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)")
+        connection.execute("INSERT INTO threads VALUES (?, ?)", (THREAD_ID, str(rollout_path)))
+    return database
 
 
 def test_rollout_exists_rejects_broken_sessions_link(tmp_path: Path) -> None:
@@ -107,3 +127,42 @@ def test_prepare_resume_rejects_state_database_outside_codex_home(tmp_path: Path
 
     with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="outside"):
         codex_rollouts.prepare_rollout_resume(codex_home, THREAD_ID)
+
+
+def test_prepare_resume_refuses_to_replace_available_stored_rollout(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    _write_rollout(codex_home)
+    stored_rollout = tmp_path / "still-available.jsonl"
+    stored_rollout.write_text("available", encoding="utf-8")
+    database = _write_state(codex_home, stored_rollout)
+
+    with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="Refusing"):
+        codex_rollouts.prepare_rollout_resume(codex_home, THREAD_ID)
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT rollout_path FROM threads WHERE id = ?", (THREAD_ID,)
+        ).fetchone() == (str(stored_rollout),)
+
+
+def test_prepare_resume_cas_miss_fails_without_changing_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home = tmp_path / ".codex"
+    _write_rollout(codex_home)
+    stale_rollout = Path("/missing/old-rollout.jsonl")
+    database = _write_state(codex_home, stale_rollout)
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(
+        codex_rollouts.sqlite3,
+        "connect",
+        lambda path: real_connect(path, factory=_CasMissConnection),
+    )
+
+    with pytest.raises(codex_rollouts.CodexRolloutInspectionError, match="state changed"):
+        codex_rollouts.prepare_rollout_resume(codex_home, THREAD_ID)
+
+    with real_connect(database) as verifier:
+        assert verifier.execute(
+            "SELECT rollout_path FROM threads WHERE id = ?", (THREAD_ID,)
+        ).fetchone() == (str(stale_rollout),)

@@ -268,7 +268,7 @@ class CodexCLIAgentCore:
             return self._map_error_result(self._pending_error, "error")
 
         if return_code != 0:
-            result = stderr_text.strip() or f"codex CLI exited (code {return_code})."
+            result = stderr_text.strip()[:500] or f"codex CLI exited (code {return_code})."
             return ResultEvent(
                 result=result,
                 result_metadata=ResultMetadata(
