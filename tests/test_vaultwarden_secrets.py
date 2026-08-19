@@ -176,6 +176,7 @@ def test_vaultwarden_server_requires_a_plain_https_origin(server_url: str) -> No
 class _FakeBw:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
+        self.environments: list[dict[str, str]] = []
         self.server = "https://vault.example.test"
         self.status: object = {"status": "locked"}
         self.status_output: str | None = None
@@ -191,7 +192,7 @@ class _FakeBw:
         env: dict[str, str],
         **_kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
-        del env
+        self.environments.append(env)
         command = tuple(args[1:])
         self.calls.append(command)
         if self.fail_command is not None and command[0] == self.fail_command:
@@ -278,6 +279,10 @@ def test_get_secret_searches_only_granted_collections_and_writes_mode_0600(
     result = broker.get_secret("finance", "Example")
 
     assert result["keys"] == ["email", "login", "password"]
+    assert all(
+        environment["NODE_EXTRA_CA_CERTS"] == "/etc/pynchy-vaultwarden/ca.crt"
+        for environment in fake_bw.environments
+    )
     assert result["path"].startswith("/tmp/pynchy-secrets/")  # noqa: S108 - public contract.
     assert "never-in-result" not in json.dumps(result)
     host_path = tmp_path / "ipc" / "finance" / "secrets" / Path(result["path"]).name

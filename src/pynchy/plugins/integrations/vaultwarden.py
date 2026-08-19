@@ -48,6 +48,7 @@ _PLUGIN_NAME = "vaultwarden"
 _TOOL_NAME = "get_secret"
 _ACTION_ID = "secret.vaultwarden.read"
 _ENV_PREFIX = "PYNCHY_VAULTWARDEN_"
+_CA_CERT_PATH = "/etc/pynchy-vaultwarden/ca.crt"
 
 
 class VaultwardenOptions(BaseModel):
@@ -230,6 +231,7 @@ class VaultwardenBroker:
         if missing:
             raise ValueError(f"Vaultwarden account credentials are unavailable for {account!r}")
         values = {target: os.environ[source] for target, source in names.items()}
+        values["NODE_EXTRA_CA_CERTS"] = _CA_CERT_PATH
         return filtered_process_environment(values), list(values.values())
 
     def _checked(self, args: list[str], environment: dict[str, str], redactions: list[str]) -> str:
