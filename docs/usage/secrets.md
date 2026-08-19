@@ -37,10 +37,12 @@ these environment values only into the trusted Pynchy host process, replacing
 `FINANCE` with the uppercase channel key:
 
 ```text
-PYNCHY_VAULTWARDEN_FINANCE_CLIENTID
-PYNCHY_VAULTWARDEN_FINANCE_CLIENTSECRET
+PYNCHY_VAULTWARDEN_FINANCE_EMAIL
 PYNCHY_VAULTWARDEN_FINANCE_PASSWORD
 ```
+
+The broker passes the password through `BW_PASSWORD` and Bitwarden CLI's
+`--passwordenv` option. It never puts the password in process arguments.
 
 ## Retrieve a login
 

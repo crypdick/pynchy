@@ -140,7 +140,17 @@ class VaultwardenBroker:
         if not isinstance(status, dict):
             raise TypeError("Bitwarden CLI returned an invalid status")
         if status.get("status") == "unauthenticated":
-            self._checked(["bw", "login", "--apikey"], environment, secrets_to_redact)
+            self._checked(
+                [
+                    "bw",
+                    "login",
+                    environment["BW_USERNAME"],
+                    "--passwordenv",
+                    "BW_PASSWORD",
+                ],
+                environment,
+                secrets_to_redact,
+            )
         session = self._checked(
             ["bw", "unlock", "--passwordenv", "BW_PASSWORD", "--raw"],
             environment,
@@ -213,8 +223,7 @@ class VaultwardenBroker:
     def _environment(self, account: str) -> tuple[dict[str, str], list[str]]:
         suffix = re.sub(r"[^A-Za-z0-9]", "_", account).upper()
         names = {
-            "BW_CLIENTID": f"{_ENV_PREFIX}{suffix}_CLIENTID",
-            "BW_CLIENTSECRET": f"{_ENV_PREFIX}{suffix}_CLIENTSECRET",
+            "BW_USERNAME": f"{_ENV_PREFIX}{suffix}_EMAIL",
             "BW_PASSWORD": f"{_ENV_PREFIX}{suffix}_PASSWORD",
         }
         missing = [source for source in names.values() if not os.environ.get(source)]
