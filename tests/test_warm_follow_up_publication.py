@@ -269,6 +269,7 @@ async def test_non_routed_publication_without_owned_execution(
     await begin_in_flight_turn(_turn("turn-without-execution", source_group, task_id))
     result_dir = tmp_path / "data" / "ipc" / source_group / "merge_results"
     result_dir.mkdir(parents=True)
+    repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
 
     with (
         patch(
@@ -277,13 +278,25 @@ async def test_non_routed_publication_without_owned_execution(
         ),
         patch(
             "pynchy.host.container_manager.ipc.handlers_lifecycle._resolve_publication_repos",
-            return_value=[],
+            return_value=[repo_ctx],
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
             new_callable=AsyncMock,
             return_value=ReceiptVerification.VALID,
         ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+            return_value={
+                "success": True,
+                "message": "Opened PR",
+                "pr_url": "https://github.com/owner/repo/pull/106",
+            },
+        ) as create_pr,
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_lifecycle.attach_work_item_pull_request",
+            new_callable=AsyncMock,
+        ) as attach_pr,
     ):
         await dispatch(
             {
@@ -299,7 +312,15 @@ async def test_non_routed_publication_without_owned_execution(
         )
 
     result = json.loads((result_dir / "req-without-execution.json").read_text())
-    assert result == {"success": False, "message": "No repo configured for this group."}
+    assert result["success"] is True
+    create_pr.assert_called_once_with(
+        source_group,
+        repo_ctx,
+        publication_branch=None,
+        pr_title="Publish unrelated work",
+        pr_body="Summary",
+    )
+    attach_pr.assert_not_awaited()
 
 
 async def test_warm_follow_up_rejects_stale_agent_turn(
