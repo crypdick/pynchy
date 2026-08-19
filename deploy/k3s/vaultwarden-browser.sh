@@ -6,7 +6,41 @@ shift
 mkdir -p "$profile"
 chmod 0700 "$profile"
 
-exec xvfb-run -a playwright-mcp \
+display_file=$(mktemp)
+xvfb_pid=
+cleanup() {
+    if [ -n "$xvfb_pid" ]; then
+        kill "$xvfb_pid" 2>/dev/null || true
+        wait "$xvfb_pid" 2>/dev/null || true
+    fi
+    rm -f "$display_file"
+}
+trap cleanup EXIT
+
+Xvfb -displayfd 3 -screen 0 1280x1024x24 -nolisten tcp 3>"$display_file" &
+xvfb_pid=$!
+tries=200
+while [ ! -s "$display_file" ]; do
+    kill -0 "$xvfb_pid" 2>/dev/null || {
+        wait "$xvfb_pid"
+        exit $?
+    }
+    [ "$tries" -gt 0 ] || {
+        echo "Xvfb did not publish a display within 10 seconds" >&2
+        exit 1
+    }
+    tries=$((tries - 1))
+    sleep 0.05
+done
+display=$(cat "$display_file")
+case "$display" in
+    *[!0-9]* | "")
+        echo "Xvfb published an invalid display" >&2
+        exit 1
+        ;;
+esac
+
+DISPLAY=":$display" playwright-mcp \
     --executable-path /usr/bin/chromium \
     --no-sandbox \
     --shared-browser-context \
