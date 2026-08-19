@@ -11,11 +11,11 @@ pynchy/
 └── .env                   # deployment secrets only
 ```
 
-Pynchy does not clone the repository or fast-forward a clean checkout with
-remote-only divergence. Its host-owned publication path validates, commits, and
-pushes valid local changes from the host sync loop. An operator can run that
-same path on demand. Before a push, the host fetches and rebases local commits
-onto the remote branch.
+Pynchy does not clone the repository. Its host sync loop fast-forwards a clean
+checkout when the remote branch advances, then validates and applies the new
+configuration. It also validates, commits, and pushes valid local changes. An
+operator can run the same path on demand. Before a push, the host fetches and
+rebases local commits onto the remote branch.
 
 ## Create the repository
 
@@ -70,13 +70,15 @@ changes a remote, or turns a submodule or linked worktree into a publishable
 checkout.
 
 `Personalization published.` confirms that the host published local commits.
+`Personalization updated from origin.` confirms that the checkout fast-forwarded
+to new remote commits.
 `Personalization already matches origin.` means no commit needs publication.
 On failure, Pynchy leaves invalid edits uncommitted and invalid local commits
 unpublished. When local commits need publication, it fetches and rebases them
 onto the remote branch, so valid remote commits can be incorporated locally
-before the final validation and push. A clean checkout with remote-only
-divergence is not fast-forwarded or published. Inspect redacted host logs,
-resolve the Git or configuration state on the host, then run the command again.
+before the final validation and push. Dirty, locally ahead, or diverged
+checkouts are not overwritten. Inspect redacted host logs, resolve the Git or
+configuration state on the host, then run the command again.
 
 ## Directory contract
 
