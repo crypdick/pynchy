@@ -21,12 +21,21 @@ from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
+from pynchy.host.orchestrator.messaging import streaming
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.plugins.api import NewMessage
 from pynchy.state import get_chat_history, store_message
 from pynchy.workspace.api import WorkspaceProfile
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
+
+
+@pytest.fixture(autouse=True)
+def _clean_trace_batcher():
+    streaming.reset_trace_batcher()
+    yield
+    streaming.reset_trace_batcher()
+
 
 # ---------------------------------------------------------------------------
 # Helpers (shared patterns from test_app_integration.py)
