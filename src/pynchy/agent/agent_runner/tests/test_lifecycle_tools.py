@@ -163,3 +163,26 @@ async def test_publish_managed_feature_returns_host_error(agent_tool_runtime: Pa
 
     assert result.isError is True
     assert result.content[0].text == "Publication blocked: managed feature is not active."
+
+
+@pytest.mark.action("lifecycle.managed.feature.rebase")
+@pytest.mark.asyncio
+async def test_rebase_managed_feature_emits_only_bound_slug(agent_tool_runtime: Path) -> None:
+    responder = asyncio.create_task(
+        _write_publication_result(
+            agent_tool_runtime,
+            {"success": True, "message": "Rebased managed feature 'safe-feature'."},
+        )
+    )
+
+    result = await asyncio.wait_for(
+        call_tool("rebase_managed_feature", {"feature_slug": "safe-feature"}),
+        timeout=2,
+    )
+    await responder
+
+    request_path = next((agent_tool_runtime / "requests").glob("*.json"))
+    request = json.loads(request_path.read_text(encoding="utf-8"))
+    assert request["kind"] == "rebase_managed_feature"
+    assert request["payload"] == {"feature_slug": "safe-feature"}
+    assert result[0].text == "Rebased managed feature 'safe-feature'."

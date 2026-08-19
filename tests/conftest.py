@@ -77,6 +77,7 @@ from pynchy.host.git_ops.api import (
     host_create_pr_from_worktree,
     host_get_origin_main_sha,
     host_notify_worktree_updates,
+    host_rebase_managed_feature,
     host_update_main_result,
     is_repo_dirty,
     last_notified_sha,
@@ -623,6 +624,7 @@ def reset_settings(monkeypatch):
                 resolve_managed_feature_publication=resolve_managed_feature_publication,
                 read_managed_feature_patch=read_managed_feature_patch,
                 host_create_pr_from_managed_feature=host_create_pr_from_managed_feature,
+                host_rebase_managed_feature=host_rebase_managed_feature,
                 redact_git_diagnostic=redact_git_diagnostic,
             )
         )

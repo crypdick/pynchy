@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -445,3 +446,44 @@ class TestManagedFeatureCopGate:
         resolver.assert_not_called()
         cop.assert_not_awaited()
         publisher.assert_not_called()
+
+    @pytest.mark.action("lifecycle.managed.feature.rebase")
+    async def test_rebase_uses_only_host_bound_slug_without_cop(self, deps, tmp_path):
+        repo_ctx = RepoContext("owner/repo", tmp_path, tmp_path / "worktrees")
+        result_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
+        result_dir.mkdir(parents=True)
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature._resolve_repos_for_group",
+                return_value=[repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.host_rebase_managed_feature",
+                return_value={"success": True, "message": "rebased"},
+            ) as rebase,
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+            ) as cop,
+        ):
+            await dispatch(
+                {
+                    "type": "rebase_managed_feature",
+                    "request_id": "managed-rebase",
+                    "feature_slug": "safe-feature",
+                },
+                "agent-1",
+                False,
+                deps,
+            )
+
+        assert json.loads((result_dir / "managed-rebase.json").read_text()) == {
+            "success": True,
+            "message": "rebased",
+        }
+        rebase.assert_called_once_with("safe-feature", [repo_ctx])
+        cop.assert_not_awaited()
