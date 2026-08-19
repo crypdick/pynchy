@@ -433,6 +433,44 @@ def test_idle_checkout_accepts_a_matching_origin(tmp_path: Path):
         assert sync_personalization_repo(project, lambda _project, _root: {}) == "idle"
 
 
+@pytest.mark.parametrize("failure", ["merge", "validation"])
+def test_idle_checkout_reports_update_failure(tmp_path: Path, failure: str):
+    project, remote = _personalization_repo(tmp_path)
+    repo = project / "data/personalization"
+
+    def git_result(
+        command: str,
+        *args: str,
+        personalization_root: Path,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if command == "rev-list":
+            return _result(stdout="0 1\n")
+        if command == "merge" and failure == "merge":
+            return _result(1)
+        return _delegate_git(
+            *((command, *args)), personalization_root=personalization_root, env=env
+        )
+
+    def validate(_project: Path, _root: Path) -> None:
+        if failure == "validation":
+            raise ValueError("invalid upstream configuration")
+
+    with (
+        _github_origin(repo, remote),
+        patch("pynchy.host.git_ops.personalization.count_commits", return_value=0),
+        patch(
+            "pynchy.host.git_ops.personalization._personalization_git",
+            side_effect=git_result,
+        ),
+        patch(
+            "pynchy.host.git_ops.personalization._publication_target_is_current",
+            return_value=True,
+        ),
+    ):
+        assert sync_personalization_repo(project, validate) == "failed"
+
+
 def test_idle_checkout_reports_divergence_check_failure(tmp_path: Path):
     project, remote = _personalization_repo(tmp_path)
     repo = project / "data/personalization"

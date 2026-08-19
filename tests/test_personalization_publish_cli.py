@@ -53,6 +53,7 @@ def _invoke_publish(
     ("result", "expected"),
     [
         ("pushed", "Personalization published.\n"),
+        ("updated", "Personalization updated from origin.\n"),
         ("idle", "Personalization already matches origin.\n"),
     ],
 )

@@ -75,11 +75,13 @@ def publish_personalization() -> int:
     except (OSError, ValueError, RuntimeError):
         _stderr_line("Personalization publication failed; check redacted host logs.")
         return 1
-    if result == "pushed":
-        _stdout_line("Personalization published.")
-        return 0
-    if result == "idle":
-        _stdout_line("Personalization already matches origin.")
+    success_message = {
+        "pushed": "Personalization published.",
+        "updated": "Personalization updated from origin.",
+        "idle": "Personalization already matches origin.",
+    }.get(result)
+    if success_message is not None:
+        _stdout_line(success_message)
         return 0
     if result == "skipped":
         _stderr_line(

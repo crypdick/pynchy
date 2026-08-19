@@ -381,6 +381,8 @@ async def run_host_git_sync() -> str:
         )
         if personalization_result == "pushed":
             result = "personalization_pushed"
+        elif personalization_result == "updated":
+            result = "personalization_updated"
         if await _check_local_head_drift(
             settings.project_root,
             state,

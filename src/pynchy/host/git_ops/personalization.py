@@ -105,7 +105,12 @@ def _publish_clean_personalization_commits(
         logger.warning("Could not determine pending personalization commits")
         return "failed"
     if ahead == 0:
-        return _idle_personalization_checkout(personalization_root, target)
+        return _idle_personalization_checkout(
+            project_root,
+            personalization_root,
+            validator,
+            target,
+        )
     source = _clean_current_main_head(personalization_root, target)
     if source is None:
         return "failed"
@@ -161,13 +166,20 @@ def _push_personalization_commits(
     ):
         return "failed"
     if not publish_attempted:
-        return _idle_personalization_checkout(personalization_root, target)
+        return _idle_personalization_checkout(
+            project_root,
+            personalization_root,
+            validator,
+            target,
+        )
     logger.info("Pushed personalization repository changes")
     return "pushed"
 
 
 def _idle_personalization_checkout(
+    project_root: Path,
     personalization_root: Path,
+    validator: Callable[[Path, Path], object],
     target: _PublicationTarget,
 ) -> str:
     fetch = _personalization_git(
@@ -190,10 +202,45 @@ def _idle_personalization_checkout(
         personalization_root=personalization_root,
         env=git_env_without_credentials(),
     )
-    if divergence.returncode != 0 or divergence.stdout.split() != ["0", "0"]:
+    counts = divergence.stdout.split()
+    if divergence.returncode != 0 or len(counts) != 2:
         logger.warning("Personalization checkout does not match origin main")
         return "failed"
-    return "idle"
+    local_ahead, remote_ahead = counts
+    if local_ahead != "0":
+        logger.warning("Personalization checkout does not match origin main")
+        return "failed"
+    if remote_ahead == "0":
+        return "idle"
+    return _fast_forward_personalization_checkout(
+        project_root,
+        personalization_root,
+        validator,
+        target,
+    )
+
+
+def _fast_forward_personalization_checkout(
+    project_root: Path,
+    personalization_root: Path,
+    validator: Callable[[Path, Path], object],
+    target: _PublicationTarget,
+) -> str:
+    # Clean upstream commits are desired state on every deployment, including Kubernetes.
+    fast_forward = _personalization_git(
+        "merge",
+        "--ff-only",
+        f"origin/{target.main}",
+        personalization_root=personalization_root,
+        env=git_env_without_credentials(),
+    )
+    if fast_forward.returncode != 0:
+        _log_failure("fast-forward")
+        return "failed"
+    if not _validate_personalization_changes(project_root, personalization_root, validator):
+        return "failed"
+    logger.info("Updated personalization repository from origin")
+    return "updated"
 
 
 def _is_independent_git_repo(personalization_root: Path) -> bool:

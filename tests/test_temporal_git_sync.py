@@ -115,9 +115,18 @@ async def test_host_git_sync_reinitializes_corrupt_persisted_state(
     assert await git_sync.get_router_state(git_sync.HOST_STATE_KEY)
 
 
-async def test_host_git_sync_reports_a_successful_personalization_push(
+@pytest.mark.parametrize(
+    ("sync_result", "expected"),
+    [
+        ("pushed", "personalization_pushed"),
+        ("updated", "personalization_updated"),
+    ],
+)
+async def test_host_git_sync_reports_personalization_sync(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
+    sync_result: str,
+    expected: str,
 ) -> None:
     await init_test_database()
     applied = DeployRevision("deployed-sha", "config")
@@ -138,10 +147,10 @@ async def test_host_git_sync_reports_a_successful_personalization_push(
         AsyncMock(return_value=ConfigRefreshResult(ConfigRefreshStatus.UNCHANGED, "config")),
     )
     deps = _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock())
-    monkeypatch.setattr(deps, "sync_personalization", lambda _root: "pushed")
+    monkeypatch.setattr(deps, "sync_personalization", lambda _root: sync_result)
     monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: deps)
 
-    assert await git_sync.run_host_git_sync() == "personalization_pushed"
+    assert await git_sync.run_host_git_sync() == expected
 
 
 async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(

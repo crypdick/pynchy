@@ -426,7 +426,7 @@ def test_rechecks_default_branch_immediately_before_personalization_push(tmp_pat
     assert _git(remote, "rev-parse", "master").stdout.strip() == remote_head
 
 
-def test_rejects_remote_only_origin_advance(tmp_path: Path) -> None:
+def test_fast_forwards_remote_only_origin_advance(tmp_path: Path) -> None:
     project, remote = _personalization_repo(tmp_path)
     repo = project / "data/personalization"
     local_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
@@ -440,11 +440,20 @@ def test_rejects_remote_only_origin_advance(tmp_path: Path) -> None:
     _git(other, "commit", "-m", "Remote-only change")
     _git(other, "push", "origin", "main")
     remote_head = _git(remote, "rev-parse", "main").stdout.strip()
+    validation_calls = 0
+
+    def validate(_project: Path, personalization_root: Path) -> None:
+        nonlocal validation_calls
+        validation_calls += 1
+        assert (personalization_root / "remote-only-change").read_text() == "valid\n"
 
     with _github_origin(repo, remote):
-        assert sync_personalization_repo(project, lambda _project, _root: {}) == "failed"
+        assert sync_personalization_repo(project, validate) == "updated"
 
-    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == local_head
+    assert validation_calls == 1
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == remote_head
+    assert _git(repo, "merge-base", "--is-ancestor", local_head, remote_head).returncode == 0
+    assert (repo / "remote-only-change").read_text() == "valid\n"
     assert _git(remote, "rev-parse", "main").stdout.strip() == remote_head
 
 
