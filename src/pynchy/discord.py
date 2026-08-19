@@ -27,6 +27,7 @@ class DiscordChannelSettings:
     roles: list[str] = field(default_factory=list)
     allow: list[str] = field(default_factory=list)
     deny: list[str] = field(default_factory=list)
+    secret_collections: list[str] = field(default_factory=list)
     security: DiscordAccessSettings | None = None
 
 

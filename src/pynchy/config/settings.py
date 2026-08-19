@@ -29,6 +29,7 @@ from pynchy.config.jobs import (
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
+    BuiltinTool,
     CommandCenterConfig,
     ConnectionConfig,
     ContainerConfig,
@@ -54,6 +55,7 @@ from pynchy.config.prompts import (
     PipelineConfig,
     PromptConfig,
 )
+from pynchy.config.refs import parse_chat_ref
 from pynchy.config.scheduler_models import (
     CanaryConfig,
     CommandWordsConfig,
@@ -153,6 +155,10 @@ def _validate_owner_alias(
     raise ValueError(message)
 
 
+def _vaultwarden_browser_tool_name(channel_name: str) -> str:
+    return f"vaultwarden-browser.{channel_name}"
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -206,6 +212,79 @@ class Settings(BaseSettings):
             message = f"Unknown config sections are not supported: {unknown}"
             raise ValueError(message)
         return data
+
+    @model_validator(mode="after")
+    def _configure_channel_secret_access(self) -> Settings:
+        """Validate collection aliases and install the internal host-tool grant."""
+        configured = self.plugins.get("vaultwarden")
+        raw_collections = configured.options.get("collections", {}) if configured else {}
+        collection_names = set(raw_collections) if isinstance(raw_collections, dict) else set()
+        used = {
+            alias
+            for connection in self.connections.values()
+            if connection.type == "discord"
+            for guild in connection.chat.values()
+            for channel in guild.channels.values()
+            for alias in channel.secret_collections
+        }
+        unknown = sorted(used - collection_names)
+        if unknown:
+            raise ValueError(f"unknown Vaultwarden collection: {unknown[0]}")
+        if not used:
+            return self
+        if configured is None or not configured.enabled:
+            raise ValueError("Vaultwarden collection access requires the vaultwarden plugin")
+        tool = BuiltinTool(
+            type="builtin",
+            public_source=False,
+            secret_data=True,
+            public_sink="forbidden",
+            dangerous_writes="forbidden",
+        )
+        existing = self.tools.get("vaultwarden")
+        if existing is not None and existing != tool:
+            raise ValueError("tools.vaultwarden is reserved for channel-scoped secret access")
+        self.tools["vaultwarden"] = tool
+        channel_names = [
+            channel_name
+            for connection in self.connections.values()
+            if connection.type == "discord"
+            for guild in connection.chat.values()
+            for channel_name, channel in guild.channels.items()
+            if channel.secret_collections
+        ]
+        duplicates = sorted(name for name in set(channel_names) if channel_names.count(name) > 1)
+        if duplicates:
+            raise ValueError(f"secret-enabled Discord channel name is ambiguous: {duplicates[0]}")
+        for channel_name in channel_names:
+            browser_name = _vaultwarden_browser_tool_name(channel_name)
+            browser = McpTool(
+                type="mcp",
+                public_source=True,
+                secret_data=True,
+                public_sink=True,
+                dangerous_writes=True,
+                mcp=McpToolConfig(
+                    runtime="script",
+                    command="pynchy-vaultwarden-browser",
+                    args=[
+                        f"/srv/pynchy/app/data/chrome-profiles/vaultwarden-{channel_name}",
+                        "--port",
+                        "{port}",
+                        "--host",
+                        "localhost",
+                    ],
+                    port=9120,
+                    transport="streamable_http",
+                    idle_timeout=0,
+                    startup_timeout_seconds=60,
+                ),
+            )
+            existing_browser = self.tools.get(browser_name)
+            if existing_browser is not None and existing_browser != browser:
+                raise ValueError(f"tools.{browser_name} is reserved for channel-scoped browsing")
+            self.tools[browser_name] = browser
+        return self
 
     @model_validator(mode="after")
     def _validate_profile_refs(self) -> Settings:
@@ -273,14 +352,48 @@ class Settings(BaseSettings):
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
         resolved = merge_workspace_profiles([self.profiles[name] for name in profile_names])
+        collections = self.secret_collections_for_workspace(workspace_name)
+        access = self.secret_access_for_workspace(workspace_name)
+        automatic_tools = (
+            ("vaultwarden", _vaultwarden_browser_tool_name(access[0])) if access is not None else ()
+        )
         return replace(
             resolved,
+            tools=list(dict.fromkeys([*resolved.tools, *automatic_tools])),
+            contains_secrets=resolved.contains_secrets or bool(collections),
             soul=workspace.soul or self.prompts.default_soul,
             pipeline=workspace.pipeline or self.prompts.default_pipeline,
             model=workspace.model if workspace.model is not None else resolved.model,
             model_reasoning_effort=workspace.model_reasoning_effort,
             capabilities=_merge_workspace_permissions(resolved, workspace),
         )
+
+    def secret_access_for_workspace(
+        self, workspace_name: str
+    ) -> tuple[str, tuple[str, ...]] | None:
+        """Return the owning Discord channel and its collection aliases."""
+        static_name = static_workspace_name(workspace_name)
+        root_name = self.workspace_parent(static_name) or static_name
+        root = self.workspaces.get(root_name)
+        ref = parse_chat_ref(root.chat if root is not None else None)
+        if ref is None or ref.platform != "discord":
+            return None
+        connection = self.connections.get(ref.name)
+        if connection is None or connection.type != "discord":
+            return None
+        parts = ref.chat.split(".")
+        if len(parts) != 3 or parts[1] != "channels":
+            return None
+        guild = connection.chat.get(parts[0])
+        channel = guild.channels.get(parts[2]) if guild is not None else None
+        if channel is None or not channel.secret_collections:
+            return None
+        return parts[2], tuple(channel.secret_collections)
+
+    def secret_collections_for_workspace(self, workspace_name: str) -> tuple[str, ...]:
+        """Return collection aliases inherited from the physical Discord channel."""
+        access = self.secret_access_for_workspace(workspace_name)
+        return access[1] if access is not None else ()
 
     def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:
         """Return a root or semantic child workspace's own policy config."""

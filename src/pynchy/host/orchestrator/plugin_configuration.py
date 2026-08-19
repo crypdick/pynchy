@@ -187,6 +187,11 @@ from pynchy.plugins.integrations.operational_canaries import (
 )
 from pynchy.plugins.integrations.peekaboo import PeekabooComputerUsePlugin, PeekabooConfig
 from pynchy.plugins.integrations.ssh_x11 import SshX11ComputerUsePlugin, SshX11Config
+from pynchy.plugins.integrations.vaultwarden import (
+    VaultwardenOptions,
+    VaultwardenRuntime,
+    configure_vaultwarden_runtime,
+)
 from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.process_environment import filtered_process_environment
 from pynchy.state.api import (
@@ -585,6 +590,20 @@ def configure_marketplace_health_plugin(
         plugin.configure(runtime)
 
 
+def configure_vaultwarden_plugin(settings: Settings) -> None:
+    """Bind channel access and host state to the Vaultwarden broker."""
+    plugin_config = settings.plugins.get("vaultwarden")
+    if plugin_config is None or not plugin_config.options:
+        return
+    configure_vaultwarden_runtime(
+        VaultwardenRuntime(
+            options=VaultwardenOptions.model_validate(plugin_config.options),
+            data_dir=settings.data_dir,
+            resolve_access=settings.secret_access_for_workspace,
+        )
+    )
+
+
 def _matrix_connection_operations() -> MatrixConnectionOperations:
     """Bind Matrix delivery and routed-workspace operations at composition."""
 
@@ -839,5 +858,6 @@ def configure_startup_plugins(
     )
     configure_observer_plugins(plugin_manager)
     configure_marketplace_health_plugin(plugin_manager, settings)
+    configure_vaultwarden_plugin(settings)
     configure_matrix_gateway_plugin(settings)
     configure_google_setup_plugin(plugin_manager, settings)

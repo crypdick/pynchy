@@ -12,3 +12,18 @@ spec:
     - ports:
         - protocol: TCP
           port: 8485
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pynchy-vaultwarden-ingress
+  namespace: pynchy
+spec:
+  podSelector:
+    matchLabels:
+      app: pynchy-vaultwarden
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080

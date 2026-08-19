@@ -114,3 +114,15 @@ def clean_ipc_input_dir(group_folder: str | None, *, preserve_initial: bool = Fa
             continue
         with contextlib.suppress(OSError):
             f.unlink()
+
+
+def clean_secret_files(group_folder: str | None) -> None:
+    """Remove host-written secret payloads after their agent runtime exits."""
+    if not group_folder:
+        return
+    secrets_dir = _configured_ipc_base_dir() / group_folder / "secrets"
+    if not secrets_dir.is_dir():
+        return
+    for path in secrets_dir.iterdir():
+        with contextlib.suppress(OSError):
+            path.unlink()

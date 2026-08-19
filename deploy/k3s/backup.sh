@@ -8,6 +8,7 @@ readonly postgres_pod=pynchy-postgres-0
 : "${PYNCHY_K3S_STORAGE_ROOT:?set PYNCHY_K3S_STORAGE_ROOT}"
 readonly data_dir="$PYNCHY_K3S_STORAGE_ROOT/shared/app/data"
 readonly postgres_volume="$PYNCHY_K3S_STORAGE_ROOT/postgres"
+readonly vaultwarden_volume="$PYNCHY_K3S_STORAGE_ROOT/vaultwarden"
 readonly backup_root="$PYNCHY_K3S_STORAGE_ROOT/backups"
 readonly keep=14
 readonly timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -35,6 +36,14 @@ for database in messages.db neonize.db; do
     [[ $(sqlite3 "$partial/$database" "PRAGMA quick_check;") == ok ]]
 done
 
+if [[ -f "$vaultwarden_volume/db.sqlite3" ]]; then
+    mkdir "$partial/vaultwarden"
+    rsync -a --exclude 'db.sqlite3*' "$vaultwarden_volume/" "$partial/vaultwarden/"
+    sqlite3 "$vaultwarden_volume/db.sqlite3" \
+        ".timeout 5000" ".backup '$partial/vaultwarden/db.sqlite3'"
+    [[ $(sqlite3 "$partial/vaultwarden/db.sqlite3" "PRAGMA quick_check;") == ok ]]
+fi
+
 postgres_user=$(k3s kubectl -n "$namespace" get secret pynchy-runtime \
     -o jsonpath='{.data.POSTGRES_USER}' | base64 -d)
 k3s kubectl -n "$namespace" exec "$postgres_pod" -- mkdir -m 0700 "$postgres_staging"
@@ -55,8 +64,8 @@ k3s kubectl -n "$namespace" exec "$postgres_pod" -- rm -rf -- "$postgres_staging
     sha256sum ./* >SHA256SUMS
 )
 chown -R 568:568 "$partial"
-chmod 0750 "$partial"
-chmod 0640 "$partial"/*
+find "$partial" -type d -exec chmod 0750 {} +
+find "$partial" -type f -exec chmod 0640 {} +
 mv "$partial" "$destination"
 trap - EXIT
 

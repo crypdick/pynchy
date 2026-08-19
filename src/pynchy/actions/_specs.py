@@ -234,6 +234,12 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "marketplace_health_snapshot",
     ),
     agent_action(
+        "secret.vaultwarden.read",
+        "vaultwarden",
+        "Read one exact-name item from channel-granted Vaultwarden collections.",
+        "get_secret",
+    ),
+    agent_action(
         "chat.matrix.route.read",
         "matrix-gateway",
         "Read messages from this conversation's configured Matrix route.",
