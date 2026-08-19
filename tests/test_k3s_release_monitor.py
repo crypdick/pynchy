@@ -29,8 +29,10 @@ def _run_monitor(
     desktop_sha: str | None = None,
     monitor_sha: str | None = None,
     fail_rollout: bool = False,
+    fail_probe_run: bool = False,
     image_pending: bool = False,
     no_successful_release: bool = False,
+    stale_probe: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], list[str], list[str]]:
     project_root = Path(__file__).resolve().parents[1]
     fake_bin = tmp_path / "bin"
@@ -45,6 +47,9 @@ def _run_monitor(
     kubectl_log = tmp_path / "kubectl.log"
     git_log = tmp_path / "git.log"
     apply_count = tmp_path / "apply-count"
+    stale_probe_marker = tmp_path / "stale-probe"
+    if stale_probe:
+        stale_probe_marker.touch()
     release_patch = tmp_path / "vault.yaml"
     release_patch.write_text("apiVersion: apps/v1\nkind: Deployment\n", encoding="utf-8")
     _write_executable(
@@ -75,6 +80,20 @@ def _run_monitor(
         "#!/bin/sh\n"
         'while [ "$1" = "--kubeconfig" ] || [ "$1" = "-n" ]; do shift 2; done\n'
         'printf "%s\\n" "$*" >> "$PYNCHY_TEST_KUBECTL_LOG"\n'
+        'if [ "$1" = "delete" ] && [ "$2" = "pod" ] '
+        '&& [ "$PYNCHY_TEST_STALE_PROBE" = "1" ]; then\n'
+        '  case " $* " in *" --wait=false "*) ;; *) '
+        'rm -f "$PYNCHY_TEST_STALE_PROBE_MARKER";; esac\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "run" ] && [ -e "$PYNCHY_TEST_STALE_PROBE_MARKER" ]; then\n'
+        '  printf "Error from server (AlreadyExists): pods %s already exists\\n" "$2" >&2\n'
+        "  exit 1\n"
+        "fi\n"
+        'if [ "$1" = "run" ] && [ "$PYNCHY_TEST_FAIL_PROBE_RUN" = "1" ]; then\n'
+        '  printf "probe creation forbidden\\n" >&2\n'
+        "  exit 1\n"
+        "fi\n"
         'if [ "$1" = "get" ] && [ "$2" = "deployment" ]; then\n'
         '  if [ "$3" = "pynchy-desktop" ]; then\n'
         '    printf "%s" "$PYNCHY_TEST_DESKTOP_SHA"\n'
@@ -147,6 +166,7 @@ def _run_monitor(
         "PYNCHY_TEST_CURRENT_SHA": current_sha,
         "PYNCHY_TEST_DESKTOP_SHA": desktop_sha or current_sha,
         "PYNCHY_TEST_FAIL_ROLLOUT": "1" if fail_rollout else "0",
+        "PYNCHY_TEST_FAIL_PROBE_RUN": "1" if fail_probe_run else "0",
         "PYNCHY_TEST_GH_LOG": str(gh_log),
         "PYNCHY_TEST_GIT_ADVANCED": str(tmp_path / "git-advanced"),
         "PYNCHY_TEST_GIT_LOG": str(git_log),
@@ -154,6 +174,8 @@ def _run_monitor(
         "PYNCHY_TEST_KUBECTL_LOG": str(kubectl_log),
         "PYNCHY_TEST_MONITOR_SHA": monitor_sha or current_sha,
         "PYNCHY_TEST_NO_RELEASE": "1" if no_successful_release else "0",
+        "PYNCHY_TEST_STALE_PROBE": "1" if stale_probe else "0",
+        "PYNCHY_TEST_STALE_PROBE_MARKER": str(stale_probe_marker),
         "PYNCHY_TEST_TARGET_SHA": _TARGET_SHA,
     }
     result = subprocess.run(  # noqa: S603 - executable is the repository-owned monitor.
@@ -196,6 +218,24 @@ def test_monitor_defers_missing_release_images_without_failure(tmp_path: Path) -
     assert "Waiting for release image" in result.stdout
     assert not any(call.startswith("apply -f ") for call in kubectl_calls)
     assert not any("merge --ff-only" in call for call in git_calls)
+
+
+def test_monitor_waits_for_stale_preflight_pod_deletion(tmp_path: Path) -> None:
+    result, kubectl_calls, _git_calls = _run_monitor(tmp_path, stale_probe=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "AlreadyExists" not in result.stderr
+    assert f"Released {_TARGET_SHA}." in result.stdout
+    assert any(call.startswith("run pynchy-host-preflight-") for call in kubectl_calls)
+
+
+def test_monitor_stops_when_preflight_pod_creation_fails(tmp_path: Path) -> None:
+    result, kubectl_calls, _git_calls = _run_monitor(tmp_path, fail_probe_run=True)
+
+    assert result.returncode != 0
+    assert "probe creation forbidden" in result.stderr
+    assert not any(call.startswith("wait ") for call in kubectl_calls)
+    assert not any(call.startswith("apply ") for call in kubectl_calls)
 
 
 def test_monitor_noops_when_application_and_monitor_are_current(tmp_path: Path) -> None:
