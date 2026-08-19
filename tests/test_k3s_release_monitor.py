@@ -209,7 +209,9 @@ def test_monitor_noops_when_application_and_monitor_are_current(tmp_path: Path) 
     assert result.returncode == 0, result.stderr
     assert f"Release {_TARGET_SHA} already active." in result.stdout
     assert not any(call.startswith("run ") for call in kubectl_calls)
-    assert git_calls == []
+    assert git_calls == [
+        f"-C {tmp_path / 'checkout'} fetch --quiet origin +refs/heads/main:refs/remotes/origin/main"
+    ]
 
 
 def test_monitor_repairs_desktop_or_monitor_drift(tmp_path: Path) -> None:
