@@ -35,11 +35,19 @@ helper from the Pynchy checkout on the K3s node:
 sudo ./deploy/k3s/proton-bridge-enroll.sh
 ```
 
-The helper guides the Bridge CLI login, prompts without echo for the generated
-app password, writes it only to the Git-ignored deployment-private Kustomize
-input with mode `0600`, applies that Secret declaratively, and verifies Bridge
-through Pynchy's Proton client. Set `PYNCHY_PROTON_BRIDGE_SECRET_OVERLAY` when
-the deployment keeps that overlay somewhere other than the default
+The helper guides the Bridge CLI login, captures the generated app password
+after the CLI exits, writes it only to the Git-ignored deployment-private
+Kustomize input with mode `0600`, applies that Secret declaratively, and
+verifies Bridge through Pynchy's Proton client. The helper never displays or
+asks the operator to copy the app password. If login already completed but the
+helper was interrupted, resume the handoff with:
+
+```bash
+sudo ./deploy/k3s/proton-bridge-enroll.sh --resume
+```
+
+Set `PYNCHY_PROTON_BRIDGE_SECRET_OVERLAY` when the deployment keeps that overlay
+somewhere other than the default
 `data/personalization/ops/k3s/proton-bridge-secret` path.
 
 ## Configuration
