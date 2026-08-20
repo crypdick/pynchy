@@ -27,6 +27,7 @@ from pynchy.host.orchestrator.webhook_conversation_admission import (
 )
 from pynchy.host.orchestrator.webhook_event_payloads import webhook_event_payload
 from pynchy.identifiers import GroupFolder
+from pynchy.plugins.api import WebhookActor
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state import (
@@ -181,6 +182,18 @@ def test_conversation_admission_request_rejects_missing_routing_contracts() -> N
 
     with pytest.raises(ValueError, match="no prompt"):
         conversation_admission_request(_route(), event, None)
+
+
+def test_conversation_admission_records_human_actor_provenance() -> None:
+    event = replace(
+        _message_event("delivery-human"),
+        actor=WebhookActor(id="user-1", kind="User"),
+    )
+
+    request = conversation_admission_request(_route(), event, "prompt")
+
+    assert request is not None
+    assert request.payload["human_derived"] is True
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ from pynchy.state import (
     get_in_flight_turn,
     get_in_flight_turn_for_task,
     init_test_database,
+    is_chat_paused,
     message_cursor,
     store_message,
 )
@@ -140,6 +141,7 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
     assert queued_turn is not None
     assert queued_turn.control_state is CheckpointControlState.PAUSED
     assert await get_in_flight_turn_for_task("recurring-task") is None
+    assert await is_chat_paused(jid) is True
 
 
 class TestBtwNonInterruptingMessages:

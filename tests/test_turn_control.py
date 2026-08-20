@@ -17,6 +17,7 @@ from pynchy.host.orchestrator.messaging.turn_control import (
     run_interactive_agent,
 )
 from pynchy.plugins.api import NewMessage
+from pynchy.state import init_test_database, is_chat_paused, pause_chat
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -47,7 +48,7 @@ def _turn(control_state: CheckpointControlState) -> InFlightTurn:
     )
 
 
-def _message() -> NewMessage:
+def _message(*, metadata: dict[str, bool] | None = None) -> NewMessage:
     return NewMessage(
         id="message-1",
         chat_jid="discord:channel:project",
@@ -55,6 +56,7 @@ def _message() -> NewMessage:
         sender_name="User",
         content="continue",
         timestamp="2026-07-29T00:01:00+00:00",
+        metadata=metadata,
     )
 
 
@@ -82,6 +84,7 @@ def _deps() -> MagicMock:
 async def test_prepare_agent_batch_honors_checkpoint_control_state(
     control_state, expected, tmp_path: Path
 ) -> None:
+    await init_test_database()
     deps = _deps()
     callbacks = TurnPreparationCallbacks(
         process_pending=AsyncMock(),
@@ -174,13 +177,24 @@ async def test_prepare_agent_batch_returns_paused_when_only_paused_work_remains(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("metadata", "expected_paused"),
+    [
+        (None, False),
+        ({"synthetic_user_input": True}, True),
+    ],
+)
 async def test_prepare_agent_batch_returns_fresh_batch_for_active_checkpoint(
     tmp_path: Path,
+    metadata: dict[str, bool] | None,
+    expected_paused: bool,
 ) -> None:
+    await init_test_database()
     deps = _deps()
+    await pause_chat("discord:channel:project")
     callbacks = TurnPreparationCallbacks(
         process_pending=AsyncMock(),
-        get_pending_messages=AsyncMock(return_value=[_message()]),
+        get_pending_messages=AsyncMock(return_value=[_message(metadata=metadata)]),
     )
 
     with (
@@ -219,6 +233,7 @@ async def test_prepare_agent_batch_returns_fresh_batch_for_active_checkpoint(
 
     assert isinstance(result, AgentBatch)
     assert result.messages == [{"content": "continue"}]
+    assert await is_chat_paused("discord:channel:project") is expected_paused
 
 
 @pytest.mark.asyncio

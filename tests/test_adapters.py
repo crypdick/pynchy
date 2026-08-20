@@ -18,6 +18,7 @@ from pynchy.host.orchestrator.adapters import (
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
+    make_host_message_broadcaster,
     resolve_admin_notification_jid,
 )
 from pynchy.plugins.api import (
@@ -239,6 +240,20 @@ class TestHostMessageBroadcaster:
         store_notice_fn.assert_not_awaited()
         store_host_fn.assert_awaited_once()
         assert [event.content for _, event in channel.sent] == ["⏸️"]
+
+    async def test_durable_pause_suppresses_system_notice(self):
+        channel = FakeChannel()
+        with patch(
+            "pynchy.host.orchestrator.adapters.is_chat_paused",
+            AsyncMock(return_value=True),
+        ):
+            broadcaster = make_host_message_broadcaster(
+                MessageBroadcaster([channel]),
+                lambda _: None,
+            )
+            await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
+
+        assert channel.sent == []
 
 
 # ---------------------------------------------------------------------------

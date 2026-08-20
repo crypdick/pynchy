@@ -13,6 +13,8 @@ from pynchy.state.connection import _get_db, atomic_write
 
 # --- Router state ---
 
+_CHAT_PAUSE_PREFIX = "chat_pause:"
+
 
 async def get_router_state(key: str) -> str | None:
     """Get a router state value."""
@@ -29,6 +31,25 @@ async def set_router_state(key: str, value: str) -> None:
             "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
             (key, value),
         )
+
+
+async def pause_chat(chat_jid: str) -> None:
+    """Persist a quiet fence until human input or a later recurring occurrence."""
+    await set_router_state(f"{_CHAT_PAUSE_PREFIX}{chat_jid}", datetime.now(UTC).isoformat())
+
+
+async def clear_chat_pause(chat_jid: str) -> None:
+    """Remove one chat's durable quiet fence."""
+    async with atomic_write() as db:
+        await db.execute(
+            "DELETE FROM router_state WHERE key = ?",
+            (f"{_CHAT_PAUSE_PREFIX}{chat_jid}",),
+        )
+
+
+async def is_chat_paused(chat_jid: str) -> bool:
+    """Return whether one chat has a durable quiet fence."""
+    return await get_router_state(f"{_CHAT_PAUSE_PREFIX}{chat_jid}") is not None
 
 
 async def save_router_state_batch(pairs: dict[str, str]) -> None:

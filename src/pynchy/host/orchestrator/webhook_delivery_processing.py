@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
@@ -36,11 +37,69 @@ from pynchy.plugins.api import (
     WebhookLifecycleDelivery,
     WebhookRoute,
 )
+from pynchy.state.api import clear_chat_pause, is_chat_paused
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]
+
+
+@dataclass(frozen=True)
+class _WebhookMessagePayload:
+    prompt: str
+    title: str
+    closed: bool | None
+    control_state_revision: str | None
+    public_source: bool
+    human_derived: bool
+
+
+def _webhook_message_payload(delivery: ConversationDelivery) -> _WebhookMessagePayload:
+    payload = delivery.payload or {}
+    prompt = payload.get("prompt")
+    title = payload.get("control_title")
+    closed = payload.get("control_closed")
+    revision = payload.get("control_state_revision")
+    public_source = payload.get("public_source", True)
+    human_derived = payload.get("human_derived", False)
+    if not isinstance(prompt, str) or not isinstance(title, str):
+        raise TypeError("Routed webhook delivery lost its host-parsed prompt")
+    if closed is not None and not isinstance(closed, bool):
+        raise TypeError("Routed webhook delivery lost its control lifecycle state")
+    if revision is not None and (not isinstance(revision, str) or not revision):
+        raise TypeError("Routed webhook delivery lost its control lifecycle revision")
+    if not isinstance(public_source, bool):
+        raise TypeError("Routed webhook delivery lost its source trust")
+    if not isinstance(human_derived, bool):
+        raise TypeError("Routed webhook delivery lost its actor provenance")
+    return _WebhookMessagePayload(
+        prompt,
+        title,
+        closed,
+        revision,
+        public_source,
+        human_derived,
+    )
+
+
+async def _accept_webhook_for_chat(
+    chat_jid: str,
+    delivery: ConversationDelivery,
+    *,
+    human_derived: bool,
+) -> bool:
+    if not await is_chat_paused(chat_jid):
+        return True
+    if human_derived:
+        await clear_chat_pause(chat_jid)
+        return True
+    logger.info(
+        "Dropped automated webhook for paused chat",
+        chat_jid=chat_jid,
+        provider=delivery.identity.provider,
+    )
+    return False
 
 
 @runtime_checkable
@@ -194,33 +253,18 @@ async def prepare_webhook_message(
     register_runtime_workspace_policy: RuntimeWorkspacePolicyRegistrar,
 ) -> tuple[str, NewMessage] | None:
     """Project a current nonterminal delivery into its control workspace."""
-    payload = delivery.payload or {}
-    prompt = payload.get("prompt")
-    proposed_title = payload.get("control_title")
-    proposed_closed = payload.get("control_closed")
-    control_state_revision = payload.get("control_state_revision")
-    public_source = payload.get("public_source", True)
-    if not isinstance(prompt, str) or not isinstance(proposed_title, str):
-        raise TypeError("Routed webhook delivery lost its host-parsed prompt")
-    if proposed_closed is not None and not isinstance(proposed_closed, bool):
-        raise TypeError("Routed webhook delivery lost its control lifecycle state")
-    if control_state_revision is not None and (
-        not isinstance(control_state_revision, str) or not control_state_revision
-    ):
-        raise TypeError("Routed webhook delivery lost its control lifecycle revision")
-    if not isinstance(public_source, bool):
-        raise TypeError("Routed webhook delivery lost its source trust")
+    message_payload = _webhook_message_payload(delivery)
 
     attempt = 0
     while True:
         conversation = await deps.get_conversation(delivery.conversation_id)
         if conversation is None:
             raise RuntimeError("Routed webhook delivery references a missing conversation")
-        if proposed_closed is False and control_state_revision is not None:
+        if message_payload.closed is False and message_payload.control_state_revision is not None:
             if not await deps.conversation_control_state_matches(
                 conversation.id,
                 closed=False,
-                control_state_revision=control_state_revision,
+                control_state_revision=message_payload.control_state_revision,
                 delivery_identity=delivery.identity,
                 claim_id=claim_id,
             ):
@@ -232,7 +276,7 @@ async def prepare_webhook_message(
         if placement is None:
             raise RuntimeError("Routed webhook conversation lost its workspace placement")
         binding = await deps.get_conversation_control_binding(conversation.id)
-        title = binding.title if binding is not None else proposed_title
+        title = binding.title if binding is not None else message_payload.title
         try:
             workspace = await ensure_conversation_workspace(
                 _workspace_context(deps),
@@ -254,12 +298,19 @@ async def prepare_webhook_message(
             conversation.workspace,
             placement.owner.folder,
         )
+        thread_jid = str(workspace.control.binding.thread_jid)
+        if not await _accept_webhook_for_chat(
+            thread_jid,
+            delivery,
+            human_derived=message_payload.human_derived,
+        ):
+            return None
         return workspace.profile.jid, NewMessage(
             id=str(delivery.identity.delivery_id),
             chat_jid=workspace.control.binding.thread_jid,
             sender=f"{delivery.identity.provider}-webhook",
             sender_name=delivery.identity.provider.title(),
-            content=prompt,
+            content=message_payload.prompt,
             # Recovery can wake a durable delivery after this chat's message
             # cursor has passed its provider receipt time. Stamp the local wake
             # so the ordinary ingestion loop cannot skip the recovered message.
@@ -267,7 +318,8 @@ async def prepare_webhook_message(
             is_from_me=False,
             metadata={
                 "authenticated_external_route": True,
-                "public_source_input": public_source,
+                "public_source_input": message_payload.public_source,
+                "human_derived": message_payload.human_derived,
                 "external_provider": delivery.identity.provider,
                 "webhook_route": delivery.identity.route,
                 "conversation_id": conversation.id,

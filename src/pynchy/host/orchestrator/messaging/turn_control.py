@@ -35,6 +35,7 @@ from pynchy.host.orchestrator.messaging.turn_recovery import (
 from pynchy.identifiers import RuntimeId
 from pynchy.plugins.api import NewMessage
 from pynchy.state.api import (
+    clear_chat_pause,
     clear_in_flight_turn,
     get_oldest_resumable_turn_for_group,
     message_cursor,
@@ -53,6 +54,17 @@ _MESSAGE_WORK_KINDS = {
     InFlightWorkKind.RESET_HANDOFF,
     InFlightWorkKind.SCHEDULED,
 }
+
+
+def _is_human_derived(message: NewMessage) -> bool:
+    metadata = message.metadata or {}
+    if message.message_type == "host" or message.sender == "system_notice" or message.is_from_me:
+        return False
+    if metadata.get("synthetic_user_input") is True:
+        return False
+    if metadata.get("authenticated_external_route") is True:
+        return metadata.get("human_derived") is True
+    return True
 
 
 @dataclass(frozen=True)
@@ -142,6 +154,8 @@ async def prepare_agent_batch(
 
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
     missed_messages = await callbacks.get_pending_messages(chat_jid, since_timestamp)
+    if any(_is_human_derived(message) for message in missed_messages):
+        await clear_chat_pause(chat_jid)
     checkpoint = await get_oldest_resumable_turn_for_group(group.folder, _MESSAGE_WORK_KINDS)
     if await should_skip_batch(deps, chat_jid, group, missed_messages):
         checkpoint = await get_oldest_resumable_turn_for_group(

@@ -93,9 +93,11 @@ behind that turn. A queued one-shot task receives its own paused checkpoint, so
 activity retries and external reconciliation cannot restart that occurrence.
 Pause is a terminal orchestration outcome, so the queue and Temporal do not
 emit an error warning or retry the frozen work. Repeated pause commands leave
-the same row paused. While a checkpoint is `pause_requested` or `paused`, the
-host drops system notices before storing or broadcasting them. Only a human
-message resumes the checkpoint; host confirmations such as ⏸️ remain visible.
+the same row paused. Pause also writes a durable chat quiet fence, which
+survives checkpoint completion and deployment. While fenced, the host drops
+system notices and automated routed webhooks before storage or delivery. A
+direct human message or provider-authenticated human event removes the fence;
+host confirmations such as ⏸️ remain visible.
 
 The next ordinary message atomically attaches its formatted user input to the
 paused row, updates the occurrence's end cursor, and restores `active`. The
@@ -111,7 +113,8 @@ for that task return a paused terminal outcome instead of creating competing
 work. A reply in the occurrence's chat or thread starts its dedicated
 interrupted-turn workflow. Scheduler completion bookkeeping runs only after
 that original occurrence finishes. Canceling a queued recurring occurrence
-does not pause its definition, so a later schedule trigger can run normally.
+does not pause its definition, so a later schedule trigger can run normally
+and removes the chat quiet fence when it starts.
 
 `reset context` moves an active or paused row to `reset_requested` before
 stopping execution. Reset retires any routed-delivery claim, removes the

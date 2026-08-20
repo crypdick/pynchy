@@ -58,9 +58,11 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.api import (
     claim_in_flight_turn,
+    clear_chat_pause,
     clear_in_flight_turn,
     get_in_flight_turn_for_task,
     get_task_run_logs,
+    is_chat_paused,
     log_task_run,
     record_task_completion,
     update_task,
@@ -211,6 +213,11 @@ async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | Non
     return scheduled_failure_decision(recent_failure_run(logs))
 
 
+async def _clear_pause_for_recurring_occurrence(task: ScheduledTask, chat_jid: str) -> None:
+    if task.schedule_type != "once":
+        await clear_chat_pause(chat_jid)
+
+
 async def _finish_scheduled_agent_run(  # noqa: PLR0913 - scheduler completion needs its task, dependency port, and run record.
     task: ScheduledTask,
     deps: SchedulerDependencies,
@@ -316,6 +323,12 @@ async def run_scheduled_agent(
     occurrence_id: str | None = None,
 ) -> TurnOutcome:
     """Execute a single scheduled agent task via the unified run_agent path."""
+    if (
+        task.schedule_type == "once"
+        and task.bound_chat_jid is not None
+        and await is_chat_paused(task.bound_chat_jid)
+    ):
+        return TurnOutcome.PAUSED
     # Temporal BUFFER_ONE serializes normal schedule overlap durably. This
     # process-local lock also serializes duplicate/manual activity delivery so
     # every execution stays in the task's one memory directory and derived thread.
@@ -419,6 +432,8 @@ async def _run_scheduled_agent(  # noqa: PLR0911 - explicit scheduler terminal o
         )
         logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
         return TurnOutcome.PAUSED
+
+    await _clear_pause_for_recurring_occurrence(task, runtime_jid)
 
     deterministic = await run_deterministic_config_job(
         task,
