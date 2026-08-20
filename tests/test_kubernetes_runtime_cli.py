@@ -570,19 +570,21 @@ def test_runtime_removes_container(
 
 
 @pytest.mark.parametrize(
-    ("template", "expected"),
+    ("phase", "template", "expected"),
     [
-        ("{{.State.Running}}", "true\n"),
-        ("{{.State.Running}}", "false\n"),
-        ("{{.State.Status}}", "running\n"),
+        ("Pending", "{{.State.Running}}", "true\n"),
+        ("Running", "{{.State.Running}}", "true\n"),
+        ("Succeeded", "{{.State.Running}}", "false\n"),
+        ("Failed", "{{.State.Running}}", "false\n"),
+        ("Running", "{{.State.Status}}", "running\n"),
     ],
 )
 def test_inspect_matches_requested_docker_state_shape(
+    phase: str,
     template: str,
     expected: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    phase = "Pending" if expected == "false\n" else "Running"
     result = _ProcessResult(returncode=0, stdout=phase)
     with (
         patch(

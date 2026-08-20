@@ -432,7 +432,8 @@ def _inspect(args: list[str]) -> int:
     if "-f" in args:
         template = args[args.index("-f") + 1]
         if ".State.Running" in template:
-            output = "true" if result.stdout == "Running" else "false"
+            # Pending is alive: image pulls can outlast the caller's first health poll.
+            output = "true" if result.stdout in {"Pending", "Running"} else "false"
         else:
             output = result.stdout.lower()
         sys.stdout.write(f"{output}\n")
