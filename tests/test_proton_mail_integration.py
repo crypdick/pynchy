@@ -217,6 +217,31 @@ class TestProtonMailMcpServer:
         assert json.loads(text) == {"mailboxes": [{"mailbox": "INBOX", "name": "INBOX"}]}
         assert stub.calls == [("list_mailboxes", None)]
 
+    @pytest.mark.action("mail.proton.mailbox.list")
+    async def test_mcp_ignores_protocol_metadata_on_tool_calls(self):
+        stub = StubProtonMailClient()
+        client = await _start_mcp_client(stub)
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "proton_list_mailboxes",
+                        "arguments": {},
+                        "_meta": {"callId": "exec-123", "progressToken": 1},
+                    },
+                },
+            )
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        assert "isError" not in payload["result"]
+        assert stub.calls == [("list_mailboxes", None)]
+
     @pytest.mark.action("mail.proton.message.list")
     async def test_mcp_lists_messages_through_the_injected_direct_client(self):
         stub = StubProtonMailClient()
