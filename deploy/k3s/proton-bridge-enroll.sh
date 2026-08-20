@@ -109,7 +109,8 @@ printf 'password=%s\n' "$password" > "$secret_tmp"
 password=
 owner=$(stat -c %u "$secret_overlay")
 group=$(stat -c %g "$secret_overlay")
-privileged install -m 0600 -o "$owner" -g "$group" "$secret_tmp" "$secret_file"
+privileged install -m 0600 "$secret_tmp" "$secret_file"
+privileged chown "$owner:$group" "$secret_file"
 rm -f "$secret_tmp"
 secret_tmp=
 
