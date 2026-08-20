@@ -5,6 +5,7 @@ metadata:
   namespace: pynchy
 spec:
   schedule: "*/2 * * * *"
+  suspend: false
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
