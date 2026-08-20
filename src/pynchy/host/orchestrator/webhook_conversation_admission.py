@@ -18,6 +18,7 @@ from pynchy.host.orchestrator.webhook_event_payloads import (
     webhook_event_payload,
 )
 from pynchy.host.orchestrator.webhook_event_rendering import (
+    event_is_human_derived,
     event_public_source,
     prompt_for_event,
 )
@@ -51,6 +52,7 @@ def conversation_admission_request(
         "control_state_revision": target.control_state_revision,
         "event_type": event.event_type,
         "event_action": event.action,
+        "human_derived": event_is_human_derived(event),
         "public_source": (
             target.public_source if target.public_source is not None else route.public_source
         ),
@@ -109,6 +111,7 @@ async def process_deferred_event(
         "control_title": processed.conversation.control_title,
         "control_closed": processed.conversation.control_closed,
         "control_state_revision": processed.conversation.control_state_revision,
+        "human_derived": event_is_human_derived(processed),
         "public_source": event_public_source(route, processed),
         "prompt": prompt_for_event(route, processed),
     }

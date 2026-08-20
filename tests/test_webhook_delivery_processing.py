@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import configure_workspace_placement_for, make_settings
+from conftest import configure_workspace_placement_for, init_test_database, make_settings
 
 from pynchy.conversation.api import (
     ControlSurface,
@@ -304,6 +304,10 @@ async def test_lifecycle_delivery_requires_the_conversation_to_exist() -> None:
             {"prompt": "prompt", "control_title": "title", "public_source": "yes"},
             "lost its source trust",
         ),
+        (
+            {"prompt": "prompt", "control_title": "title", "human_derived": "yes"},
+            "lost its actor provenance",
+        ),
     ],
 )
 async def test_prepare_webhook_message_rejects_invalid_payload(
@@ -349,6 +353,7 @@ async def test_prepare_webhook_message_skips_stale_or_terminal_delivery() -> Non
 
 
 async def test_prepare_webhook_message_projects_current_control_workspace(tmp_path) -> None:
+    await init_test_database()
     configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
     deps = _Deps(conversation=_conversation())
     registered: list[tuple[ConversationId, GroupFolder, str]] = []
@@ -388,7 +393,70 @@ async def test_prepare_webhook_message_projects_current_control_workspace(tmp_pa
     assert registered == [(ConversationId("conversation-1"), GroupFolder("project"), "project")]
 
 
+async def test_paused_webhook_thread_drops_automation_but_accepts_human_comment(tmp_path) -> None:
+    configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
+    deps = _Deps(conversation=_conversation())
+    ensured = EnsuredConversationWorkspace(
+        profile=WorkspaceProfile(
+            jid="discord:channel:thread-1",
+            name="Project/Title",
+            folder="project__thread_conversation-1",
+            trigger="@Pynchy",
+        ),
+        control=EnsuredConversationControl(binding=_binding(), created=False),
+    )
+    automated = _delivery(
+        {
+            "prompt": "GitHub check failed",
+            "control_title": "Title",
+            "human_derived": False,
+        }
+    )
+    human = _delivery(
+        {
+            "prompt": "Author: Operator\nComment: continue",
+            "control_title": "Title",
+            "human_derived": True,
+        }
+    )
+
+    with (
+        patch(
+            "pynchy.host.orchestrator.webhook_delivery_processing.ensure_conversation_workspace",
+            AsyncMock(return_value=ensured),
+        ),
+        patch(
+            "pynchy.host.orchestrator.webhook_delivery_processing.is_chat_paused",
+            AsyncMock(return_value=True),
+        ),
+        patch(
+            "pynchy.host.orchestrator.webhook_delivery_processing.clear_chat_pause",
+            AsyncMock(),
+        ) as clear_chat_pause,
+    ):
+        assert (
+            await prepare_webhook_message(
+                deps,
+                automated,
+                ConversationClaimId("claim-1"),
+                lambda *_args: None,
+            )
+            is None
+        )
+        prepared = await prepare_webhook_message(
+            deps,
+            human,
+            ConversationClaimId("claim-1"),
+            lambda *_args: None,
+        )
+
+    assert prepared is not None
+    assert prepared[1].metadata["human_derived"] is True
+    clear_chat_pause.assert_awaited_once_with("discord:channel:thread-1")
+
+
 async def test_prepare_webhook_message_retries_workspace_change_once(tmp_path) -> None:
+    await init_test_database()
     configure_workspace_placement_for(make_settings(groups_dir=tmp_path))
     deps = _Deps(conversation=_conversation())
     ensured = EnsuredConversationWorkspace(

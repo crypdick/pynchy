@@ -39,6 +39,8 @@ from pynchy.state import (
     get_task_by_id,
     get_task_run_logs,
     init_test_database,
+    is_chat_paused,
+    pause_chat,
     prepare_in_flight_turn_recovery,
 )
 from pynchy.turn_outcomes import TurnOutcome
@@ -146,6 +148,7 @@ class TestRunScheduledAgent:
     ):
         """Should call run_agent with is_scheduled_task=True and input_source='scheduled_task'."""
         mock_deps.groups["test-jid"] = sample_group
+        await pause_chat(sample_group.jid)
 
         with patch.object(
             mock_deps,
@@ -179,6 +182,20 @@ class TestRunScheduledAgent:
         assert len(run["messages"]) == 1
         assert run["messages"][0]["content"] == "Test task"
         assert run["messages"][0]["sender"] == "scheduled_task"
+        assert await is_chat_paused(sample_group.jid) is False
+
+    @pytest.mark.asyncio
+    async def test_once_task_stays_paused_behind_chat_fence(
+        self, mock_deps, sample_task, sample_group
+    ):
+        task = replace(sample_task, schedule_type="once")
+        mock_deps.groups[sample_group.jid] = sample_group
+        await pause_chat(sample_group.jid)
+
+        assert await run_scheduled_agent(task, mock_deps) is TurnOutcome.PAUSED
+
+        assert mock_deps.agent_runs == []
+        assert await is_chat_paused(sample_group.jid) is True
 
     @pytest.mark.asyncio
     async def test_memory_opt_out_skips_directory(

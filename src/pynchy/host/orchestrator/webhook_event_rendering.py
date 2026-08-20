@@ -19,6 +19,11 @@ def event_public_source(route: WebhookRoute, event: WebhookEvent) -> bool:
     return route.public_source
 
 
+def event_is_human_derived(event: WebhookEvent) -> bool:
+    """Return whether provider authentication identifies a human actor."""
+    return event.actor is not None and event.actor.kind.casefold() == "user"
+
+
 def prompt_for_event(route: WebhookRoute, event: WebhookEvent) -> str:
     """Render provider context under the route's declared trust boundary."""
     if event.instructions is None or event.external_context is None:

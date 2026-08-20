@@ -22,7 +22,12 @@ from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.state.api import clear_session, get_in_flight_turns, store_message_direct
+from pynchy.state.api import (
+    clear_session,
+    get_in_flight_turns,
+    is_chat_paused,
+    store_message_direct,
+)
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -229,6 +234,8 @@ def make_host_message_broadcaster(
 
 
 async def _is_chat_paused(chat_jid: str) -> bool:
+    if await is_chat_paused(chat_jid):
+        return True
     paused_states = {
         CheckpointControlState.PAUSE_REQUESTED,
         CheckpointControlState.PAUSED,

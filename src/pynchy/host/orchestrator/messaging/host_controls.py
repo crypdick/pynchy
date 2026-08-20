@@ -26,6 +26,7 @@ from pynchy.state.api import (
     mark_message_as_host,
     message_cursor,
     message_exists,
+    pause_chat,
     request_in_flight_turn_control,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
@@ -90,6 +91,7 @@ async def _handle_pause(
     message: NewMessage,
 ) -> None:
     runtime_id = RuntimeId(group.folder)
+    await pause_chat(chat_jid)
     had_active_run = deps.queue.has_active_run(runtime_id)
     turn = await _consume_checkpoint_control(
         deps,
