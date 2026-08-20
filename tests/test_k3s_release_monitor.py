@@ -137,6 +137,7 @@ def _run_monitor(
         "fi\n"
         'if [ "$1" = "kustomize" ]; then\n'
         '  if grep -q \'": "/\' "$2/kustomization.yaml"; then exit 1; fi\n'
+        '  cat "$2/monitor-release.yaml" >> "$PYNCHY_TEST_RENDER_LOG"\n'
         "  printf 'apiVersion: v1\\nkind: Service\\n"
         "metadata:\\n  name: pynchy\\n  namespace: pynchy\\n'\n"
         "  exit 0\n"
@@ -197,6 +198,7 @@ def _run_monitor(
         "PYNCHY_TEST_KUBECTL_LOG": str(kubectl_log),
         "PYNCHY_TEST_MONITOR_SHA": monitor_sha or current_sha,
         "PYNCHY_TEST_MONITOR_IMAGE": f"registry.example/pynchy-host:{monitor_sha or current_sha}",
+        "PYNCHY_TEST_RENDER_LOG": str(tmp_path / "render.log"),
         "PYNCHY_TEST_NO_RELEASE": "1" if no_successful_release else "0",
         "PYNCHY_TEST_STALE_PROBE": "1" if stale_probe else "0",
         "PYNCHY_TEST_STALE_PROBE_MARKER": str(stale_probe_marker),
@@ -233,6 +235,16 @@ def test_monitor_applies_one_healthy_published_revision(tmp_path: Path) -> None:
     )
     assert any(call.endswith(f"merge --ff-only --quiet {_TARGET_SHA}") for call in git_calls)
     assert f"Released {_TARGET_SHA}." in result.stdout
+
+
+def test_monitor_preserves_release_patch_for_next_run(tmp_path: Path) -> None:
+    result, _kubectl_calls, _git_calls = _run_monitor(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    rendered = (tmp_path / "render.log").read_text(encoding="utf-8")
+    assert '"name": "PYNCHY_RELEASE_PATCH"' in rendered
+    assert f'"value": "{tmp_path / "vault.yaml"}"' in rendered
+    assert '"valueFrom": null' in rendered
 
 
 def test_monitor_defers_missing_release_images_without_failure(tmp_path: Path) -> None:

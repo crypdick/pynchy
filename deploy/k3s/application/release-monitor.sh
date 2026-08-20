@@ -224,7 +224,7 @@ render_application() {
             }}
         }
     ' > "$overlay/desktop-release.yaml"
-    jq -n --arg sha "$sha" --arg host "$host" '
+    jq -n --arg sha "$sha" --arg host "$host" --arg patch "$release_patch" '
         {
             apiVersion: "batch/v1",
             kind: "CronJob",
@@ -235,7 +235,15 @@ render_application() {
             },
             spec: {jobTemplate: {spec: {template: {
                 metadata: {annotations: {"pynchy.dev/release-sha": $sha}},
-                spec: {containers: [{name: "monitor", image: $host}]}
+                spec: {containers: [{
+                    name: "monitor",
+                    image: $host,
+                    env: (if $patch == "" then [] else [{
+                        name: "PYNCHY_RELEASE_PATCH",
+                        value: $patch,
+                        valueFrom: null
+                    }] end)
+                }]}
             }}}}
         }
     ' > "$overlay/monitor-release.yaml"
