@@ -268,15 +268,16 @@ class TestClearPendingTasks:
 
         assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 2
 
-        queue.clear_pending_tasks(_runtime("group1@g.us"))
+        cleared = queue.clear_pending_tasks(_runtime("group1@g.us"))
         assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 0
+        assert cleared == ("task-1", "task-2")
 
         completions[0].set()
         await asyncio.sleep(0.05)
 
     def test_noop_when_no_pending_tasks(self, queue: GroupQueue):
         """clear_pending_tasks does nothing when there are no pending tasks."""
-        queue.clear_pending_tasks(_runtime("group1@g.us"))
+        assert queue.clear_pending_tasks(_runtime("group1@g.us")) == ()
         assert "group1@g.us" not in queue.snapshot()
 
 

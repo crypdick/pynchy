@@ -384,11 +384,9 @@ class GroupQueue:
     async def stop_active_process_for_control(self, runtime_id: RuntimeId) -> None:
         await self._processes.stop_active_process_for_control(runtime_id)
 
-    def clear_pending_tasks(self, runtime_id: RuntimeId) -> None:
-        """Drop all pending autonomous work for a runtime."""
+    def clear_pending_tasks(self, runtime_id: RuntimeId) -> tuple[str, ...]:
         state = self._registry.get(runtime_id)
-        if state is not None:
-            self._cancel_pending_tasks(state)
+        return self._cancel_pending_tasks(state) if state is not None else ()
 
     def clear_pending_messages(self, runtime_id: RuntimeId) -> None:
         """Drop message work invalidated outside the queue."""
@@ -398,9 +396,11 @@ class GroupQueue:
             state.cancel_message_waiters()
 
     @staticmethod
-    def _cancel_pending_tasks(state: GroupState) -> None:
+    def _cancel_pending_tasks(state: GroupState) -> tuple[str, ...]:
+        task_ids = tuple(task.id for task in state.pending_tasks)
         while state.pending_tasks:
             state.pending_tasks.popleft().cancel()
+        return task_ids
 
     async def _process_group_messages(
         self,

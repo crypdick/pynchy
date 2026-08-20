@@ -13,6 +13,7 @@ from pathlib import Path  # noqa: TC003 - beartype resolves request annotations.
 from typing import Any, cast
 
 from pynchy.agent_protocol.api import (
+    CheckpointControlState,
     ContainerOutput,
     InFlightTurn,
     InFlightWorkKind,
@@ -35,6 +36,8 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.api import (
     clear_in_flight_turn,
+    get_in_flight_turn_for_task,
+    get_task_by_id,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
@@ -118,6 +121,39 @@ def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
         "timestamp": datetime.now(UTC).isoformat(),
         "metadata": {"source": task.input_source},
     }
+
+
+async def pause_queued_once_task(
+    task_id: str,
+    group: WorkspaceProfile,
+    chat_jid: str,
+) -> bool:
+    """Freeze queued one-shot work before its queue slot can start."""
+    task = await get_task_by_id(task_id)
+    if (
+        task is None
+        or task.status != "active"
+        or task.schedule_type != "once"
+        or task.bound_chat_jid != chat_jid
+        or task.bound_group_folder != group.folder
+        or await get_in_flight_turn_for_task(task_id) is not None
+    ):
+        return False
+    await begin_message_turn(
+        MessageTurnStart(
+            turn_id=new_turn_id(),
+            chat_jid=chat_jid,
+            group=group,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[_scheduled_task_message(task)],
+            input_start_cursor="",
+            input_end_cursor="",
+            task_id=task.id,
+            input_source=task.input_source,
+            control_state=CheckpointControlState.PAUSED,
+        )
+    )
+    return True
 
 
 def _scheduled_idle_timer(

@@ -58,10 +58,12 @@ message becomes guidance for that same turn; Pynchy reopens the same provider
 thread and continues the original work once. Pausing cannot undo side effects
 that completed before Pynchy received the command.
 
-If no turn is running, `stop` and `pause` only hibernate the existing runtime.
-For a scheduled turn, the command freezes that occurrence without disabling or
-editing the recurring task. Later schedule triggers skip while the occurrence
-is frozen. Reply in the occurrence's chat or thread to resume it.
+If no turn is running or queued, `stop` and `pause` only hibernate the existing runtime.
+Autonomous work already queued behind a running turn is removed before that
+turn stops. A queued one-shot task remains frozen until a message in its chat
+or thread resumes it. A queued recurring occurrence stops without disabling or
+editing its definition, so a later schedule trigger can run normally. For an
+active scheduled turn, later triggers skip while its occurrence is frozen.
 
 Use `reset context` to discard the current or frozen occurrence and its
 provider conversation. A recurring task stays active, and its next occurrence
