@@ -445,7 +445,11 @@ def test_delete_operations(
 ) -> None:
     with patch.object(kubernetes_cli, "_kubectl", side_effect=results) as kubectl:
         assert run_cli(args) == expected
-    assert kubectl.call_args_list[-1].args[-2] == f"--grace-period={grace_period}"
+    service_delete, pod_delete = (call.args for call in kubectl.call_args_list)
+    assert "--wait=false" in service_delete
+    assert f"--grace-period={grace_period}" in pod_delete
+    assert "--wait=false" in pod_delete
+    assert ("--force" in pod_delete) is (args[0] == "rm")
 
 
 @pytest.mark.parametrize("command", ["image", "pull", "network"])
@@ -559,7 +563,10 @@ def test_runtime_removes_container(
         patch("subprocess.run", return_value=_ProcessResult(returncode)) as run,
     ):
         assert KubernetesContainerRuntime().remove_container("POD", force=force) is expected
-    assert f"--grace-period={grace_period}" in run.call_args.args[0]
+    command = run.call_args.args[0]
+    assert f"--grace-period={grace_period}" in command
+    assert "--wait=false" in command
+    assert ("--force" in command) is force
 
 
 @pytest.mark.parametrize(

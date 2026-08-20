@@ -384,14 +384,20 @@ def _kubectl(*args: str, input_text: str | None = None, capture: bool = False) -
 
 def _delete(runtime_name: str, grace_period: str) -> int:
     name = pod_name(runtime_name)
-    service_result = _kubectl("delete", "service", name, "--ignore-not-found")
-    pod_result = _kubectl(
+    # Kubernetes waits for kubelet cleanup by default. Return after API acceptance so
+    # Docker-style `stop` always proceeds to its forced `rm`.
+    service_result = _kubectl("delete", "service", name, "--ignore-not-found", "--wait=false")
+    pod_args = [
         "delete",
         "pod",
         name,
         f"--grace-period={grace_period}",
         "--ignore-not-found",
-    )
+        "--wait=false",
+    ]
+    if grace_period == "0":
+        pod_args.append("--force")
+    pod_result = _kubectl(*pod_args)
     return pod_result or service_result
 
 

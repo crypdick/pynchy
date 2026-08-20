@@ -61,15 +61,19 @@ class KubernetesContainerRuntime:
 
     def remove_container(self, name: str, *, force: bool = True) -> bool:
         grace_period = "0" if force else "5"
+        delete_args = [
+            *kubectl_command(),
+            "delete",
+            "pod",
+            pod_name(name),
+            f"--grace-period={grace_period}",
+            "--ignore-not-found",
+            "--wait=false",
+        ]
+        if force:
+            delete_args.append("--force")
         result = subprocess.run(  # noqa: S603 - fixed kubectl deletion.
-            [
-                *kubectl_command(),
-                "delete",
-                "pod",
-                pod_name(name),
-                f"--grace-period={grace_period}",
-                "--ignore-not-found",
-            ],
+            delete_args,
             capture_output=True,
             check=False,
             timeout=15,
