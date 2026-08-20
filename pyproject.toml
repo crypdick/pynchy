@@ -30,7 +30,8 @@ dependencies = [
 whatsapp = ["neonize>=0.3.14.post0", "qrcode>=8.2"]
 slack = ["slack-bolt>=1.27.0"]
 discord = ["discord-py[voice]>=2.7.1"]
-caldav = ["caldav>=1.4.0"]
+# 2.2.4 uses requests; niquests-based releases install a second, overlapping urllib3 package.
+caldav = ["caldav==2.2.4"]
 browser = ["playwright"]
 all = ["pynchy[whatsapp,slack,discord,caldav,browser,notebook,voice]"]
 notebook = [

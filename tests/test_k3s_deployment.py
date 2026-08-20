@@ -24,6 +24,7 @@ def test_host_image_installs_locked_dependencies() -> None:
 
     assert "chromium-sandbox" not in dockerfile
     assert "uv sync --locked --no-dev --all-extras --no-editable" in dockerfile
+    assert '.venv/bin/python -c "import caldav, detect_secrets, requests"' in dockerfile
     assert "uv pip install --system --no-cache-dir '.[all]'" not in dockerfile
     assert "ARG PYNCHY_RELEASE_SHA" in dockerfile
     assert "PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA}" in dockerfile

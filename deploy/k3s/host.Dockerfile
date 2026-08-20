@@ -54,7 +54,8 @@ RUN /bin/sh /tmp/install_codex.sh && rm /tmp/install_codex.sh
 WORKDIR /opt/pynchy
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN uv sync --locked --no-dev --all-extras --no-editable --no-cache
+RUN uv sync --locked --no-dev --all-extras --no-editable --no-cache \
+    && .venv/bin/python -c "import caldav, detect_secrets, requests"
 
 RUN groupadd --gid 3000 pynchy \
     && useradd --uid 3000 --gid 3000 --create-home --shell /bin/bash pynchy \
