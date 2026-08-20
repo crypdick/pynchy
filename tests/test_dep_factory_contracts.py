@@ -283,6 +283,58 @@ def test_ipc_adapter_enqueues_interactive_turn() -> None:
     schedule.assert_called_once_with(app, "discord:project")
 
 
+def test_ipc_adapter_publishes_permanent_capability_before_return(tmp_path: Path) -> None:
+    app = PynchyApp()
+
+    def update_policy(group_folder, capability_id, *, publish) -> None:
+        assert (group_folder, capability_id) == ("calendar", "calendar.event.list")
+        assert publish(tmp_path) == "pushed"
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=_settings(tmp_path)),
+        patch.object(
+            dep_factory.workspace_config,
+            "update_workspace_capability_policy",
+            side_effect=update_policy,
+        ),
+        patch(
+            "pynchy.host.git_ops.api.sync_personalization_repo",
+            side_effect=["idle", "pushed"],
+        ) as publish,
+        patch("pynchy.host.orchestrator.app.reset_settings") as reset_settings,
+    ):
+        dep_factory.make_ipc_deps(app).persist_capability_approval(
+            "calendar", "calendar.event.list"
+        )
+
+    assert [call.args[0] for call in publish.call_args_list] == [tmp_path, tmp_path]
+    reset_settings.assert_called_once_with()
+
+
+def test_ipc_adapter_rejects_permanent_capability_when_checkout_cannot_sync(
+    tmp_path: Path,
+) -> None:
+    app = PynchyApp()
+
+    with (
+        patch("pynchy.host.orchestrator.app.get_settings", return_value=_settings(tmp_path)),
+        patch.object(
+            dep_factory.workspace_config,
+            "update_workspace_capability_policy",
+        ) as update_policy,
+        patch(
+            "pynchy.host.git_ops.api.sync_personalization_repo",
+            return_value="failed",
+        ),
+        pytest.raises(ValueError, match="Could not prepare personalization repository"),
+    ):
+        dep_factory.make_ipc_deps(app).persist_capability_approval(
+            "calendar", "calendar.event.list"
+        )
+
+    update_policy.assert_not_called()
+
+
 def test_ipc_adapter_projects_skill_access_status(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     deps = dep_factory.make_ipc_deps(PynchyApp())

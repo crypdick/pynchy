@@ -146,6 +146,7 @@ def test_forever_choice_updates_owning_workspace_document(tmp_path) -> None:
         workspaces={"calendar": WorkspaceConfig(profiles=["base"])},
     )
     resolved = MagicMock(capabilities={"calendar.event.list": CapabilityRule("allow")})
+    publish = MagicMock(return_value="pushed")
 
     with (
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
@@ -154,14 +155,55 @@ def test_forever_choice_updates_owning_workspace_document(tmp_path) -> None:
             return_value=resolved,
         ),
     ):
-        update_workspace_capability_policy("calendar", "calendar.event.list")
+        update_workspace_capability_policy("calendar", "calendar.event.list", publish=publish)
 
+    publish.assert_called_once_with(tmp_path)
     permissions = tomllib.loads(path.read_text(encoding="utf-8"))["workspace"]["permissions"]
     assert permissions == {
         "allow": ["calendar.event.list"],
         "ask": [],
         "deny": [],
     }
+
+
+@pytest.mark.parametrize(
+    ("publication", "error", "message"),
+    [
+        ("failed", ValueError, "publication failed"),
+        ("updated", ValueError, "publication failed"),
+        (OSError("offline"), OSError, "offline"),
+    ],
+)
+def test_forever_choice_rolls_back_when_publication_fails(
+    tmp_path, publication: str | OSError, error: type[Exception], message: str
+) -> None:
+    path = tmp_path / "data/personalization/workspaces/calendar.toml"
+    path.parent.mkdir(parents=True)
+    original = '[workspace]\nprofiles = ["base"]\n'
+    path.write_text(original, encoding="utf-8")
+    settings = make_settings(
+        project_root=tmp_path,
+        profiles={"base": ProfileConfig()},
+        workspaces={"calendar": WorkspaceConfig(profiles=["base"])},
+    )
+    resolved = MagicMock(capabilities={"calendar.event.list": CapabilityRule("allow")})
+
+    def publish(_root) -> str:
+        if isinstance(publication, OSError):
+            raise publication
+        return publication
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+            return_value=resolved,
+        ),
+        pytest.raises(error, match=message),
+    ):
+        update_workspace_capability_policy("calendar", "calendar.event.list", publish=publish)
+
+    assert path.read_text(encoding="utf-8") == original
 
 
 @pytest.mark.parametrize(
@@ -185,7 +227,9 @@ def test_forever_choice_rejects_missing_workspace_document(
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         pytest.raises(ValueError, match=message),
     ):
-        update_workspace_capability_policy("calendar", "calendar.event.list")
+        update_workspace_capability_policy(
+            "calendar", "calendar.event.list", publish=lambda _root: "pushed"
+        )
 
 
 def test_forever_choice_adds_permissions_when_workspace_has_none(tmp_path) -> None:
@@ -206,7 +250,9 @@ def test_forever_choice_adds_permissions_when_workspace_has_none(tmp_path) -> No
             return_value=resolved,
         ),
     ):
-        update_workspace_capability_policy("calendar", "calendar.event.list")
+        update_workspace_capability_policy(
+            "calendar", "calendar.event.list", publish=lambda _root: "pushed"
+        )
 
     permissions = tomllib.loads(path.read_text(encoding="utf-8"))["workspace"]["permissions"]
     assert permissions["allow"] == ["calendar.event.list"]
@@ -232,7 +278,9 @@ def test_forever_choice_rolls_back_when_inherited_policy_is_stricter(tmp_path) -
         ),
         pytest.raises(ValueError, match="stricter inherited permission"),
     ):
-        update_workspace_capability_policy("calendar", "calendar.event.list")
+        update_workspace_capability_policy(
+            "calendar", "calendar.event.list", publish=lambda _root: "pushed"
+        )
 
     assert path.read_text(encoding="utf-8") == original
 
@@ -282,7 +330,9 @@ def test_forever_choice_updates_semantic_workspace_policy(tmp_path, collection: 
             return_value=resolved,
         ),
     ):
-        update_workspace_capability_policy(child, "calendar.event.list")
+        update_workspace_capability_policy(
+            child, "calendar.event.list", publish=lambda _root: "pushed"
+        )
 
     children = tomllib.loads(path.read_text(encoding="utf-8"))["workspace"][collection]
     child_doc = next(candidate for candidate in children if candidate["workspace"] == child)
@@ -308,4 +358,6 @@ def test_forever_choice_rejects_semantic_workspace_without_document_owner(tmp_pa
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         pytest.raises(ValueError, match="no persistent policy owner"),
     ):
-        update_workspace_capability_policy("calendar-child", "calendar.event.list")
+        update_workspace_capability_policy(
+            "calendar-child", "calendar.event.list", publish=lambda _root: "pushed"
+        )
