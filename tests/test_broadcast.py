@@ -267,6 +267,7 @@ async def _run_with_trace_sequence(
 
     channel = FakeChannel()
     app.channels = [channel]
+    streaming.init_trace_batcher(app)
     capture = EventCapture(app.event_bus)
 
     with (
@@ -444,10 +445,10 @@ class TestBroadcastConsistency:
                 },
             ],
         )
-        # Both channels and EventBus should have 2 tool_use events
-        tool_channel = [t for _, t in channel.sent_messages if "\U0001f527" in t]
+        # Production coalesces consecutive channel tool traces into one message.
+        channel_tool_count = sum(t.count("\U0001f527") for _, t in channel.sent_messages)
         tool_traces = [t for t in capture.traces if t.trace_type == "tool_use"]
-        assert len(tool_channel) == 2, f"Expected 2 channel tool msgs, got {len(tool_channel)}"
+        assert channel_tool_count == 2
         assert len(tool_traces) == 2, f"Expected 2 EventBus tool traces, got {len(tool_traces)}"
 
     async def test_direct_command_shows_output(self, app: PynchyApp, tmp_path: Path):
