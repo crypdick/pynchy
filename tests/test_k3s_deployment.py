@@ -150,6 +150,10 @@ def test_pynchy_startup_probe_allows_workspace_recovery() -> None:
         "failureThreshold": 60,
         "periodSeconds": 5,
     }
+    assert container["readinessProbe"] == {
+        "httpGet": {"path": "/health", "port": "web"},
+        "periodSeconds": 5,
+    }
 
 
 def test_main_workflow_publishes_both_images_after_tests() -> None:
