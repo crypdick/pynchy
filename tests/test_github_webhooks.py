@@ -135,7 +135,7 @@ def test_description_change_maps_to_literal_host_notification() -> None:
     )
 
 
-def test_merged_pull_request_starts_an_agent_follow_up_turn() -> None:
+def test_merged_pull_request_is_ignored() -> None:
     now = datetime.now(UTC)
     payload = _payload(action="closed", changes={})
     pull_request = payload["pull_request"]
@@ -146,14 +146,20 @@ def test_merged_pull_request_starts_an_agent_follow_up_turn() -> None:
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
     assert event.action == "merged"
-    assert event.host_message is None
-    assert event.instructions
-    assert event.external_context == {
-        "repository": "example/project",
-        "pull_request_number": 42,
-        "pull_request_url": "https://github.com/example/project/pull/42",
-        "event": "merged",
-    }
+    assert event.ignored_reason == "pull_request_closed"
+
+
+def test_unmerged_closed_pull_request_is_ignored() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(action="closed", changes={}),
+        "pull_request",
+    )
+
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.action == "closed"
+    assert event.ignored_reason == "pull_request_closed"
 
 
 def test_ci_failure_maps_to_actionable_local_follow_up() -> None:
@@ -325,7 +331,7 @@ async def test_actionable_pr_feedback_routes_to_linked_linear_conversation(
         ),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.github_webhook_linear.resolve_linear_issue_conversation",
+        "pynchy.plugins.integrations.github_webhook_linear.find_linear_issue_control_conversation",
         AsyncMock(return_value=_Conversation(subject=subject)),
     )
 
@@ -368,6 +374,42 @@ async def test_unlinked_actionable_review_falls_back_to_workspace_notification(
     assert prepared.instructions is None
     assert prepared.host_message == (
         "GitHub PR update — example/project#42: new inline review comment.\n"
+        "https://github.com/example/project/pull/42"
+    )
+
+
+async def test_linked_feedback_without_existing_control_falls_back_to_workspace_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="submitted", changes={})
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear._linked_issue_for_pr",
+        AsyncMock(
+            return_value=(
+                "issue-1",
+                {"id": "issue-1", "identifier": "SYN-1", "title": "Ship the fix"},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.find_linear_issue_control_conversation",
+        AsyncMock(return_value=None),
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.instructions is None
+    assert prepared.host_message == (
+        "GitHub PR update — example/project#42: review submitted (commented).\n"
         "https://github.com/example/project/pull/42"
     )
 
@@ -642,7 +684,7 @@ async def test_unlisted_sender_is_discarded_without_a_receipt(
     assert not deps.host_messages
 
 
-async def test_merged_delivery_dispatches_one_agent_follow_up_task(
+async def test_merged_delivery_creates_no_task_or_notification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", _SIGNING_KEY)
@@ -662,7 +704,7 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
         datetime.now(UTC),
         config=_config(),
     )
-    assert event.instructions is not None
+    assert event.ignored_reason == "pull_request_closed"
     try:
         response = await client.post(
             "/webhooks/github/project",
@@ -674,10 +716,6 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
         await client.close()
 
     assert response.status == 200
-    assert body == {"status": "accepted", "duplicate": False}
-    assert len(deps.dispatched) == 1
-    task = deps.dispatched[0]
-    assert task.group_folder == "project"
-    assert task.derived_thread_name == f"Webhook | github/project | {_DELIVERY_ID}"
-    assert task.prompt.startswith(f"{event.instructions}\n\n")
+    assert body == {"status": "ignored", "duplicate": False}
+    assert not deps.dispatched
     assert not deps.host_messages

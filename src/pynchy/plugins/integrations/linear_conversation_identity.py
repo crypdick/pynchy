@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from pynchy.conversation.api import (
     Conversation,
+    ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -28,6 +29,7 @@ class LinearConversationRuntime:
     get_for_subject_key: Callable[
         [ConversationSubjectKey, GroupFolder, str], Awaitable[Conversation | None]
     ]
+    get_control_binding: Callable[[ConversationId], Awaitable[object | None]]
     resolve: Callable[[ConversationSubject, GroupFolder], Awaitable[Conversation]]
 
 
@@ -74,3 +76,21 @@ async def resolve_linear_issue_conversation(
         ),
         group_folder,
     )
+
+
+async def find_linear_issue_control_conversation(
+    issue_id: str,
+    workspace: str,
+) -> Conversation | None:
+    """Return an existing issue conversation only when it already has a control."""
+    runtime = _configured_runtime()
+    execution = await runtime.get_unfinished_execution(issue_id)
+    owner_workspace = execution.workspace if execution is not None else workspace
+    existing = await runtime.get_for_subject_key(
+        ConversationSubjectKey(issue_id),
+        GroupFolder(owner_workspace),
+        ":issue",
+    )
+    if existing is None or await runtime.get_control_binding(existing.id) is None:
+        return None
+    return existing

@@ -10,13 +10,23 @@ import pluggy
 import pytest
 
 import pynchy.plugins
+from pynchy.conversation.api import (
+    Conversation,
+    ConversationId,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
+from pynchy.identifiers import GroupFolder
 from pynchy.plugins.api import PynchySpec, WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_conversation_identity import (
+    LinearConversationRuntime,
+    find_linear_issue_control_conversation,
     resolve_linear_issue_conversation,
 )
 from pynchy.plugins.integrations.linear_mutation_effects import (
@@ -136,6 +146,37 @@ async def test_linear_conversation_resolution_requires_configuration(monkeypatch
 
     with pytest.raises(RuntimeError, match="Linear conversation runtime has not been configured"):
         await resolve_linear_issue_conversation("issue-1", "workspace", "account")
+
+
+@pytest.mark.asyncio
+async def test_github_linear_routing_requires_an_existing_control(monkeypatch) -> None:
+    conversation = Conversation(
+        id=ConversationId("conversation-1"),
+        workspace=GroupFolder("workspace"),
+        subject=ConversationSubject(
+            namespace=ConversationSubjectNamespace("linear:account:issue"),
+            key=ConversationSubjectKey("issue-1"),
+        ),
+        session_id=None,
+        created_at="2026-08-20T00:00:00+00:00",
+        updated_at="2026-08-20T00:00:00+00:00",
+    )
+    get_control_binding = AsyncMock(return_value=None)
+    runtime = LinearConversationRuntime(
+        get_unfinished_execution=AsyncMock(return_value=None),
+        get_for_subject_key=AsyncMock(return_value=conversation),
+        get_control_binding=get_control_binding,
+        resolve=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_conversation_identity._runtime.runtime",
+        runtime,
+    )
+
+    assert await find_linear_issue_control_conversation("issue-1", "workspace") is None
+    get_control_binding.return_value = object()
+    assert await find_linear_issue_control_conversation("issue-1", "workspace") is conversation
+    runtime.resolve.assert_not_awaited()
 
 
 @pytest.mark.asyncio
