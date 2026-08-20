@@ -28,6 +28,12 @@ from pynchy.host.orchestrator.pipeline_context import (
 from pynchy.host.orchestrator.workspace_artifacts import (
     remove_orphaned_workspace_registrations,
 )
+from pynchy.host.orchestrator.workspace_permission_toml import (
+    grant_capability as _grant_capability,
+)
+from pynchy.host.orchestrator.workspace_permission_toml import (
+    semantic_policy_table as _semantic_policy_table,
+)
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
     resolve_display_name,
@@ -525,7 +531,12 @@ def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bo
     reset_settings()
 
 
-def update_workspace_capability_policy(group_folder: str, capability_id: str) -> None:
+def update_workspace_capability_policy(
+    group_folder: str,
+    capability_id: str,
+    *,
+    publish: Callable[[Path], str],
+) -> None:
     """Persist one exact capability grant in its owning workspace document."""
     settings = get_settings()
     runtime_policy = _runtime_policies.get(group_folder)
@@ -551,6 +562,10 @@ def update_workspace_capability_policy(group_folder: str, capability_id: str) ->
     write_text_atomic(path, tomlkit.dumps(doc))
     reset_settings()
 
+    def restore() -> None:
+        write_text_atomic(path, original)
+        reset_settings()
+
     resolved = load_resolved_config(group_folder)
     matching = (
         rule
@@ -560,33 +575,16 @@ def update_workspace_capability_policy(group_folder: str, capability_id: str) ->
     if (most_restrictive_capability_rule(matching) or CapabilityRule("needs_human")).decision != (
         "allow"
     ):
-        write_text_atomic(path, original)
-        reset_settings()
+        restore()
         raise ValueError("A stricter inherited permission prevents a permanent grant")
-
-
-def _semantic_policy_table(workspace: object, workspace_name: str) -> object:
-    workspace_table = cast("Any", workspace)
-    for collection_name in ("scopes", "threads"):
-        for candidate in workspace_table.get(collection_name, []):
-            if candidate.get("workspace") == workspace_name:
-                return candidate
-    raise ValueError(f"Workspace '{workspace_name}' has no persistent policy owner")
-
-
-def _grant_capability(target: object, capability_id: str) -> None:
-    target_table = cast("Any", target)
-    permissions = target_table.get("permissions")
-    if permissions is None:
-        permissions = tomlkit.inline_table()
-        target_table["permissions"] = permissions
-    for bucket in ("ask", "deny"):
-        permissions[bucket] = [
-            value for value in permissions.get(bucket, []) if value != capability_id
-        ]
-    permissions["allow"] = _deduplicate_preserving_order(
-        [*[str(value) for value in permissions.get("allow", [])], capability_id]
-    )
+    try:
+        publication = publish(settings.project_root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        restore()
+        raise
+    if publication not in {"idle", "pushed"}:
+        restore()
+        raise ValueError("Personalization publication failed")
 
 
 def _deduplicate_preserving_order(values: list[str]) -> list[str]:

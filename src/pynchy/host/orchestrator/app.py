@@ -21,6 +21,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
+from threading import Lock
 from typing import Any, cast
 
 import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
@@ -833,6 +834,8 @@ class PynchyApp(ThreadRouting):
         # (the true "successfully processed" cursor) as its baseline.
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
+        # Approval decisions and scheduled polling share one personalization checkout.
+        self._personalization_sync_lock = Lock()
         settings = get_settings()
         self._configure_runtime_dependencies(settings)
         self.message_data_dir = settings.data_dir
@@ -1324,6 +1327,10 @@ class PynchyApp(ThreadRouting):
 
     def sync_personalization(self, project_root: Path) -> str:
         """Persist valid changes through the configured Git adapter."""
+        with self._personalization_sync_lock:
+            return self._sync_personalization_unlocked(project_root)
+
+    def _sync_personalization_unlocked(self, project_root: Path) -> str:
         from pynchy.config.api import (  # noqa: PLC0415 - composition root selects the validator.
             validate_personalization_configuration,
         )
@@ -1332,6 +1339,24 @@ class PynchyApp(ThreadRouting):
         )
 
         return sync_personalization_repo(project_root, validate_personalization_configuration)
+
+    def persist_capability_approval(self, group_folder: str, capability_id: str) -> None:
+        """Publish a permanent capability grant before reporting success."""
+        from pynchy.host.orchestrator import (  # noqa: PLC0415 - avoids app composition cycle.
+            workspace_config,
+        )
+
+        with self._personalization_sync_lock:
+            settings = get_settings()
+            preparation = self._sync_personalization_unlocked(settings.project_root)
+            if preparation not in {"idle", "pushed", "updated"}:
+                raise ValueError("Could not prepare personalization repository for publication")
+            reset_settings()
+            workspace_config.update_workspace_capability_policy(
+                group_folder,
+                capability_id,
+                publish=self._sync_personalization_unlocked,
+            )
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""

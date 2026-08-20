@@ -73,14 +73,16 @@ choices:
 - **Approve this session** also allows that exact capability for the active
   agent session.
 - **Approve forever** adds that exact capability to the owning workspace's
-  personalized `permissions.allow` list.
+  personalized `permissions.allow` list, validates the personalization tree,
+  and publishes the Git change before reporting success.
 - **Deny** rejects the request.
 
 A permanent grant cannot weaken a stricter inherited `ask` or `deny` rule. In
-that case, Pynchy leaves the request pending and reports why it could not save
-the grant. Approval prompts without a stable semantic capability, including
-package artifact and Bash escalations, remain one-shot **Approve** or **Deny**
-decisions.
+that case, Pynchy rejects the request and reports why it could not save
+the grant. A validation, commit, or push failure restores the prior local
+policy and reports that the permanent approval failed. Approval prompts
+without a stable semantic capability, including package artifact and Bash
+escalations, remain one-shot **Approve** or **Deny** decisions.
 
 The control records the decision in the originating workspace, so a prompt
 from one chat cannot approve an action in another.
