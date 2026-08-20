@@ -31,6 +31,7 @@ from pynchy.plugins.integrations.github_webhook_models import (
     GitHubEnvelope,
     GitHubWebhookRouteConfig,
 )
+from pynchy.plugins.integrations.linear_boot import configured_linear_workspace_names
 
 __all__ = ["GITHUB_MAX_WEBHOOK_BODY_BYTES"]
 
@@ -233,9 +234,6 @@ def _issue_comment_event(
             subject_id=str(issue.number),
             reason="issue_comment_action_is_not_configured",
         )
-    text = "new PR comment" if payload.action == "created" else "PR comment edited"
-    url = _pr_url(context.repository, issue.number)
-    message = f"GitHub PR update — {context.repository}#{issue.number}: {text}.\n{url}"
     return _actionable_pr_event(
         context,
         action=payload.action,
@@ -243,7 +241,6 @@ def _issue_comment_event(
         instructions=_REVIEW_INSTRUCTIONS,
         details={
             "event": "issue_comment",
-            "fallback_host_message": message,
         },
     )
 
@@ -282,7 +279,6 @@ def _review_event(
         details={
             "event": "pull_request_review",
             "review_state": review_state,
-            "fallback_host_message": message,
         },
     )
 
@@ -301,13 +297,6 @@ def _review_comment_event(
             subject_id=str(number),
             reason="pull_request_review_comment_action_is_not_configured",
         )
-    text = (
-        "new inline review comment"
-        if payload.action == "created"
-        else "inline review comment edited"
-    )
-    url = _pr_url(context.repository, number)
-    message = f"GitHub PR update — {context.repository}#{number}: {text}.\n{url}"
     return _actionable_pr_event(
         context,
         action=payload.action,
@@ -315,7 +304,6 @@ def _review_comment_event(
         instructions=_REVIEW_INSTRUCTIONS,
         details={
             "event": "pull_request_review_comment",
-            "fallback_host_message": message,
         },
     )
 
@@ -366,7 +354,6 @@ def _check_run_event(
             "event": "check_run",
             "check_name": check_run.name,
             "conclusion": conclusion,
-            "fallback_host_message": message,
         },
     )
 
@@ -417,12 +404,12 @@ def parse_github_webhook(  # noqa: PLR0911 - each supported event has one closed
 def github_webhook_routes(
     configs: tuple[GitHubWebhookRouteConfig, ...],
 ) -> tuple[WebhookRoute, ...]:
-    """Build explicitly mapped GitHub routes from resolved route configuration."""
+    """Build repository routes whose targets come from managed Linear issues."""
     return tuple(
         WebhookRoute(
             provider="github",
             name=config.name,
-            workspace=config.workspace,
+            workspace=None,
             secret_env=config.secret_env,
             parse=partial(parse_github_webhook, config=config),
             max_body_bytes=config.max_body_bytes,
@@ -430,6 +417,7 @@ def github_webhook_routes(
             rate_limit_window_seconds=config.rate_limit_window_seconds,
             prepare_event=partial(prepare_github_webhook_event, config=config),
             routes_conversations=True,
+            candidate_workspaces=configured_linear_workspace_names(config.tool),
             public_source=not config.allowed_senders,
             allow_admin_workspaces=bool(config.allowed_senders),
         )

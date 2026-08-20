@@ -44,7 +44,7 @@ def _request(payload: dict[str, object], event_type: str) -> tuple[bytes, dict[s
 
 
 def _config() -> GitHubWebhookRouteConfig:
-    return GitHubWebhookRouteConfig(name="project", workspace="project", repository=_REPOSITORY)
+    return GitHubWebhookRouteConfig(name="project", repository=_REPOSITORY)
 
 
 def _parse(payload: dict[str, object], event_type: str):
@@ -73,7 +73,6 @@ def test_route_configuration_rejects_invalid_limits_and_identifiers(
 def test_route_configuration_accepts_a_smaller_payload_limit() -> None:
     config = GitHubWebhookRouteConfig(
         name="project",
-        workspace="project",
         repository=_REPOSITORY,
         max_body_bytes=1024,
     )
@@ -93,7 +92,6 @@ def test_sender_allowlist_rejects_blank_and_duplicate_logins() -> None:
 def test_sender_allowlist_discards_untrusted_or_missing_senders() -> None:
     config = GitHubWebhookRouteConfig(
         name="project",
-        workspace="project",
         repository=_REPOSITORY,
         allowed_senders=("repo-owner",),
     )

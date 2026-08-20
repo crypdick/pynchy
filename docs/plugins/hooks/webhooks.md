@@ -64,6 +64,11 @@ a lifecycle-only event, `False` explicitly reopens normal conversation handling,
 and `None` preserves current terminal intent. The channel owns the native
 mapping; Discord maps terminal controls to archived threads.
 
+A deterministic `host_message` may target an already-resolved control without an
+agent turn by setting `WebhookConversation.notification_jid` from durable control
+state. Never derive that JID from provider payload data. The host records a
+`notified` receipt and sends the message directly without admitting conversation work.
+
 ## Lifecycle-only callbacks
 
 Use `WebhookLifecycle` when a provider callback must change conversation

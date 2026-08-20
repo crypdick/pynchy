@@ -17,6 +17,7 @@ from pynchy.conversation.api import (
     ExternalDeliveryIdentity,  # noqa: TC001 - beartype resolves lifecycle payloads.
 )
 from pynchy.identifiers import (
+    ChatJid,  # noqa: TC001 - beartype resolves contract annotations at runtime.
     GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.logger import logger
@@ -56,7 +57,7 @@ class WebhookDiscard:
 
 @dataclass(frozen=True)
 class WebhookConversation:
-    """Provider-parsed placement for an actionable routed conversation event."""
+    """Provider-parsed placement for an existing routed conversation."""
 
     subject: ConversationSubject
     control_title: str
@@ -66,12 +67,15 @@ class WebhookConversation:
     workspace: str | None = None
     controller_workspace: str | None = None
     public_source: bool | None = None
+    notification_jid: ChatJid | None = None
 
     def __post_init__(self) -> None:
         if not self.control_title.strip():
             raise ValueError("Webhook conversation control title cannot be blank")
         if self.control_state_revision is not None and not self.control_state_revision.strip():
             raise ValueError("Webhook conversation control revision cannot be blank")
+        if self.notification_jid is not None and not self.notification_jid.strip():
+            raise ValueError("Webhook conversation notification JID cannot be blank")
 
 
 WebhookExternalContext = str | Mapping[str, object]

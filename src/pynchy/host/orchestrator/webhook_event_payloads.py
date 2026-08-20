@@ -9,6 +9,7 @@ from pynchy.conversation.api import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
+from pynchy.identifiers import ChatJid
 from pynchy.plugins.api import (
     WebhookActor,
     WebhookConversation,
@@ -49,6 +50,7 @@ def webhook_event_payload(event: WebhookEvent) -> dict[str, object]:
                 "workspace": conversation.workspace,
                 "controller_workspace": conversation.controller_workspace,
                 "public_source": conversation.public_source,
+                "notification_jid": conversation.notification_jid,
             }
             if conversation is not None
             else None
@@ -100,6 +102,7 @@ def _conversation(payload: Mapping[str, object]) -> WebhookConversation | None:
     closed = raw.get("control_closed")
     control_state_revision = raw.get("control_state_revision")
     public_source = raw.get("public_source")
+    notification_jid = _optional_text(raw, "notification_jid")
     if closed is not None and not isinstance(closed, bool):
         raise TypeError("Deferred webhook control_closed is not boolean")
     if control_state_revision is not None and not isinstance(control_state_revision, str):
@@ -117,6 +120,7 @@ def _conversation(payload: Mapping[str, object]) -> WebhookConversation | None:
         workspace=_optional_text(raw, "workspace"),
         controller_workspace=_optional_text(raw, "controller_workspace"),
         public_source=public_source,
+        notification_jid=ChatJid(notification_jid) if notification_jid is not None else None,
     )
 
 
