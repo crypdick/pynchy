@@ -26,18 +26,21 @@ Pynchy Pod in the deployment-specific Kustomize overlay. All authorized
 workspaces share that host-side Bridge through the Proton Mail MCP server; do
 not run one Bridge container per workspace. Persist `/home/bridge`, and mount
 the generated Bridge app password from a Kubernetes Secret only into the
-`pynchy` container. Account login remains a one-time interactive operator step.
-Run that step against the sidecar's managed CLI:
+`pynchy` container.
+
+Account login remains a one-time interactive operator step. Run the enrollment
+helper from the Pynchy checkout on the K3s node:
 
 ```bash
-kubectl -n pynchy exec -it deployment/pynchy -c proton-bridge -- \
-  pynchy-proton-bridge enroll
+sudo ./deploy/k3s/proton-bridge-enroll.sh
 ```
 
-Use `login`, copy the generated app password from `info` directly into the
-deployment-private Kubernetes Secret generator input, disable Bridge automatic
-updates, and exit. Apply that tracked Secret overlay declaratively. The sidecar
-resumes noninteractive service after the CLI exits.
+The helper guides the Bridge CLI login, prompts without echo for the generated
+app password, writes it only to the Git-ignored deployment-private Kustomize
+input with mode `0600`, applies that Secret declaratively, and verifies Bridge
+through Pynchy's Proton client. Set `PYNCHY_PROTON_BRIDGE_SECRET_OVERLAY` when
+the deployment keeps that overlay somewhere other than the default
+`data/personalization/ops/k3s/proton-bridge-secret` path.
 
 ## Configuration
 

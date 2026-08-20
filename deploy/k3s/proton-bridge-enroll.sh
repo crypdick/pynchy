@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+namespace=${PYNCHY_KUBERNETES_NAMESPACE:-pynchy}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+checkout=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+personalization=${PYNCHY_PERSONALIZATION_ROOT:-$checkout/data/personalization}
+secret_overlay=${PYNCHY_PROTON_BRIDGE_SECRET_OVERLAY:-$personalization/ops/k3s/proton-bridge-secret}
+secret_file=$secret_overlay/proton-bridge.env
+mounted_secret=/var/run/secrets/proton-bridge/password
+secret_tmp=
+password=
+tty_echo_disabled=false
+
+cleanup() {
+    if [ "$tty_echo_disabled" = true ]; then
+        stty echo 2>/dev/null || true
+    fi
+    if [ -n "$secret_tmp" ]; then
+        rm -f "$secret_tmp"
+    fi
+    password=
+}
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
+
+die() {
+    printf '%s\n' "$*" >&2
+    exit 1
+}
+
+privileged() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+k() {
+    privileged k3s kubectl -n "$namespace" "$@"
+}
+
+[ -f "$secret_overlay/kustomization.yaml" ] \
+    || die "Missing Proton Bridge Secret overlay: $secret_overlay"
+git -c safe.directory="$personalization" -C "$personalization" check-ignore -q "$secret_file" \
+    || die "Refusing to write an app password to a path not ignored by Git."
+
+containers=$(k get deployment pynchy \
+    -o 'jsonpath={range .spec.template.spec.containers[*]}{.name}{" "}{end}')
+case " $containers " in
+    *" proton-bridge "*) ;;
+    *) die "Deployment pynchy has no proton-bridge sidecar." ;;
+esac
+
+printf '%s\n' \
+    "Bridge CLI will open." \
+    "Run: login" \
+    "Run: info, then copy the generated Bridge app password." \
+    "Run: updates autoupdates disable" \
+    "Run: exit"
+k exec -it deployment/pynchy -c proton-bridge -- pynchy-proton-bridge enroll
+
+printf 'Paste generated Bridge app password: ' >&2
+if [ -t 0 ]; then
+    stty -echo
+    tty_echo_disabled=true
+fi
+IFS= read -r password || die "No Bridge app password received."
+if [ "$tty_echo_disabled" = true ]; then
+    stty echo
+    tty_echo_disabled=false
+    printf '\n' >&2
+fi
+[ -n "$password" ] || die "Bridge app password cannot be empty."
+
+umask 077
+secret_tmp=$(mktemp)
+printf 'password=%s\n' "$password" > "$secret_tmp"
+password=
+owner=$(stat -c %u "$secret_overlay")
+group=$(stat -c %g "$secret_overlay")
+privileged install -m 0600 -o "$owner" -g "$group" "$secret_tmp" "$secret_file"
+rm -f "$secret_tmp"
+secret_tmp=
+
+k apply -k "$secret_overlay" >/dev/null
+
+attempt=0
+until k exec deployment/pynchy -c pynchy -- test -s "$mounted_secret" \
+    >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 30 ] || die "Timed out waiting for the projected Bridge Secret."
+    sleep 2
+done
+
+k exec deployment/pynchy -c proton-bridge -- sh -c '
+    test -s /home/bridge/.pynchy-proton-bridge.pid
+    kill -0 "$(cat /home/bridge/.pynchy-proton-bridge.pid)"
+    grep -q ":0401 " /proc/net/tcp
+    grep -q ":0477 " /proc/net/tcp
+' >/dev/null
+k exec deployment/pynchy -c pynchy -- /opt/pynchy/.venv/bin/python -c '
+from pynchy.plugins.integrations.api import create_proton_mail_client
+create_proton_mail_client().list_mailboxes()
+' >/dev/null
+
+printf '%s\n' "Proton Bridge enrollment complete."
