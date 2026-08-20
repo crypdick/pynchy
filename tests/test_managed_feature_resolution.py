@@ -477,6 +477,7 @@ class TestManagedFeatureResolution:
         [
             "",
             "not-a-sha\trefs/heads/main\n",
+            "z" * 40 + "\trefs/heads/main\n",
             "a" * 40 + "\trefs/heads/release\n",
             ("a" * 40 + "\trefs/heads/main\n") * 2,
         ],

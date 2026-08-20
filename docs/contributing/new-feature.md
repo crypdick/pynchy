@@ -141,7 +141,10 @@ branch or deploys Pynchy. Commit all feature changes first: the host rejects
 uncommitted files and publishes only the validated committed HEAD. The host
 derives the repository, worktree, branch, and target branch from the active
 managed-feature manifest rather than from agent input. If the target branch
-advances, rebase the feature before publishing. See the [IPC
+advances, call `rebase_managed_feature(feature_slug="<slug>")` before
+publishing. The host verifies the remote default branch and rebases only the
+manifest-bound feature. If it reports a conflict, resolve it with `git rebase
+--continue`, `--abort`, or `--skip`. See the [IPC
 architecture](../architecture/ipc.md#managed-feature-pr-publication) for the
 request contract and the [security model](../architecture/security.md#5c-host-mutating-operations-cop-gate)
 for its publication checks.

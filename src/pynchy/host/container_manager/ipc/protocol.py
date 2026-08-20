@@ -61,6 +61,7 @@ TIER2_TYPES = frozenset(
         "reset_context",
         "sync_worktree_to_main",
         "publish_managed_feature",
+        "rebase_managed_feature",
         # Task management
         "pause_task",
         "resume_task",

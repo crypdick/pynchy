@@ -370,6 +370,14 @@ boundary. Missing or alternate publication modes are rejected before approval
 receipts or Cop authority are evaluated, so neither action can merge into the
 host branch or trigger a deployment.
 
+`rebase_managed_feature` is a separate local-only host operation. It accepts
+only a canonical feature slug and derives the worktree and remote default
+branch from the active manifest. It requires a clean worktree and supplies the
+verified remote base through host-owned Git metadata while disabling hooks,
+replacement refs, and ambient configuration. It never pushes, opens a pull
+request, merges, or deploys. A conflict remains in the manifest-bound
+worktree, where the agent can use only the existing rebase recovery commands.
+
 **Bound managed-feature publication.** The agent-facing
 `publish_managed_feature` tool accepts only a canonical feature slug. The host
 reads only `.new-feature/manifest.toml` beneath configured repository roots and

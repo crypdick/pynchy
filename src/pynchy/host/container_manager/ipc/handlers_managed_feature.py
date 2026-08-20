@@ -1,4 +1,4 @@
-"""IPC handler for bound managed-feature pull-request publication."""
+"""IPC handlers for bound managed-feature lifecycle operations."""
 
 from __future__ import annotations
 
@@ -83,6 +83,7 @@ _resolve_repos_for_group: Callable[[str], Sequence[ManagedFeatureRepoContext]] =
 resolve_managed_feature_publication: Callable[..., ManagedFeatureResolution] = _unconfigured_git
 read_managed_feature_patch: Callable[..., tuple[str | None, str | None]] = _unconfigured_git
 host_create_pr_from_managed_feature: Callable[..., dict[str, Any]] = _unconfigured_git
+host_rebase_managed_feature: Callable[..., dict[str, Any]] = _unconfigured_git
 redact_git_diagnostic: Callable[[str], str] = _unconfigured_git
 
 
@@ -93,6 +94,7 @@ class ManagedFeatureRuntime:
     resolve_managed_feature_publication: Callable[..., ManagedFeatureResolution]
     read_managed_feature_patch: Callable[..., tuple[str | None, str | None]]
     host_create_pr_from_managed_feature: Callable[..., dict[str, Any]]
+    host_rebase_managed_feature: Callable[..., dict[str, Any]]
     redact_git_diagnostic: Callable[[str], str]
 
 
@@ -100,12 +102,13 @@ def configure_managed_feature_runtime(runtime: ManagedFeatureRuntime) -> None:
     """Bind managed-feature publication dependencies at host composition."""
     global _get_settings, _resolve_repos_for_group  # noqa: PLW0603 - one host process owns these composed operations.
     global resolve_managed_feature_publication, read_managed_feature_patch  # noqa: PLW0603 - one host process owns these composed operations.
-    global host_create_pr_from_managed_feature, redact_git_diagnostic  # noqa: PLW0603 - one host process owns these composed operations.
+    global host_create_pr_from_managed_feature, host_rebase_managed_feature, redact_git_diagnostic  # noqa: PLW0603 - one host process owns these composed operations.
     _get_settings = runtime.settings
     _resolve_repos_for_group = runtime.resolve_repos_for_group
     resolve_managed_feature_publication = runtime.resolve_managed_feature_publication
     read_managed_feature_patch = runtime.read_managed_feature_patch
     host_create_pr_from_managed_feature = runtime.host_create_pr_from_managed_feature
+    host_rebase_managed_feature = runtime.host_rebase_managed_feature
     redact_git_diagnostic = runtime.redact_git_diagnostic
 
 
@@ -315,4 +318,43 @@ async def _handle_publish_managed_feature(  # noqa: PLR0911 - fail-closed valida
     )
 
 
+async def _handle_rebase_managed_feature(
+    data: dict[str, Any],
+    source_group: str,
+    _is_admin: bool,  # noqa: FBT001 - registered handler callback keeps the IPC dispatch contract.
+    _deps: IpcDeps,
+) -> None:
+    """Rebase exactly one manifest-bound feature without publishing it."""
+    request_id = data.get("request_id", "")
+    result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
+    feature_slug = data.get("feature_slug")
+    if not isinstance(feature_slug, str) or not feature_slug:
+        _write_managed_feature_result(
+            result_dir,
+            request_id,
+            {
+                "success": False,
+                "message": "Rebase blocked: feature_slug must be a non-empty string.",
+            },
+        )
+        return
+    repo_contexts = _resolve_repos_for_group(source_group)
+    if not repo_contexts:
+        _write_managed_feature_result(
+            result_dir,
+            request_id,
+            {"success": False, "message": "No repo configured for this group."},
+        )
+        return
+    result = await asyncio.to_thread(host_rebase_managed_feature, feature_slug, repo_contexts)
+    _write_managed_feature_result(result_dir, request_id, result)
+    logger.info(
+        "rebase_managed_feature handled",
+        group=source_group,
+        feature_slug=feature_slug,
+        success=result.get("success"),
+    )
+
+
 register("publish_managed_feature", _handle_publish_managed_feature)
+register("rebase_managed_feature", _handle_rebase_managed_feature)

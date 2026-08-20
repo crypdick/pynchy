@@ -26,6 +26,10 @@ from pynchy.host.git_ops.managed_feature_models import (
     ManagedFeaturePublication,
     ManagedFeatureResolution,
 )
+from pynchy.host.git_ops.managed_feature_remote import (
+    remote_default_branch as _remote_default_branch,
+)
+from pynchy.host.git_ops.managed_feature_remote import remote_ref_sha as _remote_ref_sha
 from pynchy.host.git_ops.managed_transport import managed_object_store_is_safe
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001 - beartype resolves managed-feature signatures at runtime.
@@ -97,6 +101,16 @@ def resolve_managed_feature_publication(
     The feature's worktree is always derived from its configured repository root;
     this function never enumerates or falls back across worktree directories.
     """
+    return _resolve_managed_feature(feature_slug, repo_contexts, require_rebased=True)
+
+
+def _resolve_managed_feature(
+    feature_slug: str,
+    repo_contexts: Sequence[RepoContext],
+    *,
+    require_rebased: bool,
+) -> ManagedFeatureResolution:
+    """Resolve one manifest-bound feature, optionally before it reaches the remote base."""
     if not is_managed_feature_slug(feature_slug):
         return ManagedFeatureResolution(
             publication=None,
@@ -106,7 +120,11 @@ def resolve_managed_feature_publication(
     publications: list[ManagedFeaturePublication] = []
     for repo_ctx in repo_contexts:
         try:
-            publication = _resolve_repo_feature(feature_slug, repo_ctx)
+            publication = _resolve_repo_feature(
+                feature_slug,
+                repo_ctx,
+                require_rebased=require_rebased,
+            )
         except _ManifestValidationError as exc:
             return ManagedFeatureResolution(publication=None, error=str(exc))
         if publication is not None:
@@ -134,6 +152,8 @@ def resolve_managed_feature_publication(
 def _resolve_repo_feature(
     feature_slug: str,
     repo_ctx: RepoContext,
+    *,
+    require_rebased: bool,
 ) -> ManagedFeaturePublication | None:
     repo_root = _configured_repo_root(repo_ctx)
     record = _load_feature_record(feature_slug, repo_ctx, repo_root)
@@ -182,7 +202,7 @@ def _resolve_repo_feature(
 
     remote_url = managed_feature_remote_url(repo_ctx)
     with _isolated_managed_git(repo_ctx, git_common_dir, object_format) as transport:
-        main_branch = _remote_default_branch(transport, remote_url)
+        main_branch = _remote_default_branch(transport, remote_url, git_runner=run_git)
         if main_branch is None or target_branch != main_branch:
             raise _ManifestValidationError(
                 f"Publication blocked: managed feature {feature_slug!r} targets {target_branch!r}, "
@@ -198,7 +218,7 @@ def _resolve_repo_feature(
             raise _ManifestValidationError(
                 f"Publication blocked: could not verify base for managed feature {feature_slug!r}."
             )
-        if not _head_descends_from(base_sha, head_sha, transport):
+        if require_rebased and not _head_descends_from(base_sha, head_sha, transport):
             raise _ManifestValidationError(
                 "Publication blocked: managed feature must be rebased on the remote "
                 f"default branch {main_branch!r}."
@@ -230,6 +250,18 @@ def _resolve_repo_feature(
     )
     _validate_clean_worktree(publication)
     return publication
+
+
+def host_rebase_managed_feature(
+    feature_slug: str,
+    repo_contexts: Sequence[RepoContext],
+) -> dict[str, object]:
+    """Rebase one clean manifest-bound feature onto its verified remote default branch."""
+    from pynchy.host.git_ops.managed_feature_rebase import (  # noqa: PLC0415 - avoid import cycle.
+        host_rebase_managed_feature as rebase,
+    )
+
+    return rebase(feature_slug, repo_contexts)
 
 
 def _count_raw_commits(
@@ -318,27 +350,6 @@ def _isolated_managed_git(
         yield transport
 
 
-def _remote_default_branch(transport: _ManagedGitTransport, remote_url: str) -> str | None:
-    """Return the remote symbolic HEAD branch without local Git configuration."""
-    result = run_git(
-        *transport.args,
-        "ls-remote",
-        "--symref",
-        remote_url,
-        "HEAD",
-        cwd=transport.root,
-        env=transport.environment(),
-    )
-    if result.returncode != 0:
-        return None
-    for line in result.stdout.splitlines():
-        marker = "ref: refs/heads/"
-        if line.startswith(marker) and line.endswith("\tHEAD"):
-            branch = line[len(marker) : -len("\tHEAD")]
-            return branch or None
-    return None
-
-
 def _fetch_remote_ref(
     transport: _ManagedGitTransport,
     remote_url: str,
@@ -380,17 +391,6 @@ def _fetch_remote_ref(
     if resolved.returncode != 0 or fetched_sha != remote_sha:
         return None
     return remote_sha
-
-
-def _remote_ref_sha(output: str, remote_ref: str) -> str | None:
-    """Return one remote SHA, empty when a ref does not exist."""
-    lines = [line for line in output.splitlines() if line]
-    if len(lines) != 1:
-        return None
-    sha, separator, ref = lines[0].partition("\t")
-    if separator != "\t" or ref != remote_ref or _HEAD_SHA.fullmatch(sha) is None:
-        return None
-    return sha
 
 
 def read_managed_feature_patch(
