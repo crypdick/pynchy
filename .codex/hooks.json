@@ -11,6 +11,17 @@
             "statusMessage": "Checking new-feature repository guard"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=$(git rev-parse --show-toplevel) && uv run --project \"$root\" python \"$root/scripts/agent_hooks/guard_infrastructure_as_code.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking infrastructure-as-code policy"
+          }
+        ]
       }
     ]
   }
