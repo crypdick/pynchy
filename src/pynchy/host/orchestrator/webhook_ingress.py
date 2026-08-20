@@ -309,6 +309,7 @@ def _task_for_event(
         input_source=(
             f"webhook:{route.provider}" if route.public_source else f"trusted:{route.provider}"
         ),
+        derived_thread_name=f"Webhook | {route.provider}/{route.name} | {event.delivery_id}"[:100],
     )
 
 

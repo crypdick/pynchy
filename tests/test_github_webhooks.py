@@ -678,5 +678,6 @@ async def test_merged_delivery_dispatches_one_agent_follow_up_task(
     assert len(deps.dispatched) == 1
     task = deps.dispatched[0]
     assert task.group_folder == "project"
+    assert task.derived_thread_name == f"Webhook | github/project | {_DELIVERY_ID}"
     assert task.prompt.startswith(f"{event.instructions}\n\n")
     assert not deps.host_messages
