@@ -18,20 +18,10 @@ _LITELLM_SETTINGS_TYPE_ERROR = "LiteLLM config litellm_settings must be a mappin
 
 
 @dataclass(frozen=True)
-class ResponseModelRoute:
-    """One selected Responses alias and its safe canary target."""
-
-    model: str
-    route_count: int
-    canary_model: str | None
-
-
-@dataclass(frozen=True)
 class PreparedLiteLLMConfig:
-    """Generated LiteLLM config plus its active Responses-mode routes."""
+    """Generated LiteLLM config."""
 
     path: Path
-    response_routes: tuple[ResponseModelRoute, ...]
 
 
 @dataclass(frozen=True)
@@ -67,10 +57,7 @@ class LiteLLMConfigPreparer:
                     self.required_models,
                     self.required_response_models,
                 )
-            return PreparedLiteLLMConfig(
-                path=_write_filtered_config(output_dir, config),
-                response_routes=(),
-            )
+            return PreparedLiteLLMConfig(path=_write_filtered_config(output_dir, config))
 
         model_list = _model_list(config)
         kept, removed_reasons = _filter_model_list(model_list, env)
@@ -78,15 +65,8 @@ class LiteLLMConfigPreparer:
         _log_filter_result(original_count=len(model_list), remaining=len(kept))
         _require_usable_routes(config_path, kept, removed_reasons)
         _validate_required_models(self.required_models, kept)
-        response_routes = response_model_routes(
-            kept,
-            required_models=self.required_response_models,
-        )
-        _validate_required_response_models(self.required_response_models, response_routes)
-        return PreparedLiteLLMConfig(
-            path=_write_filtered_config(output_dir, config),
-            response_routes=response_routes,
-        )
+        _validate_required_response_models(self.required_response_models, kept)
+        return PreparedLiteLLMConfig(path=_write_filtered_config(output_dir, config))
 
 
 def _copy_unvalidated_config(
@@ -108,7 +88,7 @@ def _copy_unvalidated_config(
         raise RuntimeError(msg)
     out = output_dir / "litellm_config.yaml"
     out.write_text(config_text, encoding="utf-8")
-    return PreparedLiteLLMConfig(path=out, response_routes=())
+    return PreparedLiteLLMConfig(path=out)
 
 
 def _model_list(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -214,55 +194,26 @@ def _validate_required_models(
     raise RuntimeError(msg)
 
 
-def response_model_routes(
-    model_list: list[dict[str, Any]],
-    *,
-    required_models: tuple[str, ...] = (),
-) -> tuple[ResponseModelRoute, ...]:
-    """Return every launchable Responses alias with its deployment count."""
-    route_counts: dict[str, int] = {}
-    for entry in model_list:
-        if not _is_responses_route(entry):
-            continue
-        model = entry.get("model_name")
-        if isinstance(model, str) and model:
-            route_counts[model] = route_counts.get(model, 0) + 1
-    return tuple(
-        ResponseModelRoute(
-            model=model,
-            route_count=route_count,
-            canary_model=_response_canary_model(model, required_models),
-        )
-        for model, route_count in route_counts.items()
-    )
-
-
 def _is_responses_route(entry: dict[str, Any]) -> bool:
     model_info = entry.get("model_info")
     return isinstance(model_info, dict) and model_info.get("mode") == "responses"
 
 
-def _response_canary_model(model: str, required_models: tuple[str, ...]) -> str | None:
-    """Return a concrete canary model, never a provider wildcard literal."""
-    if not model.endswith("/*"):
-        return model
-    return next(
-        (
-            required_model
-            for required_model in dict.fromkeys(required_models)
-            if _model_route_matches(required_model, model)
-        ),
-        None,
-    )
-
-
 def _validate_required_response_models(
     required_models: tuple[str, ...],
-    response_routes: tuple[ResponseModelRoute, ...],
+    model_list: list[dict[str, Any]],
 ) -> None:
     if not required_models:
         return
-    available = tuple(route.model for route in response_routes)
+    available = tuple(
+        dict.fromkeys(
+            model
+            for entry in model_list
+            if _is_responses_route(entry)
+            and isinstance((model := entry.get("model_name")), str)
+            and model
+        )
+    )
     missing = [
         model
         for model in dict.fromkeys(required_models)

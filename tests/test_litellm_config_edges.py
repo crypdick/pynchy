@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 import yaml
 
-from pynchy.host.container_manager.litellm_config import (
-    LiteLLMConfigPreparer,
-    response_model_routes,
-)
+from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,7 +22,6 @@ def test_copies_non_mapping_config_when_no_routes_are_required(tmp_path: Path):
 
     prepared = LiteLLMConfigPreparer().prepare(cfg, runtime, env={})
 
-    assert prepared.response_routes == ()
     assert prepared.path.read_text() == original
 
 
@@ -112,19 +108,6 @@ def test_required_model_rejects_a_non_string_model_name(tmp_path: Path):
             tmp_path / "runtime",
             env={},
         )
-
-
-def test_response_routes_ignore_entries_without_string_aliases():
-    routes = response_model_routes(
-        [
-            {"model_name": None, "model_info": {"mode": "responses"}},
-            {"model_name": "", "model_info": {"mode": "responses"}},
-            {"model_name": "usable", "model_info": {"mode": "responses"}},
-        ]
-    )
-
-    assert routes[0].model == "usable"
-    assert routes[0].route_count == 1
 
 
 def test_rejects_non_mapping_litellm_settings(tmp_path: Path):

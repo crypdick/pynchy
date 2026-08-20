@@ -68,30 +68,37 @@ def test_runtime_is_semantically_ready_and_returns_the_fixed_chat_response() -> 
     assert gateway["postgres_container"] == "running"
     assert gateway["ready"] is True
     assert gateway["database"] == "connected"
-    responses = gateway["responses"]
-    assert responses["state"] == "available"
-    assert isinstance(responses["checked_at"], str)
-    assert len(responses["aliases"]) == 1
-    alias = responses["aliases"][0]
-    assert set(alias) == {
-        "alias",
-        "route_count",
-        "state",
-        "checked_at",
-        "failure",
-    }
-    assert alias["alias"] == state["model"]
-    assert alias["route_count"] == 1
-    assert alias["state"] == "available"
-    assert isinstance(alias["checked_at"], str)
-    assert alias["failure"] is None
     assert status["temporal"]["cluster_healthy"] is True
     assert status["temporal"]["worker_running"] is True
 
-    startup_requests = response_requests(state)
-    assert len(startup_requests) == 1
-    startup_canary = startup_requests[0]
-    assert set(startup_canary) == {
+    assert response_requests(state) == []
+
+    responses_request = Request(  # noqa: S310 - harness supplies loopback URLs only.
+        f"{state['gateway_url']}/v1/responses",
+        data=json.dumps(
+            {
+                "model": state["model"],
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "."}],
+                    }
+                ],
+                "stream": True,
+                "max_output_tokens": 1,
+            }
+        ).encode("utf-8"),
+        headers=_gateway_headers(state),
+        method="POST",
+    )
+    with urlopen(responses_request, timeout=10) as response:  # noqa: S310 - loopback only.
+        stream = response.read()
+    assert b"data: [DONE]" in stream
+
+    requests = response_requests(state)
+    assert len(requests) == 1
+    explicit_canary = requests[0]
+    assert set(explicit_canary) == {
         "response_id",
         "previous_response_id",
         "model",
@@ -99,17 +106,17 @@ def test_runtime_is_semantically_ready_and_returns_the_fixed_chat_response() -> 
         "stream",
         "max_output_tokens",
     }
-    assert isinstance(startup_canary["response_id"], str)
-    assert startup_canary["previous_response_id"] is None
-    assert startup_canary["model"] == state["model"]
-    assert startup_canary["input"] == [
+    assert isinstance(explicit_canary["response_id"], str)
+    assert explicit_canary["previous_response_id"] is None
+    assert explicit_canary["model"] == state["model"]
+    assert explicit_canary["input"] == [
         {
             "role": "user",
             "content": [{"type": "input_text", "text": "."}],
         }
     ]
-    assert startup_canary["stream"] is True
-    assert startup_canary["max_output_tokens"] == 1
+    assert explicit_canary["stream"] is True
+    assert explicit_canary["max_output_tokens"] == 1
 
     completion = _json_request(
         f"{state['gateway_url']}/v1/chat/completions",

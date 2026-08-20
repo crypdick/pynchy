@@ -9,6 +9,7 @@ Three-tier cascade:
 from __future__ import annotations
 
 import re
+import shlex
 from enum import StrEnum
 
 # Provably local — cannot reach the network regardless of arguments.
@@ -54,6 +55,7 @@ PROVABLY_LOCAL: frozenset[str] = frozenset(
         "od",
         "paste",
         "pwd",
+        "printf",
         "readelf",
         "realpath",
         "rev",
@@ -85,6 +87,7 @@ PROVABLY_LOCAL: frozenset[str] = frozenset(
 _NETWORK_SINGLE: frozenset[str] = frozenset(
     {
         "curl",
+        "gh",
         "wget",
         "nc",
         "netcat",
@@ -118,6 +121,12 @@ _NETWORK_MULTI: tuple[str, ...] = (
     "npm install",
     "yarn add",
     "cargo install",
+    "git clone",
+    "git fetch",
+    "git ls-remote",
+    "git pull",
+    "git push",
+    "git submodule",
     "bash -c",
     "sh -c",
 )
@@ -127,6 +136,7 @@ _ENV_PREFIX = re.compile(r"^(?:\s*\w+=\S*\s+)+")
 
 # Shell operators that separate commands in a pipeline/chain.
 _SHELL_SPLIT = re.compile(r"\s*(?:\|\||&&|[|;]|\$\()\s*")
+_TRUSTED_SHELL_WRAPPER = "/bin/bash"
 
 
 class CommandClass(StrEnum):
@@ -135,30 +145,15 @@ class CommandClass(StrEnum):
     UNKNOWN = "unknown"
 
 
-def _extract_tokens(command: str) -> list[str]:
-    """Extract the leading command token from each segment of a pipeline/chain.
-
-    Handles:
-    - env var prefixes: ``LC_ALL=C strings ...`` -> ``["strings"]``
-    - pipelines: ``cat file | grep x`` -> ``["cat", "grep"]``
-    - chains: ``echo hi && curl x`` -> ``["echo", "curl"]``
-    - subshells: ``echo $(curl x)`` -> ``["echo", "curl"]``
-    """
-    segments = _SHELL_SPLIT.split(command)
-    tokens: list[str] = []
-    for segment in segments:
-        stripped_segment = segment.strip()
-        if not stripped_segment:
-            continue
-        # Strip env var prefixes (e.g. LC_ALL=C before the real command).
-        stripped_segment = _ENV_PREFIX.sub("", stripped_segment).strip()
-        if not stripped_segment:
-            continue
-        # First whitespace-delimited token is the command name.
-        parts = stripped_segment.split()
-        if parts:
-            tokens.append(parts[0])
-    return tokens
+def _unwrap_shell_wrapper(command: str) -> str | None:
+    """Return script passed through one trusted runner shell wrapper."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return None
+    if len(parts) == 3 and parts[0] == _TRUSTED_SHELL_WRAPPER and parts[1] in {"-c", "-lc"}:
+        return parts[2]
+    return None
 
 
 def classify_command(command: str) -> CommandClass:
@@ -172,21 +167,31 @@ def classify_command(command: str) -> CommandClass:
     if not command:
         return CommandClass.UNKNOWN
 
+    # Codex wraps every shell call in /bin/bash -lc. Classify the owned inner
+    # script; treating the runner wrapper itself as unknown sends all commands
+    # to Cop and defeats the local classifier.
+    inner_command = _unwrap_shell_wrapper(command)
+    if inner_command is not None:
+        return classify_command(inner_command)
+
     # Check full command against multi-token network patterns first.
     cmd_lower = command.lower()
     for pattern in _NETWORK_MULTI:
         if pattern in cmd_lower:
             return CommandClass.NETWORK
 
-    tokens = _extract_tokens(command)
-    if not tokens:
-        return CommandClass.UNKNOWN
-
+    segments = _SHELL_SPLIT.split(command)
     has_unknown = False
-    for token in tokens:
-        if token in _NETWORK_SINGLE:
+    found_command = False
+    for segment in segments:
+        stripped_segment = _ENV_PREFIX.sub("", segment.strip()).strip()
+        if not stripped_segment:
+            continue
+        found_command = True
+        command_name = stripped_segment.split()[0]
+        if command_name in _NETWORK_SINGLE:
             return CommandClass.NETWORK
-        if token not in PROVABLY_LOCAL:
+        if command_name not in PROVABLY_LOCAL:
             has_unknown = True
 
-    return CommandClass.UNKNOWN if has_unknown else CommandClass.SAFE
+    return CommandClass.UNKNOWN if has_unknown or not found_command else CommandClass.SAFE

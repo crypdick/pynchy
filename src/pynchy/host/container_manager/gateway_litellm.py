@@ -52,7 +52,6 @@ from pynchy.host.container_manager.litellm_config import (
     PLACEHOLDER_RE,
     LiteLLMConfigPreparer,
 )
-from pynchy.host.container_manager.litellm_responses import LiteLLMResponsesAvailability
 from pynchy.logger import logger
 from pynchy.redaction import (
     GatewayRedactionPosture,
@@ -202,7 +201,6 @@ class LiteLLMGateway:
             required_models=self._required_models,
             required_response_models=self._required_response_models,
         )
-        self._responses = LiteLLMResponsesAvailability(port=port, key=master_key)
 
         self._config_path = Path(config_path).resolve()
         self._image = image
@@ -242,11 +240,6 @@ class LiteLLMGateway:
     def required_response_models(self) -> tuple[str, ...]:
         """Return selected aliases that must support LiteLLM's Responses API."""
         return self._required_response_models
-
-    @property
-    def responses_status(self) -> dict[str, object]:
-        """Return cached, sanitized Responses availability without blocking on a probe."""
-        return self._responses.status
 
     @property
     def _database_url(self) -> str:
@@ -472,7 +465,6 @@ class LiteLLMGateway:
             env,
         )
         filtered_config = prepared_config.path
-        self._responses.set_routes(prepared_config.response_routes)
         phoenix_env = self._phoenix_env_vars(filtered_config, env)
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
@@ -487,7 +479,6 @@ class LiteLLMGateway:
                     headers={"Authorization": f"Bearer {self.key}"},
                 )
             )
-            await self._responses.refresh()
             logger.info("External LiteLLM ready", port=self.port, container_url=self.base_url)
             return
 
@@ -550,20 +541,14 @@ class LiteLLMGateway:
                 headers={"Authorization": f"Bearer {self.key}"},
             )
         )
-        # HTTP and IPC status surfaces publish only after gateway startup finishes,
-        # so this initial snapshot cannot race a status-triggered refresh.
-        await self._responses.refresh()
-
         logger.info(
             "LiteLLM proxy and database ready",
             port=self.port,
             container_url=self.base_url,
             container=self._litellm_container,
-            responses_state=self._responses.state,
         )
 
     async def stop(self) -> None:
-        await self._responses.stop()
         if not self.managed:
             return
         logger.info("Stopping LiteLLM gateway containers")

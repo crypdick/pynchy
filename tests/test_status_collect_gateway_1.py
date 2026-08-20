@@ -108,52 +108,6 @@ class TestCollectGateway:
         deps.get_container_state.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_litellm_responses_snapshot_stays_separate_from_readiness(self):
-        responses = {
-            "state": "available",
-            "checked_at": "2026-07-29T00:00:00+00:00",
-            "stale": True,
-            "aliases": [
-                {
-                    "alias": "responses-model",
-                    "route_count": 2,
-                    "state": "available",
-                    "checked_at": "2026-07-29T00:00:00+00:00",
-                    "failure": None,
-                }
-            ],
-        }
-        deps = MockStatusDeps(
-            gateway={
-                "mode": "litellm",
-                "port": 4000,
-                "key": "sk-test",
-                "responses": responses,
-            }
-        )
-        mock_resp = AsyncMock()
-        mock_resp.status = 503
-        mock_resp.json.return_value = {"status": "unhealthy", "db": "disconnected"}
-        mock_session = AsyncMock()
-        mock_session.get.return_value = mock_resp
-        mock_session.__aenter__.return_value = mock_session
-        mock_session.__aexit__.return_value = None
-
-        deps.get_container_state.return_value = "running"
-        with _inert_status(), patch("aiohttp.ClientSession", return_value=mock_session):
-            first = await collect_status(deps, time.monotonic())
-            second = await collect_status(deps, time.monotonic())
-
-        for result in (first, second):
-            gateway = result["gateway"]
-            assert gateway["ready"] is False
-            assert gateway["database"] == "disconnected"
-            assert gateway["responses"]["stale"] is True
-            assert gateway["responses"]["aliases"] == responses["aliases"]
-        assert mock_session.get.await_count == 2
-        mock_session.post.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_litellm_container_status_uses_runtime_namespace(self, monkeypatch):
         monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-feature-test")
         deps = MockStatusDeps(gateway={"mode": "litellm"})

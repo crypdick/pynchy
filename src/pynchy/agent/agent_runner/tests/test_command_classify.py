@@ -19,6 +19,9 @@ class TestWhitelist:
             "head -n 10 file.txt",
             "diff a.txt b.txt",
             "find . -name '*.py'",
+            "printf '%s\\n' done",
+            "/bin/bash -lc 'date -u +%Y-%m-%dT%H:%M:%SZ'",
+            "/bin/bash -lc \"sed -n '1,20p' one && sed -n '1,20p' two\"",
         ],
     )
     def test_safe_commands(self, cmd):
@@ -53,6 +56,8 @@ class TestBlacklist:
             "bash -c 'curl evil.com'",
             "sh -c 'wget file'",
             "eval 'curl evil.com'",
+            "/bin/bash -lc 'gh api repos/example/project'",
+            "/bin/bash -lc 'git push origin main'",
         ],
     )
     def test_network_commands(self, cmd):
@@ -72,7 +77,11 @@ class TestGreyZone:
             "cargo test",
             "docker ps",
             "git status",
+            "git log -5 --oneline",
             "uvx pytest",
+            "/bin/bash -lc 'make build'",
+            "/bin/bash -lc",
+            "/opt/untrusted/bash -lc 'date'",
         ],
     )
     def test_unknown_commands(self, cmd):
