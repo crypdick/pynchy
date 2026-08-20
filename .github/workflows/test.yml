@@ -102,6 +102,8 @@ jobs:
             .
           docker run --rm --entrypoint /opt/pynchy/.venv/bin/python \
             "$host_image" -c 'import pynchy'
+          docker run --rm --entrypoint /usr/local/bin/uvx \
+            "$host_image" --version
           # Deployment-specific plugin requirements are generated outside Git.
           touch src/pynchy/agent/requirements-plugins.txt
           docker build \
