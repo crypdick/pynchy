@@ -526,6 +526,7 @@ def configure_linear_plugin(
                 workspace=workspace,
                 namespace_suffix=suffix,
             ),
+            get_control_binding=get_conversation_control_binding,
             resolve=resolve_conversation,
         )
     )

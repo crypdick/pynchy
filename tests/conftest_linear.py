@@ -179,6 +179,7 @@ def configure_linear_accounts_for(
                 workspace=workspace,
                 namespace_suffix=suffix,
             ),
+            get_control_binding=get_conversation_control_binding,
             resolve=resolve_conversation,
         )
     )

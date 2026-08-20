@@ -4,12 +4,12 @@ The built-in GitHub webhook plugin sends pull-request updates directly to the
 mapped project workspace. Most events are concise human-visible notifications.
 A top-level comment, review, inline review comment, or single-PR check failure on
 a PR attached to one managed Linear issue wakes that issue's existing conversation
-and worktree for follow-up.
-A merged pull request starts an isolated agent turn so the agent can inspect
-the linked work and exercise judgment about Follow-ups. The webhook itself
-doesn't create another worktree or mutate GitHub or Linear. A route binds one GitHub
-repository to one Pynchy workspace, so an event can never fall back to an unrelated
-channel.
+and worktree for follow-up. The GitHub webhook never creates a conversation or
+Discord thread. When no existing issue control exists, the event falls back to the
+mapped project workspace. Closed pull requests produce no Discord update; the
+linked Linear issue's terminal webhook owns work-item completion and thread archival.
+A route binds one GitHub repository to one Pynchy workspace, so an event can never
+fall back to an unrelated channel.
 
 ## Configure repository routes
 
@@ -80,7 +80,7 @@ limit—GitHub will not deliver payloads larger than that maximum.
 
 The plugin emits concise direct host notifications for:
 
-- New commits, PR lifecycle updates, title changes, and description changes.
+- New commits, nonterminal PR lifecycle updates, title changes, and description changes.
 - Approved or dismissed reviews.
 - Failed check runs associated with several pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
@@ -94,13 +94,12 @@ issue on the route's workspace receives the event in its canonical Linear
 conversation. The agent fetches current review details, triages them, applies
 warranted changes in the existing worktree, and runs local CI. It doesn't rerun
 GitHub CI, merge, or deploy solely because of the event. Missing, ambiguous,
-off-board, or unconfigured Linear links fall back to a direct workspace
-notification instead of creating a separate agent turn.
+off-board, unconfigured, or not-yet-created Linear controls fall back to a direct
+workspace notification instead of creating a conversation.
 
-A merged-PR event starts an isolated agent turn, which resolves the URL with
-`linear_find_issues_by_attachment_url`, inspects the linked work and runtime
-state, and decides whether the job should enter `Follow-ups`, `Done`, or remain
-elsewhere. Merge is evidence, not an automatic state transition.
+Closed pull requests remain silent. Linear's GitHub integration moves the linked
+issue, and Pynchy's Linear webhook lifecycle completes managed work and archives
+the existing Discord thread when that issue becomes terminal.
 
 GitHub does not publish a dedicated merge-conflict event, and mergeability can be
 computed asynchronously. The webhook immediately reports the commit event; retain a

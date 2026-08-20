@@ -18,7 +18,7 @@ from pynchy.plugins.integrations.linear_accounts import linear_account_for_works
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_conversation_identity import (
-    resolve_linear_issue_conversation,
+    find_linear_issue_control_conversation,
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
@@ -95,11 +95,12 @@ async def prepare_github_webhook_event(  # noqa: PLR0911 - each branch preserves
     if linked_issue is None:
         return _fallback_notification(event)
     issue_id, issue = linked_issue
-    conversation = await resolve_linear_issue_conversation(
+    conversation = await find_linear_issue_control_conversation(
         issue_id,
         config.workspace,
-        account.name,
     )
+    if conversation is None:
+        return _fallback_notification(event)
     identifier = issue.get("identifier")
     title = issue.get("title")
     control_title = (

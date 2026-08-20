@@ -173,31 +173,16 @@ def _pull_request_event(
         or (payload.pull_request.mergeable_state or "").casefold() == "dirty"
     )
     event_action = payload.action
-    if (
-        payload.action == "closed"
-        and payload.pull_request is not None
-        and payload.pull_request.merged
-    ):
-        return WebhookEvent(
-            delivery_id=context.delivery_id,
-            event_type=context.event_type,
-            action="merged",
-            subject_id=str(number),
-            occurred_at=context.occurred_at,
-            instructions=(
-                "GitHub reports that this pull request merged. Resolve its canonical URL with "
-                "linear_find_issues_by_attachment_url, inspect any linked work item and relevant "
-                "runtime state, then use your judgment about what remains. A merge is evidence, "
-                "not an automatic command. Move linked work to Follow-ups when final operational "
-                "work remains so that lifecycle can own it; use Done only when the whole job is "
-                "already finished, or report that no linked work needs action."
+    if payload.action == "closed":
+        return _ignored_event(
+            context,
+            action=(
+                "merged"
+                if payload.pull_request is not None and payload.pull_request.merged
+                else "closed"
             ),
-            external_context={
-                "repository": context.repository,
-                "pull_request_number": number,
-                "pull_request_url": url,
-                "event": "merged",
-            },
+            subject_id=str(number),
+            reason="pull_request_closed",
         )
     if has_merge_conflict:
         text = "merge conflict detected"
@@ -210,7 +195,6 @@ def _pull_request_event(
     elif payload.action in {
         "opened",
         "reopened",
-        "closed",
         "ready_for_review",
         "converted_to_draft",
     }:
