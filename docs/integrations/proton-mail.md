@@ -27,6 +27,17 @@ workspaces share that host-side Bridge through the Proton Mail MCP server; do
 not run one Bridge container per workspace. Persist `/home/bridge`, and mount
 the generated Bridge app password from a Kubernetes Secret only into the
 `pynchy` container. Account login remains a one-time interactive operator step.
+Run that step against the sidecar's managed CLI:
+
+```bash
+kubectl -n pynchy exec -it deployment/pynchy -c proton-bridge -- \
+  pynchy-proton-bridge enroll
+```
+
+Use `login`, copy the generated app password from `info` directly into the
+deployment-private Kubernetes Secret generator input, disable Bridge automatic
+updates, and exit. Apply that tracked Secret overlay declaratively. The sidecar
+resumes noninteractive service after the CLI exits.
 
 ## Configuration
 

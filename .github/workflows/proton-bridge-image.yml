@@ -39,4 +39,14 @@ jobs:
             deploy/k3s
           docker run --rm "$image" --version \
             | grep -F "Proton Mail Bridge ${PROTON_BRIDGE_VERSION%-*}"
+          smoke=pynchy-proton-bridge-enrollment-smoke
+          docker run --rm --detach --name "$smoke" "$image"
+          trap 'docker stop "$smoke" >/dev/null 2>&1 || true' EXIT
+          sleep 2
+          printf 'exit\n' | docker exec --interactive "$smoke" \
+            pynchy-proton-bridge enroll
+          sleep 2
+          test "$(docker inspect --format '{{.State.Status}}' "$smoke")" = running
+          docker stop "$smoke" >/dev/null
+          trap - EXIT
           docker push "$image"
