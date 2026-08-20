@@ -137,6 +137,12 @@ class _DeleteMailCall(_StrictModel):
     arguments: _DeleteMailArguments
 
 
+class _ToolCallEnvelope(_StrictModel):
+    name: str
+    arguments: object = Field(default_factory=dict)
+    metadata: object = Field(default=None, alias="_meta", exclude=True)
+
+
 type ProtonToolCall = Annotated[
     _ListMailboxesCall | _ListMailCall | _ReadMailCall | _SendMailCall | _DeleteMailCall,
     Field(discriminator="name"),
@@ -411,7 +417,10 @@ async def _call_tool(
 
 def _parse_tool_call(params: object) -> ProtonToolCall:
     try:
-        return _TOOL_CALL_ADAPTER.validate_python(params)
+        envelope = _ToolCallEnvelope.model_validate(params)
+        return _TOOL_CALL_ADAPTER.validate_python(
+            {"name": envelope.name, "arguments": envelope.arguments}
+        )
     except ValidationError as exc:
         raise ProtonMailError(f"Invalid Proton Mail tool arguments: {exc}") from exc
 
