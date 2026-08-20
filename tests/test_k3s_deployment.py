@@ -176,6 +176,7 @@ def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
     permissions = Path("deploy/k3s/bootstrap/release-monitor-rbac.yaml").read_text(encoding="utf-8")
 
     assert "kind: CronJob" in workload
+    assert "suspend: false" in workload
     assert "concurrencyPolicy: Forbid" in workload
     assert 'resources: ["deployments", "statefulsets"]' in permissions
     assert 'resources: ["pods"]' in permissions
