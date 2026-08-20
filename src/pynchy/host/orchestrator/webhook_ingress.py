@@ -349,7 +349,13 @@ async def _dispatch_admitted_event(
     if admission.created and admission.task is not None:
         ingress.deps.dispatch_scheduled_task(admission.task)
     if admission.created and event.host_message is not None and workspace is not None:
-        await ingress.deps.broadcast_host_message(workspace.jid, event.host_message)
+        notification_jid = (
+            event.conversation.notification_jid if event.conversation is not None else None
+        )
+        await ingress.deps.broadcast_host_message(
+            notification_jid or workspace.jid,
+            event.host_message,
+        )
 
 
 async def handle_webhook(request: web.Request) -> web.Response:
@@ -395,10 +401,10 @@ async def handle_webhook(request: web.Request) -> web.Response:
         disposition = "ignored"
     elif event.lifecycle is not None:
         disposition = "lifecycle"
-    elif event.conversation is not None:
-        disposition = "routed"
-    else:
+    elif event.host_message is not None:
         disposition = "notified"
+    else:
+        disposition = "routed"
     receipt = WebhookReceipt(
         provider=route.provider,
         route=route.name,

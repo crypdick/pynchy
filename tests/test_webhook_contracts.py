@@ -154,6 +154,8 @@ def test_webhook_conversation_rejects_blank_title_or_revision() -> None:
         WebhookConversation(subject=subject, control_title=" ")
     with pytest.raises(ValueError, match="control revision cannot be blank"):
         WebhookConversation(subject=subject, control_title="Issue", control_state_revision=" ")
+    with pytest.raises(ValueError, match="notification JID cannot be blank"):
+        WebhookConversation(subject=subject, control_title="Issue", notification_jid=" ")
 
 
 def test_webhook_lifecycle_without_context_is_valid() -> None:

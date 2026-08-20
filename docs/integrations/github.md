@@ -1,25 +1,25 @@
 # GitHub PR notifications
 
-The built-in GitHub webhook plugin sends pull-request updates directly to the
-mapped project workspace. Most events are concise human-visible notifications.
+The built-in GitHub webhook plugin resolves pull-request updates through their
+attached managed Linear issue. Most events are concise human-visible notifications.
 A top-level comment, review, inline review comment, or single-PR check failure on
 a PR attached to one managed Linear issue wakes that issue's existing conversation
 and worktree for follow-up. The GitHub webhook never creates a conversation or
-Discord thread. When no existing issue control exists, the event falls back to the
-mapped project workspace. Closed pull requests produce no Discord update; the
+Discord thread. When no existing issue control exists, Pynchy ignores the event.
+Closed pull requests produce no Discord update; the
 linked Linear issue's terminal webhook owns work-item completion and thread archival.
-A route binds one GitHub repository to one Pynchy workspace, so an event can never
-fall back to an unrelated channel.
+A route authenticates one GitHub repository and selects its Linear account. Linear
+project ownership determines the target workspace.
 
 ## Configure repository routes
 
-Add one route for each repository and its owning workspace:
+Add one route for each repository:
 
 ```toml
 [[plugins.github.options.webhook_routes]]
 name = "project"
-workspace = "project-workspace"
 repository = "owner/project"
+tool = "linear"
 secret_env = "GITHUB_PROJECT_WEBHOOK_SECRET" # pragma: allowlist secret
 ```
 
@@ -76,7 +76,7 @@ and records only receipt metadata plus a body digest. The route accepts up to 25
 because that is GitHub's documented maximum webhook payload. It remains a hard
 limit—GitHub will not deliver payloads larger than that maximum.
 
-## What the project channel receives
+## What the Linear issue channel receives
 
 The plugin emits concise direct host notifications for:
 
@@ -90,12 +90,12 @@ their `Awaiting Review` outcome. The transition creates the native Linear
 attachment before changing state. For new or edited top-level PR comments,
 actionable submitted or edited reviews, inline review comments, and a failed check
 associated with one PR, the webhook resolves that exact attachment. One matching
-issue on the route's workspace receives the event in its canonical Linear
+managed issue receives the event in its existing canonical Linear
 conversation. The agent fetches current review details, triages them, applies
 warranted changes in the existing worktree, and runs local CI. It doesn't rerun
 GitHub CI, merge, or deploy solely because of the event. Missing, ambiguous,
-off-board, unconfigured, or not-yet-created Linear controls fall back to a direct
-workspace notification instead of creating a conversation.
+off-board, or not-yet-created Linear controls are ignored instead of creating a
+conversation or choosing a repository-level fallback workspace.
 
 Closed pull requests remain silent. Linear's GitHub integration moves the linked
 issue, and Pynchy's Linear webhook lifecycle completes managed work and archives

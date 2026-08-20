@@ -11,7 +11,9 @@ import pytest
 
 import pynchy.plugins
 from pynchy.conversation.api import (
+    ControlSurface,
     Conversation,
+    ConversationControlBinding,
     ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
@@ -20,7 +22,7 @@ from pynchy.conversation.api import (
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
 from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
-from pynchy.identifiers import GroupFolder
+from pynchy.identifiers import ChatJid, GroupFolder
 from pynchy.plugins.api import PynchySpec, WebhookEvent, WebhookRoute, load_connection_runtimes
 from pynchy.plugins.computer_use.artifacts import screenshot_artifact
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
@@ -162,9 +164,10 @@ async def test_github_linear_routing_requires_an_existing_control(monkeypatch) -
         updated_at="2026-08-20T00:00:00+00:00",
     )
     get_control_binding = AsyncMock(return_value=None)
+    get_for_subject_key = AsyncMock(return_value=None)
     runtime = LinearConversationRuntime(
         get_unfinished_execution=AsyncMock(return_value=None),
-        get_for_subject_key=AsyncMock(return_value=conversation),
+        get_for_subject_key=get_for_subject_key,
         get_control_binding=get_control_binding,
         resolve=AsyncMock(),
     )
@@ -174,8 +177,33 @@ async def test_github_linear_routing_requires_an_existing_control(monkeypatch) -
     )
 
     assert await find_linear_issue_control_conversation("issue-1", "workspace") is None
-    get_control_binding.return_value = object()
-    assert await find_linear_issue_control_conversation("issue-1", "workspace") is conversation
+    get_for_subject_key.return_value = conversation
+    assert await find_linear_issue_control_conversation("issue-1", "workspace") is None
+    binding = ConversationControlBinding(
+        conversation_id=conversation.id,
+        surface=ControlSurface.DISCORD,
+        parent_workspace=GroupFolder("workspace"),
+        parent_jid=ChatJid("discord:channel:parent"),
+        thread_jid=ChatJid("discord:channel:thread"),
+        title="Issue",
+        updated_at="2026-08-20T00:00:00+00:00",
+    )
+    get_control_binding.return_value = binding
+    assert await find_linear_issue_control_conversation("issue-1", "workspace") == (
+        conversation,
+        binding,
+    )
+    get_control_binding.return_value = ConversationControlBinding(
+        conversation_id=conversation.id,
+        surface=ControlSurface.DISCORD,
+        parent_workspace=GroupFolder("workspace"),
+        parent_jid=ChatJid("discord:channel:parent"),
+        thread_jid=ChatJid("discord:channel:thread"),
+        title="Issue",
+        updated_at="2026-08-20T00:00:00+00:00",
+        closed=True,
+    )
+    assert await find_linear_issue_control_conversation("issue-1", "workspace") is None
     runtime.resolve.assert_not_awaited()
 
 

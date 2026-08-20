@@ -15,13 +15,14 @@ class _GitHubModel(BaseModel):
 
 
 class GitHubWebhookRouteConfig(_GitHubModel):
-    """Plugin-owned configuration for one repository-to-workspace route."""
+    """Plugin-owned configuration for one authenticated repository route."""
 
     model_config = {"extra": "forbid"}
 
     name: str
-    workspace: str
     repository: str
+    tool: str = "linear"
+    workspace: str | None = None
     secret_env: str = "GITHUB_WEBHOOK_SECRET"  # noqa: S105 - environment variable name, not a credential.
     # NOTE: Update docs/integrations/github.md "Trust selected GitHub senders" if this changes.
     allowed_senders: tuple[str, ...] = ()
@@ -29,7 +30,7 @@ class GitHubWebhookRouteConfig(_GitHubModel):
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
 
-    @field_validator("name", "workspace", "repository", "secret_env")
+    @field_validator("name", "repository", "tool", "secret_env")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         if not value.strip():
