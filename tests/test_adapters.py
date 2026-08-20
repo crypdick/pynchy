@@ -123,7 +123,11 @@ class TestHostMessageBroadcaster:
         store_notice_fn = AsyncMock()
         emitted: list[Any] = []
         host_broadcaster = HostMessageBroadcaster(
-            msg_broadcaster, store_host_fn, store_notice_fn, emitted.append
+            msg_broadcaster,
+            store_host_fn,
+            store_notice_fn,
+            emitted.append,
+            AsyncMock(return_value=False),
         )
         return host_broadcaster, channel, store_host_fn, store_notice_fn, emitted
 
@@ -216,6 +220,25 @@ class TestHostMessageBroadcaster:
 
         msg_id = store_notice_fn.call_args.kwargs["message_id"]
         assert msg_id.startswith("sys-notice-")
+
+    async def test_paused_chat_suppresses_system_notice_but_not_host_confirmation(self):
+        channel = FakeChannel()
+        store_host_fn = AsyncMock()
+        store_notice_fn = AsyncMock()
+        broadcaster = HostMessageBroadcaster(
+            MessageBroadcaster([channel]),
+            store_host_fn,
+            store_notice_fn,
+            lambda _: None,
+            is_chat_paused=AsyncMock(return_value=True),
+        )
+
+        await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
+        await broadcaster.broadcast_host_message("group@g.us", "⏸️")
+
+        store_notice_fn.assert_not_awaited()
+        store_host_fn.assert_awaited_once()
+        assert [event.content for _, event in channel.sent] == ["⏸️"]
 
 
 # ---------------------------------------------------------------------------

@@ -56,7 +56,8 @@ Pynchy acknowledges the command with ⏸️, hibernates the runtime, and retains
 the unfinished checkpoint and provider conversation. Your next ordinary
 message becomes guidance for that same turn; Pynchy reopens the same provider
 thread and continues the original work once. Pausing cannot undo side effects
-that completed before Pynchy received the command.
+that completed before Pynchy received the command. System notices do not post
+into or resume the frozen thread.
 
 If no turn is running or queued, `stop` and `pause` only hibernate the existing runtime.
 Autonomous work already queued behind a running turn is removed before that

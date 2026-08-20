@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from pynchy.agent_protocol.api import CheckpointControlState
 from pynchy.async_tasks import create_background_task
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
@@ -21,7 +22,7 @@ from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.state.api import clear_session, store_message_direct
+from pynchy.state.api import clear_session, get_in_flight_turns, store_message_direct
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -29,6 +30,7 @@ from pynchy.workspace.api import (
 # Type aliases for callback signatures used across adapters
 StoreMessageFn = Callable[..., Awaitable[None]]
 EmitEventFn = Callable[..., None]
+PauseStateFn = Callable[[str], Awaitable[bool]]
 
 
 def _generate_message_id(prefix: str) -> str:
@@ -103,11 +105,13 @@ class HostMessageBroadcaster:
         store_host_fn: StoreMessageFn,
         store_notice_fn: StoreMessageFn,
         emit_event_fn: EmitEventFn,
+        is_chat_paused: PauseStateFn,
     ) -> None:
         self.broadcaster = broadcaster
         self._store_host = store_host_fn
         self._store_notice = store_notice_fn
         self.emit_event = emit_event_fn
+        self._is_chat_paused = is_chat_paused
 
     async def _store_broadcast_and_emit(self, request: _StoreBroadcastAndEmitRequest) -> None:
         """Store a message, broadcast to channels, and emit an event.
@@ -176,6 +180,9 @@ class HostMessageBroadcaster:
         For those, use broadcast_host_message instead (human-visible only).
         See host_notify_worktree_updates() for the canonical routing pattern.
         """
+        if await self._is_chat_paused(chat_jid):
+            logger.info("Suppressed system notice for paused chat", chat_jid=chat_jid)
+            return
         await self._store_broadcast_and_emit(
             _StoreBroadcastAndEmitRequest(
                 chat_jid=chat_jid,
@@ -217,6 +224,18 @@ def make_host_message_broadcaster(
         store_host_message,
         store_system_notice,
         emit_event,
+        _is_chat_paused,
+    )
+
+
+async def _is_chat_paused(chat_jid: str) -> bool:
+    paused_states = {
+        CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSED,
+    }
+    return any(
+        turn.chat_jid == chat_jid and turn.control_state in paused_states
+        for turn in await get_in_flight_turns()
     )
 
 

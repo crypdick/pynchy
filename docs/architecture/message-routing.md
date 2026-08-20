@@ -93,7 +93,9 @@ behind that turn. A queued one-shot task receives its own paused checkpoint, so
 activity retries and external reconciliation cannot restart that occurrence.
 Pause is a terminal orchestration outcome, so the queue and Temporal do not
 emit an error warning or retry the frozen work. Repeated pause commands leave
-the same row paused.
+the same row paused. While a checkpoint is `pause_requested` or `paused`, the
+host drops system notices before storing or broadcasting them. Only a human
+message resumes the checkpoint; host confirmations such as ⏸️ remain visible.
 
 The next ordinary message atomically attaches its formatted user input to the
 paused row, updates the occurrence's end cursor, and restores `active`. The

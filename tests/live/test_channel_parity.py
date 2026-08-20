@@ -150,7 +150,13 @@ class TestHostMessageParity:
     ) -> HostMessageBroadcaster:
         """Create a HostMessageBroadcaster for test channels."""
         broadcaster = MessageBroadcaster(channels)
-        return HostMessageBroadcaster(broadcaster, AsyncMock(), AsyncMock(), lambda _: None)
+        return HostMessageBroadcaster(
+            broadcaster,
+            AsyncMock(),
+            AsyncMock(),
+            lambda _: None,
+            AsyncMock(return_value=False),
+        )
 
     async def test_host_message_emoji_prefix_consistent(self):
         """broadcast_host_message should prepend 🏠 for all channels."""
