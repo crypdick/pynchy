@@ -8,13 +8,14 @@ personalization=${PYNCHY_PERSONALIZATION_ROOT:-$checkout/data/personalization}
 secret_overlay=${PYNCHY_PROTON_BRIDGE_SECRET_OVERLAY:-$personalization/ops/k3s/proton-bridge-secret}
 secret_file=$secret_overlay/proton-bridge.env
 mounted_secret=/var/run/secrets/proton-bridge/password
+bridge_output=
 secret_tmp=
 password=
-tty_echo_disabled=false
+resume=false
 
 cleanup() {
-    if [ "$tty_echo_disabled" = true ]; then
-        stty echo 2>/dev/null || true
+    if [ -n "$bridge_output" ]; then
+        rm -f "$bridge_output"
     fi
     if [ -n "$secret_tmp" ]; then
         rm -f "$secret_tmp"
@@ -29,6 +30,15 @@ die() {
     exit 1
 }
 
+case "$#" in
+    0) ;;
+    1)
+        [ "$1" = --resume ] || die "Usage: $0 [--resume]"
+        resume=true
+        ;;
+    *) die "Usage: $0 [--resume]" ;;
+esac
+
 privileged() {
     if [ "$(id -u)" -eq 0 ]; then
         "$@"
@@ -39,6 +49,20 @@ privileged() {
 
 k() {
     privileged k3s kubectl -n "$namespace" "$@"
+}
+
+bridge_commands() {
+    attempt=0
+    while [ "$attempt" -lt 15 ]; do
+        sleep 2
+        printf 'info\r'
+        attempt=$((attempt + 1))
+    done
+    printf 'updates autoupdates disable\r'
+    sleep 1
+    printf 'y\r'
+    sleep 1
+    printf 'exit\r'
 }
 
 [ -f "$secret_overlay/kustomization.yaml" ] \
@@ -52,29 +76,34 @@ case " $containers " in
     *" proton-bridge "*) ;;
     *) die "Deployment pynchy has no proton-bridge sidecar." ;;
 esac
+case "$namespace" in
+    ""|*[!a-z0-9.-]*) die "Invalid Kubernetes namespace: $namespace" ;;
+esac
+command -v script >/dev/null 2>&1 || die "Missing required host command: script"
 
-printf '%s\n' \
-    "Bridge CLI will open." \
-    "Run: login" \
-    "Run: info, then copy the generated Bridge app password." \
-    "Run: updates autoupdates disable" \
-    "Run: exit"
-k exec -it deployment/pynchy -c proton-bridge -- pynchy-proton-bridge enroll
-
-printf 'Paste generated Bridge app password: ' >&2
-if [ -t 0 ]; then
-    stty -echo
-    tty_echo_disabled=true
+if [ "$resume" = false ]; then
+    printf '%s\n' \
+        "Bridge CLI will open." \
+        "Run: login" \
+        "Wait for the initial sync, then run: exit" \
+        "The helper captures the Bridge app password without displaying it."
+    k exec -it deployment/pynchy -c proton-bridge -- pynchy-proton-bridge enroll
 fi
-IFS= read -r password || die "No Bridge app password received."
-if [ "$tty_echo_disabled" = true ]; then
-    stty echo
-    tty_echo_disabled=false
-    printf '\n' >&2
-fi
-[ -n "$password" ] || die "Bridge app password cannot be empty."
 
 umask 077
+bridge_output=$(mktemp)
+bridge_cli="k3s kubectl -n $namespace exec -it deployment/pynchy -c proton-bridge -- pynchy-proton-bridge enroll"
+bridge_commands \
+    | privileged script -qec "$bridge_cli" /dev/null \
+        >"$bridge_output" 2>&1 \
+    || die "Could not read the enrolled Bridge account."
+password=$(tr -d '\r' < "$bridge_output" \
+    | sed -n 's/.*Password:[[:space:]]*//p' \
+    | head -n 1)
+[ -n "$password" ] || die "Bridge has no enrolled account. Run without --resume to log in."
+rm -f "$bridge_output"
+bridge_output=
+
 secret_tmp=$(mktemp)
 printf 'password=%s\n' "$password" > "$secret_tmp"
 password=
