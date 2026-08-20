@@ -1,0 +1,42 @@
+name: Proton Bridge image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/proton-bridge-image.yml
+      - deploy/k3s/proton-bridge.Dockerfile
+      - deploy/k3s/proton-bridge-entrypoint.sh
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, test, and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PROTON_BRIDGE_VERSION: 3.24.2-1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Log in to GitHub Container Registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and test Proton Bridge
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/$owner/pynchy-proton-bridge:$PROTON_BRIDGE_VERSION"
+          docker build --platform linux/amd64 \
+            -f deploy/k3s/proton-bridge.Dockerfile \
+            -t "$image" \
+            deploy/k3s
+          docker run --rm "$image" --version \
+            | grep -F "Proton Mail Bridge ${PROTON_BRIDGE_VERSION%-*}"
+          docker push "$image"

@@ -20,6 +20,14 @@ logged-in graphical session. On Linux, use the host's secret service or another
 host-local secret manager. Pynchy executes the configured command as argv, not
 through a shell.
 
+For K3s, build and publish the pinned Bridge image with
+`.github/workflows/proton-bridge-image.yml`, then add one Bridge sidecar to the
+Pynchy Pod in the deployment-specific Kustomize overlay. All authorized
+workspaces share that host-side Bridge through the Proton Mail MCP server; do
+not run one Bridge container per workspace. Persist `/home/bridge`, and mount
+the generated Bridge app password from a Kubernetes Secret only into the
+`pynchy` container. Account login remains a one-time interactive operator step.
+
 ## Configuration
 
 Configure the direct Bridge identity and password command in the host-only MCP
