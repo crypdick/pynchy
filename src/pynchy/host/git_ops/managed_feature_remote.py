@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class _GitTransport(Protocol):
-    """Host-owned Git metadata used to query one remote repository."""
+    """Validated Git metadata for querying one remote repository."""
 
     @property
     def root(self) -> Path: ...

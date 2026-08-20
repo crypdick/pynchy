@@ -487,3 +487,45 @@ class TestManagedFeatureCopGate:
         }
         rebase.assert_called_once_with("safe-feature", [repo_ctx])
         cop.assert_not_awaited()
+
+
+@pytest.mark.action("lifecycle.managed.feature.rebase")
+class TestManagedFeatureRebaseIpc:
+    """The rebase IPC surface returns host results without publishing a PR."""
+
+    async def test_rejects_a_missing_feature_slug(self, deps, tmp_path):
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+            return_value=make_settings(data_dir=tmp_path / "data"),
+        ):
+            await dispatch(
+                {"type": "rebase_managed_feature", "request_id": "missing-slug"},
+                "admin-1",
+                True,
+                deps,
+            )
+
+        response = tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "missing-slug.json"
+        assert "feature_slug must be a non-empty string" in response.read_text()
+
+    async def test_rejects_a_group_without_a_repository(self, deps, tmp_path):
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_managed_feature.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch("pynchy.host.git_ops.repo.resolve_repos_for_group", return_value=[]),
+        ):
+            await dispatch(
+                {
+                    "type": "rebase_managed_feature",
+                    "request_id": "missing-repo",
+                    "feature_slug": "safe-feature",
+                },
+                "admin-1",
+                True,
+                deps,
+            )
+
+        response = tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "missing-repo.json"
+        assert "No repo configured for this group." in response.read_text()
