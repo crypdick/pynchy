@@ -7,6 +7,7 @@ import stat
 import subprocess  # noqa: S404 - fake CompletedProcess values only.
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -523,27 +524,31 @@ async def test_vaultwarden_service_handler_validates_and_delegates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handler = VAULTWARDEN_HOST_ACTIONS.actions[0].handler
-    assert await handler({"source_group": "finance", "name": "Example"}) == {
-        "error": "Vaultwarden runtime has not been configured"
-    }
-    fake_bw = _FakeBw()
-    monkeypatch.setattr(subprocess, "run", fake_bw)
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
-    monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "master-password")
-    configure_vaultwarden_runtime(
-        VaultwardenRuntime(
-            options=VaultwardenOptions(
-                server_url="https://vault.pynchy.svc.cluster.local",
-                collections={"finance": COLLECTION_ID},
-            ),
-            data_dir=tmp_path,
-            resolve_access=lambda _workspace: ("finance", ("finance",)),
+    with (
+        patch("pynchy.plugins.integrations.vaultwarden._runtime.broker", None),
+        patch("pynchy.plugins.integrations.vaultwarden._runtime.admin_broker", None),
+    ):
+        assert await handler({"source_group": "finance", "name": "Example"}) == {
+            "error": "Vaultwarden runtime has not been configured"
+        }
+        fake_bw = _FakeBw()
+        monkeypatch.setattr(subprocess, "run", fake_bw)
+        monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_EMAIL", "finance@example.test")
+        monkeypatch.setenv("PYNCHY_VAULTWARDEN_FINANCE_PASSWORD", "master-password")
+        configure_vaultwarden_runtime(
+            VaultwardenRuntime(
+                options=VaultwardenOptions(
+                    server_url="https://vault.pynchy.svc.cluster.local",
+                    collections={"finance": COLLECTION_ID},
+                ),
+                data_dir=tmp_path,
+                resolve_access=lambda _workspace: ("finance", ("finance",)),
+            )
         )
-    )
 
-    assert await handler({"source_group": 7, "name": "Example"}) == {
-        "error": "get_secret requires a secret name"
-    }
-    result = await handler({"source_group": "finance", "name": "Example"})
-    assert result["result"]["keys"] == ["email", "login", "password"]
-    configure_vaultwarden_plugin(_settings(collections=["finance"]))
+        assert await handler({"source_group": 7, "name": "Example"}) == {
+            "error": "get_secret requires a secret name"
+        }
+        result = await handler({"source_group": "finance", "name": "Example"})
+        assert result["result"]["keys"] == ["email", "login", "password"]
+        configure_vaultwarden_plugin(_settings(collections=["finance"]))
