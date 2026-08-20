@@ -412,7 +412,9 @@ async def resolve_deploy_startup(
     """Resolve durable deployment state while rollback evidence remains claimed."""
     revision = recovery.deploy_revision
     if revision is not None:
-        if recovery.rolled_back:
+        # A newer external release can start while an older turn continuation remains.
+        # Runtime image is authoritative; publishing the stale revision causes rollback loops.
+        if recovery.rolled_back or revision != active_revision:
             await clear_pending_deployment(revision)
             await complete_deployment(active_revision)
         else:
