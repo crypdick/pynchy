@@ -188,6 +188,15 @@ class TestRequestEnvelope:
                 source_group="admin-1",
             )
 
+    def test_envelope_accepts_managed_feature_rebase(self):
+        request = make_ipc_request(
+            kind="rebase_managed_feature",
+            request_id="req-rebase",
+            source_group="project",
+        )
+
+        assert request["kind"] == "rebase_managed_feature"
+
     def test_envelope_rejects_empty_required_string(self):
         request = make_ipc_request(
             kind="refresh_groups",

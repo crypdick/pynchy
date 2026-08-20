@@ -165,7 +165,6 @@ async def test_publish_managed_feature_returns_host_error(agent_tool_runtime: Pa
     assert result.content[0].text == "Publication blocked: managed feature is not active."
 
 
-@pytest.mark.action("lifecycle.managed.feature.rebase")
 @pytest.mark.asyncio
 async def test_rebase_managed_feature_emits_only_bound_slug(agent_tool_runtime: Path) -> None:
     responder = asyncio.create_task(
