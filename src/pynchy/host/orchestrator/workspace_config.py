@@ -525,6 +525,70 @@ def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bo
     reset_settings()
 
 
+def update_workspace_capability_policy(group_folder: str, capability_id: str) -> None:
+    """Persist one exact capability grant in its owning workspace document."""
+    settings = get_settings()
+    runtime_policy = _runtime_policies.get(group_folder)
+    workspace_name = (
+        runtime_policy.parent_workspace if runtime_policy else static_workspace_folder(group_folder)
+    )
+    root_name = settings.workspace_parent(workspace_name) or workspace_name
+    path = settings.project_root / "data" / "personalization" / "workspaces" / f"{root_name}.toml"
+    if not path.is_file():
+        raise ValueError(f"Workspace '{workspace_name}' has no personalized declaration")
+    original = path.read_text(encoding="utf-8")
+    doc = tomlkit.parse(original)
+    workspace = cast("Any", doc.get("workspace"))
+    if workspace is None:
+        raise ValueError(f"Workspace '{workspace_name}' declaration is invalid")
+    target = (
+        workspace
+        if workspace_name == root_name
+        else _semantic_policy_table(workspace, workspace_name)
+    )
+    _grant_capability(target, capability_id)
+    _runtime.parse_workspace_config(workspace.unwrap())
+    write_text_atomic(path, tomlkit.dumps(doc))
+    reset_settings()
+
+    resolved = load_resolved_config(group_folder)
+    matching = (
+        rule
+        for pattern, rule in (resolved.capabilities.items() if resolved else ())
+        if capability_pattern_matches(pattern, capability_id)
+    )
+    if (most_restrictive_capability_rule(matching) or CapabilityRule("needs_human")).decision != (
+        "allow"
+    ):
+        write_text_atomic(path, original)
+        reset_settings()
+        raise ValueError("A stricter inherited permission prevents a permanent grant")
+
+
+def _semantic_policy_table(workspace: object, workspace_name: str) -> object:
+    workspace_table = cast("Any", workspace)
+    for collection_name in ("scopes", "threads"):
+        for candidate in workspace_table.get(collection_name, []):
+            if candidate.get("workspace") == workspace_name:
+                return candidate
+    raise ValueError(f"Workspace '{workspace_name}' has no persistent policy owner")
+
+
+def _grant_capability(target: object, capability_id: str) -> None:
+    target_table = cast("Any", target)
+    permissions = target_table.get("permissions")
+    if permissions is None:
+        permissions = tomlkit.inline_table()
+        target_table["permissions"] = permissions
+    for bucket in ("ask", "deny"):
+        permissions[bucket] = [
+            value for value in permissions.get(bucket, []) if value != capability_id
+        ]
+    permissions["allow"] = _deduplicate_preserving_order(
+        [*[str(value) for value in permissions.get("allow", [])], capability_id]
+    )
+
+
 def _deduplicate_preserving_order(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 

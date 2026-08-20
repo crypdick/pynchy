@@ -38,6 +38,8 @@ def pending() -> dict[str, object]:
         "approval_chat_jid": "j@g.us",
         "tool_name": "x_post",
         "short_id": "ab",
+        "capability_id": "social.post.create",
+        "allow_remember": True,
     }
 
 
@@ -60,12 +62,44 @@ class TestHandleApprovalCommand:
             "request_payload_hash": "payload-456",
             "source_group": "grp",
             "approved": approved,
+            "approval_scope": None,
             "decided_by": "testuser",
             "decided_at": decision["decided_at"],
         }
         deps.broadcast_host_message.assert_awaited_once_with(
             "j@g.us", f"✅ {'Approved' if approved else 'Denied'}: x_post (ab)"
         )
+
+    @pytest.mark.asyncio
+    async def test_approve_forever_records_scope_for_validated_replay(
+        self, pending: dict[str, object]
+    ) -> None:
+        deps = FakeDeps(pending)
+
+        await handle_approval_command(deps, "j@g.us", "approve-forever", "ab", "testuser")
+
+        decision = deps.persist_and_process.await_args.args[1]
+        assert decision["approval_scope"] == "forever"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("action", "message"),
+        [
+            ("unexpected", "Unknown approval action: unexpected"),
+            ("approve-session", "Approval duration choices are unavailable for ID: ab"),
+        ],
+    )
+    async def test_rejects_invalid_duration_choice(
+        self, pending: dict[str, object], action: str, message: str
+    ) -> None:
+        if action == "approve-session":
+            pending["allow_remember"] = False
+        deps = FakeDeps(pending)
+
+        await handle_approval_command(deps, "j@g.us", action, "ab", "testuser")
+
+        deps.persist_and_process.assert_not_awaited()
+        deps.broadcast_host_message.assert_awaited_once_with("j@g.us", message)
 
     @pytest.mark.asyncio
     async def test_rejects_unknown_or_wrong_chat(self, pending: dict[str, object]) -> None:

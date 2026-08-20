@@ -55,6 +55,7 @@ class ApprovalDecisionContext:
     action_payload_sha256: str | None
     requested_at: str | None
     expires_after_seconds: int
+    approval_scope: str = "once"
 
 
 @dataclass(frozen=True)

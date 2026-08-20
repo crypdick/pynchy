@@ -32,7 +32,6 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
-    ApprovalMode,
     HostActionCatalog,
     HostActionDescriptor,
     clear_host_action_catalog_cache,
@@ -260,6 +259,7 @@ async def _request_human_approval(
         request_data=context.data,
         expires_after_seconds=context.action.approval.expires_after_seconds,
         approval_scope=context.action.approval.mode.value,
+        capability_id=str(context.action.capability.id),
         origin_conversation_id=(str(control.conversation_id) if control is not None else None),
         action_payload=(context.intent.payload if context.intent is not None else None),
         corruption_tainted=context.gate.policy.corruption_tainted,
@@ -271,19 +271,13 @@ async def _request_human_approval(
             policy_decision=context.reason or "human approval required",
         )
 
-    preface = None
-    if context.action.approval.mode is ApprovalMode.SESSION_TOOL:
-        preface = (
-            "Approving grants this tool for the rest of the active agent session: "
-            f"{context.request.tool_name}"
-        )
     await context.deps.broadcast_to_channels(
         context.chat_jid,
         approval_event(
             context.request.tool_name,
             context.data,
             short_id,
-            preface=preface,
+            capability_id=str(context.action.capability.id),
         ),
     )
 

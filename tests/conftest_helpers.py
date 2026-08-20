@@ -329,6 +329,8 @@ class NullIpcDeps:
     def skill_access_status(self, _group_folder, _skill_name) -> str:
         return "unavailable"
 
+    def persist_capability_approval(self, _group_folder, _capability_id) -> None: ...
+
     async def load_cop_inspection_context(self, _chat_jid):
         return CopInspectionContext(availability=CopContextAvailability.AVAILABLE)
 

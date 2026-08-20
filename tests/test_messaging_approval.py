@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
+import pytest
 from conftest import make_command_matcher, make_settings
 
 from pynchy.host.orchestrator.messaging import commands
@@ -21,6 +22,13 @@ class TestIsApprovalCommand:
     def test_deny_with_hex_id(self):
         result = is_approval_command("deny a7f3b2c1")
         assert result == ("deny", "a7f3b2c1")
+
+    @pytest.mark.parametrize(
+        "action",
+        ["approve-once", "approve-session", "approve-forever"],
+    )
+    def test_approve_duration_with_hex_id(self, action: str):
+        assert is_approval_command(f"{action} a7f3b2c1") == (action, "a7f3b2c1")
 
     def test_case_insensitive(self):
         result = is_approval_command("Approve A7F3B2C1")

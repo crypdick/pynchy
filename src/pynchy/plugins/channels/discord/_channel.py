@@ -625,7 +625,14 @@ class DiscordChannel:
         try:
             short_id = event.metadata.get("short_id")
             if event.type is OutboundEventType.APPROVAL and isinstance(short_id, str) and short_id:
-                await send_approval(channel, self, jid, text, short_id)
+                await send_approval(
+                    channel,
+                    self,
+                    jid,
+                    text,
+                    short_id,
+                    allow_remember=event.metadata.get("allow_remember") is True,
+                )
             else:
                 await send_text(channel, text)
         except discord.Forbidden as exc:

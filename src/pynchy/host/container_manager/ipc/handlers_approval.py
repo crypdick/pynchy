@@ -35,6 +35,7 @@ from pynchy.host.container_manager.ipc.approval_decision_context import (
 from pynchy.host.container_manager.ipc.approval_decision_context import (
     build_approval_decision_context as _build_approval_decision_context,
 )
+from pynchy.host.container_manager.ipc.approval_grants import apply_reusable_approval
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext as _ApprovalDecisionContext,
 )
@@ -64,10 +65,7 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # beartype resolves runtime annotations.
-    ApprovalMode,
-    HostActionDescriptor,
-)
+from pynchy.plugins.api import HostActionDescriptor  # noqa: TC001 - beartype resolves annotations.
 from pynchy.workspace.api import (
     WorkspaceSecurity,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -107,6 +105,7 @@ class _ApprovedServiceContext:
     action: HostActionDescriptor | None
     gate: SecurityGate
     deps: IpcDeps
+    approval_scope: str
 
 
 def _read_json_file(path: Path) -> object:
@@ -349,6 +348,9 @@ async def _dispatch_approved_request(
             action_ids=context.action_ids,
         )
         return
+    deps = cast("IpcDeps", deps)
+    if not await apply_reusable_approval(context, deps):
+        return
     if context.handler_type in {"security_bash", "security_artifact"}:
         await asyncio.to_thread(
             write_ipc_response,
@@ -369,7 +371,6 @@ async def _dispatch_approved_request(
             deps,
         )
     else:
-        deps = cast("IpcDeps", deps)
         if context.gate is None:
             raise RuntimeError("Approval replay policy disappeared after validation")
         if context.action is not None and context.action.action_intent is not None:
@@ -389,6 +390,7 @@ async def _dispatch_approved_request(
                 action=context.action,
                 gate=context.gate,
                 deps=deps,
+                approval_scope=context.approval_scope,
             )
         )
     await record_security_event(
@@ -469,8 +471,6 @@ async def _execute_service_approval(
                 action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
             )
             return
-        if action.approval.mode is ApprovalMode.SESSION_TOOL:
-            context.gate.grant_session_tool_approval(str(action.tool_name))
         try:
             context.request_data["source_group"] = context.source_group
             response = await context.deps.execute_action_intent(

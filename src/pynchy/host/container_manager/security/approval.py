@@ -259,6 +259,7 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
     handler_type: str = "service",
     expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
     approval_scope: str = "exact_request",
+    capability_id: str | None = None,
     origin_conversation_id: str | None = None,
     action_payload: dict[str, Any] | None = None,
     *,
@@ -306,6 +307,8 @@ def create_pending_approval(  # noqa: PLR0913 - approval files intentionally kee
         "timestamp": datetime.now(UTC).isoformat(),
         "expires_after_seconds": expires_after_seconds,
         "approval_scope": approval_scope,
+        "capability_id": capability_id,
+        "allow_remember": capability_id is not None,
         # Persist request-time taint because the in-memory SecurityGate can be
         # gone when a host-owned approval decision is replayed after restart.
         "corruption_tainted": corruption_tainted,
@@ -519,11 +522,14 @@ def format_approval_notification(
     tool_name: str,
     request_data: dict[str, Any],
     short_id: str,
+    *,
+    allow_remember: bool = False,
 ) -> str:
     """Format a user-facing approval notification message.
 
     Sanitizes request data: omits internal fields, truncates long values.
     """
+    # NOTE: Update docs/usage/security.md "Approving a Request" when choices change.
     details = {
         k: v for k, v in request_data.items() if k not in _INTERNAL_FIELDS and not k.startswith("_")
     }
@@ -537,6 +543,12 @@ def format_approval_notification(
 
     details_str = "\n".join(detail_parts) if detail_parts else "  (no details)"
 
+    choices = (
+        f"approve-once {short_id} / approve-session {short_id} / "
+        f"approve-forever {short_id} / deny {short_id}"
+        if allow_remember
+        else f"approve {short_id}  /  deny {short_id}"
+    )
     return (
         f"\U0001f510 Approval required\n"
         f"\n"
@@ -544,7 +556,7 @@ def format_approval_notification(
         f"Details:\n"
         f"{details_str}\n"
         f"\n"
-        f"\u2192 approve {short_id}  /  deny {short_id}"
+        f"\u2192 {choices}"
     )
 
 
@@ -554,6 +566,7 @@ def approval_event(
     short_id: str,
     *,
     preface: str | None = None,
+    capability_id: str | None = None,
 ) -> OutboundEvent:
     """Build one channel-neutral approval prompt.
 
@@ -562,11 +575,21 @@ def approval_event(
     Keeping this construction next to the pending-approval state prevents a
     gate producer from accidentally emitting an unstructured text message.
     """
-    content = format_approval_notification(tool_name, request_data, short_id)
+    allow_remember = capability_id is not None
+    content = format_approval_notification(
+        tool_name,
+        request_data,
+        short_id,
+        allow_remember=allow_remember,
+    )
     if preface:
         content = f"{preface}\n\n{content}"
     return OutboundEvent(
         type=OutboundEventType.APPROVAL,
         content=content,
-        metadata={"short_id": short_id, "tool_name": tool_name},
+        metadata={
+            "short_id": short_id,
+            "tool_name": tool_name,
+            **({"allow_remember": True} if allow_remember else {}),
+        },
     )

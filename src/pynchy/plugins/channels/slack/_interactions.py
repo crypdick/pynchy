@@ -168,7 +168,7 @@ class SlackInteractions:
             jid = slack_jid(channel_id)
             ch.on_approval_decision(jid, decision, short_id, user_id)
 
-        verb = "Approved" if decision == "approve" else "Denied"
+        verb = "Approved" if decision.startswith("approve") else "Denied"
         await self._finalize_decision(
             body,
             channel_id,

@@ -65,7 +65,25 @@ A payload scanner also runs on every outbound write. If it spots credential patt
 
 ## Approving a Request
 
-Pynchy posts an approval prompt in the workspace that requested the action. In Discord and Slack, select **Approve** or **Deny** on that prompt. The control records the decision in the originating workspace, so a prompt from one chat cannot approve an action in another.
+Pynchy posts an approval prompt in the workspace that requested the action. For
+a host action with a semantic capability ID, Discord and Slack offer four
+choices:
+
+- **Approve once** runs only the reviewed request.
+- **Approve this session** also allows that exact capability for the active
+  agent session.
+- **Approve forever** adds that exact capability to the owning workspace's
+  personalized `permissions.allow` list.
+- **Deny** rejects the request.
+
+A permanent grant cannot weaken a stricter inherited `ask` or `deny` rule. In
+that case, Pynchy leaves the request pending and reports why it could not save
+the grant. Approval prompts without a stable semantic capability, including
+package artifact and Bash escalations, remain one-shot **Approve** or **Deny**
+decisions.
+
+The control records the decision in the originating workspace, so a prompt
+from one chat cannot approve an action in another.
 
 An exact-request approval covers only the reviewed payload. Pynchy rejects a
 changed payload, a copied decision from another workspace, or a replayed
@@ -77,7 +95,10 @@ coordinate list attached to the blocked in-flight hook, not the full shell
 string. Approval resumes only that waiting tool call and is not a reusable
 shell approval.
 
-Text-only channels show the command fallback in the prompt, for example `approve a1` or `deny a1`. Prompts expire after five minutes if no decision arrives.
+Text-only channels show the command fallback in the prompt. Capability-backed
+prompts use `approve-once a1`, `approve-session a1`, `approve-forever a1`, or
+`deny a1`. One-shot prompts retain `approve a1` and `deny a1`. Prompts expire
+after five minutes if no decision arrives.
 
 ## Permissions
 
@@ -114,8 +135,8 @@ Each decision has authoritative semantics:
   request. It does not override a service property set to `"forbidden"` or
   disable Cop review.
 - `deny` blocks the matching capability.
-- `ask` requires approval. The tool's approval contract determines
-  whether that approval covers one exact request or the active session.
+- `ask` requires approval. The operator chooses whether a capability-backed
+  approval covers one exact request, the active session, or future sessions.
 
 An unspecified permission defaults to `ask`. A runtime policy can replace that
 implicit default with `allow`, but configuration fails if it tries to weaken an

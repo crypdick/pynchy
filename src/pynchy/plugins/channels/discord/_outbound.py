@@ -47,12 +47,14 @@ async def _send_chunk(
     return getattr(created, "thread", created), getattr(created, "message", created)
 
 
-async def send_approval(
+async def send_approval(  # noqa: PLR0913 - approval control state stays explicit.
     channel: object,
     owner: DiscordChannel,
     jid: str,
     text: str,
     short_id: str,
+    *,
+    allow_remember: bool = False,
 ) -> None:
     """Send an approval prompt with controls on the first Discord chunk."""
     chunks = chunk_discord_text(text)
@@ -61,6 +63,7 @@ async def send_approval(
         jid=jid,
         short_id=short_id,
         content=chunks[0],
+        allow_remember=allow_remember,
     )
     target, message = await _send_chunk(channel, chunks[0], view=view)
     view.bind_message_id(str(message.id))

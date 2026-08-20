@@ -149,6 +149,44 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 
 
 @pytest.mark.asyncio
+async def test_capability_approval_event_posts_duration_controls():
+    decision_callback = MagicMock()
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV, dm_policy="open"
+        ).to_runtime_settings(),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _msg: None,
+        on_chat_metadata=lambda _jid, _ts, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
+        on_approval_decision=decision_callback,
+    )
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_event(
+        "discord:direct:42",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approval required",
+            metadata={"short_id": "a8", "allow_remember": True},
+        ),
+    )
+
+    view = fake.sends[0][1]["view"]
+    assert [item.label for item in view.children] == [
+        "Approve once",
+        "Approve this session",
+        "Approve forever",
+        "Deny",
+    ]
+    await view.children[1].callback(_interaction())
+    decision_callback.assert_called_once_with("discord:direct:42", "approve-session", "a8", "42")
+
+
+@pytest.mark.asyncio
 async def test_approval_button_rejects_an_unattached_view():
     _channel_instance, view = await _approval_view(callback=MagicMock())
     button = view.children[0]

@@ -394,7 +394,7 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
     ("approval_mode", "has_session_notice"),
     [
         (ApprovalMode.EXACT_REQUEST, False),
-        (ApprovalMode.SESSION_TOOL, True),
+        (ApprovalMode.SESSION_TOOL, False),
     ],
 )
 @pytest.mark.asyncio
@@ -458,6 +458,8 @@ async def test_dangerous_writes_requires_human(
         "Approving grants this tool for the rest of the active agent session"
         in deps.broadcast_messages[0][1]
     ) is has_session_notice
+    assert "approve-session" in deps.broadcast_messages[0][1]
+    assert "approve-forever" in deps.broadcast_messages[0][1]
 
 
 @pytest.mark.asyncio
