@@ -318,6 +318,19 @@ class TestFormatApprovalNotification:
         assert "deny a7f3b2c1" in msg
         assert "Hello world" in msg
 
+    def test_capability_approval_exposes_duration_choices(self):
+        msg = format_approval_notification(
+            tool_name="list_calendar",
+            request_data={"calendar": "primary"},
+            short_id="a8",
+            allow_remember=True,
+        )
+
+        assert "approve-once a8" in msg
+        assert "approve-session a8" in msg
+        assert "approve-forever a8" in msg
+        assert "deny a8" in msg
+
     def test_omits_internal_fields(self):
         msg = format_approval_notification(
             tool_name="x_post",

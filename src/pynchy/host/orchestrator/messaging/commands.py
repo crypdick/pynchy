@@ -142,7 +142,7 @@ def is_approval_command(
         short_id = options.get("short_id")
         return (
             (action, short_id)
-            if action in ("approve", "deny")
+            if action in ("approve", "approve-once", "approve-session", "approve-forever", "deny")
             and isinstance(short_id, str)
             and _APPROVAL_ID_RE.match(short_id)
             else None
@@ -154,7 +154,13 @@ def is_approval_command(
     if len(words) != 2:
         return None
     action, short_id = words
-    if action not in ("approve", "deny"):
+    if action not in (
+        "approve",
+        "approve-once",
+        "approve-session",
+        "approve-forever",
+        "deny",
+    ):
         return None
     if not _APPROVAL_ID_RE.match(short_id):
         return None

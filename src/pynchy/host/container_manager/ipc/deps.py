@@ -157,6 +157,8 @@ class IpcDeps(Protocol):
 
     def skill_access_status(self, group_folder: str, skill_name: str) -> str: ...
 
+    def persist_capability_approval(self, group_folder: str, capability_id: str) -> None: ...
+
 
 @runtime_checkable
 class PendingQuestionStore(Protocol):

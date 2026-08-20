@@ -529,6 +529,9 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         load_cop_inspection_context = staticmethod(_load_cop_inspection_context)
         sweep_expired_questions = staticmethod(pending_questions.sweep_expired_questions)
         skill_access_status = staticmethod(_skill_access_status)
+        persist_capability_approval = staticmethod(
+            workspace_config.update_workspace_capability_policy
+        )
         default_agent_name = staticmethod(lambda: get_settings().agent.name)
 
         async def clear_session(self, group_folder: str) -> None:

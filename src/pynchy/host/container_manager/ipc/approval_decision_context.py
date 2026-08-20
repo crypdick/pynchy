@@ -28,13 +28,14 @@ class ApprovalDecision:
     guarded_action_id: str | None = None
     request_payload_hash: str | None = None
     source_group: str | None = None
+    approval_scope: str | None = None
 
     @classmethod
     def parse(cls, value: object) -> ApprovalDecision:
         """Parse a decision without truthy or identity fallbacks."""
         if not isinstance(value, dict):
             raise TypeError("approval decision must be a JSON object")
-        expected_fields = {
+        required_fields = {
             "request_id",
             "guarded_action_id",
             "request_payload_hash",
@@ -43,7 +44,7 @@ class ApprovalDecision:
             "decided_by",
             "decided_at",
         }
-        if set(value) != expected_fields:
+        if set(value) not in (required_fields, {*required_fields, "approval_scope"}):
             raise ValueError("approval decision has missing or unexpected fields")
         request_id = value["request_id"]
         approved = value["approved"]
@@ -52,6 +53,7 @@ class ApprovalDecision:
         guarded_action_id = value["guarded_action_id"]
         request_payload_hash = value["request_payload_hash"]
         source_group = value["source_group"]
+        approval_scope = value.get("approval_scope")
         if not isinstance(request_id, str) or not request_id:
             raise ValueError("approval decision request_id must be a non-empty string")
         if type(approved) is not bool:
@@ -73,6 +75,10 @@ class ApprovalDecision:
             raise ValueError("approval decision decided_at must be an ISO timestamp") from exc
         if parsed_decided_at.tzinfo is None or parsed_decided_at.utcoffset() is None:
             raise ValueError("approval decision decided_at must include a timezone")
+        if approval_scope not in {None, "once", "session", "forever"}:
+            raise ValueError("approval decision approval_scope is invalid")
+        if not approved and approval_scope is not None:
+            raise ValueError("denied approval decision cannot have an approval_scope")
         return cls(
             request_id=request_id,
             approved=approved,
@@ -81,6 +87,7 @@ class ApprovalDecision:
             guarded_action_id=guarded_action_id,
             request_payload_hash=request_payload_hash,
             source_group=source_group,
+            approval_scope=approval_scope,
         )
 
 
@@ -121,6 +128,14 @@ def build_approval_decision_context(
         raise ValueError("pending approval handler_type is invalid")
     action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
     capability_id = str(action.capability.id) if action is not None else None
+    if decision.approval_scope in {"session", "forever"}:
+        pending_capability = pending.get("capability_id")
+        if (
+            pending.get("allow_remember") is not True
+            or not isinstance(pending_capability, str)
+            or pending_capability != capability_id
+        ):
+            raise ValueError("pending approval does not support reusable approval")
     action_ids = (
         tuple(str(action_id) for action_id in action.capability.action_ids)
         if action is not None
@@ -139,6 +154,7 @@ def build_approval_decision_context(
     if action_payload is not None and not isinstance(action_payload, dict):
         raise TypeError("pending approval action_payload must be an object or null")
     raw_timeout = pending.get("expires_after_seconds", APPROVAL_TIMEOUT_SECONDS)
+    approval_scope = decision.approval_scope or _legacy_approval_scope(pending, action)
     return ApprovalDecisionContext(
         request_id=decision.request_id,
         source_group=source_group,
@@ -166,6 +182,20 @@ def build_approval_decision_context(
         expires_after_seconds=(
             raw_timeout if isinstance(raw_timeout, int) and raw_timeout > 0 else 0
         ),
+        approval_scope=approval_scope,
+    )
+
+
+def _legacy_approval_scope(
+    pending: dict[str, Any],
+    action: object | None,
+) -> str:
+    configured_mode = getattr(getattr(action, "approval", None), "mode", None)
+    return (
+        "session"
+        if pending.get("approval_scope") == "session_tool"
+        or getattr(configured_mode, "value", None) == "session_tool"
+        else "once"
     )
 
 

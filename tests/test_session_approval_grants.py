@@ -78,6 +78,21 @@ def test_exact_request_tool_ignores_session_grant() -> None:
     assert evaluate_host_action_policy(action, gate, {}).needs_human
 
 
+def test_user_selected_session_grant_approves_exact_capability() -> None:
+    action = _action("send_email")
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services={"send_email": ServiceTrustConfig(dangerous_writes=True)},
+        )
+    )
+
+    gate.grant_session_capability_approval("test.send.email")
+
+    decision = evaluate_host_action_policy(action, gate, {})
+    assert decision.allowed
+    assert not decision.needs_human
+
+
 def test_explicit_capability_allow_skips_service_human_gate() -> None:
     action = _action("computer_use", approval_mode=ApprovalMode.SESSION_TOOL)
     gate = SecurityGate(

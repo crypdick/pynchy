@@ -281,24 +281,31 @@ class SlackBlocksFormatter:
         short_id = str(event.metadata.get("short_id", ""))
         blocks: list[dict[str, Any]] = [_markdown_block(event.content)]
         if short_id:
+            actions = (
+                [
+                    ("approve-once", "Approve once", "primary"),
+                    ("approve-session", "Approve this session", "primary"),
+                    ("approve-forever", "Approve forever", "primary"),
+                    ("deny", "Deny", "danger"),
+                ]
+                if event.metadata.get("allow_remember") is True
+                else [
+                    ("approve", "\u2705 Approve", "primary"),
+                    ("deny", "\u274c Deny", "danger"),
+                ]
+            )
             blocks.append(
                 {
                     "type": "actions",
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "\u2705 Approve"},
-                            "action_id": f"cop_approve_{short_id}",
-                            "style": "primary",
+                            "text": {"type": "plain_text", "text": label},
+                            "action_id": f"cop_{action}_{short_id}",
+                            "style": style,
                             "value": short_id,
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "\u274c Deny"},
-                            "action_id": f"cop_deny_{short_id}",
-                            "style": "danger",
-                            "value": short_id,
-                        },
+                        }
+                        for action, label, style in actions
                     ],
                 }
             )

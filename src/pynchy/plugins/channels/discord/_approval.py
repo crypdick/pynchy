@@ -36,7 +36,15 @@ class ApprovalButton(discord.ui.Button["DiscordApprovalView"]):
 class DiscordApprovalView(discord.ui.View):
     """Time-bound Approve/Deny controls for one Pynchy approval request."""
 
-    def __init__(self, *, channel: DiscordChannel, jid: str, short_id: str, content: str) -> None:
+    def __init__(
+        self,
+        *,
+        channel: DiscordChannel,
+        jid: str,
+        short_id: str,
+        content: str,
+        allow_remember: bool = False,
+    ) -> None:
         super().__init__(timeout=APPROVAL_TIMEOUT_SECONDS)
         self._channel = channel
         self._jid = jid
@@ -44,9 +52,19 @@ class DiscordApprovalView(discord.ui.View):
         self._content = content
         self._message_id: str | None = None
         self._completed = False
-        self.add_item(
-            ApprovalButton(action="approve", label="Approve", style=discord.ButtonStyle.primary)
-        )
+        if allow_remember:
+            for action, label in (
+                ("approve-once", "Approve once"),
+                ("approve-session", "Approve this session"),
+                ("approve-forever", "Approve forever"),
+            ):
+                self.add_item(
+                    ApprovalButton(action=action, label=label, style=discord.ButtonStyle.primary)
+                )
+        else:
+            self.add_item(
+                ApprovalButton(action="approve", label="Approve", style=discord.ButtonStyle.primary)
+            )
         self.add_item(ApprovalButton(action="deny", label="Deny", style=discord.ButtonStyle.danger))
 
     def bind_message_id(self, message_id: str) -> None:
@@ -76,7 +94,7 @@ class DiscordApprovalView(discord.ui.View):
             self._jid, action, self._short_id, str(interaction_api.user.id)
         )
 
-        verb = "Approved" if action == "approve" else "Denied"
+        verb = "Approved" if action.startswith("approve") else "Denied"
         await interaction_api.response.edit_message(
             content=f"{self._content}\n\n\u2705 {verb}",
             view=None,

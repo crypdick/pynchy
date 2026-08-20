@@ -35,6 +35,31 @@ def test_approval_event_has_buttons():
     assert any("deny" in aid for aid in action_ids)
 
 
+def test_capability_approval_event_has_duration_buttons():
+    result = SlackBlocksFormatter().render(
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approval required: list_calendar",
+            metadata={"short_id": "a8", "allow_remember": True},
+        )
+    )
+
+    assert result.blocks is not None
+    actions = next(block for block in result.blocks if block["type"] == "actions")
+    assert [element["text"]["text"] for element in actions["elements"]] == [
+        "Approve once",
+        "Approve this session",
+        "Approve forever",
+        "Deny",
+    ]
+    assert [element["action_id"] for element in actions["elements"]] == [
+        "cop_approve-once_a8",
+        "cop_approve-session_a8",
+        "cop_approve-forever_a8",
+        "cop_deny_a8",
+    ]
+
+
 def test_approval_buttons_encode_short_id():
     """Approve/Deny buttons should encode the approval short_id in their action_id."""
     fmt = SlackBlocksFormatter()

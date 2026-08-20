@@ -18,7 +18,9 @@ from typing import Any
 ASK_USER_ACTION_RE = re.compile(r"^ask_user_(submit|checkbox)_")
 
 # Approval button action_ids: cop_approve_{short_id}, cop_deny_{short_id}
-COP_APPROVAL_ACTION_RE = re.compile(r"^cop_(approve|deny)_")
+COP_APPROVAL_ACTION_RE = re.compile(
+    r"^cop_(approve|approve-once|approve-session|approve-forever|deny)_"
+)
 
 # Stop button action_id: agent_stop_{group_name}
 AGENT_STOP_ACTION_RE = re.compile(r"^agent_stop_")

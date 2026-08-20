@@ -107,6 +107,7 @@ class SecurityGate:
         self._service_names = frozenset(security.services)
         self._policy = SecurityPolicy(security)
         self._session_tool_approvals: set[str] = set()
+        self._session_capability_approvals: set[str] = set()
 
     @property
     def policy(self) -> SecurityPolicy:
@@ -165,6 +166,14 @@ class SecurityGate:
         """Return whether this session already approved the opted-in tool."""
         return tool_name in self._session_tool_approvals
 
+    def grant_session_capability_approval(self, capability_id: str) -> None:
+        """Approve one semantic capability for this gate's session lifetime."""
+        self._session_capability_approvals.add(capability_id)
+
+    def has_session_capability_approval(self, capability_id: str) -> bool:
+        """Return whether this session approved the semantic capability."""
+        return capability_id in self._session_capability_approvals
+
 
 def evaluate_host_action_policy(
     action: HostActionDescriptor,
@@ -194,8 +203,14 @@ def evaluate_host_action_policy(
     approval_granted = (
         service.allowed
         and needs_human
-        and action.approval.mode is ApprovalMode.SESSION_TOOL
-        and gate.has_session_tool_approval(tool_name)
+        and trigger is not ApprovalTrigger.ALWAYS
+        and (
+            (
+                action.approval.mode is ApprovalMode.SESSION_TOOL
+                and gate.has_session_tool_approval(tool_name)
+            )
+            or gate.has_session_capability_approval(str(action.capability.id))
+        )
     )
     reasons = [reason for reason in (capability.reason, service.reason) if reason]
     if (

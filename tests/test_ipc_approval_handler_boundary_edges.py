@@ -400,6 +400,33 @@ class TestApprovalBoundaryEdges:
             await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
 
     @pytest.mark.asyncio
+    async def test_reusable_approval_failure_stops_before_dispatch(self, ipc_dir: Path, settings):
+        _write_pending(ipc_dir, "grp", "reusable-failed", "my_tool", {})
+        decision_file = _write_decision(ipc_dir, "grp", "reusable-failed", approved=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.write._ipc_base_dir",
+                settings.data_dir / "ipc",
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
+                return_value=SecurityGate(WorkspaceSecurity()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.apply_reusable_approval",
+                new=AsyncMock(return_value=False),
+            ) as reusable,
+        ):
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
+
+        reusable.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_approved_action_intent_is_denied_when_policy_changes(self, tmp_path: Path):
         request_id = "policy-denied-action"
         action, provider, _pending, decision_file = await _write_matrix_approval(
