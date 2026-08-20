@@ -38,6 +38,8 @@ def test_enrollment_keeps_password_out_of_commands_and_applies_secret(tmp_path: 
         '#!/bin/sh\nexec "$@"\n',
     )
     _executable(fake_bin / "sleep", "#!/bin/sh\nexit 0\n")
+    _executable(fake_bin / "stat", "#!/bin/sh\nprintf '3000\\n'\n")
+    _executable(fake_bin / "chown", "#!/bin/sh\nexit 0\n")
     _executable(
         fake_bin / "script",
         '#!/bin/sh\nshift\nPYNCHY_BATCH_BRIDGE=1 /bin/sh -c "$1"\n',
