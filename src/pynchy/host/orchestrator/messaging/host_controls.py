@@ -12,6 +12,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype 
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
+from pynchy.host.orchestrator.scheduled_turn import pause_queued_once_task
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves control annotations at runtime.
@@ -96,6 +97,9 @@ async def _handle_pause(
         message,
         CheckpointControlState.PAUSE_REQUESTED,
     )
+    queued_task_ids = deps.queue.clear_pending_tasks(runtime_id)
+    for task_id in queued_task_ids:
+        await pause_queued_once_task(task_id, group, chat_jid)
     await deps.queue.stop_active_process_for_control(runtime_id)
     await deps.queue.destroy_runtime_session(runtime_id)
     if turn is not None and not had_active_run:

@@ -88,6 +88,9 @@ The router consumes an exact pause or reset phrase, or a native application
 command intent from a channel adapter, as a host message and updates the
 checkpoint and durable input cursor in one SQLite transaction. A stopped pause
 request becomes `paused` and releases its execution claim.
+Before stopping the runtime, pause also removes autonomous work already queued
+behind that turn. A queued one-shot task receives its own paused checkpoint, so
+activity retries and external reconciliation cannot restart that occurrence.
 Pause is a terminal orchestration outcome, so the queue and Temporal do not
 emit an error warning or retry the frozen work. Repeated pause commands leave
 the same row paused.
@@ -105,7 +108,8 @@ A paused scheduled occurrence remains the task's in-flight row. New triggers
 for that task return a paused terminal outcome instead of creating competing
 work. A reply in the occurrence's chat or thread starts its dedicated
 interrupted-turn workflow. Scheduler completion bookkeeping runs only after
-that original occurrence finishes.
+that original occurrence finishes. Canceling a queued recurring occurrence
+does not pause its definition, so a later schedule trigger can run normally.
 
 `reset context` moves an active or paused row to `reset_requested` before
 stopping execution. Reset retires any routed-delivery claim, removes the

@@ -84,6 +84,7 @@ class MessageTurnStart:
     task_id: str | None = None
     conversation_claim_id: str | None = None
     input_source: str = "user"
+    control_state: CheckpointControlState = CheckpointControlState.ACTIVE
 
 
 async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
@@ -109,9 +110,10 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
         started_at=started_at,
         task_id=task_id,
         session_id=str(session_id) if session_id else None,
-        claimed_at=started_at,
+        claimed_at=(started_at if request.control_state is CheckpointControlState.ACTIVE else None),
         conversation_claim_id=request.conversation_claim_id,
         input_source=request.input_source,
+        control_state=request.control_state,
     )
     await begin_in_flight_turn(turn)
     return turn

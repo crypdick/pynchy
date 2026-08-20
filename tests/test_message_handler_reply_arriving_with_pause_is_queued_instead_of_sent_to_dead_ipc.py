@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,9 +24,12 @@ from pynchy.agent_protocol.api import (
 from pynchy.identifiers import (
     RuntimeId,
 )
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state import (
     begin_in_flight_turn,
+    create_task,
     get_in_flight_turn,
+    get_in_flight_turn_for_task,
     init_test_database,
     message_cursor,
     store_message,
@@ -66,6 +70,26 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
     deps = _make_deps(groups={jid: group})
     deps.queue.has_active_run.return_value = True
     deps.queue.send_message.return_value = True
+    deps.queue.clear_pending_tasks.return_value = (
+        "linear-execute-syn-173",
+        "recurring-task",
+    )
+    queued_once = ScheduledTask(
+        id="linear-execute-syn-173",
+        group_folder=group.folder,
+        chat_jid=jid,
+        prompt="Execute SYN-173",
+        schedule_type="once",
+        schedule_value="2026-07-25T10:00:00+00:00",
+        session_policy=SessionPolicy.CONTINUE,
+        bound_group_folder=group.folder,
+        bound_chat_jid=jid,
+        input_source="trusted:linear:authorized",
+    )
+    await create_task(queued_once)
+    await create_task(
+        replace(queued_once, id="recurring-task", schedule_type="cron", schedule_value="0 * * * *")
+    )
     await begin_in_flight_turn(
         InFlightTurn(
             turn_id="turn-pausing-with-reply",
@@ -111,6 +135,11 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
     assert checkpoint is not None
     assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
     assert deps.last_agent_timestamp[jid] == message_cursor(pause)
+    deps.queue.clear_pending_tasks.assert_called_once_with(RuntimeId(group.folder))
+    queued_turn = await get_in_flight_turn_for_task("linear-execute-syn-173")
+    assert queued_turn is not None
+    assert queued_turn.control_state is CheckpointControlState.PAUSED
+    assert await get_in_flight_turn_for_task("recurring-task") is None
 
 
 class TestBtwNonInterruptingMessages:
