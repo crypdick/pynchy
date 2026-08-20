@@ -244,8 +244,6 @@ def _ready_status(state: dict[str, Any]) -> dict[str, Any] | None:
         service.get("status") == "ok"
         and gateway.get("ready") is True
         and gateway.get("database") == "connected"
-        and isinstance(gateway.get("responses"), dict)
-        and gateway["responses"].get("state") == "available"
         and temporal.get("cluster_healthy") is True
         and temporal.get("worker_running") is True
     ):

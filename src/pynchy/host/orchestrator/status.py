@@ -395,7 +395,7 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
 
 
 async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
-    """Gateway health — Docker/readiness checks plus cached Responses availability.
+    """Gateway health from Docker and LiteLLM readiness checks.
 
     Args:
         deps: Runtime state and container-status operation.
@@ -405,9 +405,6 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
         "mode": info.get("mode", "unknown"),
         "redaction": info.get("redaction", "unknown"),
     }
-    if isinstance(info.get("responses"), dict):
-        result["responses"] = info["responses"]
-
     if info.get("mode") != "litellm":
         return result
 
@@ -421,6 +418,7 @@ async def _collect_gateway(deps: StatusDeps) -> dict[str, Any]:
 
     # LiteLLM documents /health/readiness as the proxy readiness endpoint;
     # /health performs provider model calls and can be provider-shape-sensitive.
+    # Keep status non-inferential: explicit runtime tests and real requests prove routes.
     port = info.get("port")
     key = info.get("key")
     if port and key:

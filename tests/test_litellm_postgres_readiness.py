@@ -37,14 +37,13 @@ def _gateway(tmp_path: Path) -> LiteLLMGateway:
     return LiteLLMGateway(config_path=str(config), data_dir=tmp_path, **_GATEWAY_KWARGS)
 
 
-def _startup_patches(gateway: LiteLLMGateway):
+def _startup_patches():
     return (
         patch(f"{_MODULE}.docker_available", return_value=True),
         patch(f"{_MODULE}.ensure_network", new_callable=AsyncMock),
         patch(f"{_MODULE}.ensure_image", new_callable=AsyncMock),
         patch(f"{_MODULE}.remove_container", new_callable=AsyncMock),
         patch(f"{_MODULE}.wait_healthy", new_callable=AsyncMock),
-        patch(f"{_MODULE}.LiteLLMResponsesAvailability.refresh", new_callable=AsyncMock),
     )
 
 
@@ -59,14 +58,13 @@ async def test_start_accepts_a_healthy_postgres_sidecar(tmp_path: Path) -> None:
         ]
     )
 
-    patches = _startup_patches(gateway)
+    patches = _startup_patches()
     with (
         patches[0],
         patches[1],
         patches[2],
         patches[3],
         patches[4],
-        patches[5],
         patch(f"{_MODULE}.run_docker", docker),
     ):
         await gateway.start()
@@ -97,7 +95,6 @@ async def test_external_litellm_checks_readiness_without_managing_containers(
         patch(f"{_MODULE}.docker_available", return_value=False),
         patch(f"{_MODULE}.run_docker", new_callable=AsyncMock) as docker,
         patch(f"{_MODULE}.wait_healthy", new_callable=AsyncMock) as wait_healthy,
-        patch(f"{_MODULE}.LiteLLMResponsesAvailability.refresh", new_callable=AsyncMock),
     ):
         await gateway.start()
 
@@ -122,14 +119,13 @@ async def test_start_uses_a_named_postgres_volume_for_a_non_default_namespace(
         ]
     )
 
-    patches = _startup_patches(gateway)
+    patches = _startup_patches()
     with (
         patches[0],
         patches[1],
         patches[2],
         patches[3],
         patches[4],
-        patches[5],
         patch(f"{_MODULE}.run_docker", docker),
     ):
         await gateway.start()
@@ -151,14 +147,13 @@ async def test_start_reports_an_exited_postgres_sidecar(tmp_path: Path) -> None:
         ]
     )
 
-    patches = _startup_patches(gateway)
+    patches = _startup_patches()
     with (
         patches[0],
         patches[1],
         patches[2],
         patches[3],
         patches[4],
-        patches[5],
         patch(f"{_MODULE}.run_docker", docker),
         pytest.raises(RuntimeError, match="PostgreSQL container failed to start"),
     ):
@@ -170,14 +165,13 @@ async def test_start_times_out_when_postgres_never_becomes_ready(tmp_path: Path)
     gateway = _gateway(tmp_path)
     docker = AsyncMock(return_value=_docker_result(returncode=0))
 
-    patches = _startup_patches(gateway)
+    patches = _startup_patches()
     with (
         patches[0],
         patches[1],
         patches[2],
         patches[3],
         patches[4],
-        patches[5],
         patch(f"{_MODULE}.run_docker", docker),
         patch(f"{_MODULE}._POSTGRES_HEALTH_TIMEOUT", 0),
         pytest.raises(TimeoutError, match="PostgreSQL did not become ready"),

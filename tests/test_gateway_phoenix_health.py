@@ -91,10 +91,6 @@ async def test_start_proceeds_when_phoenix_is_healthy(tmp_path: Path) -> None:
             "pynchy.host.container_manager.gateway_litellm.run_docker", new_callable=AsyncMock
         ) as run_docker,
         patch("pynchy.host.container_manager.gateway_litellm.wait_healthy", new_callable=AsyncMock),
-        patch(
-            "pynchy.host.container_manager.litellm_responses.LiteLLMResponsesAvailability.refresh",
-            new_callable=AsyncMock,
-        ),
     ):
         await gateway.start()
 

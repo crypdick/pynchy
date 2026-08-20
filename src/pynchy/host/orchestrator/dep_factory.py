@@ -724,18 +724,12 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             if gw is None:
                 return {"mode": "none"}
             mode = "litellm" if isinstance(gw, gateway_manager.LiteLLMGateway) else "builtin"
-            response_info = (
-                {"responses": gw.responses_status}
-                if isinstance(gw, gateway_manager.LiteLLMGateway)
-                else {}
-            )
             return {
                 "mode": mode,
                 "port": gw.port,
                 "key": gw.key,
                 "managed": getattr(gw, "managed", True),
                 "redaction": gw.redaction_posture.value,
-                **response_info,
             }
 
         async def get_container_state(self, name: str) -> str:

@@ -399,7 +399,6 @@ def test_exec_rejects_dead_diagnostic_state(
         ("gateway", "postgres_container", "exited"),
         ("gateway", "ready", False),
         ("gateway", "database", "disconnected"),
-        ("gateway", "responses", {"state": "unavailable"}),
         ("temporal", "cluster_healthy", False),
         ("temporal", "worker_running", False),
     ],
@@ -414,7 +413,6 @@ def test_runtime_readiness_requires_every_critical_subsystem(
             "postgres_container": "running",
             "ready": True,
             "database": "connected",
-            "responses": {"state": "available"},
         },
         "temporal": {"cluster_healthy": True, "worker_running": True},
     }
