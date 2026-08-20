@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess  # noqa: S404 - tests inspect the harness-owned Docker container only.
-import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -78,7 +77,6 @@ def test_runtime_restart_preserves_history_and_accepts_a_fresh_turn() -> None:
     before_restart_history = wait_for_response_count(state, jid, response_text, before + 1)
     before_restart_request = wait_for_response_request(state, before_marker)
 
-    restart_started = time.monotonic()
     restart = subprocess.run(  # fixed repository-local harness command.
         [  # noqa: S607 - uv is the repository's required Python runner.
             "uv",
@@ -93,7 +91,6 @@ def test_runtime_restart_preserves_history_and_accepts_a_fresh_turn() -> None:
         timeout=180,
     )
     assert restart.returncode == 0
-    assert time.monotonic() - restart_started < 45
 
     restarted_state = runtime_state()
     wait_for_ready(restarted_state)

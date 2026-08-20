@@ -80,6 +80,44 @@ async def test_docker_image_and_network_noop_when_already_present(
 
 
 @pytest.mark.asyncio
+async def test_docker_digest_image_noop_when_repo_digest_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_docker = AsyncMock(
+        side_effect=[
+            _result(returncode=1),
+            _result(stdout="sha256:expected\n"),
+        ]
+    )
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    await docker.ensure_image("postgres@sha256:expected")
+
+    assert [call.args for call in run_docker.await_args_list] == [
+        ("image", "inspect", "postgres@sha256:expected"),
+        ("image", "ls", "--digests", "--format", "{{.Digest}}", "postgres"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_docker_digest_image_pulls_when_repo_digest_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_docker = AsyncMock(
+        side_effect=[
+            _result(returncode=1),
+            _result(stdout="sha256:other\n"),
+            _result(),
+        ]
+    )
+    monkeypatch.setattr(docker, "run_docker", run_docker)
+
+    await docker.ensure_image("postgres@sha256:expected")
+
+    assert run_docker.await_args_list[-1].args == ("pull", "postgres@sha256:expected")
+
+
+@pytest.mark.asyncio
 async def test_docker_container_helpers_report_status_and_clean_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

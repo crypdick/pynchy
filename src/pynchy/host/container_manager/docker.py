@@ -105,6 +105,21 @@ async def ensure_image(image: str) -> None:
     result = await run_docker("image", "inspect", image, check=False)
     if result.returncode == 0:
         return
+    if "@" in image:
+        # Docker's classic image store can list a pulled multi-platform digest even
+        # when ``image inspect repository@digest`` cannot resolve that reference.
+        repository, digest = image.rsplit("@", 1)
+        local_digests = await run_docker(
+            "image",
+            "ls",
+            "--digests",
+            "--format",
+            "{{.Digest}}",
+            repository,
+            check=False,
+        )
+        if local_digests.returncode == 0 and digest in local_digests.stdout.splitlines():
+            return
 
     logger.info("Pulling Docker image (first run may take a minute)", image=image)
     await run_docker("pull", image, command_timeout_seconds=300)
