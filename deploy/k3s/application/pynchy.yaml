@@ -81,6 +81,11 @@ spec:
               port: web
             failureThreshold: 60
             periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: web
+            periodSeconds: 5
           livenessProbe:
             tcpSocket:
               port: web
