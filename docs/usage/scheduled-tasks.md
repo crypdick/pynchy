@@ -1,6 +1,6 @@
-# Scheduled Tasks
+# Automations
 
-Schedule recurring or one-time tasks: briefings, maintenance scripts, periodic code reviews, or anything else that runs on a timer.
+Automations run recurring or one-time work: briefings, maintenance scripts, periodic code reviews, or anything else on a timer. Their config definition is the source of truth; `ScheduledTask` is only Pynchy's internal runtime projection.
 
 Three execution shapes share the scheduler:
 
@@ -374,8 +374,8 @@ quiet_on_success = true         # suppress clean-run output logging
 
 Config host jobs use `workspace = "host"` and currently support cron
 expressions. Pynchy reconciles enabled config host jobs into Temporal Schedules,
-and Temporal triggers host-process activities for each run. They don't show up
-in `list_tasks` (static config, not database entries).
+and Temporal triggers host-process activities for each run. They appear in
+`list_automations` because it reads config definitions, not database rows.
 
 Pynchy validates and applies automation-file changes without restarting. An
 add, update, disable, removal, workspace reassignment, or referenced prompt
@@ -385,31 +385,25 @@ active and retries during the next configuration poll.
 
 ## MCP Tools
 
-`list_tasks` reports the durable configured and routed work visible to the caller without revealing task prompts. Create recurring work by committing an automation file instead of asking an agent to create a database row. For a lasting change to an automation-backed task, update the automation file or the owning Linear work item; those sources reconcile their task state.
+`list_automations` reports visible config-backed definitions, including host scripts, deterministic workspace commands, and prompt-only agent automations. Use it, then `get_automation`, before creating a similar automation. All changes write the automation config and reconcile its runtime projection.
 
 | Tool | Purpose |
 |------|---------|
-| `list_tasks` | Show visible configured and routed work |
-| `get_scheduled_task` | Read one visible persisted task's prompt and editable metadata |
-| `update_scheduled_task` | Update a visible persisted task's prompt or active/paused status |
-| `pause_task` | Pause a visible task projection |
-| `resume_task` | Resume a visible task projection |
-| `cancel_task` | Cancel a visible task projection |
+| `list_automations` | Show visible config-backed automation definitions |
+| `get_automation` | Read one automation, including its prompt or command |
+| `create_automation` | Create one config-backed automation |
+| `update_automation` | Update one automation definition |
+| `pause_automation` | Disable an automation without deleting it |
+| `resume_automation` | Enable a paused automation |
+| `delete_automation` | Delete an automation definition and its automation-owned files |
 | `send_message` | Send a message to the group (agent tasks only) |
 | `list_todos` | List pending todo items (or all items with `include_done: true`) |
 | `complete_todo` | Mark a todo item as done by ID |
 
-`get_scheduled_task` and `update_scheduled_task` expose only agent tasks. A
-non-admin workspace can access only tasks it owns; an admin can access agent
-tasks across workspaces. Missing and unauthorized task IDs return the same
-not-found result. Host jobs stay outside this surface because their commands
-and working directories need host-level authority.
-
-The update tool accepts only a non-empty prompt and `active` or `paused`
-status. It preserves schedule, task ID, workspace binding, and task-owned
-automation memory. Resuming uses the normal task resume path, preserving
-one-shot and failure-window behavior. Automation-backed tasks reject direct
-updates because their automation definition remains the source of truth.
+Only admin workspaces can create, update, pause, resume, or delete automations.
+Non-admin workspaces can read definitions owned by their workspace. `pause_automation`
+and `resume_automation` change `enabled` in the config; runtime reconciliation
+keeps schedule and memory behavior intact.
 
 ## Schedule Types
 

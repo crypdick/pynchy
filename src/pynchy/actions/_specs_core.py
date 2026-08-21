@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.actions._contract import ActionSpec, ActionSurface, ActionTransport
+from pynchy.actions._contract import ActionId, ActionSpec, ActionSurface, ActionTransport
 from pynchy.actions._spec_helpers import agent_action, build_action
 
 CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
@@ -34,22 +34,31 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         "delete_event",
         canary="calendar.round.trip",
     ),
-    agent_action("task.list", "agent-tools", "List scheduled tasks.", "list_tasks"),
+    agent_action("automation.list", "agent-tools", "List automations.", "list_automations"),
     agent_action(
-        "task.read",
+        "automation.read",
         "agent-tools",
-        "Read one scheduled task's editable definition.",
-        "get_scheduled_task",
+        "Read one automation definition.",
+        "get_automation",
     ),
     agent_action(
-        "task.update",
+        "automation.create",
         "agent-tools",
-        "Update a scheduled task prompt or status.",
-        "update_scheduled_task",
+        "Create an automation definition.",
+        "create_automation",
     ),
-    agent_action("task.pause", "agent-tools", "Pause a scheduled task.", "pause_task"),
-    agent_action("task.resume", "agent-tools", "Resume a scheduled task.", "resume_task"),
-    agent_action("task.cancel", "agent-tools", "Cancel a scheduled task.", "cancel_task"),
+    agent_action(
+        "automation.update",
+        "agent-tools",
+        "Update an automation definition.",
+        "update_automation",
+    ),
+    agent_action("automation.pause", "agent-tools", "Pause an automation.", "pause_automation"),
+    agent_action("automation.resume", "agent-tools", "Resume an automation.", "resume_automation"),
+    agent_action("automation.delete", "agent-tools", "Delete an automation.", "delete_automation"),
+    ActionSpec(ActionId("task.list"), "scheduler", "List internal task projections."),
+    ActionSpec(ActionId("task.read"), "scheduler", "Read an internal task projection."),
+    ActionSpec(ActionId("task.update"), "scheduler", "Update an internal task projection."),
     agent_action("todo.list", "agent-tools", "List workspace todos.", "list_todos"),
     agent_action("todo.complete", "agent-tools", "Mark a todo complete.", "complete_todo"),
     agent_action(

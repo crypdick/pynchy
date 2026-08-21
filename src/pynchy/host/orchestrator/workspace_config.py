@@ -21,6 +21,7 @@ import tomlkit
 from pynchy.atomic_json import write_text_atomic
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
+from pynchy.host.orchestrator import automation_config
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.pipeline_context import (
     prompt_ids_for_context as _prompt_ids_for_context,
@@ -53,11 +54,11 @@ from pynchy.workspace.api import (  # beartype resolves workspace config annotat
     most_restrictive_capability_rule,
 )
 
-type JobConfig = Any
 type ResolvedToolAccess = Any
 type ResolvedWorkspaceConfig = Any
 type Settings = Any
 type WorkspaceConfig = Any
+type JobConfig = Any
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
@@ -591,18 +592,11 @@ def _deduplicate_preserving_order(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def add_job_to_toml(job_name: str, config: JobConfig) -> None:
-    """Programmatically add one file-backed automation."""
-    if Path(job_name).name != job_name or not job_name or job_name.startswith("."):
-        raise ValueError(f"Invalid automation name: {job_name!r}")
-    automation_path = Path("data/personalization/automations") / job_name / "config.toml"
-    automation_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = tomlkit.document()
-    doc.add("schema_version", tomlkit.item(1))
-    job_table = tomlkit.table()
-    for key, value in config.model_dump(exclude_none=True, exclude_defaults=True).items():
-        job_table.add(key, value)
-    doc.add("job", job_table)
-    write_text_atomic(automation_path, tomlkit.dumps(doc))
-
+def add_job_to_toml(job_name: str, config: JobConfig, *, project_root: Path | None = None) -> None:
+    """Write one job definition through workspace configuration."""
+    automation_config.add_job_to_toml(
+        job_name,
+        config.model_dump(exclude_none=True, exclude_defaults=True),
+        project_root=project_root,
+    )
     reset_settings()

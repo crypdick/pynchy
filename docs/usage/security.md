@@ -334,7 +334,7 @@ The Cop examines the payload of each host-mutating operation (the diff being mer
 **What's covered:**
 - Pull-request publication (`sync_worktree_to_main`)
 - Workspace registration (`register_group`)
-- Periodic agent creation (`create_periodic_agent`)
+- Automation mutation (`create_automation`, `update_automation`, `pause_automation`, `resume_automation`, `delete_automation`)
 - Host-job scheduling (`schedule_host_job`)
 - Script-type MCP tool calls (auto-classified — any MCP with `type = "script"`)
 

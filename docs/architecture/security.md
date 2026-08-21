@@ -342,7 +342,7 @@ Some IPC operations change what code runs on the host machine. These are **host-
 | `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The committed `base...HEAD` patch |
 | `publish_managed_feature` | Pushes one managed feature branch and opens or updates a PR | Host-derived manifest identity and committed `base...HEAD` patch |
 | `register_group` | Creates new workspace | Group config |
-| `create_periodic_agent` | Creates persistent agent | Agent name, profile, schedule, prompt |
+| Automation mutations | Creates, updates, pauses, resumes, or deletes config-backed automations | Automation name and definition |
 | `schedule_host_job` | Schedules host command | Command and schedule |
 | Script-type MCP tools | Runs host subprocess | Tool arguments |
 

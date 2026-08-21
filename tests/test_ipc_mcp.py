@@ -431,25 +431,16 @@ class TestListTasks:
         assert structured_tasks[1]["health_reasons"] == ["failure_shaped_result"]
 
     @pytest.mark.asyncio
-    async def test_list_tasks_declares_its_structured_output_schema(self):
+    async def test_list_automations_declares_its_structured_output_schema(self):
         tools = await list_tools()
 
-        list_tasks = next(tool for tool in tools if tool.name == "list_tasks")
-        assert list_tasks.outputSchema is not None
-        assert list_tasks.outputSchema["required"] == [
-            "schema",
-            "completeness",
-            "counts",
-            "tasks",
-            "host_jobs",
-            "coverage",
-        ]
-        properties = list_tasks.outputSchema["properties"]
-        count_properties = properties["counts"]["properties"]
-        assert "maximum" not in count_properties["tasks"]
-        assert "maximum" not in count_properties["host_jobs"]
-        assert "maxItems" not in properties["tasks"]
-        assert "maxItems" not in properties["host_jobs"]
+        list_automations = next(tool for tool in tools if tool.name == "list_automations")
+        assert list_automations.outputSchema == {
+            "type": "object",
+            "properties": {"automations": {"type": "array"}},
+            "required": ["automations"],
+            "additionalProperties": False,
+        }
 
     @pytest.mark.asyncio
     async def test_host_error_never_emits_legacy_snapshot_content(self, monkeypatch, tmp_path):
@@ -487,43 +478,6 @@ class TestListTasks:
         assert "private task prompt" not in text
         assert "private host name" not in text
         assert "private-command" not in text
-
-
-# ---------------------------------------------------------------------------
-# call_tool: pause/resume/cancel task
-# ---------------------------------------------------------------------------
-
-
-class TestTaskLifecycle:
-    """Test pause, resume, and cancel task tools."""
-
-    @pytest.mark.asyncio
-    @pytest.mark.action("task.pause")
-    async def test_pause_task(self, tmp_path):
-
-        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
-            result = await call_tool("pause_task", {"task_id": "task-123"})
-        assert "pause" in result[0].text.lower()
-        files = list((tmp_path / "requests").glob("*.json"))
-        envelope, payload = _read_request_file(files[0])
-        assert envelope["kind"] == "pause_task"
-        assert payload["taskId"] == "task-123"
-
-    @pytest.mark.asyncio
-    @pytest.mark.action("task.resume")
-    async def test_resume_task(self, tmp_path):
-
-        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
-            result = await call_tool("resume_task", {"task_id": "task-123"})
-        assert "resume" in result[0].text.lower()
-
-    @pytest.mark.asyncio
-    @pytest.mark.action("task.cancel")
-    async def test_cancel_task(self, tmp_path):
-
-        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
-            result = await call_tool("cancel_task", {"task_id": "task-123"})
-        assert "cancel" in result[0].text.lower()
 
 
 class TestTodoTools:
@@ -701,12 +655,8 @@ class TestListToolsVisibility:
         for expected in [
             "send_message",
             "messaging_source_health",
-            "list_tasks",
-            "get_scheduled_task",
-            "update_scheduled_task",
-            "pause_task",
-            "resume_task",
-            "cancel_task",
+            "list_automations",
+            "get_automation",
             "sync_worktree_to_main",
             "publish_managed_feature",
             "reset_context",

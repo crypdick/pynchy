@@ -4,6 +4,7 @@
 def register_builtin_handlers() -> None:
     """Import built-in handler modules at the application composition root."""
     import pynchy.host.container_manager.ipc.handlers_ask_user  # noqa: F401, PLC0415
+    import pynchy.host.container_manager.ipc.handlers_automations  # noqa: F401, PLC0415
     import pynchy.host.container_manager.ipc.handlers_deploy  # noqa: F401, PLC0415
     import pynchy.host.container_manager.ipc.handlers_groups  # noqa: F401, PLC0415
     import pynchy.host.container_manager.ipc.handlers_lifecycle  # noqa: F401, PLC0415
