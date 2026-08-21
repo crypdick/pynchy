@@ -347,8 +347,7 @@ async def test_prefixed_self_message_becomes_synthetic_user_input():
     assert message.message_type == "user"
     assert message.is_from_me is False
     assert message.metadata["synthetic_user_input"] is True
-    assert message.metadata["source"] == "discord_canary"
-    assert message.metadata["discord_synthetic_author_id"] == BOT_ID
+    assert "source" not in message.metadata
 
 
 async def test_prefixed_human_message_remains_ordinary_user_input():

@@ -537,13 +537,7 @@ class DiscordEvents:
         if synthetic_content is not None:
             sender = "discord-canary"
             sender_name = "Canary User"
-            metadata.update(
-                {
-                    "source": "discord_canary",
-                    "synthetic_user_input": True,
-                    "discord_synthetic_author_id": message.author.id,
-                }
-            )
+            metadata["synthetic_user_input"] = True
         content = await _transcribe_audio_attachments(
             message,
             metadata,
