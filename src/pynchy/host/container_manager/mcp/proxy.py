@@ -24,6 +24,7 @@ import aiohttp
 from aiohttp import web
 
 from pynchy.content_fencing import fence_untrusted_content
+from pynchy.host.container_manager.mcp.sse import stream_response
 from pynchy.host.container_manager.security.approval import register_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import inspect_inbound
 from pynchy.host.container_manager.security.gate import SecurityGate, get_gate
@@ -250,9 +251,30 @@ def _forwarded_headers(request: web.Request) -> dict[str, str]:
     }
 
 
+def _response_headers(response: aiohttp.ClientResponse) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() not in ("content-length", "transfer-encoding")
+    }
+
+
+async def _transform_sse_data(payload: bytes, context: _BackendForwardContext) -> bytes:
+    trust = context.state.trust_map.get(context.instance_id, {})
+    payload = _filter_denied_tools_list(payload, context)
+    if not trust.get("public_source"):
+        return payload
+    return await _apply_fencing(
+        payload,
+        context.instance_id,
+        context.gate,
+        context.group_folder,
+    )
+
+
 async def _backend_response(
     context: _BackendForwardContext,
-) -> web.Response:
+) -> web.StreamResponse:
     request = cast("web.Request", context.request)
     # Codex and other streamable-HTTP clients address the proxy at ``.../mcp``.
     # The managed backend endpoint already includes that suffix, so forwarding it
@@ -266,12 +288,14 @@ async def _backend_response(
         data=context.body,
         headers=_forwarded_headers(request),
     ) as backend_resp:
+        if backend_resp.content_type == "text/event-stream":
+            return await stream_response(
+                request,
+                backend_resp,
+                lambda payload: _transform_sse_data(payload, context),
+            )
+
         response_body = await backend_resp.read()
-        response_headers = {
-            key: value
-            for key, value in backend_resp.headers.items()
-            if key.lower() not in ("content-length", "transfer-encoding")
-        }
 
         response_body = _filter_denied_tools_list(response_body, context)
 
@@ -287,7 +311,7 @@ async def _backend_response(
         return web.Response(
             status=backend_resp.status,
             body=response_body,
-            headers=response_headers,
+            headers=_response_headers(backend_resp),
         )
 
 
@@ -297,19 +321,7 @@ def _filter_denied_tools_list(response_body: bytes, context: _BackendForwardCont
     payload = _filtered_tools_payload(_rpc_payload(response_body), context)
     if payload is not None:
         return _json.dumps(payload).encode()
-    lines = response_body.splitlines(keepends=True)
-    changed = False
-    for index, line in enumerate(lines):
-        stripped = line.rstrip(b"\r\n")
-        ending = line[len(stripped) :]
-        if not stripped.startswith(b"data:"):
-            continue
-        filtered = _filtered_tools_payload(_rpc_payload(stripped[5:].lstrip()), context)
-        if filtered is None:
-            continue
-        lines[index] = b"data: " + _json.dumps(filtered).encode() + ending
-        changed = True
-    return b"".join(lines) if changed else response_body
+    return response_body
 
 
 def _filtered_tools_payload(
@@ -333,7 +345,7 @@ def _filtered_tools_payload(
 
 async def _forward_to_backend(
     context: _BackendForwardContext,
-) -> web.Response:
+) -> web.StreamResponse:
     try:
         return await _backend_response(context)
     except aiohttp.ClientError as exc:
@@ -343,7 +355,7 @@ async def _forward_to_backend(
 
 async def _forward_with_backend_lease(
     context: _BackendForwardContext,
-) -> web.Response:
+) -> web.StreamResponse:
     backend_lease = context.state.backend_lease
     if backend_lease is None:
         return await _forward_to_backend(context)
@@ -354,7 +366,7 @@ async def _forward_with_backend_lease(
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
-async def _proxy_handler(request: web.Request) -> web.Response:
+async def _proxy_handler(request: web.Request) -> web.StreamResponse:
     """Route an MCP request through SecurityGate to the backend."""
     proxy_request = _proxy_request(request)
     if isinstance(proxy_request, web.Response):

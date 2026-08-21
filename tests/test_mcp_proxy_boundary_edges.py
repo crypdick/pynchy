@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -126,6 +127,53 @@ async def test_proxy_hides_denied_tools_from_event_stream_lists() -> None:
         assert '"name": "read"' in await response.text()
         assert '"name": "delete"' not in await response.text()
     finally:
+        await client.close()
+        await backend.close()
+
+
+async def test_proxy_streams_and_fences_event_stream_responses() -> None:
+    release_backend = asyncio.Event()
+
+    async def handle(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
+        await response.prepare(request)
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"content": [{"type": "text", "text": "public page"}]},
+        }
+        await response.write(f"event: message\ndata: {json.dumps(payload)}\n\n".encode())
+        await release_backend.wait()
+        await response.write(f"data: {json.dumps(payload)}".encode())
+        return response
+
+    backend = TestServer(web.Application())
+    backend.app.router.add_get("/mcp", handle)
+    await backend.start_server()
+    create_gate(
+        "test-ws",
+        1000.0,
+        WorkspaceSecurity(
+            services={"browser": ServiceTrustConfig(public_source=True)},
+            cop_active=False,
+        ),
+    )
+    app = create_proxy_app(
+        {"browser": f"http://localhost:{backend.port}/mcp"},
+        trust_map={"browser": {"public_source": True}},
+    )
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    request = asyncio.create_task(client.get("/mcp/test-ws/1000.0/browser"))
+    try:
+        response = await asyncio.wait_for(asyncio.shield(request), timeout=1)
+        event = await asyncio.wait_for(response.content.readuntil(b"\n\n"), timeout=1)
+        assert b"EXTERNAL_UNTRUSTED_CONTENT" in event
+        assert not release_backend.is_set()
+    finally:
+        release_backend.set()
+        response = await request
+        await response.read()
         await client.close()
         await backend.close()
 
