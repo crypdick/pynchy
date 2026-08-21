@@ -35,9 +35,10 @@ curl --silent --show-error --unix-socket data/pynchy.sock \
 
 Pynchy sends the request from its existing Discord bot account with a visible
 `🦜` prefix. The Discord adapter removes that prefix and records the inbound
-message as user input with `synthetic_user_input = true` metadata. The agent sees
-only the supplied content. This route accepts Discord channel JIDs only and uses
-the same control-plane authentication policy as other `/canaries/*` routes.
+message as user input. Host bookkeeping retains the canary marker, but the agent
+receives an ordinary `User` sender and Discord metadata without that marker. This
+route accepts Discord channel JIDs only and uses the same control-plane
+authentication policy as other `/canaries/*` routes.
 
 ## Readiness and operational status
 

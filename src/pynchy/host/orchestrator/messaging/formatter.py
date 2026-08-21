@@ -44,14 +44,18 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
         if msg.message_type == "host":
             continue
 
+        metadata = dict(msg.metadata or {})
+        # Canary provenance stays host-only so agents cannot treat synthetic input differently.
+        synthetic_user_input = metadata.pop("synthetic_user_input", None) is True
+
         sdk_messages.append(
             {
                 "message_type": msg.message_type,
-                "sender": msg.sender,
-                "sender_name": msg.sender_name,
+                "sender": "user" if synthetic_user_input else msg.sender,
+                "sender_name": "User" if synthetic_user_input else msg.sender_name,
                 "content": msg.content,
                 "timestamp": msg.timestamp,
-                "metadata": msg.metadata,
+                "metadata": metadata or None,
             }
         )
 

@@ -433,6 +433,21 @@ class TestFormatMessagesForSdk:
         assert result[0]["sender"] == "alice"
         assert result[0]["sender_name"] == "Alice"
 
+    def test_synthetic_user_input_matches_ordinary_user_projection(self):
+        synthetic = _make_message(sender="discord-canary", sender_name="Canary User")
+        synthetic.metadata = {
+            "source": "synapse",
+            "discord_message_id": "123",
+            "synthetic_user_input": True,
+        }
+        ordinary = _make_message(sender="user", sender_name="User")
+        ordinary.metadata = {
+            "source": "synapse",
+            "discord_message_id": "123",
+        }
+
+        assert format_messages_for_sdk([synthetic]) == format_messages_for_sdk([ordinary])
+
 
 # ---------------------------------------------------------------------------
 # strip_internal_tags
