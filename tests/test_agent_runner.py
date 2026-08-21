@@ -310,21 +310,23 @@ class TestBuildSdkMessages:
         result = build_sdk_messages(msgs)
         assert "A &amp; B" in result
 
-    def test_metadata_is_included(self):
+    def test_semantic_context_is_included_without_metadata(self):
         msgs = [
             {
                 "sender_name": "Alice",
                 "timestamp": "t",
                 "content": "",
-                "metadata": {
+                "context": {
                     "attachments": [{"filename": "voice.ogg", "content_type": "audio/ogg"}]
                 },
+                "metadata": {"source": "discord_canary", "synthetic_user_input": True},
             }
         ]
 
         result = build_sdk_messages(msgs)
 
-        assert "<metadata>" in result
+        assert "<context>" in result
+        assert "<metadata>" not in result
         assert "voice.ogg" in result
         assert "audio/ogg" in result
 

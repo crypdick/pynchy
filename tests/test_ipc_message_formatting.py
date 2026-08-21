@@ -30,3 +30,21 @@ def test_formats_notices_without_messages() -> None:
     assert format_messages_for_ipc([], ["A host notice"]) == (
         "<system_notices>\n- A host notice\n</system_notices>"
     )
+
+
+def test_includes_semantic_context_without_metadata() -> None:
+    result = format_messages_for_ipc(
+        [
+            {
+                "sender_name": "Alice",
+                "timestamp": "t1",
+                "content": "See attachment",
+                "context": {"attachments": [{"filename": "brief.pdf"}]},
+                "metadata": {"source": "discord_canary", "synthetic_user_input": True},
+            }
+        ]
+    )
+
+    assert "<context>" in result
+    assert "<metadata>" not in result
+    assert "brief.pdf" in result
