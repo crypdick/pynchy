@@ -166,15 +166,16 @@ class TestFormatMessagesForSdk:
         assert len(result) == 1
         assert result[0]["message_type"] == "tool_result"
 
-    def test_preserves_metadata(self):
-        msgs = [_msg(content="hello", metadata={"source": "whatsapp"})]
+    def test_omits_transport_metadata(self):
+        msgs = [_msg(content="hello", metadata={"source": "whatsapp", "slack_ts": "1.2"})]
         result = format_messages_for_sdk(msgs)
-        assert result[0]["metadata"] == {"source": "whatsapp"}
+        assert "metadata" not in result[0]
+        assert result[0]["context"] is None
 
     def test_preserves_none_metadata(self):
         msgs = [_msg(content="hello", metadata=None)]
         result = format_messages_for_sdk(msgs)
-        assert result[0]["metadata"] is None
+        assert result[0]["context"] is None
 
     def test_preserves_message_order(self):
         msgs = [

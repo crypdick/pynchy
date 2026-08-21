@@ -73,13 +73,13 @@ def build_sdk_messages(messages: list[dict[str, object]]) -> str:
         timestamp = msg.get("timestamp", "")
         raw_content = msg.get("content", "")
         content = escape_xml(raw_content if isinstance(raw_content, str) else "")
-        metadata = msg.get("metadata")
-        if metadata is not None:
-            metadata_json = escape_xml(json.dumps(metadata, ensure_ascii=False, sort_keys=True))
+        context = msg.get("context")
+        if context is not None:
+            context_json = escape_xml(json.dumps(context, ensure_ascii=False, sort_keys=True))
             content = (
-                f"{content}\n<metadata>{metadata_json}</metadata>"
+                f"{content}\n<context>{context_json}</context>"
                 if content
-                else f"<metadata>{metadata_json}</metadata>"
+                else f"<context>{context_json}</context>"
             )
         lines.append(f'<message sender="{sender_name}" time="{timestamp}">{content}</message>')
 

@@ -14,6 +14,14 @@ from pynchy.plugins.api import (
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")
+_ATTACHMENT_CONTEXT_FIELDS = (
+    "filename",
+    "url",
+    "content_type",
+    "size",
+    "description",
+    "spoiler",
+)
 
 
 def _format_internal_match(m: re.Match[str]) -> str:
@@ -22,6 +30,53 @@ def _format_internal_match(m: re.Match[str]) -> str:
     if not thought:
         return ""
     return f"\U0001f9e0 _{thought}_\n"
+
+
+def _selected_fields(value: object, fields: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {field: value[field] for field in fields if value.get(field) is not None}
+
+
+def _attachments_context(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        projected
+        for attachment in value
+        if (projected := _selected_fields(attachment, _ATTACHMENT_CONTEXT_FIELDS))
+    ]
+
+
+def _agent_context(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """Project stored channel metadata into provider-neutral conversation context."""
+    context: dict[str, Any] = {}
+    if attachments := _attachments_context(metadata.get("attachments")):
+        context["attachments"] = attachments
+
+    reply = {}
+    if sender := metadata.get("reply_to_sender"):
+        reply["sender"] = sender
+    if content := metadata.get("reply_to_text"):
+        reply["content"] = content
+    if reply:
+        context["reply"] = reply
+
+    forwarded_messages = []
+    raw_forwarded = metadata.get("forwarded_messages")
+    if isinstance(raw_forwarded, list):
+        for raw_message in raw_forwarded:
+            message = _selected_fields(raw_message, ("content", "created_at"))
+            if isinstance(raw_message, dict) and (
+                attachments := _attachments_context(raw_message.get("attachments"))
+            ):
+                message["attachments"] = attachments
+            if message:
+                forwarded_messages.append(message)
+    if forwarded_messages:
+        context["forwarded_messages"] = forwarded_messages
+
+    return context or None
 
 
 def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
@@ -44,9 +99,10 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
         if msg.message_type == "host":
             continue
 
-        metadata = dict(msg.metadata or {})
-        # Canary provenance stays host-only so agents cannot treat synthetic input differently.
-        synthetic_user_input = metadata.pop("synthetic_user_input", None) is True
+        metadata = msg.metadata or {}
+        # Agent input is an explicit semantic projection. Routing, authority, provider,
+        # and synthetic provenance remain host-only instead of becoming prompt text.
+        synthetic_user_input = metadata.get("synthetic_user_input") is True
 
         sdk_messages.append(
             {
@@ -55,7 +111,7 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
                 "sender_name": "User" if synthetic_user_input else msg.sender_name,
                 "content": msg.content,
                 "timestamp": msg.timestamp,
-                "metadata": metadata or None,
+                "context": _agent_context(metadata),
             }
         )
 

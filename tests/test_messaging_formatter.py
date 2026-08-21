@@ -421,11 +421,90 @@ class TestFormatMessagesForSdk:
         result = format_messages_for_sdk(msgs)
         assert result == []
 
-    def test_preserves_metadata(self):
+    def test_projects_only_semantic_message_context(self):
         msg = _make_message(content="test")
-        msg.metadata = {"source": "whatsapp"}
+        msg.metadata = {
+            "source": "discord_canary",
+            "discord_message_id": "123",
+            "authenticated_external_route": True,
+            "attachments": [
+                {
+                    "id": "attachment-1",
+                    "filename": "brief.pdf",
+                    "url": "https://example.test/brief.pdf",
+                    "proxy_url": "https://proxy.example.test/brief.pdf",
+                    "content_type": "application/pdf",
+                    "size": 42,
+                    "description": None,
+                    "spoiler": False,
+                }
+            ],
+            "reply_to_message_id": "122",
+            "reply_to_sender": "Alice",
+            "reply_to_text": "Previous message",
+            "forwarded_messages": [
+                {
+                    "content": "Forwarded message",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "type": "default",
+                    "attachments": [
+                        {
+                            "id": "attachment-2",
+                            "filename": "photo.jpg",
+                            "url": "https://example.test/photo.jpg",
+                        }
+                    ],
+                }
+            ],
+        }
+
         result = format_messages_for_sdk([msg])
-        assert result[0]["metadata"] == {"source": "whatsapp"}
+
+        assert "metadata" not in result[0]
+        assert result[0]["context"] == {
+            "attachments": [
+                {
+                    "filename": "brief.pdf",
+                    "url": "https://example.test/brief.pdf",
+                    "content_type": "application/pdf",
+                    "size": 42,
+                    "spoiler": False,
+                }
+            ],
+            "reply": {"sender": "Alice", "content": "Previous message"},
+            "forwarded_messages": [
+                {
+                    "content": "Forwarded message",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "attachments": [
+                        {
+                            "filename": "photo.jpg",
+                            "url": "https://example.test/photo.jpg",
+                        }
+                    ],
+                }
+            ],
+        }
+
+    def test_omits_transport_only_metadata(self):
+        msg = _make_message(content="test")
+        msg.metadata = {"source": "whatsapp", "slack_ts": "123.456"}
+
+        result = format_messages_for_sdk([msg])
+
+        assert "metadata" not in result[0]
+        assert result[0]["context"] is None
+
+    def test_ignores_malformed_presentation_metadata(self):
+        msg = _make_message(content="test")
+        msg.metadata = {
+            "attachments": ["invalid"],
+            "forwarded_messages": [{}, "invalid", {"content": "Valid"}],
+        }
+
+        result = format_messages_for_sdk([msg])
+
+        assert result[0]["context"] == {"forwarded_messages": [{"content": "Valid"}]}
 
     def test_preserves_sender_info(self):
         msg = _make_message(sender="alice", sender_name="Alice")
@@ -439,11 +518,15 @@ class TestFormatMessagesForSdk:
             "source": "synapse",
             "discord_message_id": "123",
             "synthetic_user_input": True,
+            "reply_to_sender": "Alice",
+            "reply_to_text": "Previous message",
         }
         ordinary = _make_message(sender="user", sender_name="User")
         ordinary.metadata = {
             "source": "synapse",
             "discord_message_id": "123",
+            "reply_to_sender": "Alice",
+            "reply_to_text": "Previous message",
         }
 
         assert format_messages_for_sdk([synthetic]) == format_messages_for_sdk([ordinary])

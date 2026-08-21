@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -26,6 +27,10 @@ def _format_message(message: dict[str, Any]) -> str:
     sender_name = _escape_xml(message.get("sender_name", "Unknown"))
     timestamp = message.get("timestamp", "")
     content = _escape_xml(message.get("content", ""))
+    if (context := message.get("context")) is not None:
+        context_json = _escape_xml(json.dumps(context, ensure_ascii=False, sort_keys=True))
+        context_text = f"<context>{context_json}</context>"
+        content = f"{content}\n{context_text}" if content else context_text
     return f'<message sender="{sender_name}" time="{timestamp}">{content}</message>'
 
 
