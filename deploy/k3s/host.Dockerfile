@@ -36,8 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @playwright/mcp@0.0.79 \
     && mkdir -p /usr/share/scrcpy \
-    && curl -fsSL https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4 -o /usr/share/scrcpy/scrcpy-server \
-    && echo "8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e  /usr/share/scrcpy/scrcpy-server" | sha256sum -c - \
+    && curl -fsSL https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0 -o /usr/share/scrcpy/scrcpy-server \
+    && echo "84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a  /usr/share/scrcpy/scrcpy-server" | sha256sum -c - \
     && curl -fsSL https://github.com/bitwarden/clients/releases/download/cli-v2026.7.0/bw-linux-2026.7.0.zip -o /tmp/bw.zip \
     && echo "7a35145e205952f7434d2370da359543145ae0c45ba1af0fe9bdd99d40a00180  /tmp/bw.zip" | sha256sum -c - \
     && unzip /tmp/bw.zip -d /usr/local/bin \
