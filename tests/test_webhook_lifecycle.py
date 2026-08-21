@@ -23,7 +23,7 @@ from pynchy.conversation.models import (
     ExternalRoute,
     TerminalConversationRetirement,
 )
-from pynchy.conversation.workspaces import dynamic_thread_folder
+from pynchy.conversation.workspaces import dynamic_thread_folder, routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -440,7 +440,11 @@ async def test_lifecycle_retires_older_turn_immediately_and_suppresses_its_sibli
     await dispatcher.start()
     try:
         first_event = _message_event("message-before-terminal")
-        conversation_id = await _admit(dispatcher, route, first_event)
+        with patch(
+            "pynchy.state.conversation_routing.secrets.token_urlsafe",
+            return_value="id-ending-in-hyphen-",
+        ):
+            conversation_id = await _admit(dispatcher, route, first_event)
         await dispatcher.wake(conversation_id)
         before_close = await get_conversation_control_binding(conversation_id)
         assert before_close is not None
@@ -464,7 +468,7 @@ async def test_lifecycle_retires_older_turn_immediately_and_suppresses_its_sibli
         assert retired.session_id is None
         assert harness.retired_task_conversations == [str(conversation_id)]
         assert set(harness.retired_folders) == {
-            dynamic_thread_folder("project", f"conversation-{conversation_id}"),
+            routed_conversation_folder("project", conversation_id),
             dynamic_thread_folder("project", before_close.thread_jid),
         }
         assert before_close.thread_jid not in harness.workspace_map

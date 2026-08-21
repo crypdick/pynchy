@@ -30,6 +30,12 @@ def test_host_image_installs_locked_dependencies() -> None:
     assert "PYNCHY_RELEASE_SHA=${PYNCHY_RELEASE_SHA}" in dockerfile
     assert "npm install -g @playwright/mcp@0.0.79" in dockerfile
     assert "    xauth \\\n" in dockerfile
+    assert "scrcpy-server-v4.0" in dockerfile
+    scrcpy_checksum = (
+        "84924bd564a1eb6089c872c7521f9680"  # pragma: allowlist secret
+        "58977f91f5ff02514a8c74aff3210f3a"  # pragma: allowlist secret
+    )
+    assert scrcpy_checksum in dockerfile
     assert "cli-v2026.7.0/bw-linux-2026.7.0.zip" in dockerfile
     checksum = (
         "7a35145e205952f7434d2370da359543"  # pragma: allowlist secret
