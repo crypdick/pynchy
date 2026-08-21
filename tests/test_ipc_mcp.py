@@ -184,7 +184,7 @@ class TestMessagingSourceHealth:
         )
 
 
-@pytest.mark.action("task.list")
+@pytest.mark.skip(reason="Scheduled-work agent tools were replaced by config-backed automations.")
 class TestListTasks:
     """Test list_tasks tool behavior."""
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.actions._contract import ActionId, ActionSpec, ActionSurface, ActionTransport
+from pynchy.actions._contract import ActionSpec, ActionSurface, ActionTransport
 from pynchy.actions._spec_helpers import agent_action, build_action
 
 CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
@@ -56,9 +56,6 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action("automation.pause", "agent-tools", "Pause an automation.", "pause_automation"),
     agent_action("automation.resume", "agent-tools", "Resume an automation.", "resume_automation"),
     agent_action("automation.delete", "agent-tools", "Delete an automation.", "delete_automation"),
-    ActionSpec(ActionId("task.list"), "scheduler", "List internal task projections."),
-    ActionSpec(ActionId("task.read"), "scheduler", "Read an internal task projection."),
-    ActionSpec(ActionId("task.update"), "scheduler", "Update an internal task projection."),
     agent_action("todo.list", "agent-tools", "List workspace todos.", "list_todos"),
     agent_action("todo.complete", "agent-tools", "Mark a todo complete.", "complete_todo"),
     agent_action(
