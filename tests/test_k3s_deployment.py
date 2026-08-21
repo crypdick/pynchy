@@ -179,11 +179,13 @@ def test_main_workflow_publishes_both_images_after_tests() -> None:
 
 def test_k3s_release_monitor_has_narrow_namespace_permissions() -> None:
     workload = Path("deploy/k3s/application/release-monitor.yaml").read_text(encoding="utf-8")
+    cron_job = _documents("deploy/k3s/application/release-monitor.yaml")[0]
     permissions = Path("deploy/k3s/bootstrap/release-monitor-rbac.yaml").read_text(encoding="utf-8")
 
     assert "kind: CronJob" in workload
     assert "suspend: false" in workload
     assert "concurrencyPolicy: Forbid" in workload
+    assert cron_job["spec"]["jobTemplate"]["spec"]["ttlSecondsAfterFinished"] == 86400
     assert 'resources: ["deployments", "statefulsets"]' in permissions
     assert 'resources: ["pods"]' in permissions
     assert 'verbs: ["get", "list", "watch", "create", "delete"]' in permissions
