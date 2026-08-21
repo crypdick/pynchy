@@ -218,6 +218,23 @@ class TaskHandlerDeps(IpcDeps, Protocol):
 
 
 @runtime_checkable
+class AutomationDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for automation definitions."""
+
+    async def get_automation_status(
+        self, *, source_group: str, is_admin: bool
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_automation_definition(
+        self, name: str, *, source_group: str, is_admin: bool
+    ) -> dict[str, object] | None: ...
+
+    async def mutate_automation(
+        self, operation: str, name: str, values: dict[str, object]
+    ) -> None: ...
+
+
+@runtime_checkable
 class MessagingSourceHealth(Protocol):
     """Read-only host projection for messaging-source health."""
 

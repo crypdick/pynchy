@@ -10,7 +10,7 @@ import pytest
 from conftest import NullChannel, make_host_action_catalog, make_settings
 
 import pynchy.host.orchestrator.dep_factory as dep_factory
-from pynchy.config.api import BuiltinTool, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import BuiltinTool, JobConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.redaction import GatewayRedactionPosture
@@ -495,6 +495,76 @@ async def test_ipc_adapter_handles_missing_command_center_and_target(tmp_path: P
             rebuild=True,
             resume_prompt="resume",
         )
+
+
+@pytest.mark.asyncio
+async def test_ipc_automation_adapter_persists_and_projects_config_definitions(
+    tmp_path: Path,
+) -> None:
+    app = PynchyApp()
+    app.sync_personalization = MagicMock(return_value="idle")
+    settings = _settings(tmp_path)
+    own = JobConfig(schedule="0 * * * *", workspace="project", prompt="run")
+    foreign = JobConfig(schedule="0 * * * *", workspace="other", prompt="run")
+    settings.jobs = {"own": own, "foreign": foreign}
+
+    with (
+        patch.object(dep_factory, "get_settings", return_value=settings),
+        patch.object(dep_factory.workspace_config, "reset_settings") as reset,
+    ):
+        deps = dep_factory.make_ipc_deps(app)
+        assert await deps.get_automation_status(source_group="project", is_admin=False) == [
+            {"name": "own", **own.model_dump(exclude_none=True)}
+        ]
+        assert await deps.get_automation_definition(
+            "own", source_group="project", is_admin=False
+        ) == {"name": "own", **own.model_dump(exclude_none=True)}
+        assert (
+            await deps.get_automation_definition("foreign", source_group="project", is_admin=False)
+            is None
+        )
+        assert (
+            await deps.get_automation_definition("missing", source_group="project", is_admin=True)
+            is None
+        )
+
+        settings.jobs = {}
+        await deps.mutate_automation(
+            "create_automation",
+            "daily",
+            {"schedule": "0 * * * *", "workspace": "workspace", "prompt": "run"},
+        )
+        await deps.mutate_automation("update_automation", "daily", {"prompt": "changed"})
+        await deps.mutate_automation("pause_automation", "daily", {})
+        await deps.mutate_automation("resume_automation", "daily", {})
+        await deps.mutate_automation("delete_automation", "daily", {})
+
+        settings.jobs = {"exists": own}
+        with pytest.raises(ValueError, match="already exists"):
+            await deps.mutate_automation(
+                "create_automation",
+                "exists",
+                {"schedule": "0 * * * *", "workspace": "host", "prompt": "run"},
+            )
+        settings.jobs = {}
+        with pytest.raises(ValueError, match="Unknown automation workspace"):
+            await deps.mutate_automation(
+                "create_automation",
+                "unknown-workspace",
+                {"schedule": "0 * * * *", "workspace": "missing", "prompt": "run"},
+            )
+        with pytest.raises(ValueError, match="Unknown automation operation"):
+            await deps.mutate_automation("unknown", "daily", {})
+
+        app.sync_personalization.return_value = "failed"
+        with pytest.raises(RuntimeError, match="not published"):
+            await deps.mutate_automation(
+                "create_automation",
+                "publication-failure",
+                {"schedule": "0 * * * *", "workspace": "workspace", "prompt": "run"},
+            )
+
+    assert reset.call_count == 6
 
 
 @pytest.mark.asyncio

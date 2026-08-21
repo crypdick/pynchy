@@ -52,7 +52,7 @@ from pynchy.host.git_ops.api import (
     run_git,
 )
 from pynchy.host.learning.api import find_personalized_skill_dir
-from pynchy.host.orchestrator import session_handler, workspace_config
+from pynchy.host.orchestrator import automation_config, session_handler, workspace_config
 from pynchy.host.orchestrator.action_intents import (
     execute_action_intent,
     policy_approval_timestamp,
@@ -296,6 +296,63 @@ async def _scheduled_work_status(
     )
 
 
+def _mutate_automation(
+    app: PynchyApp,
+    operation: str,
+    name: str,
+    values: dict[str, object],
+) -> None:
+    """Persist and publish one config-backed automation change."""
+    settings = get_settings()
+    if operation == "create_automation":
+        if name in settings.jobs:
+            raise ValueError(f"Automation already exists: {name}")
+        automation = JobConfig.model_validate(values)
+        workspace = automation.workspace
+        if (
+            workspace is not None
+            and workspace != "host"
+            and settings.workspace_config(workspace) is None
+        ):
+            raise ValueError(f"Unknown automation workspace: {workspace}")
+        automation_config.add_job_to_toml(
+            name,
+            automation.model_dump(exclude_none=True, exclude_defaults=True),
+            project_root=settings.project_root,
+        )
+    elif operation == "update_automation":
+        automation_config.update_automation_toml(
+            name,
+            values,
+            parse_and_dump=lambda fields: JobConfig.model_validate(fields).model_dump(
+                exclude_none=True,
+                exclude_defaults=True,
+            ),
+            project_root=settings.project_root,
+        )
+    elif operation in {"pause_automation", "resume_automation"}:
+        automation_config.update_automation_toml(
+            name,
+            {"enabled": operation == "resume_automation"},
+            parse_and_dump=lambda fields: JobConfig.model_validate(fields).model_dump(
+                exclude_none=True,
+                exclude_defaults=True,
+            ),
+            project_root=settings.project_root,
+        )
+    elif operation == "delete_automation":
+        automation_config.delete_automation_toml(
+            name,
+            project_root=settings.project_root,
+        )
+    else:
+        raise ValueError(f"Unknown automation operation: {operation}")
+    workspace_config.reset_settings()
+    publication = app.sync_personalization(settings.project_root)
+    if publication not in {"idle", "pushed", "updated"}:
+        raise RuntimeError("Automation definition was not published")
+
+
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     """Return the app as the shared dependency object for Temporal activities.
 
@@ -472,7 +529,7 @@ def make_provider_execution_retirement(
     return partial(retire_provider_work_item_execution, deps)
 
 
-def make_ipc_deps(app: PynchyApp) -> IpcDeps:
+def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition owns built-in handlers.
     """Create the dependency object for the IPC watcher."""
     snapshot_data_dir = get_settings().data_dir
     broadcaster, host_broadcaster = _get_broadcasters(app)
@@ -659,6 +716,39 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
                 source_group,
                 is_admin=is_admin,
             )
+
+        async def get_automation_status(
+            self,
+            *,
+            source_group: str,
+            is_admin: bool,
+        ) -> list[dict[str, Any]]:
+            automations = get_settings().jobs.items()
+            return [
+                {"name": name, **job.model_dump(exclude_none=True)}
+                for name, job in automations
+                if is_admin or job.workspace == source_group
+            ]
+
+        async def get_automation_definition(
+            self,
+            name: str,
+            *,
+            source_group: str,
+            is_admin: bool,
+        ) -> dict[str, object] | None:
+            automation = get_settings().jobs.get(name)
+            if automation is None or (not is_admin and automation.workspace != source_group):
+                return None
+            return {"name": name, **automation.model_dump(exclude_none=True)}
+
+        async def mutate_automation(
+            self,
+            operation: str,
+            name: str,
+            values: dict[str, object],
+        ) -> None:
+            _mutate_automation(app, operation, name, values)
 
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(

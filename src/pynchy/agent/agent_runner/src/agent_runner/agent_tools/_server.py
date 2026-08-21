@@ -17,6 +17,7 @@ from ._registry import HandlerResult, all_tools, get_handler
 
 _TOOL_MODULES = (
     "_tools_admin",
+    "_tools_automations",
     "_tools_ask_user",
     "_tools_calendar",
     "_tools_computer_use",
@@ -30,7 +31,6 @@ _TOOL_MODULES = (
     "_tools_messaging",
     "_tools_slack_tokens",
     "_tools_skills",
-    "_tools_tasks",
     "_tools_todos",
     "_tools_vaultwarden",
     "_tools_x",

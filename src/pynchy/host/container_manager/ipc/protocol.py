@@ -52,6 +52,13 @@ TIER2_TYPES = frozenset(
         "deploy",
         "register_group",
         "create_periodic_agent",
+        "automation_status",
+        "automation_definition",
+        "create_automation",
+        "update_automation",
+        "pause_automation",
+        "resume_automation",
+        "delete_automation",
         "messaging_source_health",
         "task_status",
         "task_definition",
@@ -92,7 +99,15 @@ READ_ONLY_REQUEST_PREFIXES = (
     "service:recall_",
     "skill_access:",
 )
-READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health", "task_status", "task_definition"})
+READ_ONLY_REQUEST_TYPES = frozenset(
+    {
+        "messaging_source_health",
+        "task_status",
+        "task_definition",
+        "automation_status",
+        "automation_definition",
+    }
+)
 
 
 def validate_signal(data: dict[str, Any]) -> str | None:
