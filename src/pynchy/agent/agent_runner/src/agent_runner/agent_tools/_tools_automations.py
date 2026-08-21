@@ -54,7 +54,12 @@ def _mutation_schema(*, require_definition: bool) -> dict[str, Any]:
 
 
 async def _automation_status() -> tuple[list[TextContent], dict[str, Any]] | CallToolResult:
-    response = await ipc_service_request("automation_status", {}, response_timeout_seconds=10)
+    response = await ipc_service_request(
+        "automation_status",
+        {},
+        response_timeout_seconds=10,
+        type_override="automation_status",
+    )
     if not response or response[0].text.startswith("Error:"):
         return tool_error(response[0].text if response else "Error: empty host response")
     try:
@@ -105,7 +110,12 @@ def _name_schema() -> dict[str, Any]:
 async def _request_definition(
     kind: str, arguments: dict[str, Any]
 ) -> list[TextContent] | CallToolResult:
-    response = await ipc_service_request(kind, arguments, response_timeout_seconds=10)
+    response = await ipc_service_request(
+        kind,
+        arguments,
+        response_timeout_seconds=10,
+        type_override=kind,
+    )
     if not response or response[0].text.startswith("Error:"):
         return tool_error(response[0].text if response else "Error: empty host response")
     return response

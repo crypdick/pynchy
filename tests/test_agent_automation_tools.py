@@ -68,7 +68,12 @@ async def test_list_automations_reads_config_definitions(monkeypatch) -> None:
     result = await _call_tool_over_mcp("list_automations", {})
 
     assert result.structuredContent == {"automations": [{"name": "daily", "prompt": "check"}]}
-    request.assert_awaited_once_with("automation_status", {}, response_timeout_seconds=10)
+    request.assert_awaited_once_with(
+        "automation_status",
+        {},
+        response_timeout_seconds=10,
+        type_override="automation_status",
+    )
 
 
 @pytest.mark.asyncio
@@ -87,6 +92,7 @@ async def test_get_automation_reads_definition(monkeypatch) -> None:
         "automation_definition",
         {"name": "daily"},
         response_timeout_seconds=10,
+        type_override="automation_definition",
     )
 
 
