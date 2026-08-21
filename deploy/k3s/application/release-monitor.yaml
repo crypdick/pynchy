@@ -13,6 +13,7 @@ spec:
     spec:
       backoffLimit: 0
       activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 86400
       template:
         spec:
           serviceAccountName: pynchy-release-monitor
