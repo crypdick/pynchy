@@ -402,6 +402,12 @@ role = "config"
 public_modules = ["pynchy.config.api"]
 
 [[packages]]
+name = "remote_ops"
+root = "pynchy.remote_ops"
+role = "application"
+public_modules = ["pynchy.remote_ops"]
+
+[[packages]]
 name = "orchestrator"
 root = "pynchy.host.orchestrator"
 role = "application"

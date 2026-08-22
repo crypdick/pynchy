@@ -194,6 +194,15 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
     }
 
 
+async def collect_status_summary(deps: StatusDeps, start_time_monotonic: float) -> dict[str, Any]:
+    """Gather only stable operator fields; avoid deep diagnostic collection."""
+    return {
+        "service": _collect_service(deps, start_time_monotonic),
+        "deploy": await _collect_deploy(deps),
+        "queue": deps.get_queue_snapshot(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Per-section collectors
 # ---------------------------------------------------------------------------

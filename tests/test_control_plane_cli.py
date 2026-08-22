@@ -145,3 +145,35 @@ def test_control_plane_command_uses_the_selected_authenticated_target(
         "socket_path": socket_path,
         "token_file": token_file,
     }
+
+
+def test_status_summary_uses_bounded_control_plane_view(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    request: dict[str, object] = {}
+
+    def fetch(host, path, *, method, socket_path, token_file):
+        request.update(
+            host=host,
+            path=path,
+            method=method,
+            socket_path=socket_path,
+            token_file=token_file,
+        )
+        return {"service": {"status": "ok"}, "queue": {}}
+
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", fetch)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "--host", "remote:8485", "status", "--summary"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 0
+    assert capsys.readouterr().out == '{"queue":{},"service":{"status":"ok"}}\n'
+    assert request == {
+        "host": "remote:8485",
+        "path": "/status?summary=1",
+        "method": "GET",
+        "socket_path": None,
+        "token_file": None,
+    }

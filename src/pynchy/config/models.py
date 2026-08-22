@@ -434,6 +434,31 @@ class NotificationsConfig(_StrictModel):
     admin_workspace: ValidatedWorkspaceName | None = None
 
 
+class OpsConfig(_StrictModel):
+    """Private target for fixed remote operator diagnostics."""
+
+    ssh_host: str | None = None
+    namespace: str | None = None
+
+    @field_validator("ssh_host")
+    @classmethod
+    def validate_ssh_host(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value) is None:
+            raise ValueError("ops.ssh_host must be a safe SSH host alias")
+        return value
+
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if re.fullmatch(r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", value) is None:
+            raise ValueError("ops.namespace must be a Kubernetes DNS label")
+        return value
+
+
 class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 

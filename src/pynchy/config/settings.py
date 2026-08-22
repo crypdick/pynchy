@@ -39,6 +39,7 @@ from pynchy.config.models import (
     McpTool,
     McpToolConfig,
     NotificationsConfig,
+    OpsConfig,
     PluginConfig,
     ReposConfig,
     RouteConfig,
@@ -195,6 +196,7 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     notifications: NotificationsConfig = NotificationsConfig()
+    ops: OpsConfig = OpsConfig()
     messaging_source_health: MessagingSourceHealthConfig = MessagingSourceHealthConfig()
     connections: dict[str, ConnectionConfig] = {}
     routes: dict[str, RouteConfig] = {}

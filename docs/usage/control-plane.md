@@ -58,8 +58,41 @@ Use the bounded local clients instead of constructing HTTP requests by hand:
 
 ```bash
 uv run pynchy status
+uv run pynchy status --summary
 uv run pynchy deploy
 ```
+
+`pynchy status --summary` calls `GET /status?summary=1` and returns only service
+health, deploy accounting, and queue state. It skips repository, task, message,
+capability, and scheduled-work collection. Use full `status` only for deep local
+diagnosis.
+
+## Fixed remote Kubernetes diagnostics
+
+When the control-plane TCP listener is not reachable from an operator workstation,
+configure one private deployment target in that workstation's personalization
+repository:
+
+```toml
+[ops]
+ssh_host = "pynchy-host"
+namespace = "pynchy"
+```
+
+Run only the fixed read-only commands:
+
+```bash
+uv run pynchy ops status
+uv run pynchy ops logs
+uv run pynchy ops messages
+uv run pynchy ops events
+```
+
+`ops status` combines the pod-local authenticated summary with fixed Deployment
+rollout and release-SHA evidence. The other commands use a fixed log bound or a
+fixed read-only SQLite query. They do not accept a shell command, SQL, path, pod,
+container, namespace, or Kubernetes flag. Keep real host aliases and namespaces
+in private configuration.
 
 ## Bootstrap a bearer token
 
