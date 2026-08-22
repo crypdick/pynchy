@@ -4,9 +4,15 @@ from unittest.mock import patch
 
 import pytest
 from conftest import make_settings
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from pynchy.config.api import PermissionConfig, ProfileConfig, WorkspaceConfig
+from pynchy.config.api import (
+    PermissionConfig,
+    ProfileConfig,
+    ToolConfig,
+    WorkspaceConfig,
+    validate_settings_mapping,
+)
 from pynchy.config.models import RouteConfig
 from pynchy.config.workspace_layout import WorkspaceScopeConfig, WorkspaceThreadConfig
 from pynchy.host.orchestrator.workspace_config import (
@@ -77,6 +83,11 @@ def test_new_permission_syntax_resolves_for_profiles_and_routes():
 def test_permissions_are_available_on_every_operator_layer():
     permission = {"allow": ["desktop.computer.use"]}
 
+    assert (
+        TypeAdapter(ToolConfig)
+        .validate_python({"type": "linear", "permissions": permission})
+        .permissions.allow
+    )
     assert ProfileConfig(permissions=permission).permissions.allow
     assert WorkspaceConfig(permissions=permission).permissions.allow
     assert WorkspaceThreadConfig(
@@ -95,6 +106,43 @@ def test_permissions_are_available_on_every_operator_layer():
         workspace="unemployment",
         permissions=permission,
     ).permissions.allow
+
+
+def test_selected_tool_permissions_merge_with_stricter_workspace_policy():
+    settings = validate_settings_mapping(
+        {
+            "tools": {
+                "linear": {
+                    "type": "linear",
+                    "permissions": {
+                        "allow": ["linear.*", "mcp.linear.*"],
+                    },
+                },
+                "email": {
+                    "type": "workspace",
+                    "permissions": {"allow": ["mcp.email.*"]},
+                },
+            },
+            "profiles": {
+                "worker": {"tools": ["linear"]},
+            },
+            "workspaces": {
+                "worker": {
+                    "profiles": ["worker"],
+                    "permissions": {"ask": ["mcp.linear.linear_create_issue"]},
+                },
+            },
+        }
+    )
+
+    resolved = settings.resolved_workspace_config("worker")
+
+    assert resolved is not None
+    assert resolved.capabilities == {
+        "linear.*": CapabilityRule(decision="allow"),
+        "mcp.linear.*": CapabilityRule(decision="allow"),
+        "mcp.linear.linear_create_issue": CapabilityRule(decision="needs_human"),
+    }
 
 
 def test_workspace_permissions_override_profile_policy_and_reach_semantic_children():

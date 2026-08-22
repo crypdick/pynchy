@@ -1,5 +1,6 @@
 [tools.linear]
 type = "linear"
+permissions = { allow = ["linear.*", "mcp.linear.*"] }
 skills = ["linear"]
 required_env = ["LINEAR_API_KEY"]
 optional_env = ["LINEAR_TEAM_KEY"]
