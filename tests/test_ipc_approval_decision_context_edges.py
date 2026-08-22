@@ -115,3 +115,29 @@ def test_reusable_approval_requires_matching_pending_capability() -> None:
             source_group="group",
             replay_gate=MagicMock(return_value=None),
         )
+
+
+def test_mcp_proxy_reusable_approval_uses_persisted_capability() -> None:
+    capability_id = "mcp.linear.linear_get_issue"
+    context = build_approval_decision_context(
+        {
+            "tool_name": "linear_get_issue",
+            "approval_chat_jid": "discord:channel:1",
+            "request_data": {"params": {"name": "linear_get_issue"}},
+            "handler_type": "mcp_proxy",
+            "allow_remember": True,
+            "capability_id": capability_id,
+        },
+        ApprovalDecision(
+            request_id="request",
+            approved=True,
+            decided_by="operator",
+            decided_at="2026-07-29T00:00:00+00:00",
+            approval_scope="session",
+        ),
+        source_group="group",
+        replay_gate=MagicMock(return_value=None),
+    )
+
+    assert context.capability_id == capability_id
+    assert context.approval_scope == "session"

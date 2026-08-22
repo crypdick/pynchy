@@ -57,6 +57,9 @@ from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
     LiteLLMGatewayCredentials,
 )
+from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves gateway callback annotations at runtime.
+    ApprovalRequestFn,
+)
 from pynchy.logger import logger
 from pynchy.plugins.api import McpServerSpec
 from pynchy.workspace.api import (
@@ -272,6 +275,8 @@ def collect_plugin_mcp_servers(
 
 async def start_gateway(
     plugin_manager: pluggy.PluginManager | None = None,
+    *,
+    approval_fn: ApprovalRequestFn | None = None,
 ) -> LiteLLMGateway | BuiltinGateway:
     """Start the appropriate gateway based on config. Returns the instance.
 
@@ -354,6 +359,7 @@ async def start_gateway(
             gateway,
             plugin_mcp_servers=plugin_mcp_servers,
             plugin_trust_defaults=plugin_trust_defaults,
+            approval_fn=approval_fn,
         )
         set_mcp_manager(mcp_mgr)
         await mcp_mgr.sync()

@@ -72,8 +72,30 @@ async def approval_replay_validation_error(
     policy: ApprovalReplayPolicy,
 ) -> str | None:
     """Recheck exact payload, expiry, policy, and conversation presentation."""
+    policy_error = _approval_policy_error(context, policy)
+    if policy_error is not None:
+        return policy_error
+    time_error = _approval_time_error(context)
+    if time_error is not None:
+        return time_error
+    payload_error = await _approval_payload_error(context, deps)
+    if payload_error is not None:
+        return payload_error
+    return await _approval_conversation_error(context, deps)
+
+
+def _approval_policy_error(
+    context: ApprovalDecisionContext,
+    policy: ApprovalReplayPolicy,
+) -> str | None:
     if context.handler_type == "service" and context.gate is None:
         return "effective routed workspace policy is unavailable"
+    if context.handler_type == "mcp_proxy":
+        if context.gate is None or context.capability_id is None:
+            return "effective MCP capability policy is unavailable"
+        capability = context.gate.evaluate_capability(context.capability_id)
+        if not capability.allowed:
+            return capability.reason
     if context.handler_type == "service":
         selected_tools = policy.workspace_tools(context.source_group)
         if context.origin_conversation_id is not None and selected_tools is None:
@@ -93,13 +115,7 @@ async def approval_replay_validation_error(
             is not None
         ):
             return f"host tool {missing_tool} is no longer enabled for this workspace"
-    time_error = _approval_time_error(context)
-    if time_error is not None:
-        return time_error
-    payload_error = await _approval_payload_error(context, deps)
-    if payload_error is not None:
-        return payload_error
-    return await _approval_conversation_error(context, deps)
+    return None
 
 
 def _approval_time_error(context: ApprovalDecisionContext) -> str | None:

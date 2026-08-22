@@ -19,7 +19,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
 )
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.state import ActionIntentCreateRequest, create_action_intent, init_test_database
-from pynchy.workspace.api import WorkspaceSecurity
+from pynchy.workspace.api import CapabilityRule, WorkspaceSecurity
 
 
 def _context(**overrides: object) -> ApprovalDecisionContext:
@@ -88,6 +88,72 @@ async def test_replay_rejects_removed_tool_from_routed_workspace() -> None:
     )
 
     assert error == "host tool is no longer enabled for this routed workspace"
+
+
+@pytest.mark.asyncio
+async def test_mcp_replay_rejects_capability_denied_while_waiting() -> None:
+    capability_id = "mcp.linear.linear_get_issue"
+    error = await approval_replay_validation_error(
+        _context(
+            handler_type="mcp_proxy",
+            gate=SecurityGate(
+                WorkspaceSecurity(
+                    capabilities={capability_id: CapabilityRule("deny")},
+                )
+            ),
+            capability_id=capability_id,
+        ),
+        NullIpcDeps(),
+        ApprovalReplayPolicy(
+            configured_security=lambda _group: WorkspaceSecurity(),
+            workspace_tools=lambda _group: (),
+        ),
+    )
+
+    assert error == f"Capability '{capability_id}' denied by policy"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("gate", "capability_id"),
+    [
+        (None, "mcp.linear.linear_get_issue"),
+        (SecurityGate(WorkspaceSecurity()), None),
+    ],
+)
+async def test_mcp_replay_requires_current_capability_policy(
+    gate: SecurityGate | None,
+    capability_id: str | None,
+) -> None:
+    error = await approval_replay_validation_error(
+        _context(handler_type="mcp_proxy", gate=gate, capability_id=capability_id),
+        NullIpcDeps(),
+        ApprovalReplayPolicy(
+            configured_security=lambda _group: WorkspaceSecurity(),
+            workspace_tools=lambda _group: (),
+        ),
+    )
+
+    assert error == "effective MCP capability policy is unavailable"
+
+
+@pytest.mark.asyncio
+async def test_mcp_replay_accepts_current_ask_policy() -> None:
+    capability_id = "mcp.linear.linear_get_issue"
+    error = await approval_replay_validation_error(
+        _context(
+            handler_type="mcp_proxy",
+            gate=SecurityGate(WorkspaceSecurity()),
+            capability_id=capability_id,
+        ),
+        NullIpcDeps(),
+        ApprovalReplayPolicy(
+            configured_security=lambda _group: WorkspaceSecurity(),
+            workspace_tools=lambda _group: (),
+        ),
+    )
+
+    assert error is None
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,8 @@ def write_encrypted_pending_approval(
     request_data: dict[str, Any],
     handler_type: str = "service",
     expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
+    approval_scope: str = "exact_request",
+    capability_id: str | None = None,
     origin_conversation_id: str | None = None,
     action_payload: dict[str, Any] | None = None,
     timestamp: str | None = None,
@@ -40,6 +42,8 @@ def write_encrypted_pending_approval(
         request_data=request_data,
         handler_type=handler_type,
         expires_after_seconds=expires_after_seconds,
+        approval_scope=approval_scope,
+        capability_id=capability_id,
         origin_conversation_id=origin_conversation_id,
         action_payload=action_payload,
     )

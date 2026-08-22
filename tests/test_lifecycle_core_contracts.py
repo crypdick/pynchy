@@ -11,9 +11,15 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.api import WhatsAppConnectionConfig
+from pynchy.host.container_manager.mcp.approval import McpApprovalRequest
+from pynchy.host.container_manager.security.approval import (
+    configure_approval_state_root,
+    read_pending_approval,
+)
+from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import CapabilityRule, WorkspaceProfile, WorkspaceSecurity
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,6 +27,67 @@ if TYPE_CHECKING:
 
 class _CoreStopError(Exception):
     """Stop public startup after the core phase has completed."""
+
+
+async def test_app_presents_mcp_approval_through_shared_state(monkeypatch, tmp_path: Path):
+    app = PynchyApp()
+    app.workspaces = {
+        "discord:channel:1": WorkspaceProfile(
+            jid="discord:channel:1",
+            name="Linear",
+            folder="syn-117",
+            trigger="always",
+        )
+    }
+    app.broadcast_to_channels = AsyncMock()
+    configure_approval_state_root(tmp_path / "approvals")
+    create_gate(
+        "syn-117",
+        1000.0,
+        WorkspaceSecurity(
+            capabilities={"mcp.linear.linear_get_issue": CapabilityRule("needs_human")}
+        ),
+    )
+    audit = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.app.get_conversation_control_by_thread",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr("pynchy.host.orchestrator.app.record_security_event", audit)
+
+    await app.request_mcp_approval(
+        McpApprovalRequest(
+            group_folder="syn-117",
+            tool_name="linear_get_issue",
+            request_data={"params": {"name": "linear_get_issue"}},
+            request_id="request-1",
+            capability_id="mcp.linear.linear_get_issue",
+            reason="No explicit permission rule matched",
+        )
+    )
+
+    pending = read_pending_approval(tmp_path / "approvals/syn-117/pending_approvals/request-1.json")
+    assert pending["handler_type"] == "mcp_proxy"
+    assert pending["capability_id"] == "mcp.linear.linear_get_issue"
+    event = app.broadcast_to_channels.await_args.args[1]
+    assert event.metadata["allow_remember"] is True
+    audit.assert_awaited_once()
+
+
+async def test_app_rejects_mcp_approval_without_registered_chat() -> None:
+    app = PynchyApp()
+
+    with pytest.raises(ValueError, match="No chat is registered"):
+        await app.request_mcp_approval(
+            McpApprovalRequest(
+                group_folder="missing",
+                tool_name="linear_get_issue",
+                request_data={},
+                request_id="request-1",
+                capability_id="mcp.linear.linear_get_issue",
+                reason="approval required",
+            )
+        )
 
 
 async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path: Path):
@@ -87,7 +154,10 @@ async def test_run_app_wires_all_core_startup_dependencies(monkeypatch, tmp_path
 
     assert app.plugin_manager is plugin_manager
     lifecycle.service_installer.install_service.assert_called_once_with(tmp_path)
-    lifecycle.gateway_manager.start_gateway.assert_awaited_once_with(plugin_manager=plugin_manager)
+    lifecycle.gateway_manager.start_gateway.assert_awaited_once_with(
+        plugin_manager,
+        approval_fn=app.request_mcp_approval,
+    )
     lifecycle.init_database.assert_awaited_once()
     app.attach_observers.assert_called_once_with([])
     app.load_state.assert_awaited_once_with()

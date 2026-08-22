@@ -187,13 +187,19 @@ class TestResolveAllInstancesPortOffset:
             close_background_task,
         )
 
-        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
+        approval_fn = AsyncMock()
+        manager = McpManager(
+            settings,
+            MagicMock(spec=LiteLLMGateway),
+            approval_fn=approval_fn,
+        )
         await manager.sync()
 
         proxy_factory.assert_called_once()
         proxy_options = proxy_factory.call_args.kwargs
         assert proxy_options["host"] == settings.gateway.host
         assert proxy_options["backend_lease"] == manager.proxy_backend_lease
+        assert proxy_start.call_args.kwargs["approval_fn"] is approval_fn
 
         parent_ids = manager.get_workspace_instance_ids("admin")
         child_ids = manager.get_workspace_instance_ids("admin__thread_discord-channel-thread")

@@ -139,6 +139,7 @@ async def test_litellm_start_syncs_plugin_mcp_servers_after_gateway_ready(tmp_pa
     plugin_manager = _FakePluginManager(hook)
     fake_manager = MagicMock()
     fake_manager.sync = AsyncMock()
+    approval_fn = AsyncMock()
 
     with (
         patch("pynchy.host.container_manager.gateway.get_settings", return_value=settings),
@@ -153,10 +154,10 @@ async def test_litellm_start_syncs_plugin_mcp_servers_after_gateway_ready(tmp_pa
         ) as manager_type,
         patch("pynchy.host.container_manager.mcp.manager.set_mcp_manager") as set_manager,
     ):
-        gateway = await start_gateway(plugin_manager)
+        gateway = await start_gateway(plugin_manager, approval_fn=approval_fn)
 
     assert isinstance(gateway, LiteLLMGateway)
-    manager_type.assert_called_once()
+    assert manager_type.call_args.kwargs["approval_fn"] is approval_fn
     set_manager.assert_called_once_with(fake_manager)
     fake_manager.sync.assert_awaited_once()
 
