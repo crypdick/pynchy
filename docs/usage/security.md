@@ -105,19 +105,26 @@ after five minutes if no decision arrives.
 ## Permissions
 
 Selecting a tool makes it available to a workspace. Calls default to `ask`
-unless an explicit permission matches. Put reusable tool selection in a
-profile, then put authorization on the profile or exact workspace that should
-receive it.
+unless an explicit permission matches. Put permission defaults on a tool when
+every workspace that selects it should receive the same policy. Profiles and
+workspaces can add stricter exceptions.
 
 ```toml
-[profiles.finance-assistant]
-tools = ["email"]
-permissions = { ask = ["mcp.email.send"], deny = ["mcp.email.delete"] }
+[tools.linear]
+type = "linear"
+permissions = { allow = ["linear.*", "mcp.linear.*"] }
 
-[workspaces.automated-reports]
-profiles = ["finance-assistant"]
-permissions = { allow = ["mcp.email.preview"] }
+[profiles.planning]
+tools = ["linear"]
+
+[workspaces.reviewed-planning]
+profiles = ["planning"]
+permissions = { ask = ["mcp.linear.linear_create_issue"] }
 ```
+
+Tool permissions apply only when a workspace selects that tool. Pynchy
+intersects tool, profile, and workspace rules, so an explicit `ask` or `deny`
+cannot become less restrictive through a tool default.
 
 Capability IDs use dotted segments. Host actions publish their IDs through the
 capability status surface; MCP tool calls use

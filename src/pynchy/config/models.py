@@ -536,6 +536,8 @@ class _ToolAccessConfig(_StrictModel):
     required_env: list[ValidatedEnvName] = Field(default_factory=list)
     optional_env: list[ValidatedEnvName] = Field(default_factory=list)
     expose_env_to_workspace: bool = False
+    # NOTE: Update docs/usage/security.md § Permissions if tool permission defaults change.
+    permissions: PermissionConfig = Field(default_factory=PermissionConfig)
 
     @model_validator(mode="after")
     def validate_environment_names(self) -> _ToolAccessConfig:

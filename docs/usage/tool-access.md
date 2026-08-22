@@ -17,6 +17,10 @@ values in the Pynchy host process environment, not in TOML.
 variable has no value. `optional_env` never controls availability; Pynchy
 passes each optional variable that has a value.
 
+`permissions` supplies policy defaults to every workspace that selects the
+tool. Profiles and workspaces can add stricter rules. See
+[Permissions](security.md#permissions) for matching and precedence.
+
 Keep non-secret runtime constants, such as a bind address, in
 `[tools.<name>.mcp].env`. Declare secrets with `required_env` or
 `optional_env`. Pynchy does not support `env_forward`.

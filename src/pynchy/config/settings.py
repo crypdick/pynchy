@@ -48,6 +48,9 @@ from pynchy.config.models import (
     WorkspaceConfig,
     WorkspaceTool,
 )
+from pynchy.config.permissions import (
+    PermissionConfig,  # noqa: TC001 - beartype resolves this runtime annotation.
+)
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
@@ -97,11 +100,11 @@ def _assert_admin_clean_room(
             raise ValueError(message)
 
 
-def _merge_workspace_permissions(
-    resolved: ResolvedWorkspaceConfig, workspace: WorkspaceConfig
+def _merge_permissions(
+    capabilities: dict[str, CapabilityRule], permissions: PermissionConfig
 ) -> dict[str, CapabilityRule]:
-    capabilities = dict(resolved.capabilities)
-    for capability, decision in workspace.permissions.decisions.items():
+    capabilities = dict(capabilities)
+    for capability, decision in permissions.decisions.items():
         rule = CapabilityRule(decision=decision)
         existing = capabilities.get(capability)
         capabilities[capability] = (
@@ -370,15 +373,22 @@ class Settings(BaseSettings):
         automatic_tools = (
             ("vaultwarden", _vaultwarden_browser_tool_name(access[0])) if access is not None else ()
         )
+        tools = list(dict.fromkeys([*resolved.tools, *automatic_tools]))
+        capabilities = dict(resolved.capabilities)
+        for tool_name in tools:
+            tool = self.tools.get(tool_name)
+            if tool is not None:
+                capabilities = _merge_permissions(capabilities, tool.permissions)
+        capabilities = _merge_permissions(capabilities, workspace.permissions)
         return replace(
             resolved,
-            tools=list(dict.fromkeys([*resolved.tools, *automatic_tools])),
+            tools=tools,
             contains_secrets=resolved.contains_secrets or bool(collections),
             soul=workspace.soul or self.prompts.default_soul,
             pipeline=workspace.pipeline or self.prompts.default_pipeline,
             model=workspace.model if workspace.model is not None else resolved.model,
             model_reasoning_effort=workspace.model_reasoning_effort,
-            capabilities=_merge_workspace_permissions(resolved, workspace),
+            capabilities=capabilities,
         )
 
     def secret_access_for_workspace(
