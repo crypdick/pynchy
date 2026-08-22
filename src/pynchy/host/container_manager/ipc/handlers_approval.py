@@ -35,7 +35,10 @@ from pynchy.host.container_manager.ipc.approval_decision_context import (
 from pynchy.host.container_manager.ipc.approval_decision_context import (
     build_approval_decision_context as _build_approval_decision_context,
 )
-from pynchy.host.container_manager.ipc.approval_grants import apply_reusable_approval
+from pynchy.host.container_manager.ipc.approval_grants import (
+    apply_reusable_approval,
+    resolve_mcp_proxy_approval_decision,
+)
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext as _ApprovalDecisionContext,
 )
@@ -286,33 +289,12 @@ async def _dispatch_approval_decision(
     replay_policy: _ApprovalReplayPolicy,
 ) -> None:
     if context.handler_type == "mcp_proxy":
-        await _resolve_mcp_proxy_approval(context)
+        await resolve_mcp_proxy_approval_decision(context, deps, replay_policy)
         return
     if context.approved:
         await _dispatch_approved_request(context, deps, replay_policy)
     else:
         await _dispatch_denied_request(context, deps)
-
-
-async def _resolve_mcp_proxy_approval(context: _ApprovalDecisionContext) -> None:
-    """Resolve an in-process proxy request without re-dispatching it."""
-    resolved = security_approval.resolve_mcp_proxy_approval(
-        context.request_id, approved=context.approved
-    )
-    if not resolved:
-        logger.warning(
-            "MCP proxy approval Future not found (timed out?)",
-            request_id=context.request_id,
-        )
-    await record_security_event(
-        chat_jid=context.chat_jid,
-        workspace=context.source_group,
-        tool_name=context.tool_name,
-        decision="approved_by_user" if context.approved else "denied_by_user",
-        request_id=context.request_id,
-        capability_id=context.capability_id,
-        action_ids=context.action_ids,
-    )
 
 
 async def _dispatch_approved_request(

@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -24,6 +24,7 @@ import aiohttp
 from aiohttp import web
 
 from pynchy.content_fencing import fence_untrusted_content
+from pynchy.host.container_manager.mcp.approval import ApprovalRequestFn, McpApprovalRequest
 from pynchy.host.container_manager.mcp.sse import stream_response
 from pynchy.host.container_manager.security.approval import register_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import inspect_inbound
@@ -31,11 +32,6 @@ from pynchy.host.container_manager.security.gate import SecurityGate, get_gate
 from pynchy.logger import logger
 from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS
 
-# Callback to request human approval.  Provided by the orchestrator at
-# construction time.  Signature: (group_folder, tool_name, request_data,
-# request_id) -> None.  The implementation writes the pending file and
-# broadcasts the notification to chat channels.
-ApprovalRequestFn = Callable[[str, str, dict[str, Any], str], Awaitable[None]]
 BackendLeaseFn = Callable[[str], AbstractAsyncContextManager[None]]
 AuthorizeInstanceFn = Callable[[str, str], bool]
 
@@ -224,14 +220,16 @@ async def _maybe_gate_outbound_call(
     needs_human = capability_decision.needs_human or (
         decision.needs_human and not capability_decision.overrides_human_approval
     )
+    if gate.has_session_capability_approval(capability):
+        needs_human = False
     if not needs_human:
         return None
 
     return await _await_human_approval(
         state,
         proxy_request.group_folder,
-        proxy_request.instance_id,
         rpc,
+        capability,
         "; ".join(reason for reason in (capability_decision.reason, decision.reason) if reason),
     )
 
@@ -414,8 +412,8 @@ async def _proxy_handler(request: web.Request) -> web.StreamResponse:
 async def _await_human_approval(
     state: _ProxyState,
     group_folder: str,
-    instance_id: str,
     rpc: dict[str, Any],
+    capability_id: str,
     reason: str,
 ) -> web.Response | None:
     """Block the HTTP connection until the human approves or denies.
@@ -439,8 +437,19 @@ async def _await_human_approval(
     fut = register_mcp_proxy_approval(request_id)
 
     raw_tool_name = rpc.get("params", {}).get("name")
-    tool_name = raw_tool_name if isinstance(raw_tool_name, str) else instance_id
-    await state.approval_fn(group_folder, tool_name, rpc, request_id)
+    tool_name = (
+        raw_tool_name if isinstance(raw_tool_name, str) else capability_id.rsplit(".", 1)[-1]
+    )
+    await state.approval_fn(
+        McpApprovalRequest(
+            group_folder=group_folder,
+            tool_name=tool_name,
+            request_data=rpc,
+            request_id=request_id,
+            capability_id=capability_id,
+            reason=reason,
+        )
+    )
 
     logger.info(
         "MCP proxy awaiting human approval",

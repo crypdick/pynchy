@@ -131,6 +131,34 @@ class TestMcpProxyOutboundGating:
         finally:
             await client.close()
 
+    async def test_session_capability_approval_skips_later_prompt(self, mock_backend):
+        security = WorkspaceSecurity(services={"linear": _SAFE_TRUST})
+        gate = create_gate("test-ws", 1000.0, security)
+        gate.grant_session_capability_approval("mcp.linear.linear_get_issue")
+        approval_fn = AsyncMock()
+
+        app = create_proxy_app(
+            {"linear": f"http://localhost:{mock_backend.port}/mcp"},
+            approval_fn=approval_fn,
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/mcp/test-ws/1000.0/linear",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "linear_get_issue", "arguments": {"id": "SYN-117"}},
+                },
+            )
+
+            assert response.status == 200
+            approval_fn.assert_not_awaited()
+        finally:
+            await client.close()
+
     @pytest.mark.parametrize(("approved", "expected_status"), [(True, 200), (False, 403)])
     async def test_capability_wildcard_needs_human_can_be_decided(
         self, mock_backend, approved, expected_status
@@ -142,11 +170,11 @@ class TestMcpProxyOutboundGating:
         )
         create_gate("test-ws", 1000.0, security)
 
-        approval_calls: list[tuple[str, str, str]] = []
+        approval_calls = []
 
-        def mock_approval_fn(group, tool_name, data, request_id):
-            approval_calls.append((group, tool_name, request_id))
-            resolve_mcp_proxy_approval(request_id, approved=approved)
+        def mock_approval_fn(request):
+            approval_calls.append(request)
+            resolve_mcp_proxy_approval(request.request_id, approved=approved)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -166,7 +194,9 @@ class TestMcpProxyOutboundGating:
             )
 
             assert resp.status == expected_status
-            assert approval_calls == [("test-ws", "send", approval_calls[0][2])]
+            assert approval_calls[0].group_folder == "test-ws"
+            assert approval_calls[0].tool_name == "send"
+            assert approval_calls[0].capability_id == "mcp.email.send"
         finally:
             await client.close()
 
@@ -177,12 +207,12 @@ class TestMcpProxyOutboundGating:
         )
         create_gate("test-ws", 1000.0, security)
 
-        approval_calls: list[tuple] = []
+        approval_calls = []
 
-        def mock_approval_fn(group, tool_name, data, request_id):
-            approval_calls.append((group, tool_name, request_id))
+        def mock_approval_fn(request):
+            approval_calls.append(request)
             # Simulate immediate human approval
-            resolve_mcp_proxy_approval(request_id, approved=True)
+            resolve_mcp_proxy_approval(request.request_id, approved=True)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -206,8 +236,8 @@ class TestMcpProxyOutboundGating:
             # Approved — request should be forwarded to backend
             assert resp.status == 200
             assert len(approval_calls) == 1
-            assert approval_calls[0][0] == "test-ws"
-            assert approval_calls[0][1] == "browser_type"
+            assert approval_calls[0].group_folder == "test-ws"
+            assert approval_calls[0].tool_name == "browser_type"
         finally:
             await client.close()
 
@@ -218,9 +248,9 @@ class TestMcpProxyOutboundGating:
         )
         create_gate("test-ws", 1000.0, security)
 
-        def mock_approval_fn(group, tool_name, data, request_id):
+        def mock_approval_fn(request):
             # Simulate human denial
-            resolve_mcp_proxy_approval(request_id, approved=False)
+            resolve_mcp_proxy_approval(request.request_id, approved=False)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"

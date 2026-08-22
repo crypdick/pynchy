@@ -107,6 +107,9 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_message,
     write_ipc_response,
 )
+from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves callback request annotations at runtime.
+    McpApprovalRequest,
+)
 from pynchy.host.container_manager.mcp.manager import (
     configure_mcp_manager_runtime,
     get_mcp_manager,
@@ -128,11 +131,16 @@ from pynchy.host.container_manager.process import (
 )
 from pynchy.host.container_manager.security.approval import (
     _approval_decisions_dir,
+    approval_event,
     configure_approval_state_root,
+    create_pending_approval,
     find_pending_by_short_id,
     list_pending_approvals,
 )
-from pynchy.host.container_manager.security.audit import configure_security_audit_storage
+from pynchy.host.container_manager.security.audit import (
+    configure_security_audit_storage,
+    record_security_event,
+)
 from pynchy.host.container_manager.security.cop import configure_cop_prompt_provider
 from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
 from pynchy.host.container_manager.security.gate import (
@@ -141,6 +149,7 @@ from pynchy.host.container_manager.security.gate import (
     configure_security_resolution,
     create_gate,
     destroy_gate,
+    get_gate_for_group,
     resolve_security,
 )
 from pynchy.host.container_manager.session import (
@@ -358,6 +367,7 @@ from pynchy.state.api import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_conversation,
+    get_conversation_control_by_thread,
     get_in_flight_turn_for_group,
     get_latest_canary_runs,
     get_messages_since,
@@ -1357,6 +1367,53 @@ class PynchyApp(ThreadRouting):
                 capability_id,
                 publish=self._sync_personalization_unlocked,
             )
+
+    async def request_mcp_approval(self, request: McpApprovalRequest) -> None:
+        """Present a proxy-gated MCP call through the shared approval state machine."""
+        chat_jid = next(
+            (
+                jid
+                for jid, workspace in self.workspaces.items()
+                if workspace.folder == request.group_folder
+            ),
+            None,
+        )
+        if chat_jid is None:
+            raise ValueError(f"No chat is registered for workspace {request.group_folder}")
+        control = await get_conversation_control_by_thread(ChatJid(chat_jid))
+        gate = get_gate_for_group(request.group_folder)
+        short_id = create_pending_approval(
+            request_id=request.request_id,
+            tool_name=request.tool_name,
+            source_group=request.group_folder,
+            approval_chat_jid=chat_jid,
+            request_data=request.request_data,
+            handler_type="mcp_proxy",
+            capability_id=request.capability_id,
+            origin_conversation_id=(str(control.conversation_id) if control is not None else None),
+            corruption_tainted=bool(gate and gate.policy.corruption_tainted),
+            secret_tainted=bool(gate and gate.policy.secret_tainted),
+        )
+        await self.broadcast_to_channels(
+            chat_jid,
+            approval_event(
+                request.tool_name,
+                request.request_data,
+                short_id,
+                capability_id=request.capability_id,
+            ),
+        )
+        await record_security_event(
+            chat_jid=chat_jid,
+            workspace=request.group_folder,
+            tool_name=request.tool_name,
+            decision="approval_requested",
+            corruption_tainted=bool(gate and gate.policy.corruption_tainted),
+            secret_tainted=bool(gate and gate.policy.secret_tainted),
+            reason=request.reason,
+            request_id=request.request_id,
+            capability_id=request.capability_id,
+        )
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""

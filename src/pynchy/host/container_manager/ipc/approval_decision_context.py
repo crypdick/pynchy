@@ -127,15 +127,24 @@ def build_approval_decision_context(
     }:
         raise ValueError("pending approval handler_type is invalid")
     action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
-    capability_id = str(action.capability.id) if action is not None else None
-    if decision.approval_scope in {"session", "forever"}:
-        pending_capability = pending.get("capability_id")
-        if (
-            pending.get("allow_remember") is not True
-            or not isinstance(pending_capability, str)
-            or pending_capability != capability_id
-        ):
-            raise ValueError("pending approval does not support reusable approval")
+    pending_capability = pending.get("capability_id")
+    capability_id = (
+        str(action.capability.id)
+        if action is not None
+        else (
+            pending_capability
+            if handler_type == "mcp_proxy"
+            and isinstance(pending_capability, str)
+            and pending_capability
+            else None
+        )
+    )
+    if decision.approval_scope in {"session", "forever"} and (
+        pending.get("allow_remember") is not True
+        or not isinstance(pending_capability, str)
+        or pending_capability != capability_id
+    ):
+        raise ValueError("pending approval does not support reusable approval")
     action_ids = (
         tuple(str(action_id) for action_id in action.capability.action_ids)
         if action is not None

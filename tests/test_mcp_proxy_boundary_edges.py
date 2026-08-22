@@ -209,7 +209,7 @@ async def test_proxy_returns_timeout_when_human_approval_does_not_resolve(mock_b
         assert (await response.json())["error"] == "Human approval timed out"
         approval.assert_awaited_once()
     finally:
-        request_id = approval.await_args.args[3]
+        request_id = approval.await_args.args[0].request_id
         resolve_mcp_proxy_approval(request_id, approved=False)
         await client.close()
 

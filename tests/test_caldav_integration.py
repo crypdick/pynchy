@@ -724,6 +724,7 @@ async def test_create_event_returns_no_uid_when_provider_omits_uid():
     created_event = _make_fake_event(uid=None)
     fake_client, cals = _make_fake_client("meetings")
     cals[0].save_event.return_value = created_event
+    _make_settings()
 
     with patch("pynchy.plugins.integrations.caldav.get_caldav_client", return_value=fake_client):
         result = await _handle_create_event(

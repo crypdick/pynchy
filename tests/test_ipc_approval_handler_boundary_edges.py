@@ -51,6 +51,7 @@ def _write_pending(
     tool_name: str,
     request_data: dict,
     handler_type: str = "service",
+    capability_id: str | None = None,
 ) -> Path:
     executable_request = {
         "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
@@ -66,11 +67,19 @@ def _write_pending(
         request_data=executable_request,
         handler_type=handler_type,
         expires_after_seconds=3600,
+        capability_id=capability_id,
     )
     return path
 
 
-def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: bool) -> Path:
+def _write_decision(
+    ipc_dir: Path,
+    group: str,
+    request_id: str,
+    *,
+    approved: bool,
+    approval_scope: str | None = None,
+) -> Path:
     decisions_dir = ipc_dir.parent / "approvals" / group / "approval_decisions"
     decisions_dir.mkdir(parents=True, exist_ok=True)
     pending_path = ipc_dir.parent / "approvals" / group / "pending_approvals" / f"{request_id}.json"
@@ -84,6 +93,8 @@ def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: boo
         "decided_by": "testuser",
         "decided_at": "2026-02-24T12:01:00+00:00",
     }
+    if approval_scope is not None:
+        decision["approval_scope"] = approval_scope
     path = decisions_dir / f"{request_id}.json"
     path.write_text(json.dumps(decision), encoding="utf-8")
     return path
@@ -239,6 +250,53 @@ class TestApprovalBoundaryEdges:
 
         resolve.assert_called_once_with("proxy-resolved", approved=True)
         assert not decision_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_mcp_proxy_session_decision_applies_reusable_grant(self, ipc_dir: Path, settings):
+        _write_pending(
+            ipc_dir,
+            "grp",
+            "proxy-session",
+            "linear_get_issue",
+            {},
+            handler_type="mcp_proxy",
+            capability_id="mcp.linear.linear_get_issue",
+        )
+        decision_file = _write_decision(
+            ipc_dir,
+            "grp",
+            "proxy-session",
+            approved=True,
+            approval_scope="session",
+        )
+        reusable = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.approval_replay_gate",
+                return_value=SecurityGate(WorkspaceSecurity()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_grants.approval_replay_validation_error",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_grants.apply_reusable_approval",
+                new=reusable,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.resolve_mcp_proxy_approval",
+                return_value=True,
+            ) as resolve,
+        ):
+            await process_approval_decision(decision_file, "grp", deps=NullIpcDeps())
+
+        reusable.assert_awaited_once()
+        resolve.assert_called_once_with("proxy-session", approved=True)
 
     @pytest.mark.asyncio
     async def test_mcp_proxy_binding_rejection_closes_intent_and_writes_error(

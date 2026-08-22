@@ -35,6 +35,9 @@ from pynchy.host.container_manager.docker import (
     stop_container,
 )
 from pynchy.host.container_manager.gateway import LiteLLMGateway, resolve_container_host
+from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves manager callback annotations at runtime.
+    ApprovalRequestFn,
+)
 from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
     ensure_script_running,
@@ -173,6 +176,7 @@ class McpManager:
         *,
         plugin_mcp_servers: dict[str, McpServerConfig] | None = None,
         plugin_trust_defaults: dict[str, ServiceTrustConfig] | None = None,
+        approval_fn: ApprovalRequestFn | None = None,
     ) -> None:
         self._settings = cast("Any", settings)
         self._gateway = gateway
@@ -182,6 +186,7 @@ class McpManager:
         # Plugin-declared trust metadata — used by build_trust_map to populate
         # the proxy's trust map with real values instead of safe defaults.
         self._plugin_trust_defaults: dict[str, ServiceTrustConfig] = plugin_trust_defaults or {}
+        self._approval_fn = approval_fn
         self._instances: dict[str, McpInstance] = {}
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
@@ -268,6 +273,7 @@ class McpManager:
                 instance_urls,
                 trust_map=trust_map,
                 service_names=service_names,
+                approval_fn=self._approval_fn,
                 port=self._configured_proxy_port,
             )
 

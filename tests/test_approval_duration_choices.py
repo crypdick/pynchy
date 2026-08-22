@@ -10,8 +10,14 @@ import pytest
 from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 from pynchy.config.api import ProfileConfig, WorkspaceConfig
-from pynchy.host.container_manager.ipc.approval_grants import apply_reusable_approval
-from pynchy.host.container_manager.ipc.approval_replay import ApprovalDecisionContext
+from pynchy.host.container_manager.ipc.approval_grants import (
+    apply_reusable_approval,
+    resolve_mcp_proxy_approval_decision,
+)
+from pynchy.host.container_manager.ipc.approval_replay import (
+    ApprovalDecisionContext,
+    ApprovalReplayPolicy,
+)
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.host.orchestrator.workspace_config import update_workspace_capability_policy
 from pynchy.workspace.api import CapabilityRule, WorkspaceSecurity
@@ -59,6 +65,126 @@ async def test_session_choice_grants_only_active_capability() -> None:
 
     assert replay_gate.has_session_capability_approval("test.my.tool")
     assert active_gate.has_session_capability_approval("test.my.tool")
+
+
+@pytest.mark.asyncio
+async def test_session_choice_supports_mcp_proxy_capability() -> None:
+    replay_gate = SecurityGate(WorkspaceSecurity())
+    context = replace(
+        _context(scope="session", gate=replay_gate),
+        handler_type="mcp_proxy",
+        action=None,
+        capability_id="mcp.linear.linear_get_issue",
+    )
+
+    with patch(
+        "pynchy.host.container_manager.ipc.approval_grants.get_gate_for_group",
+        return_value=replay_gate,
+    ):
+        assert await apply_reusable_approval(context, NullIpcDeps())
+
+    assert replay_gate.has_session_capability_approval("mcp.linear.linear_get_issue")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validation_error", ["policy changed", None])
+async def test_mcp_reusable_failure_denies_waiting_proxy(validation_error: str | None) -> None:
+    deps = NullIpcDeps()
+    deps.broadcast_host_message = AsyncMock()
+    context = replace(
+        _context(scope="session", gate=SecurityGate(WorkspaceSecurity())),
+        handler_type="mcp_proxy",
+        action=None,
+        capability_id="mcp.linear.linear_get_issue",
+    )
+    reusable = AsyncMock(return_value=False)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.approval_replay_validation_error",
+            new=AsyncMock(return_value=validation_error),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.apply_reusable_approval",
+            new=reusable,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.security_approval.resolve_mcp_proxy_approval",
+            return_value=True,
+        ) as resolve,
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.record_security_event",
+            new=AsyncMock(),
+        ),
+    ):
+        await resolve_mcp_proxy_approval_decision(
+            context,
+            deps,
+            ApprovalReplayPolicy(
+                configured_security=lambda _group: WorkspaceSecurity(),
+                workspace_tools=lambda _group: (),
+            ),
+        )
+
+    resolve.assert_called_once_with("request-1", approved=False)
+    if validation_error is None:
+        reusable.assert_awaited_once()
+    else:
+        reusable.assert_not_awaited()
+        deps.broadcast_host_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mcp_reusable_without_replay_dependencies_denies_waiting_proxy() -> None:
+    context = replace(
+        _context(scope="session", gate=SecurityGate(WorkspaceSecurity())),
+        handler_type="mcp_proxy",
+        action=None,
+        capability_id="mcp.linear.linear_get_issue",
+    )
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.security_approval.resolve_mcp_proxy_approval",
+            return_value=True,
+        ) as resolve,
+        patch(
+            "pynchy.host.container_manager.ipc.approval_grants.record_security_event",
+            new=AsyncMock(),
+        ),
+    ):
+        await resolve_mcp_proxy_approval_decision(
+            context,
+            None,
+            ApprovalReplayPolicy(
+                configured_security=lambda _group: WorkspaceSecurity(),
+                workspace_tools=lambda _group: (),
+            ),
+        )
+
+    resolve.assert_called_once_with("request-1", approved=False)
+
+
+@pytest.mark.asyncio
+async def test_mcp_reusable_choice_without_capability_has_no_ipc_side_effect() -> None:
+    deps = NullIpcDeps()
+    deps.fail_action_intent = AsyncMock()
+    deps.broadcast_host_message = AsyncMock()
+    context = replace(
+        _context(scope="session", gate=SecurityGate(WorkspaceSecurity())),
+        handler_type="mcp_proxy",
+        action=None,
+        capability_id=None,
+    )
+
+    with patch(
+        "pynchy.host.container_manager.ipc.approval_grants.record_security_event",
+        new=AsyncMock(),
+    ):
+        assert not await apply_reusable_approval(context, deps)
+
+    deps.fail_action_intent.assert_not_awaited()
+    deps.broadcast_host_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

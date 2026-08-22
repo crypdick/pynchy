@@ -196,7 +196,7 @@ async def _initialize_core(app: PynchyApp) -> None:
         image=app.agent_execution_runtime.agent_image,
     )
 
-    await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
+    await gateway_manager.start_gateway(app.plugin_manager, approval_fn=app.request_mcp_approval)
 
     await init_database(StateRuntimeConfig(database_path=settings.data_dir / "messages.db"))
     # A crash can leave an external write without a receipt. Recovery fails closed
