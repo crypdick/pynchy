@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess  # noqa: S404 - fixed SSH and kubectl argv only.
 from dataclasses import dataclass
 
@@ -43,7 +44,7 @@ class RemoteOpsTarget:
 
 def _run(target: RemoteOpsTarget, command: tuple[str, ...]) -> str:
     result = subprocess.run(  # noqa: S603 - fixed diagnostic argv plus validated config atoms.
-        ["/usr/bin/ssh", target.ssh_host, "--", *command],
+        ["/usr/bin/ssh", target.ssh_host, "--", shlex.join(command)],
         check=False,
         capture_output=True,
         text=True,
@@ -75,24 +76,43 @@ def remote_status(target: RemoteOpsTarget) -> str:
     """Return bounded app status plus Kubernetes rollout evidence."""
     status = _exec(target, _PYNCHY_CLI, "status", "--summary")
     deployment = _kubectl(target, "get", "deployment", _PYNCHY_DEPLOYMENT, "-o", "json")
-    observed, generation, ready, replicas, sha = _rollout_fields(deployment)
-    rollout = "ready" if observed == generation and ready == replicas else "progressing"
-    return f"{status}\nrollout: {rollout} ({ready}/{replicas}), release_sha: {sha}"
+    observed, generation, ready, updated, available, replicas, sha, image = _rollout_fields(
+        deployment
+    )
+    rollout = (
+        "ready"
+        if observed == generation and ready == updated == available == replicas
+        else "progressing"
+    )
+    return f"{status}\nrollout: {rollout} ({ready}/{replicas}), release_sha: {sha}, image: {image}"
 
 
-def _rollout_fields(deployment: str) -> tuple[object, object, int, int, object]:
+def _rollout_fields(
+    deployment: str,
+) -> tuple[object, object, int, int, int, int, object, str]:
     try:
         data = json.loads(deployment)
         metadata = data["metadata"]
+        template = data["spec"]["template"]
         status = data["status"]
+        image = next(
+            container["image"]
+            for container in template["spec"]["containers"]
+            if container.get("name") == _PYNCHY_CONTAINER
+        )
         return (
             status.get("observedGeneration"),
             metadata["generation"],
             status.get("readyReplicas", 0),
+            status.get("updatedReplicas", 0),
+            status.get("availableReplicas", 0),
             data["spec"].get("replicas", 0),
-            metadata.get("annotations", {}).get("pynchy.dev/release-sha", "unknown"),
+            template.get("metadata", {})
+            .get("annotations", {})
+            .get("pynchy.dev/release-sha", "unknown"),
+            image,
         )
-    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (KeyError, StopIteration, TypeError, json.JSONDecodeError) as exc:
         raise RemoteOpsError(f"invalid deployment rollout response: {exc}") from exc
 
 

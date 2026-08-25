@@ -177,3 +177,67 @@ def test_status_summary_uses_bounded_control_plane_view(
         "socket_path": None,
         "token_file": None,
     }
+
+
+def test_status_summary_reports_control_plane_failure(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    def fail(*args, **kwargs):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", fail)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "status", "--summary"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 1
+    assert not captured.out
+    assert captured.err == "Status summary failed: unreachable\n"
+
+
+def test_ops_command_runs_the_fixed_operation(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], tmp_path: Path
+) -> None:
+    settings = make_settings(project_root=tmp_path)
+    operations: list[str] = []
+
+    def run(config, operation: str) -> str:
+        assert config is settings.ops
+        operations.append(operation)
+        return "bounded output"
+
+    monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
+    monkeypatch.setattr("pynchy.__main__.run_remote_op", run)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "ops", "messages"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 0
+    assert captured.out == "bounded output\n"
+    assert not captured.err
+    assert operations == ["messages"]
+
+
+def test_ops_command_reports_bounded_failure(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], tmp_path: Path
+) -> None:
+    settings = make_settings(project_root=tmp_path)
+
+    def fail(config, operation: str) -> str:
+        raise OSError("SSH unavailable")
+
+    monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
+    monkeypatch.setattr("pynchy.__main__.run_remote_op", fail)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "ops", "logs"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 1
+    assert not captured.out
+    assert captured.err == "Ops logs failed: SSH unavailable\n"
