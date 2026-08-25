@@ -23,6 +23,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from pynchy.personalization_cli import publish_personalization, validate_personalization
+from pynchy.remote_ops import RemoteOpsError, run_remote_op
 
 _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
@@ -331,6 +332,33 @@ def _control_command(
     return 0
 
 
+def _status_summary(*, host: str | None, socket_path: Path | None, token_file: Path | None) -> int:
+    try:
+        payload = _fetch_control_payload(
+            host,
+            "/status?summary=1",
+            method="GET",
+            socket_path=socket_path,
+            token_file=token_file,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        _stderr_line(f"Status summary failed: {exc}")
+        return 1
+    _stdout_line(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def _ops_command(operation: str) -> int:
+    from pynchy.config.api import get_settings  # noqa: PLC0415 - private ops config is lazy.
+
+    try:
+        _stdout_line(run_remote_op(get_settings().ops, operation))
+    except (OSError, subprocess.TimeoutExpired, RemoteOpsError) as exc:
+        _stderr_line(f"Ops {operation} failed: {exc}")
+        return 1
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
@@ -362,7 +390,12 @@ def main() -> None:
             "Validate and publish the canonical personalization repository from this host checkout"
         ),
     )
-    sub.add_parser("status", help="Read service status through the authenticated control plane")
+    status = sub.add_parser(
+        "status", help="Read service status through the authenticated control plane"
+    )
+    status.add_argument(
+        "--summary", action="store_true", help="Return bounded service, deploy, and queue state"
+    )
     sub.add_parser("deploy", help="Request deployment through the authenticated control plane")
     validate_personalization_parser = sub.add_parser(
         "validate-personalization",
@@ -405,6 +438,8 @@ def main() -> None:
         action="store_true",
         help="Print the raw capability snapshot as JSON",
     )
+    ops = sub.add_parser("ops", help="Run one fixed read-only remote Kubernetes diagnostic")
+    ops.add_argument("operation", choices=("status", "logs", "messages", "events"))
 
     args = parser.parse_args()
 
@@ -415,7 +450,9 @@ def main() -> None:
             sys.exit(publish_personalization())
         case "status":
             sys.exit(
-                _control_command(
+                _status_summary(host=args.host, socket_path=args.socket, token_file=args.token_file)
+                if args.summary
+                else _control_command(
                     "/status",
                     method="GET",
                     host=args.host,
@@ -423,6 +460,8 @@ def main() -> None:
                     token_file=args.token_file,
                 )
             )
+        case "ops":
+            sys.exit(_ops_command(args.operation))
         case "deploy":
             sys.exit(
                 _control_command(

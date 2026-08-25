@@ -145,3 +145,99 @@ def test_control_plane_command_uses_the_selected_authenticated_target(
         "socket_path": socket_path,
         "token_file": token_file,
     }
+
+
+def test_status_summary_uses_bounded_control_plane_view(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    request: dict[str, object] = {}
+
+    def fetch(host, path, *, method, socket_path, token_file):
+        request.update(
+            host=host,
+            path=path,
+            method=method,
+            socket_path=socket_path,
+            token_file=token_file,
+        )
+        return {"service": {"status": "ok"}, "queue": {}}
+
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", fetch)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "--host", "remote:8485", "status", "--summary"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 0
+    assert capsys.readouterr().out == '{"queue":{},"service":{"status":"ok"}}\n'
+    assert request == {
+        "host": "remote:8485",
+        "path": "/status?summary=1",
+        "method": "GET",
+        "socket_path": None,
+        "token_file": None,
+    }
+
+
+def test_status_summary_reports_control_plane_failure(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    def fail(*args, **kwargs):
+        raise OSError("unreachable")
+
+    monkeypatch.setattr("pynchy.__main__._fetch_control_payload", fail)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "status", "--summary"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 1
+    assert not captured.out
+    assert captured.err == "Status summary failed: unreachable\n"
+
+
+def test_ops_command_runs_the_fixed_operation(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], tmp_path: Path
+) -> None:
+    settings = make_settings(project_root=tmp_path)
+    operations: list[str] = []
+
+    def run(config, operation: str) -> str:
+        assert config is settings.ops
+        operations.append(operation)
+        return "bounded output"
+
+    monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
+    monkeypatch.setattr("pynchy.__main__.run_remote_op", run)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "ops", "messages"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 0
+    assert captured.out == "bounded output\n"
+    assert not captured.err
+    assert operations == ["messages"]
+
+
+def test_ops_command_reports_bounded_failure(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], tmp_path: Path
+) -> None:
+    settings = make_settings(project_root=tmp_path)
+
+    def fail(config, operation: str) -> str:
+        raise OSError("SSH unavailable")
+
+    monkeypatch.setattr("pynchy.config.api.get_settings", lambda: settings)
+    monkeypatch.setattr("pynchy.__main__.run_remote_op", fail)
+    monkeypatch.setattr(sys, "argv", ["pynchy", "ops", "logs"])
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert exited.value.code == 1
+    assert not captured.out
+    assert captured.err == "Ops logs failed: SSH unavailable\n"

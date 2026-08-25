@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.api import ServerConfig
+from pynchy.config.api import OpsConfig, ServerConfig
 
 
 @pytest.mark.parametrize(
@@ -36,3 +36,17 @@ def test_server_config_accepts_the_smallest_safe_listener_values() -> None:
     )
 
     assert config.port == 1
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        ({"ssh_host": "host;rm"}, "safe SSH host alias"),
+        ({"namespace": "Pynchy"}, "Kubernetes DNS label"),
+    ],
+)
+def test_ops_config_rejects_command_shaped_target_values(
+    values: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        OpsConfig(**values)

@@ -79,6 +79,12 @@
 # HTTP server port for diagnostics, webhooks, and deployment
 # port = 8484
 
+# Private remote operator target. Do not commit a real host alias or namespace
+# to a public configuration repository.
+# [ops]
+# ssh_host = "pynchy-host"
+# namespace = "pynchy"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Gateway Configuration (LiteLLM)
 # ─────────────────────────────────────────────────────────────────────────────

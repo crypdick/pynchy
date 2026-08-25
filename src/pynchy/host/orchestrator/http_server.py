@@ -39,7 +39,7 @@ from pynchy.host.orchestrator.http_readiness import (
     readiness_key,
     readiness_middleware,
 )
-from pynchy.host.orchestrator.status import StatusDeps, collect_status
+from pynchy.host.orchestrator.status import StatusDeps, collect_status, collect_status_summary
 from pynchy.host.orchestrator.temporal.api import DeployRequest
 from pynchy.host.orchestrator.webhook_ingress import (
     WebhookIngressDeps,
@@ -255,7 +255,11 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 async def _handle_status(request: web.Request) -> web.Response:
     """Comprehensive operational status from all subsystems."""
     status_deps: StatusDeps = request.app[status_deps_key]
-    data = await collect_status(status_deps, _start_time)
+    data = (
+        await collect_status_summary(status_deps, _start_time)
+        if request.query.get("summary") == "1"
+        else await collect_status(status_deps, _start_time)
+    )
     return web.json_response(data)
 
 

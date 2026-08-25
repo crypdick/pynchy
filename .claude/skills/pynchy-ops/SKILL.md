@@ -48,6 +48,19 @@ Only use manual commands when the service is unhealthy and needs fixing. See [re
 
 ## Quick Status Check
 
+From an operator checkout with a private `[ops]` host and namespace profile, use
+the fixed bounded commands instead of constructing SSH, kubectl, or SQLite input:
+
+```bash
+uv run pynchy ops status
+uv run pynchy ops logs
+uv run pynchy ops messages
+uv run pynchy ops events
+```
+
+These commands do not offer generic remote execution. `ops status` uses the
+pod-local authenticated `pynchy status --summary` path and fixed rollout evidence.
+
 Kubernetes deployment:
 
 ```bash
