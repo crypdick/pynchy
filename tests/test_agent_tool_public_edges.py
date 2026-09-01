@@ -187,6 +187,26 @@ async def test_admin_deploy_reports_an_unavailable_git_revision(
     assert not write_request.call_args.args[1]["headSha"]
 
 
+async def test_admin_deploy_continues_when_source_mount_is_unavailable(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    write_request = Mock()
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_admin._ipc.write_request_file", write_request
+    )
+    monkeypatch.setattr(
+        "agent_runner.agent_tools._tools_admin.subprocess.run",
+        Mock(side_effect=FileNotFoundError("source mount is unavailable")),
+    )
+
+    with use_agent_tool_runtime(_admin_runtime(tmp_path)):
+        result = await call_tool("deploy_changes", {})
+
+    assert result[0].text.startswith("Deploy initiated (HEAD: ).")
+    assert not write_request.call_args.args[1]["headSha"]
+
+
 async def test_host_service_request_reads_an_already_available_response(
     monkeypatch,
     tmp_path: Path,

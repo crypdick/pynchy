@@ -127,7 +127,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
                 check=True,
             )
         ).stdout.strip()
-    except subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         head_sha = ""
 
     session_id = os.environ.get("PYNCHY_SESSION_ID", "")
