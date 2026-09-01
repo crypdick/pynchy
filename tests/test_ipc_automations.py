@@ -133,3 +133,32 @@ async def test_automation_handlers_enforce_dependency_and_approval_boundaries() 
         "daily",
         {"prompt": "run"},
     )
+
+
+@pytest.mark.asyncio
+async def test_automation_mutation_supplies_request_id_for_human_approval() -> None:
+    register_builtin_handlers()
+    deps = _AutomationDeps()
+    request = {
+        "type": "create_automation",
+        "request_id": "create",
+        "name": "daily",
+        "prompt": "run",
+    }
+
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
+            new_callable=AsyncMock,
+            return_value=ReceiptVerification.ABSENT,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_automations.cop_gate_module.cop_gate",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as cop_gate,
+    ):
+        await dispatch(request, "admin", True, deps)
+
+    assert cop_gate.await_args.kwargs["request_id"] == "create"
+    deps.mutate_automation.assert_not_awaited()
