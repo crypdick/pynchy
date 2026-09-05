@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from pynchy.agent_protocol.api import CheckpointControlState
 from pynchy.event_bus import MessageEvent
@@ -35,8 +36,8 @@ PauseStateFn = Callable[[str], Awaitable[bool]]
 
 
 def _generate_message_id(prefix: str) -> str:
-    """Generate the timestamp-shaped identifiers used for host-authored messages."""
-    return f"{prefix}-{int(datetime.now(UTC).timestamp() * 1000)}"
+    """Keep messages distinct even when notifications share a timestamp."""
+    return f"{prefix}-{uuid4().hex}"
 
 
 class MessageBroadcaster:

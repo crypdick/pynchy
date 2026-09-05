@@ -10,7 +10,9 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from conftest import NullChannel
+from freezegun import freeze_time
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
@@ -20,10 +22,12 @@ from pynchy.host.orchestrator.adapters import (
     make_host_message_broadcaster,
     resolve_admin_notification_jid,
 )
+from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
 )
+from pynchy.state.api import get_chat_history, init_test_database
 from pynchy.workspace.api import WorkspaceProfile
 
 CHANNEL_DOWN_MESSAGE = "channel down"
@@ -334,3 +338,23 @@ class TestSessionManager:
         groups = {"chat:active": _group(folder="active")}
 
         assert manager.get_active_sessions(groups) == {"chat:active": "session-1"}
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        ("broadcast_host_message", ["First", "Second"]),
+        ("broadcast_system_notice", ["[System Notice] First", "[System Notice] Second"]),
+    ],
+)
+async def test_host_notifications_keep_messages_sent_in_the_same_millisecond(method, expected):
+    await init_test_database()
+    app = PynchyApp()
+    with freeze_time("2026-09-05T12:00:00Z", real_asyncio=True):
+        send = getattr(app, method)
+        await send("group@g.us", "First")
+        await send("group@g.us", "Second")
+
+    history = await get_chat_history("group@g.us", limit=10)
+    assert [message.content for message in history] == expected
+    assert len({message.id for message in history}) == 2
