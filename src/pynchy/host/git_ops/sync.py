@@ -15,7 +15,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves managed publica
     Sequence,
 )
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pynchy.host.git_ops._bounded_git import run_git_bounded_stdout
 from pynchy.host.git_ops._pr_publication import PrPublication
@@ -50,10 +50,6 @@ from pynchy.logger import logger
 
 _MAX_MANAGED_PR_TITLE_BYTES = 256
 _MAX_MANAGED_PR_BODY_BYTES = 64 * 1024
-
-# ---------------------------------------------------------------------------
-# host_create_pr_from_worktree — push branch and open/update a PR
-# ---------------------------------------------------------------------------
 
 
 def host_create_pr_from_worktree(
@@ -99,15 +95,9 @@ def host_create_pr_from_managed_feature(
     publication = resolution.publication
     if publication is None:
         return {"success": False, "message": resolution.error or "Publication blocked."}
-    if expected_binding is not None and publication.binding() != dict(expected_binding):
-        return {
-            "success": False,
-            "message": (
-                "Publication blocked: managed feature changed after Cop inspection. "
-                "Inspect and publish it again."
-            ),
-        }
-    if expected_head_sha is not None and publication.head_sha != expected_head_sha:
+    if (expected_binding is not None and publication.binding() != dict(expected_binding)) or (
+        expected_head_sha is not None and publication.head_sha != expected_head_sha
+    ):
         return {
             "success": False,
             "message": (
@@ -192,7 +182,7 @@ def _create_pr_from_context(
         )
 
 
-def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed managed PR checks need exact diagnostics.
+def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912 - fail-closed managed PR checks need exact diagnostics.
     ctx: _WorktreeContext,
     repo_ctx: RepoContext,
     publication: PrPublication,
@@ -201,9 +191,8 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     """Open or update the PR for its safely published branch."""
     branch_name = publication.branch_name or ctx.branch_name
     token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
-    isolated_git_dir: Path | None = None
+    isolated_git_dir = gh_cwd / "repository.git"
     if ctx.head_sha is not None:
-        isolated_git_dir = gh_cwd / "repository.git"
         if not isolated_git_dir.is_dir():
             return {
                 "success": False,
@@ -215,7 +204,6 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 "message": "Publication blocked: managed feature refs changed after inspection.",
             }
 
-    if ctx.head_sha is not None:
         existing_pr_url, existing_pr_failure = _managed_existing_pr(
             ctx,
             repo_ctx,
@@ -224,23 +212,6 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
         )
         if existing_pr_failure is not None:
             return {"success": False, "message": existing_pr_failure}
-        if existing_pr_url is not None:
-            if not _managed_refs_match(
-                ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git
-            ):
-                return {
-                    "success": False,
-                    "message": (
-                        "Publication blocked: managed feature refs changed after inspection."
-                    ),
-                }
-            return {
-                "success": True,
-                "pr_url": existing_pr_url,
-                "message": (
-                    f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {existing_pr_url}"
-                ),
-            }
     else:
         # env includes GH_TOKEN which gh CLI respects
         pr_check = subprocess.run(  # noqa: S603 - branch name comes from validated worktree context and no shell is used.
@@ -261,105 +232,33 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
             env=ctx.env,
             check=False,
         )
-        if pr_check.returncode == 0 and pr_check.stdout.strip():
-            pr_url = pr_check.stdout.strip()
-            return {
-                "success": True,
-                "pr_url": pr_url,
-                "message": (f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {pr_url}"),
-            }
-
-    title_args: tuple[str, ...] = ("log", "-1", "--format=%s")
-    managed_git_args: tuple[str, ...] = ()
-    managed_env: dict[str, str] | None = None
-    log_cwd = ctx.worktree_path
-    log_range_start = ctx.main_branch
-    log_range_end = ctx.head_sha or ctx.branch_name
-    if ctx.head_sha is not None:
-        # Read commit text from fresh Git metadata, not agent-writable shared config.
-        managed_git_args = (
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
-            f"--git-dir={isolated_git_dir}",
-        )
-        managed_env = _managed_git_env(ctx)
-        if managed_env is None:
+        existing_pr_url = pr_check.stdout.strip() or None if pr_check.returncode == 0 else None
+    if existing_pr_url is not None:
+        if ctx.head_sha is not None and not _managed_refs_match(
+            ctx, isolated_git_dir, gh_cwd, git_runner=run_git
+        ):
             return {
                 "success": False,
-                "message": "Publication blocked: managed feature object store is unavailable.",
+                "message": "Publication blocked: managed feature refs changed after inspection.",
             }
-        log_cwd = gh_cwd
-        log_range_start = cast("str", ctx.base_sha)
-        log_range_end = ctx.head_sha
-        title_args = (*title_args, ctx.head_sha)
-    if ctx.head_sha is None:
-        worktree_title = run_git(
-            *managed_git_args,
-            *title_args,
-            cwd=log_cwd,
-            env=managed_env,
-        )
-        generated_title = (
-            worktree_title.stdout.strip()
-            if worktree_title.returncode == 0
-            else publication.fallback_title
-        )
-    else:
-        managed_title = run_git_bounded_stdout(
-            *managed_git_args,
-            *title_args,
-            max_stdout_bytes=_MAX_MANAGED_PR_TITLE_BYTES,
-            cwd=log_cwd,
-            env=managed_env,
-        )
-        generated_title = (
-            managed_title.stdout.strip()
-            if managed_title.returncode == 0 and not managed_title.exceeded_limit
-            else publication.fallback_title
-        )
-    final_title = publication.title or generated_title
+        return {
+            "success": True,
+            "pr_url": existing_pr_url,
+            "message": (
+                f"Pushed {ctx.ahead} commit(s) to {branch_name}. PR updated: {existing_pr_url}"
+            ),
+        }
 
-    if ctx.head_sha is not None:
-        # Revalidate immediately before each isolated Git read.
-        managed_env = _managed_git_env(ctx)
-        if managed_env is None:
-            return {
-                "success": False,
-                "message": "Publication blocked: managed feature object store is unavailable.",
-            }
-    if ctx.head_sha is None:
-        worktree_body = run_git(
-            *managed_git_args,
-            "log",
-            f"{log_range_start}..{log_range_end}",
-            "--format=- %s",
-            cwd=log_cwd,
-            env=managed_env,
-        )
-        commit_summaries = worktree_body.stdout.strip()
-    else:
-        managed_body = run_git_bounded_stdout(
-            *managed_git_args,
-            "log",
-            f"{log_range_start}..{log_range_end}",
-            "--format=- %s",
-            max_stdout_bytes=_MAX_MANAGED_PR_BODY_BYTES,
-            cwd=log_cwd,
-            env=managed_env,
-        )
-        commit_summaries = (
-            managed_body.stdout.strip()
-            if managed_body.returncode == 0 and not managed_body.exceeded_limit
-            else "Commit summaries omitted because they exceed host publication limits."
-        )
-    final_body = publication.body or (
-        f"Automated PR from {publication.source_label}.\n\n### Commits\n{commit_summaries}"
-    )
+    text = _publication_text(ctx, publication, gh_cwd)
+    if text is None:
+        return {
+            "success": False,
+            "message": "Publication blocked: managed feature object store is unavailable.",
+        }
+    final_title, final_body = text
 
     if ctx.head_sha is not None and not _managed_refs_match(
-        ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git
+        ctx, isolated_git_dir, gh_cwd, git_runner=run_git
     ):
         return {
             "success": False,
@@ -391,7 +290,7 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     )
 
     if pr_create.returncode != 0:
-        if ctx.head_sha is not None and isolated_git_dir is not None:
+        if ctx.head_sha is not None:
             verified_pr_url, verification_failure = _managed_existing_pr(
                 ctx,
                 repo_ctx,
@@ -422,20 +321,24 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
     pr_url = pr_create.stdout.strip()
     if ctx.head_sha is not None:
         if not _is_configured_pr_url(pr_url, repo_ctx):
-            return _created_managed_pr_failure(
-                pr_url,
-                "Publication blocked: could not identify newly created managed feature PR.",
-                repo_ctx,
-                gh_cwd,
-                ctx.env,
-                runner=subprocess.run,
+            verification_failure = (
+                "Publication blocked: could not identify newly created managed feature PR."
             )
-        verified_pr_url, verification_failure = _managed_existing_pr(
-            ctx,
-            repo_ctx,
-            gh_cwd,
-            runner=subprocess.run,
-        )
+        else:
+            verified_pr_url, verification_failure = _managed_existing_pr(
+                ctx, repo_ctx, gh_cwd, runner=subprocess.run
+            )
+            if verification_failure is None:
+                if verified_pr_url is None:
+                    verification_failure = (
+                        "Publication blocked: could not verify managed feature PR after creation."
+                    )
+                elif not _managed_refs_match(ctx, isolated_git_dir, gh_cwd, git_runner=run_git):
+                    verification_failure = (
+                        "Publication blocked: managed feature refs changed after inspection."
+                    )
+                else:
+                    pr_url = verified_pr_url
         if verification_failure is not None:
             return _created_managed_pr_failure(
                 pr_url,
@@ -445,25 +348,6 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
                 ctx.env,
                 runner=subprocess.run,
             )
-        if verified_pr_url is None:
-            return _created_managed_pr_failure(
-                pr_url,
-                "Publication blocked: could not verify managed feature PR after creation.",
-                repo_ctx,
-                gh_cwd,
-                ctx.env,
-                runner=subprocess.run,
-            )
-        if not _managed_refs_match(ctx, cast("Path", isolated_git_dir), gh_cwd, git_runner=run_git):
-            return _created_managed_pr_failure(
-                pr_url,
-                "Publication blocked: managed feature refs changed after inspection.",
-                repo_ctx,
-                gh_cwd,
-                ctx.env,
-                runner=subprocess.run,
-            )
-        pr_url = verified_pr_url
     logger.info(
         "Worktree pushed and PR created",
         group=ctx.log_group,
@@ -475,3 +359,62 @@ def _open_or_update_pr(  # noqa: C901, PLR0911, PLR0912, PLR0915 - fail-closed m
         "pr_url": pr_url,
         "message": f"Pushed {ctx.ahead} commit(s) to {branch_name} and opened PR: {pr_url}",
     }
+
+
+def _publication_text(
+    ctx: _WorktreeContext, publication: PrPublication, gh_cwd: Path
+) -> tuple[str, str] | None:
+    """Build PR text, or fail closed if the managed object store becomes unavailable."""
+    if ctx.head_sha is None:
+        title = run_git("log", "-1", "--format=%s", cwd=ctx.worktree_path, env=None)
+        generated_title = (
+            title.stdout.strip() if title.returncode == 0 else publication.fallback_title
+        )
+        commit_summaries = run_git(
+            "log",
+            f"{ctx.main_branch}..{ctx.branch_name}",
+            "--format=- %s",
+            cwd=ctx.worktree_path,
+            env=None,
+        ).stdout.strip()
+    else:
+        metadata = []
+        for log_args, limit, fallback in (
+            (
+                ("-1", "--format=%s", ctx.head_sha),
+                _MAX_MANAGED_PR_TITLE_BYTES,
+                publication.fallback_title,
+            ),
+            (
+                (f"{ctx.base_sha}..{ctx.head_sha}", "--format=- %s"),
+                _MAX_MANAGED_PR_BODY_BYTES,
+                "Commit summaries omitted because they exceed host publication limits.",
+            ),
+        ):
+            # Each read revalidates the agent-owned object store and avoids its Git config.
+            env = _managed_git_env(ctx)
+            if env is None:
+                return None
+            output = run_git_bounded_stdout(
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
+                f"--git-dir={gh_cwd / 'repository.git'}",
+                "log",
+                *log_args,
+                max_stdout_bytes=limit,
+                cwd=gh_cwd,
+                env=env,
+            )
+            metadata.append(
+                output.stdout.strip()
+                if output.returncode == 0 and not output.exceeded_limit
+                else fallback
+            )
+        generated_title, commit_summaries = metadata
+    return (
+        publication.title or generated_title,
+        publication.body
+        or (f"Automated PR from {publication.source_label}.\n\n### Commits\n{commit_summaries}"),
+    )
