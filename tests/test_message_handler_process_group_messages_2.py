@@ -56,14 +56,14 @@ from tests.message_handler_support import (
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
-_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
+_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
 _PR_NEW_MSGS = f"{_PR}.get_new_messages"
-_PR_MSGS_SINCE = f"{_PR}.get_messages_since"
+_PR_MSGS_SINCE = "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since"
 _PR_INTERCEPT = f"{_PR}.intercept_special_command"
 
 # ---------------------------------------------------------------------------

@@ -28,12 +28,13 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     resume_interrupted_message_turn,
 )
 from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
+from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.host.orchestrator.messaging.turn_recovery import (
     handle_reset_handoff,
     resume_interrupted_message_if_present,
 )
 from pynchy.identifiers import RuntimeId
-from pynchy.plugins.api import NewMessage
+from pynchy.plugins.api import NewMessage  # noqa: TC001 - beartype resolves annotations.
 from pynchy.state.api import (
     clear_chat_pause,
     clear_in_flight_turn,
@@ -48,7 +49,6 @@ from pynchy.turn_outcomes import (
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 ProcessPending = Callable[[str], Awaitable[TurnOutcome]]
-GetPendingMessages = Callable[[str, str], Awaitable[list[NewMessage]]]
 _MESSAGE_WORK_KINDS = {
     InFlightWorkKind.INTERACTIVE,
     InFlightWorkKind.RESET_HANDOFF,
@@ -77,73 +77,19 @@ class AgentBatch:
     reset_system_notices: list[str]
 
 
-@dataclass(frozen=True)
-class TurnPreparationCallbacks:
-    """Pipeline-owned operations used while preparing an agent batch."""
-
-    process_pending: ProcessPending
-    get_pending_messages: GetPendingMessages
-
-
-@dataclass(frozen=True)
-class _PausedResumeRequest:
-    deps: MessageHandlerDeps
-    chat_jid: str
-    group: WorkspaceProfile
-    turn: InFlightTurn
-    missed_messages: list[NewMessage]
-    messages: list[dict[str, Any]]
-    process_pending: ProcessPending
-
-
-async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcome:
-    """Attach pending guidance and resume the frozen occurrence exactly once."""
-    deps = request.deps
-    turn = request.turn
-    if turn.control_state is CheckpointControlState.PAUSE_REQUESTED:
-        # A reply can race the process shutdown. Its interactive workflow may
-        # retry, but the paused occurrence itself never retries automatically.
-        return TurnOutcome.RETRY
-    if turn.control_state is CheckpointControlState.RESET_REQUESTED:
-        await clear_in_flight_turn(turn.turn_id)
-        return TurnOutcome.RESET
-    is_scheduled = turn.work_kind is InFlightWorkKind.SCHEDULED
-    resumed = await resume_paused_in_flight_turn(
-        turn.turn_id,
-        request.messages,
-        message_cursor(request.missed_messages[-1]),
-        claim=not is_scheduled,
-    )
-    if resumed is None:
-        return TurnOutcome.COMPLETED
-
-    mark_dispatched(deps, request.chat_jid, message_cursor(request.missed_messages[-1]))
-    if is_scheduled:
-        await deps.start_interrupted_turn(resumed.turn_id, request.group.folder)
-        return TurnOutcome.COMPLETED
-
-    return await resume_interrupted_message_turn(
-        deps,
-        RuntimeTarget.from_binding(request.group.folder, request.chat_jid),
-        request.group,
-        resumed,
-        request.process_pending,
-    )
-
-
 async def prepare_agent_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
     group: WorkspaceProfile,
     data_dir: Path,
-    callbacks: TurnPreparationCallbacks,
+    process_pending: ProcessPending,
 ) -> AgentBatch | TurnOutcome:
     """Resume durable work or prepare pending messages for an interactive turn."""
     resumed = await resume_interrupted_message_if_present(
         deps,
         chat_jid,
         group,
-        callbacks.process_pending,
+        process_pending,
     )
     if resumed is not None:
         return resumed
@@ -153,7 +99,7 @@ async def prepare_agent_batch(
         return TurnOutcome.RETRY
 
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
-    missed_messages = await callbacks.get_pending_messages(chat_jid, since_timestamp)
+    missed_messages = await load_allowed_group_messages(deps, chat_jid, group, since_timestamp)
     if any(_is_human_derived(message) for message in missed_messages):
         await clear_chat_pause(chat_jid)
     checkpoint = await get_oldest_resumable_turn_for_group(group.folder, _MESSAGE_WORK_KINDS)
@@ -176,23 +122,56 @@ async def prepare_agent_batch(
         is_admin_group=group.is_admin,
         repo_is_dirty=deps.repo_is_dirty,
     )
-    if checkpoint is not None and checkpoint.control_state is not CheckpointControlState.ACTIVE:
-        return await _resume_paused_checkpoint(
-            _PausedResumeRequest(
-                deps=deps,
-                chat_jid=chat_jid,
-                group=group,
-                turn=checkpoint,
-                missed_messages=missed_messages,
-                messages=messages,
-                process_pending=callbacks.process_pending,
-            )
-        )
-    return AgentBatch(
+    batch = AgentBatch(
         since_timestamp=since_timestamp,
         missed_messages=missed_messages,
         messages=messages,
         reset_system_notices=reset_system_notices,
+    )
+    if checkpoint is None or checkpoint.control_state is CheckpointControlState.ACTIVE:
+        return batch
+    return await _resume_paused_checkpoint(
+        deps, chat_jid, group, checkpoint, batch, process_pending
+    )
+
+
+async def _resume_paused_checkpoint(  # noqa: PLR0913 - reuse batch and checkpoint without a second request type.
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    checkpoint: InFlightTurn,
+    batch: AgentBatch,
+    process_pending: ProcessPending,
+) -> TurnOutcome:
+    """Attach pending guidance and resume the frozen occurrence exactly once."""
+    if checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED:
+        # A reply can race the process shutdown. Its interactive workflow may
+        # retry, but the paused occurrence itself never retries automatically.
+        return TurnOutcome.RETRY
+    if checkpoint.control_state is CheckpointControlState.RESET_REQUESTED:
+        await clear_in_flight_turn(checkpoint.turn_id)
+        return TurnOutcome.RESET
+    is_scheduled = checkpoint.work_kind is InFlightWorkKind.SCHEDULED
+    resumed = await resume_paused_in_flight_turn(
+        checkpoint.turn_id,
+        batch.messages,
+        message_cursor(batch.missed_messages[-1]),
+        claim=not is_scheduled,
+    )
+    if resumed is None:
+        return TurnOutcome.COMPLETED
+
+    mark_dispatched(deps, chat_jid, message_cursor(batch.missed_messages[-1]))
+    if is_scheduled:
+        await deps.start_interrupted_turn(resumed.turn_id, group.folder)
+        return TurnOutcome.COMPLETED
+
+    return await resume_interrupted_message_turn(
+        deps,
+        RuntimeTarget.from_binding(group.folder, chat_jid),
+        group,
+        resumed,
+        process_pending,
     )
 
 

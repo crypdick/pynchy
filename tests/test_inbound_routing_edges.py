@@ -38,7 +38,11 @@ async def _run_with_messages(
 ) -> None:
     with (
         patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=(messages, "poll")),
-        patch(f"{_PR}.get_messages_since", new_callable=AsyncMock, return_value=pending),
+        patch(
+            "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+            new_callable=AsyncMock,
+            return_value=pending,
+        ),
     ):
         await _run_loop_once(deps)
 
@@ -52,7 +56,10 @@ async def test_filtered_messages_do_not_poll_or_start_a_turn() -> None:
     deps.filter_allowed_messages.return_value = []
     message = _make_message(chat_jid=jid)
 
-    with patch(f"{_PR}.get_messages_since", new_callable=AsyncMock) as get_pending:
+    with patch(
+        "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+        new_callable=AsyncMock,
+    ) as get_pending:
         await _run_with_messages(deps, [message], [message])
 
     get_pending.assert_not_awaited()
@@ -160,7 +167,10 @@ async def test_message_for_unknown_workspace_is_ignored() -> None:
     message = _make_message(chat_jid="unknown@g.us")
     deps = _make_deps(groups={})
 
-    with patch(f"{_PR}.get_messages_since", new_callable=AsyncMock) as get_pending:
+    with patch(
+        "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+        new_callable=AsyncMock,
+    ) as get_pending:
         await _run_with_messages(deps, [message], [message])
 
     get_pending.assert_not_awaited()
@@ -301,7 +311,11 @@ async def test_deferred_control_is_executed_without_starting_agent() -> None:
 
     with (
         patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=(messages, "poll")),
-        patch(f"{_PR}.get_messages_since", new_callable=AsyncMock, return_value=messages),
+        patch(
+            "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+            new_callable=AsyncMock,
+            return_value=messages,
+        ),
         patch(f"{_PR}.intercept_special_command", new_callable=AsyncMock, return_value=True),
         patch(f"{_PR}.advance_cursor", new_callable=AsyncMock),
     ):
@@ -324,7 +338,11 @@ async def test_consumed_control_with_remaining_agent_input_keeps_routing() -> No
 
     with (
         patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=([control], "poll")),
-        patch(f"{_PR}.get_messages_since", new_callable=AsyncMock, return_value=[control, regular]),
+        patch(
+            "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+            new_callable=AsyncMock,
+            return_value=[control, regular],
+        ),
         patch(f"{_PR}.reclassify_batch_host_controls", new_callable=AsyncMock, return_value=1),
     ):
         await _run_loop_once(deps)
@@ -343,7 +361,11 @@ async def test_active_turn_defers_lifecycle_control_for_drain() -> None:
 
     with (
         patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=([message], "poll")),
-        patch(f"{_PR}.get_messages_since", new_callable=AsyncMock, return_value=[message]),
+        patch(
+            "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
+            new_callable=AsyncMock,
+            return_value=[message],
+        ),
         patch(
             f"{_PR}.get_oldest_resumable_turn_for_group",
             new_callable=AsyncMock,

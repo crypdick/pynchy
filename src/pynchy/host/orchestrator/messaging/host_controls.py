@@ -22,7 +22,6 @@ from pynchy.state.api import (
     clear_in_flight_turn,
     consume_in_flight_control_message,
     finalize_in_flight_pause,
-    get_messages_since,
     mark_message_as_host,
     message_cursor,
     message_exists,
@@ -217,7 +216,6 @@ async def intercept_immediate_checkpoint_controls(
             chat_jid,
             group,
             deps.routing_cursor(chat_jid),
-            get_messages_since,
         )
         handled = False
         for message in pending:

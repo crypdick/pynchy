@@ -37,7 +37,6 @@ from pynchy.state.api import (
     get_active_task_for_group,
     get_deployment_state,
     get_in_flight_turns,
-    get_messages_since,
     get_router_state,
     prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
@@ -220,7 +219,6 @@ async def recover_pending_messages(
             chat_jid,
             group,
             since_timestamp,
-            get_messages_since,
         )
         if pending:
             logger.info(

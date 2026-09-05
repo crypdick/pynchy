@@ -14,7 +14,6 @@ import asyncio
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves inbound routing annotations at runtime.
 )
-from dataclasses import dataclass
 
 import pynchy.host.orchestrator.todos as todos
 from pynchy.agent_protocol.api import (
@@ -46,7 +45,6 @@ from pynchy.plugins.api import (  # beartype resolves inbound routing annotation
     OutboundEventType,
 )
 from pynchy.state.api import (
-    get_messages_since,
     get_new_messages,
     get_oldest_resumable_turn_for_group,
     message_cursor,
@@ -84,16 +82,12 @@ async def _route_incoming_group(
     await _route_pending_messages(deps, group_jid, group, all_pending)
 
 
-def _routing_cursor(deps: MessageHandlerDeps, group_jid: str) -> str:
-    return deps.routing_cursor(group_jid)
-
-
 async def _pending_messages_for_group(
     deps: MessageHandlerDeps,
     group_jid: str,
     group: WorkspaceProfile,
 ) -> list[NewMessage]:
-    cursor = _routing_cursor(deps, group_jid)
+    cursor = deps.routing_cursor(group_jid)
     logger.info(
         "route_trace",
         step="get_messages_since",
@@ -105,7 +99,6 @@ async def _pending_messages_for_group(
         group_jid,
         group,
         cursor,
-        get_messages_since,
     )
     if not all_pending:
         logger.info("route_trace", step="skip_no_pending", group=group.name)
@@ -183,8 +176,7 @@ async def _intercept_host_control_batch(
             deps,
             group_jid,
             group,
-            _routing_cursor(deps, group_jid),
-            get_messages_since,
+            deps.routing_cursor(group_jid),
         )
         if not any(
             message.message_type != "host" and any(host_control_kind(deps, message))
@@ -271,32 +263,18 @@ async def _route_pending_messages(
     agent_pending = [message for message in all_pending if message.message_type != "host"]
     if not agent_pending:
         return
-    formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in agent_pending)
-    last_content = agent_pending[-1].content.strip()
-    is_btw = last_content.lower().startswith("btw ")
-
     runtime_id = RuntimeId(group.folder)
     if deps.queue.is_active_task(runtime_id):
         logger.info("route_trace", step="active_task_forward", group=group.name)
-        await _handle_message_during_task(
-            _TaskDuringScheduleRequest(
-                deps=deps,
-                group_jid=group_jid,
-                group=group,
-                formatted=formatted,
-                last_content=last_content,
-                is_btw=is_btw,
-            )
-        )
+        await _handle_message_during_task(deps, group_jid, group, agent_pending)
         return
 
+    formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in agent_pending)
     if deps.queue.send_message(runtime_id, formatted):
         await _forward_to_active_container(
             deps,
             RuntimeTarget.from_binding(group.folder, group_jid),
             agent_pending,
-            last_content=last_content,
-            is_btw=is_btw,
         )
         return
 
@@ -311,13 +289,11 @@ async def _forward_to_active_container(
     deps: MessageHandlerDeps,
     target: RuntimeTarget,
     all_pending: list[NewMessage],
-    *,
-    last_content: str,
-    is_btw: bool,
 ) -> None:
     group_jid = target.chat_jid
+    last_content = all_pending[-1].content.strip()
     logger.info("route_trace", step="piped_to_container")
-    if is_btw:
+    if last_content.lower().startswith("btw "):
         # Non-interrupting — forward to active container via IPC but
         # don't advance the cursor.  Will be reprocessed after the
         # agent finishes its current turn.
@@ -349,37 +325,34 @@ async def _start_new_interactive_turn(
     await deps.start_interactive_turn(group_jid)
 
 
-@dataclass(frozen=True)
-class _TaskDuringScheduleRequest:
-    deps: MessageHandlerDeps
-    group_jid: str
-    group: WorkspaceProfile
-    formatted: str
-    last_content: str
-    is_btw: bool
-
-
-async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> None:
+async def _handle_message_during_task(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    messages: list[NewMessage],
+) -> None:
     """Handle an incoming message when a scheduled task is running.
 
     "btw" messages are forwarded non-interruptingly via IPC. Todo items use
     the configured canonical board. All other messages interrupt the running
     task.
     """
-    runtime_id = RuntimeId(request.group.folder)
-    target = RuntimeTarget.from_binding(request.group.folder, request.group_jid)
-    if request.is_btw:
+    last_content = messages[-1].content.strip()
+    runtime_id = RuntimeId(group.folder)
+    target = RuntimeTarget.from_binding(group.folder, group_jid)
+    if last_content.lower().startswith("btw "):
         # Preserve the fast IPC handoff for persistent containers, but also
         # defer a boundary interruption for host execution and long-running
         # queries. The cursor remains unchanged so drain replays the message.
-        request.deps.queue.send_message(runtime_id, request.formatted)
-        request.deps.queue.defer_interrupt_until_tool_result(runtime_id)
-        msg = f"\u00bb [Forwarded] {request.last_content[:500]}"
-        await request.deps.broadcast_to_channels(
-            request.group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
+        formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in messages)
+        deps.queue.send_message(runtime_id, formatted)
+        deps.queue.defer_interrupt_until_tool_result(runtime_id)
+        msg = f"\u00bb [Forwarded] {last_content[:500]}"
+        await deps.broadcast_to_channels(
+            group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        request.deps.queue.enqueue_message_check(target)
-    elif request.last_content.lower().startswith("todo "):
+        deps.queue.enqueue_message_check(target)
+    elif last_content.lower().startswith("todo "):
         # Non-interrupting — host writes the workspace's canonical todo board,
         # then notifies the active agent via IPC.
         #
@@ -389,39 +362,35 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # todos.json directly (bypassing list_todos / complete_todo), while a
         # Linear workspace writes only its canonical board. Both use a system
         # notice so the agent treats this as informational rather than a request.
-        item = request.last_content[5:]  # strip "todo " prefix
-        linear_enabled = request.deps.linear_workspace_enabled(request.group)
-        issue = (
-            await request.deps.create_linear_workspace_todo(request.group, item)
-            if linear_enabled
-            else None
-        )
+        item = last_content[5:]  # strip "todo " prefix
+        linear_enabled = deps.linear_workspace_enabled(group)
+        issue = await deps.create_linear_workspace_todo(group, item) if linear_enabled else None
         if not linear_enabled:
-            todos.add_todo(request.deps.message_data_dir, request.group.folder, item)
+            todos.add_todo(deps.message_data_dir, group.folder, item)
         elif issue is None:
-            await request.deps.broadcast_to_channels(
-                request.group_jid,
+            await deps.broadcast_to_channels(
+                group_jid,
                 OutboundEvent(
                     type=OutboundEventType.TEXT,
                     content="⚠️ Pynchy could not create the Linear todo. Please retry.",
                 ),
             )
         board_label = "Linear" if linear_enabled else "your local"
-        request.deps.queue.send_message(
+        deps.queue.send_message(
             runtime_id,
             "[System notice \u2014 no response needed] "
             f"User added a todo item to {board_label} list: {item}",
         )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.
-        request.deps.queue.enqueue_message_check(target)
+        deps.queue.enqueue_message_check(target)
     else:
         # Queue regular messages until the active agent has completed its
         # current tool. Killing immediately can lose a half-finished tool and
         # makes host-mode agents unresponsive because they have no IPC loop.
-        request.deps.queue.clear_pending_tasks(runtime_id)
-        request.deps.queue.defer_interrupt_until_tool_result(runtime_id)
-        request.deps.queue.enqueue_message_check(target)
+        deps.queue.clear_pending_tasks(runtime_id)
+        deps.queue.defer_interrupt_until_tool_result(runtime_id)
+        deps.queue.enqueue_message_check(target)
 
 
 async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:

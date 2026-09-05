@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from pynchy.logger import logger
-from pynchy.plugins.api import Channel, NewMessage
+from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves sender policy annotations.
+    Channel,
+    NewMessage,
+)
+from pynchy.state.api import get_messages_since
 from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves sender policy annotations at runtime.
     WorkspaceProfile,
 )
-
-type PendingMessageLoader = Callable[[str, str], Awaitable[list[NewMessage]]]
 
 
 class SenderPolicyDeps(Protocol):
@@ -67,12 +68,11 @@ async def load_allowed_group_messages(
     group_jid: str,
     group: WorkspaceProfile,
     cursor: str,
-    load_pending: PendingMessageLoader,
 ) -> list[NewMessage]:
     """Load one durable pending batch through sender policy."""
     return allowed_group_messages(
         deps,
         group_jid,
         group,
-        await load_pending(group_jid, cursor),
+        await get_messages_since(group_jid, cursor),
     )
