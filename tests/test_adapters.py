@@ -14,7 +14,6 @@ from conftest import NullChannel
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
-    GroupMetadataManager,
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
@@ -327,28 +326,6 @@ class TestMessageBroadcaster:
 class TestSessionManager:
     """Test session state management."""
 
-    async def test_clear_session_removes_from_dict(self):
-        sessions = {"test-group": "session-123"}
-        cleared: set[str] = set()
-        manager = SessionManager(sessions, cleared)
-
-        with patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
-            await manager.clear_session("test-group")
-
-        assert "test-group" not in sessions
-        assert "test-group" in cleared
-
-    async def test_clear_session_is_idempotent(self):
-        sessions: dict[str, str] = {}
-        cleared: set[str] = set()
-        manager = SessionManager(sessions, cleared)
-
-        with patch("pynchy.host.orchestrator.adapters.clear_session", new_callable=AsyncMock):
-            # Clearing a non-existent session should not raise
-            await manager.clear_session("nonexistent")
-
-        assert "nonexistent" in cleared
-
     def test_active_sessions_excludes_cleared_and_unregistered_groups(self):
         manager = SessionManager(
             {"active": "session-1", "cleared": "session-2", "unknown": "session-3"},
@@ -357,28 +334,3 @@ class TestSessionManager:
         groups = {"chat:active": _group(folder="active")}
 
         assert manager.get_active_sessions(groups) == {"chat:active": "session-1"}
-
-
-class TestGroupMetadataManager:
-    async def test_get_available_groups_delegates(self):
-        get_groups = AsyncMock(return_value=[{"jid": "chat:1"}])
-
-        manager = GroupMetadataManager([], get_groups)
-
-        assert await manager.get_available_groups() == [{"jid": "chat:1"}]
-
-    async def test_sync_group_metadata_calls_supported_channels(self):
-        class SyncingChannel(FakeChannel):
-            def __init__(self) -> None:
-                super().__init__()
-                self.force: bool | None = None
-
-            async def sync_group_metadata(self, *, force: bool) -> None:
-                self.force = force
-
-        syncing = SyncingChannel()
-        manager = GroupMetadataManager([syncing, FakeChannel()], list)
-
-        await manager.sync_group_metadata(force=True)
-
-        assert syncing.force is True

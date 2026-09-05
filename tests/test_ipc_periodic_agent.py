@@ -32,10 +32,12 @@ class MockDeps(NullIpcDeps):
         self._groups = groups or {}
         self.app = PynchyApp()
         self.app.workspaces = self._groups
+        self.registration_finished = asyncio.Event()
 
         async def register_workspace(profile: WorkspaceProfile) -> None:
             await asyncio.sleep(0)
             self._groups[profile.jid] = profile
+            self.registration_finished.set()
 
         self.app.register_workspace = register_workspace
         self.broadcast_messages: list[tuple[str, str]] = []
@@ -243,9 +245,6 @@ class TestCreatePeriodicAgent:
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
             patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml") as add_job,
-            patch(
-                "pynchy.host.orchestrator.adapters.GroupRegistrationManager.register_workspace"
-            ) as register_workspace,
         ):
             mp.setenv("TZ", "UTC")
             await dispatch(
@@ -265,7 +264,8 @@ class TestCreatePeriodicAgent:
             add_job.assert_called_once()
             assert add_job.call_args.args[1].workspace == "daily-briefing"
             assert add_job.call_args.args[1].memory is False
-            profile = register_workspace.call_args.args[0]
+            await asyncio.wait_for(deps.registration_finished.wait(), timeout=1)
+            profile = deps.workspaces()["agent@g.us"]
             assert profile.jid == "agent@g.us"
             assert profile.folder == "daily-briefing"
 
