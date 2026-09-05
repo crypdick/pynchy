@@ -5,10 +5,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import make_host_action_catalog
 
-from pynchy.config.api import ResolvedToolAccess, ResolvedWorkspaceConfig
 from pynchy.host.orchestrator.agent_runner import PreContainerSetupRequest, pre_container_setup
 from pynchy.state.api import SessionSecurityTaint
-from pynchy.workspace.api import CapabilityRule, WorkspaceProfile
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ResolvedToolAccess,
+    ResolvedWorkspaceConfig,
+    WorkspaceProfile,
+)
 from tests.container_runner_support import _AgentRunnerDeps
 
 _GROUP = WorkspaceProfile(

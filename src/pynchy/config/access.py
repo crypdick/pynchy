@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
+from pynchy.config.merge import merge_workspace_profiles
 from pynchy.config.models import ChannelOverrideConfig, ConnectionConfig, OwnerConfig
 from pynchy.config.refs import channel_platform_from_name
 from pynchy.config.settings import get_settings
@@ -16,6 +16,7 @@ from pynchy.plugins.api import (
     NewMessage,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations at runtime.
     WorkspaceProfile,  # noqa: TC001 - beartype resolves access annotations at runtime.
 )
 

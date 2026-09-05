@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import assert_type
 
 import pytest
 
@@ -23,6 +24,7 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_tool_access,
     register_runtime_workspace_policy,
 )
+from pynchy.workspace.api import ResolvedToolAccess, ResolvedWorkspaceConfig
 
 _GITHUB_SECRET = "github-secret"  # noqa: S105  # pragma: allowlist secret
 _LINEAR_SECRET = "linear-secret"  # noqa: S105  # pragma: allowlist secret
@@ -318,8 +320,8 @@ def test_route_restriction_precedes_companion_and_environment_resolution(
     monkeypatch.setenv("PROTON_PASSWORD", _PROTON_SECRET)
 
     try:
-        effective = load_resolved_config("dev-child")
-        access = load_resolved_tool_access("dev-child")
+        effective = assert_type(load_resolved_config("dev-child"), ResolvedWorkspaceConfig | None)
+        access = assert_type(load_resolved_tool_access("dev-child"), ResolvedToolAccess | None)
     finally:
         clear_runtime_workspace_policies()
 

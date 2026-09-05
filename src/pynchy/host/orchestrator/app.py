@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
 from threading import Lock
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
 
@@ -393,6 +393,9 @@ from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this resul
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pynchy.workspace.api import ResolvedWorkspaceConfig
 
 
 async def _fresh_container_name(group_folder: str) -> str:
@@ -1075,7 +1078,7 @@ class PynchyApp(ThreadRouting):
             updated.append(
                 replace(
                     profile,
-                    security=workspace_security(config, resolved),
+                    security=workspace_security(resolved),
                 )
             )
         return tuple(updated)
@@ -1222,15 +1225,15 @@ class PynchyApp(ThreadRouting):
         def missing_workspace_profile(
             folder: str, control_parent: WorkspaceProfile
         ) -> WorkspaceProfile | None:
-            config = cast("WorkspaceConfig", settings.workspace_config(folder))
-            resolved = cast("Any", settings.resolved_workspace_config(folder))
+            # Placement calls this only for a declared semantic child workspace.
+            resolved = cast("ResolvedWorkspaceConfig", settings.resolved_workspace_config(folder))
             return WorkspaceProfile(
                 jid=control_parent.jid,
                 name=folder.replace("-", " ").title(),
                 folder=folder,
                 trigger=control_parent.trigger,
                 container_config=control_parent.container_config,
-                security=workspace_security(config, resolved),
+                security=workspace_security(resolved),
                 is_admin=resolved.is_admin,
                 added_at=datetime.now(UTC).isoformat(),
             )

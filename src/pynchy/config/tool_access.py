@@ -6,11 +6,8 @@ import os
 from collections.abc import (  # noqa: TC003 - beartype resolves tool-access annotations at runtime.
     Mapping,
 )
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
-from pynchy.config.merge import (  # noqa: TC001 - beartype resolves tool-access annotations at runtime.
-    ResolvedWorkspaceConfig,
-)
 from pynchy.config.models import (
     BuiltinTool,
     CalDAVTool,
@@ -18,25 +15,7 @@ from pynchy.config.models import (
     ToolConfig,
     WorkspaceTool,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ResolvedToolAccess:
-    """One workspace's available tool grants without credential values in metadata."""
-
-    tools: tuple[str, ...]
-    companion_skills: tuple[str, ...]
-    workspace_env: dict[str, str]
-    missing_requirements: dict[str, tuple[str, ...]]
-    agent_tool_grants: tuple[str, ...] = ()
-
-    @property
-    def notices(self) -> tuple[str, ...]:
-        return tuple(
-            f"Tool {name!r} is unavailable; missing required environment: "
-            + ", ".join(requirements)
-            for name, requirements in self.missing_requirements.items()
-        )
+from pynchy.workspace.api import ResolvedToolAccess, ResolvedWorkspaceConfig
 
 
 def resolve_tool_access(

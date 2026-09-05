@@ -10,14 +10,18 @@ from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 import pynchy.host.container_manager.ipc.registry as registry
 from pynchy.config.api import McpTool, McpToolConfig
-from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.orchestrator.api import prepare_action_intent
 from pynchy.plugins.api import HostActionCatalog
 from pynchy.state import init_test_database
-from pynchy.workspace.api import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ResolvedWorkspaceConfig,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 from tests.action_intents_support import _transactional_action
 
 _GROUP = "service-edge"

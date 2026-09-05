@@ -295,13 +295,18 @@ disable_error_code = [
     "call-arg",
 ]
 
-# Tests should never block on type strictness (fixtures, mocks, parameterization).
+# Dynamic test fixtures are relaxed by default; contract checks opt in below.
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 check_untyped_defs = false
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["tests.test_tool_access"]
+check_untyped_defs = true
+ignore_errors = false
 
 # Optional plugin dependencies (see [project.optional-dependencies]): not installed
 # in the base dev environment, and none ship type stubs or a `types-*` package.

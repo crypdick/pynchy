@@ -2,42 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
-from pynchy.workspace.api import CapabilityRule, most_restrictive_capability_rule
-
-
-def _deduplicate(items: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for item in items:
-        if item not in seen:
-            seen.add(item)
-            result.append(item)
-    return result
-
-
-@dataclass(frozen=True)
-class ResolvedWorkspaceConfig:
-    """Fully resolved config after expanding and merging selected profiles."""
-
-    skills: list[str]
-    tools: list[str]
-    repo: list[str]
-    model: str | None
-    execution_mode: str
-    cwd: str | None
-    is_admin: bool
-    contains_secrets: bool
-    model_reasoning_effort: str | None = None
-    cop_active: bool = True
-    soul: str | None = None
-    pipeline: str | None = None
-    denied_skills: list[str] = field(default_factory=list)
-    capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ResolvedWorkspaceConfig,
+    most_restrictive_capability_rule,
+)
 
 
 def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspaceConfig:
@@ -77,10 +49,10 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
             ) or rule
 
     return ResolvedWorkspaceConfig(
-        skills=_deduplicate(skills),
-        denied_skills=_deduplicate(denied_skills),
-        tools=_deduplicate(tools),
-        repo=_deduplicate(repo),
+        skills=list(dict.fromkeys(skills)),
+        denied_skills=list(dict.fromkeys(denied_skills)),
+        tools=list(dict.fromkeys(tools)),
+        repo=list(dict.fromkeys(repo)),
         model=model,
         model_reasoning_effort=None,
         execution_mode=execution_mode,

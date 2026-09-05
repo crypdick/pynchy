@@ -10,6 +10,7 @@ from conftest import make_container_runtime_operations
 
 from pynchy.agent_protocol.api import ContainerInput
 from pynchy.config.api import validate_settings_mapping
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     create_gate,
@@ -20,7 +21,6 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState, QueuePolicy
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.workspace.api import (
     RuntimeTarget,
     ServiceTrustConfig,

@@ -13,9 +13,10 @@ from conftest import (
 )
 
 from pynchy.config.api import ProfileConfig, WorkspaceConfig
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder, load_resolved_config
+from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.plugins.api import NewMessage
 from pynchy.workspace.api import WorkspaceProfile
 

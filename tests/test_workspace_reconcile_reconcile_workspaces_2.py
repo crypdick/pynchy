@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock
 import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
-    dynamic_thread_folder,
     reconcile_workspaces,
 )
 from pynchy.identifiers import GroupFolder, SessionId

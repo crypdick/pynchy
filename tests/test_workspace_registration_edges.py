@@ -9,15 +9,13 @@ import pytest
 from conftest import make_settings
 
 import pynchy.host.orchestrator.workspace_registration as registration
-from pynchy.config.merge import ResolvedWorkspaceConfig
-from pynchy.config.models import WorkspaceConfig
 from pynchy.host.orchestrator.workspace_registration import (
     available_workspace_groups,
     ensure_workspace_registered,
     rebind_workspace_runtime,
     sync_workspace_profile,
 )
-from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import ResolvedWorkspaceConfig, WorkspaceProfile
 
 
 @dataclass(frozen=True)
@@ -297,7 +295,6 @@ async def test_sync_workspace_profile_ignores_missing_registration() -> None:
             {},
             "project",
             "Project",
-            WorkspaceConfig(),
             _resolved(),
         )
         await sync_workspace_profile(
@@ -305,7 +302,6 @@ async def test_sync_workspace_profile_ignores_missing_registration() -> None:
             {},
             "project",
             "Project",
-            WorkspaceConfig(),
             _resolved(),
         )
 

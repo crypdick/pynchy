@@ -6,7 +6,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from pynchy.config.api import ProfileConfig, ResolvedWorkspaceConfig, merge_workspace_profiles
+from pynchy.config.api import ProfileConfig, merge_workspace_profiles
+from pynchy.workspace.api import ResolvedWorkspaceConfig
 
 
 def _profile(**kwargs) -> ProfileConfig:

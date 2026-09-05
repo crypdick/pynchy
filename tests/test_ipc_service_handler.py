@@ -12,7 +12,7 @@ from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 import pynchy.host.container_manager.ipc.registry as registry
 from pynchy import state
-from pynchy.config.api import LinearTool, ProfileConfig, ResolvedWorkspaceConfig, WorkspaceConfig
+from pynchy.config.api import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
     ApprovalReplayPolicy,
@@ -29,6 +29,7 @@ from pynchy.plugins.api import ApprovalMode, HostActionCatalog
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.workspace.api import (
     CapabilityRule,
+    ResolvedWorkspaceConfig,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,

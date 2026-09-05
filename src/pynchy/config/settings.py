@@ -25,7 +25,7 @@ from pynchy.config import settings_validation
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
 )
-from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
+from pynchy.config.merge import merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
     BuiltinTool,
@@ -77,7 +77,11 @@ from pynchy.config.settings_sources import (
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.config.workspace_layout import semantic_workspace_configs
 from pynchy.config.workspace_names import static_workspace_name
-from pynchy.workspace.api import CapabilityRule, most_restrictive_capability_rule
+from pynchy.workspace.api import (
+    CapabilityRule,
+    ResolvedWorkspaceConfig,
+    most_restrictive_capability_rule,
+)
 
 
 def _assert_admin_clean_room(

@@ -13,13 +13,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.async_tasks import create_background_task
-from pynchy.conversation.api import notify_conversation_delivery_completed
+from pynchy.conversation.api import dynamic_thread_folder, notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.identifiers import (
     GroupFolder,
     RuntimeId,

@@ -8,7 +8,7 @@ import pytest
 from conftest import configure_linear_accounts_for, make_settings
 
 from pynchy.config.api import LinearTool, ProfileConfig, WorkspaceConfig
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
     LinearIssueControl,

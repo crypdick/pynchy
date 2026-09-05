@@ -20,7 +20,6 @@ import tomlkit
 
 from pynchy.atomic_json import write_text_atomic
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
-from pynchy.conversation.api import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.host.orchestrator import automation_config
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.pipeline_context import (
@@ -49,13 +48,13 @@ from pynchy.plugins.api import (
 from pynchy.state.api import get_all_tasks, update_task
 from pynchy.workspace.api import (  # beartype resolves workspace config annotations at runtime.
     CapabilityRule,
+    ResolvedToolAccess,
+    ResolvedWorkspaceConfig,
     WorkspaceProfile,
     capability_pattern_matches,
     most_restrictive_capability_rule,
 )
 
-type ResolvedToolAccess = Any
-type ResolvedWorkspaceConfig = Any
 type Settings = Any
 type WorkspaceConfig = Any
 type JobConfig = Any
@@ -70,8 +69,8 @@ class WorkspaceConfigRuntime:
     get_settings: Callable[[], Any]
     read_prompts: Callable[[list[str]], str | None]
     parse_workspace_config: Callable[[object], Any]
-    apply_tool_access: Callable[..., tuple[Any, Any]]
-    resolve_tool_access: Callable[..., Any]
+    apply_tool_access: Callable[..., tuple[ResolvedWorkspaceConfig, ResolvedToolAccess]]
+    resolve_tool_access: Callable[..., ResolvedToolAccess]
     mutate_config_toml: Callable[..., object]
     validate_settings_mapping: Callable[[dict[str, Any]], Any]
     reset_settings: Callable[[], None]
@@ -101,20 +100,6 @@ def get_settings() -> Settings:
 
 def read_prompts(names: list[str]) -> str | None:
     return _runtime.read_prompts(names)
-
-
-def apply_tool_access(
-    *args: object, **kwargs: object
-) -> tuple[ResolvedWorkspaceConfig, ResolvedToolAccess]:
-    return _runtime.apply_tool_access(*args, **kwargs)
-
-
-def resolve_tool_access(*args: object, **kwargs: object) -> ResolvedToolAccess:
-    return cast("ResolvedToolAccess", _runtime.resolve_tool_access(*args, **kwargs))
-
-
-def mutate_config_toml(*args: object, **kwargs: object) -> None:
-    _runtime.mutate_config_toml(*args, **kwargs)
 
 
 def reset_settings() -> None:
@@ -175,18 +160,9 @@ def unregister_runtime_workspace_policy(folder: str) -> None:
     _runtime_policies.pop(folder, None)
 
 
-def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
-    """Return the isolated runtime folder for a dynamic thread workspace."""
-    return _dynamic_thread_folder(parent_folder, thread_jid)
-
-
-def _parent_folder_for_dynamic_thread(folder: str) -> str | None:
-    return parent_workspace_name(folder)
-
-
 def static_workspace_folder(folder: str) -> str:
     """Return the configured parent workspace folder for dynamic thread folders."""
-    return _parent_folder_for_dynamic_thread(folder) or folder
+    return parent_workspace_name(folder) or folder
 
 
 def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> None:
@@ -241,7 +217,7 @@ def load_workspace_config(
     parent_folder = (
         runtime_policy.parent_workspace
         if runtime_policy is not None
-        else _parent_folder_for_dynamic_thread(group_folder)
+        else parent_workspace_name(group_folder)
     )
     policy_folder = parent_folder or group_folder
     spec = specs.get(policy_folder)
@@ -281,7 +257,7 @@ def _load_declared_resolved_config(
         parent_folder = (
             runtime_policy.parent_workspace
             if runtime_policy is not None
-            else _parent_folder_for_dynamic_thread(group_folder)
+            else parent_workspace_name(group_folder)
         )
         base = s.resolved_workspace_config(parent_folder) if parent_folder is not None else None
     if base is None or runtime_policy is None:
@@ -318,7 +294,7 @@ def load_resolved_tool_access(
     resolved = _load_declared_resolved_config(group_folder, settings=effective_settings)
     if resolved is None:
         return None
-    return resolve_tool_access(effective_settings.tools, resolved)
+    return _runtime.resolve_tool_access(effective_settings.tools, resolved)
 
 
 def load_resolved_config(
@@ -331,7 +307,7 @@ def load_resolved_config(
     resolved = _load_declared_resolved_config(group_folder, settings=effective_settings)
     if resolved is None:
         return None
-    return apply_tool_access(effective_settings.tools, resolved)[0]
+    return _runtime.apply_tool_access(effective_settings.tools, resolved)[0]
 
 
 def prompt_ids_for_context(
@@ -430,7 +406,7 @@ async def reconcile_workspaces(  # noqa: PLR0913 - lifecycle cleanup joins exist
         if jid is None:
             continue
 
-        await sync_workspace_profile(jid, workspaces, folder, display_name, config, resolved)
+        await sync_workspace_profile(jid, workspaces, folder, display_name, resolved)
 
         reconciled += 1
 
@@ -497,15 +473,15 @@ def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bo
         skills = [str(value) for value in profile.get("skills", [])]
         denied_skills = [str(value) for value in profile.get("denied_skills", [])]
         if grant:
-            skills = _deduplicate_preserving_order([*skills, skill_name])
+            skills = list(dict.fromkeys([*skills, skill_name]))
             denied_skills = [name for name in denied_skills if name != skill_name]
         else:
             skills = [name for name in skills if name != skill_name]
-            denied_skills = _deduplicate_preserving_order([*denied_skills, skill_name])
+            denied_skills = list(dict.fromkeys([*denied_skills, skill_name]))
         profile["skills"] = skills
         profile["denied_skills"] = denied_skills
 
-    mutate_config_toml(toml_path, _mutate)
+    _runtime.mutate_config_toml(toml_path, _mutate)
     reset_settings()
 
 
@@ -563,10 +539,6 @@ def update_workspace_capability_policy(
     if publication not in {"idle", "pushed"}:
         restore()
         raise ValueError("Personalization publication failed")
-
-
-def _deduplicate_preserving_order(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(values))
 
 
 def add_job_to_toml(job_name: str, config: JobConfig, *, project_root: Path | None = None) -> None:

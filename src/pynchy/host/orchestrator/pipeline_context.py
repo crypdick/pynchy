@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol, cast, runtime_checkable
 
-type ResolvedWorkspaceConfig = Any
+from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations at runtime.
+)
+
 type Settings = Any
 
 

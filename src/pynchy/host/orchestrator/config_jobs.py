@@ -18,11 +18,11 @@ from pynchy.scheduling.api import (  # beartype resolves job reconciliation anno
 )
 from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations at runtime.
     WorkspaceProfile,  # noqa: TC001 - beartype resolves job reconciliation annotations at runtime.
 )
 
 type JobConfig = Any
-type ResolvedWorkspaceConfig = Any
 type Settings = Any
 
 
