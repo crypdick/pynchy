@@ -242,7 +242,7 @@ async def test_linear_todo_failure_notifies_user_and_preserves_pending_input() -
     deps.create_linear_workspace_todo.assert_awaited_once_with(group, "file a bug")
     warning = deps.broadcast_to_channels.await_args.args[1]
     assert "could not create the Linear todo" in warning.content
-    assert "Linear list" in deps.queue.send_message.call_args.args[1]
+    deps.queue.send_message.assert_not_called()
     deps.queue.enqueue_message_check.assert_called_once()
 
 

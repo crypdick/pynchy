@@ -367,7 +367,7 @@ async def _handle_message_during_task(
         issue = await deps.create_linear_workspace_todo(group, item) if linear_enabled else None
         if not linear_enabled:
             todos.add_todo(deps.message_data_dir, group.folder, item)
-        elif issue is None:
+        if linear_enabled and issue is None:
             await deps.broadcast_to_channels(
                 group_jid,
                 OutboundEvent(
@@ -375,12 +375,14 @@ async def _handle_message_during_task(
                     content="⚠️ Pynchy could not create the Linear todo. Please retry.",
                 ),
             )
-        board_label = "Linear" if linear_enabled else "your local"
-        deps.queue.send_message(
-            runtime_id,
-            "[System notice \u2014 no response needed] "
-            f"User added a todo item to {board_label} list: {item}",
-        )
+        else:
+            # Only confirmed writes become agent context; failed input stays queued.
+            board_label = "Linear" if linear_enabled else "your local"
+            deps.queue.send_message(
+                runtime_id,
+                "[System notice \u2014 no response needed] "
+                f"User added a todo item to {board_label} list: {item}",
+            )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.
         deps.queue.enqueue_message_check(target)
