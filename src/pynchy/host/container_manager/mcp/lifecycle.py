@@ -186,7 +186,9 @@ def _start_script_process(
         [shell, "-c", _PROCESS_SUPERVISOR_SCRIPT, marker, *cmd],
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
+        # No stderr consumer exists for these long-lived processes. A pipe would
+        # block the backend as soon as its output fills the kernel buffer.
+        stderr=subprocess.DEVNULL,
         start_new_session=True,  # own process group for clean shutdown
     )
 

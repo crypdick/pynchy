@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import signal
 import subprocess  # noqa: S404 - tests model configured process ownership.
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -57,6 +59,41 @@ def _script_instance(*, process: subprocess.Popen[bytes] | None = None) -> McpIn
         port=9000,
         process=process,
     )
+
+
+async def test_chatty_mcp_process_reaches_readiness(tmp_path: Path, monkeypatch):
+    ready = tmp_path / "ready"
+    instance = _script_instance()
+    instance.server_config = McpServerConfig(
+        type="script",
+        command=sys.executable,
+        args=[
+            "-c",
+            (
+                "import os, pathlib, sys, time; "
+                "os.write(2, b'x' * (2 * 1024 * 1024)); "
+                "pathlib.Path(sys.argv[1]).write_text('ready'); time.sleep(60)"
+            ),
+            str(ready),
+        ],
+        port=8000,
+    )
+
+    async def wait_until_ready(_request):
+        async with asyncio.timeout(3):
+            while not ready.exists():  # noqa: ASYNC110 - external process signals readiness through a file.
+                await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.wait_healthy", wait_until_ready
+    )
+    try:
+        await ensure_script_running(instance)
+        assert ready.read_text() == "ready"
+        assert instance.process is not None
+        assert instance.process.poll() is None
+    finally:
+        terminate_process(instance)
 
 
 async def test_stdio_health_failure_terminates_the_owned_process():
