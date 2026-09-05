@@ -10,8 +10,6 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, replace
-from typing import Any
 
 from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.conversation.api import ConversationClaimId, new_turn_id
@@ -39,10 +37,9 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     begin_message_turn,
 )
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
-from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.host.orchestrator.messaging.turn_control import (
     AgentBatch,
-    TurnPreparationCallbacks,
+    InteractiveAgentRun,
     prepare_agent_batch,
     run_interactive_agent,
 )
@@ -53,7 +50,6 @@ from pynchy.plugins.api import (
 )
 from pynchy.state.api import (
     clear_in_flight_turn,
-    get_messages_since,
     message_cursor,
     release_in_flight_turn_claim,
 )
@@ -70,21 +66,6 @@ __all__ = [
     "intercept_special_command",
     "process_group_messages",
 ]
-
-
-@dataclass(frozen=True)
-class _FinalizeCursorRetryRequest:
-    deps: MessageHandlerDeps
-    chat_jid: str
-    group: WorkspaceProfile
-    missed_messages: list[NewMessage]
-    agent_result: str
-    had_error: bool
-    missing_terminal_result: bool
-    output_sent_to_user: bool
-    learning_summary: object
-    turn_id: str
-    conversation_claim_id: str | None
 
 
 def _turn_id_for_batch(messages: list[NewMessage]) -> str:
@@ -187,72 +168,74 @@ def _register_idle_zzz_callback(
 
 
 async def _finalize_cursor_and_retry(
-    request: _FinalizeCursorRetryRequest,
+    deps: MessageHandlerDeps,
+    group: WorkspaceProfile,
+    batch: AgentBatch,
+    turn: InFlightTurn,
+    agent_run: InteractiveAgentRun,
 ) -> TurnOutcome:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
-    Returns True once the batch is considered handled, False if GroupQueue
-    should retry it.
+    A clean failure retains input for retry; visible partial output commits it
+    to avoid duplicate replies.
     """
-    failed = request.agent_result == "error" or request.had_error
-    clean_failure = failed and not request.output_sent_to_user
-    async with turn_boundary_lock(request.chat_jid):
+    failed = agent_run.agent_result == "error" or agent_run.had_error
+    clean_failure = failed and not agent_run.output_sent_to_user
+    async with turn_boundary_lock(turn.chat_jid):
         # Include follow-ups piped while this container was running. Active
         # host controls use this same in-memory boundary without persisting a
         # cursor ahead of an unfinished routed delivery claim.
-        dispatched = request.deps.pop_dispatched(
-            request.chat_jid, message_cursor(request.missed_messages[-1])
-        )
-        final_cursor = monotonic_cursor(message_cursor(request.missed_messages[-1]), dispatched)
+        dispatched = deps.pop_dispatched(turn.chat_jid, message_cursor(batch.missed_messages[-1]))
+        final_cursor = monotonic_cursor(message_cursor(batch.missed_messages[-1]), dispatched)
 
-        if request.missing_terminal_result:
+        if agent_run.missing_terminal_result:
             # Keep the routed claim and dispatch marker with the durable
             # checkpoint so recovery resumes this exact occurrence.
-            await release_in_flight_turn_claim(request.turn_id)
+            await release_in_flight_turn_claim(turn.turn_id)
         elif clean_failure:
-            await clear_in_flight_turn(request.turn_id)
+            await clear_in_flight_turn(turn.turn_id)
             # The durable inbound message carries this exact claim token. Retain
             # it so the next in-process attempt can finalize the same FIFO head;
             # startup recovery returns claims without a surviving turn to pending.
             # A control classifier that was waiting for this lock now observes
             # no active turn and cannot add another active-boundary marker.
-            request.deps.pop_dispatched(request.chat_jid, final_cursor)
+            deps.pop_dispatched(turn.chat_jid, final_cursor)
         else:
             await complete_turn_with_cursor(
-                request.deps,
-                request.chat_jid,
+                deps,
+                turn.chat_jid,
                 final_cursor,
-                request.turn_id,
-                conversation_claim_id=request.conversation_claim_id,
+                turn.turn_id,
+                conversation_claim_id=turn.conversation_claim_id,
             )
-            late_dispatched = request.deps.pop_dispatched(
-                request.chat_jid,
+            late_dispatched = deps.pop_dispatched(
+                turn.chat_jid,
                 final_cursor,
             )
             final_cursor = monotonic_cursor(final_cursor, late_dispatched)
-            previous = request.deps.last_agent_timestamp.get(request.chat_jid, "")
+            previous = deps.last_agent_timestamp.get(turn.chat_jid, "")
             if monotonic_cursor(previous, final_cursor) != previous:
-                await advance_cursor(request.deps, request.chat_jid, final_cursor)
+                await advance_cursor(deps, turn.chat_jid, final_cursor)
 
-    if request.missing_terminal_result:
+    if agent_run.missing_terminal_result:
         logger.warning(
             "Agent turn incomplete, cursor unchanged for retry",
-            group=request.group.name,
+            group=group.name,
         )
         return TurnOutcome.RETRY
 
     if clean_failure:
-        await request.deps.broadcast_host_message(
-            request.chat_jid, "⚠️ Agent error occurred. Will retry on next message."
+        await deps.broadcast_host_message(
+            turn.chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
-        logger.warning("Agent error, cursor unchanged for retry", group=request.group.name)
+        logger.warning("Agent error, cursor unchanged for retry", group=group.name)
         return TurnOutcome.RETRY
 
     await _execute_deferred_host_controls(
-        request.deps,
-        request.chat_jid,
-        request.group,
-        request.missed_messages,
+        deps,
+        turn.chat_jid,
+        group,
+        batch.missed_messages,
     )
 
     if failed:
@@ -260,79 +243,70 @@ async def _finalize_cursor_and_retry(
         # response if the same messages are re-processed on the next trigger.
         logger.warning(
             "Agent error after output was sent, advanced cursor to prevent retry duplicate",
-            group=request.group.name,
+            group=group.name,
         )
         return TurnOutcome.COMPLETED
 
-    await request.deps.start_completed_turn_learning_review(
-        request.chat_jid,
-        request.group,
-        request.missed_messages,
+    await deps.start_completed_turn_learning_review(
+        turn.chat_jid,
+        group,
+        batch.missed_messages,
         final_cursor,
-        request.learning_summary,
+        agent_run.learning_summary,
     )
 
     return TurnOutcome.COMPLETED
 
 
 async def _continue_after_host_turn(
-    request: _FinalizeCursorRetryRequest,
+    deps: MessageHandlerDeps,
+    group: WorkspaceProfile,
+    batch: AgentBatch,
+    turn: InFlightTurn,
+    agent_run: InteractiveAgentRun,
 ) -> TurnOutcome | None:
     """Commit a completed host boundary before Temporal starts its next activity."""
-    if request.agent_result == "interrupted":
+    if agent_run.agent_result == "interrupted":
         # The host process was stopped only after Codex reported a completed
         # tool. Keep later input pending and commit only the interrupted turn's
         # cursor so the next Temporal activity receives that follow-up.
-        async with turn_boundary_lock(request.chat_jid):
-            request.deps.pop_dispatched(
-                request.chat_jid,
-                message_cursor(request.missed_messages[-1]),
+        async with turn_boundary_lock(turn.chat_jid):
+            deps.pop_dispatched(
+                turn.chat_jid,
+                message_cursor(batch.missed_messages[-1]),
             )
             await complete_turn_with_cursor(
-                request.deps,
-                request.chat_jid,
-                message_cursor(request.missed_messages[-1]),
-                request.turn_id,
-                conversation_claim_id=request.conversation_claim_id,
+                deps,
+                turn.chat_jid,
+                message_cursor(batch.missed_messages[-1]),
+                turn.turn_id,
+                conversation_claim_id=turn.conversation_claim_id,
             )
-            request.deps.pop_dispatched(
-                request.chat_jid,
-                message_cursor(request.missed_messages[-1]),
+            deps.pop_dispatched(
+                turn.chat_jid,
+                message_cursor(batch.missed_messages[-1]),
             )
         await _execute_deferred_host_controls(
-            request.deps,
-            request.chat_jid,
-            request.group,
-            request.missed_messages,
+            deps,
+            turn.chat_jid,
+            group,
+            batch.missed_messages,
         )
         return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
 
-    if request.agent_result == "success_with_pending_input":
-        await _finalize_cursor_and_retry(replace(request, agent_result="success"))
+    if agent_run.agent_result == "success_with_pending_input":
+        await _finalize_cursor_and_retry(deps, group, batch, turn, agent_run)
         return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
 
     return None
 
 
-async def _start_processing(
-    deps: MessageHandlerDeps,
-    chat_jid: str,
-    group: WorkspaceProfile,
-    missed_messages: list[NewMessage],
-) -> float:
-    """Announce the turn and return its monotonic start time."""
-    started_at = time.monotonic()
-    await _announce_processing_start(deps, chat_jid, group, missed_messages)
-    return started_at
-
-
 async def _begin_interactive_message_turn(
     chat_jid: str,
     group: WorkspaceProfile,
-    messages: list[dict[str, Any]],
-    missed_messages: list[NewMessage],
-    since_timestamp: str,
+    batch: AgentBatch,
 ) -> InFlightTurn:
+    missed_messages = batch.missed_messages
     turn_id = _turn_id_for_batch(missed_messages)
     return await begin_message_turn(
         MessageTurnStart(
@@ -340,8 +314,8 @@ async def _begin_interactive_message_turn(
             chat_jid=chat_jid,
             group=group,
             work_kind=InFlightWorkKind.INTERACTIVE,
-            input_messages=messages,
-            input_start_cursor=since_timestamp,
+            input_messages=batch.messages,
+            input_start_cursor=batch.since_timestamp,
             input_end_cursor=message_cursor(missed_messages[-1]),
             conversation_claim_id=_conversation_claim_for_batch(missed_messages),
             input_source=_input_source_for_batch(missed_messages),
@@ -349,18 +323,12 @@ async def _begin_interactive_message_turn(
     )
 
 
-@dataclass(frozen=True)
-class _ProcessingOutcome:
-    process_start: float
-    had_error: bool
-    output_sent_to_user: bool
-
-
 async def _announce_processing_complete(
     deps: MessageHandlerDeps,
     chat_jid: str,
     group: WorkspaceProfile,
-    outcome: _ProcessingOutcome,
+    agent_run: InteractiveAgentRun,
+    process_start: float,
 ) -> None:
     await deps.set_typing_on_channels(chat_jid, is_typing=False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
@@ -368,14 +336,14 @@ async def _announce_processing_complete(
         deps,
         chat_jid,
         group,
-        output_sent_to_user=outcome.output_sent_to_user,
+        output_sent_to_user=agent_run.output_sent_to_user,
     )
     logger.info(
         "Message processing complete",
         group=group.name,
-        process_ms=round((time.monotonic() - outcome.process_start) * 1000),
-        had_error=outcome.had_error,
-        output_sent=outcome.output_sent_to_user,
+        process_ms=round((time.monotonic() - process_start) * 1000),
+        had_error=agent_run.had_error,
+        output_sent=agent_run.output_sent_to_user,
     )
 
 
@@ -393,34 +361,15 @@ async def process_group_messages(
         chat_jid,
         group,
         deps.message_data_dir,
-        TurnPreparationCallbacks(
-            process_pending=lambda jid: process_group_messages(deps, jid),
-            get_pending_messages=lambda jid, cursor: load_allowed_group_messages(
-                deps,
-                jid,
-                group,
-                cursor,
-                get_messages_since,
-            ),
-        ),
+        lambda jid: process_group_messages(deps, jid),
     )
     if not isinstance(prepared, AgentBatch):
         return prepared
-    since_timestamp = prepared.since_timestamp
-    missed_messages = prepared.missed_messages
-    messages = prepared.messages
-    reset_system_notices = prepared.reset_system_notices
-
-    turn = await _begin_interactive_message_turn(
-        chat_jid,
-        group,
-        messages,
-        missed_messages,
-        since_timestamp,
-    )
+    turn = await _begin_interactive_message_turn(chat_jid, group, prepared)
     turn_id = turn.turn_id
     try:
-        process_start = await _start_processing(deps, chat_jid, group, missed_messages)
+        process_start = time.monotonic()
+        await _announce_processing_start(deps, chat_jid, group, prepared.missed_messages)
     except BaseException:
         await clear_in_flight_turn(turn_id)
         # Keep a routed claim attached to its durable input for the same retry
@@ -430,8 +379,8 @@ async def process_group_messages(
     agent_run = await run_interactive_agent(
         deps,
         group,
-        messages,
-        reset_system_notices,
+        prepared.messages,
+        prepared.reset_system_notices,
         turn,
     )
     if agent_run.control_outcome is not None:
@@ -441,30 +390,15 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        _ProcessingOutcome(
-            process_start,
-            agent_run.had_error,
-            agent_run.output_sent_to_user,
-        ),
+        agent_run,
+        process_start,
     )
 
     try:
-        finalization = _FinalizeCursorRetryRequest(
-            deps=deps,
-            chat_jid=chat_jid,
-            group=group,
-            missed_messages=missed_messages,
-            agent_result=agent_run.agent_result,
-            had_error=agent_run.had_error,
-            missing_terminal_result=agent_run.missing_terminal_result,
-            output_sent_to_user=agent_run.output_sent_to_user,
-            learning_summary=agent_run.learning_summary,
-            turn_id=turn_id,
-            conversation_claim_id=turn.conversation_claim_id,
-        )
-        if (continuation := await _continue_after_host_turn(finalization)) is not None:
+        continuation = await _continue_after_host_turn(deps, group, prepared, turn, agent_run)
+        if continuation is not None:
             return continuation
-        return await _finalize_cursor_and_retry(finalization)
+        return await _finalize_cursor_and_retry(deps, group, prepared, turn, agent_run)
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
         raise

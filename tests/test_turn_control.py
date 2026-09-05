@@ -12,12 +12,11 @@ from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn, InFl
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
 from pynchy.host.orchestrator.messaging.turn_control import (
     AgentBatch,
-    TurnPreparationCallbacks,
     prepare_agent_batch,
     run_interactive_agent,
 )
 from pynchy.plugins.api import NewMessage
-from pynchy.state import init_test_database, is_chat_paused, pause_chat
+from pynchy.state import init_test_database, is_chat_paused, pause_chat, store_message
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -63,6 +62,8 @@ def _message(*, metadata: dict[str, bool] | None = None) -> NewMessage:
 def _deps() -> MagicMock:
     deps = MagicMock(spec=MessageHandlerDeps)
     deps.last_agent_timestamp = {}
+    deps.channels = []
+    deps.filter_allowed_messages.side_effect = lambda messages, *_args: messages
     deps.repo_is_dirty.return_value = False
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
@@ -86,10 +87,7 @@ async def test_prepare_agent_batch_honors_checkpoint_control_state(
 ) -> None:
     await init_test_database()
     deps = _deps()
-    callbacks = TurnPreparationCallbacks(
-        process_pending=AsyncMock(),
-        get_pending_messages=AsyncMock(return_value=[_message()]),
-    )
+    await store_message(_message())
     checkpoint = _turn(control_state)
 
     with (
@@ -132,7 +130,7 @@ async def test_prepare_agent_batch_honors_checkpoint_control_state(
             "discord:channel:project",
             _group(),
             tmp_path,
-            callbacks,
+            AsyncMock(),
         )
 
     assert result is expected
@@ -143,10 +141,7 @@ async def test_prepare_agent_batch_returns_paused_when_only_paused_work_remains(
     tmp_path: Path,
 ) -> None:
     deps = _deps()
-    callbacks = TurnPreparationCallbacks(
-        process_pending=AsyncMock(),
-        get_pending_messages=AsyncMock(return_value=[]),
-    )
+    await init_test_database()
 
     with (
         patch(
@@ -170,7 +165,7 @@ async def test_prepare_agent_batch_returns_paused_when_only_paused_work_remains(
             "discord:channel:project",
             _group(),
             tmp_path,
-            callbacks,
+            AsyncMock(),
         )
 
     assert result is TurnOutcome.PAUSED
@@ -192,10 +187,7 @@ async def test_prepare_agent_batch_returns_fresh_batch_for_active_checkpoint(
     await init_test_database()
     deps = _deps()
     await pause_chat("discord:channel:project")
-    callbacks = TurnPreparationCallbacks(
-        process_pending=AsyncMock(),
-        get_pending_messages=AsyncMock(return_value=[_message(metadata=metadata)]),
-    )
+    await store_message(_message(metadata=metadata))
 
     with (
         patch(
@@ -228,7 +220,7 @@ async def test_prepare_agent_batch_returns_fresh_batch_for_active_checkpoint(
             "discord:channel:project",
             _group(),
             tmp_path,
-            callbacks,
+            AsyncMock(),
         )
 
     assert isinstance(result, AgentBatch)

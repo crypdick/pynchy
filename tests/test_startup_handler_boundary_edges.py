@@ -166,7 +166,9 @@ async def test_pending_recovery_skips_excluded_and_cron_workspaces(monkeypatch) 
     active_task = AsyncMock(side_effect=lambda folder: _CronTask("cron"))
     monkeypatch.setattr(startup_handler, "get_active_task_for_group", active_task)
     messages = AsyncMock(return_value=[{"content": "stale"}])
-    monkeypatch.setattr(startup_handler, "get_messages_since", messages)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since", messages
+    )
 
     await startup_handler.recover_pending_messages(deps, exclude_chat_jids={excluded.jid})
 

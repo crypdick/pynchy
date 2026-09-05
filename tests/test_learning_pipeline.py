@@ -20,7 +20,7 @@ from pynchy.state import init_test_database, store_message
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 
-_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
+_P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_LEARNING_OBSERVE = "pynchy.host.learning.packets.observe_container_output"

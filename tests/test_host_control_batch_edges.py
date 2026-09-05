@@ -22,7 +22,7 @@ async def test_immediate_host_only_control_does_not_enqueue_more_input() -> None
 
     with (
         patch(
-            "pynchy.host.orchestrator.messaging.host_controls.get_messages_since",
+            "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
             new_callable=AsyncMock,
             return_value=[pending],
         ),
