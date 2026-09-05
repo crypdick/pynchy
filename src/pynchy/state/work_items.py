@@ -133,34 +133,22 @@ async def list_work_item_executions(
 ) -> list[WorkItemExecution]:
     """Return operator projections, newest execution first."""
     db = _get_db()
+    # SQLite uses a negative LIMIT for an unbounded query.
+    row_limit = -1 if limit is None else limit
     if workspace:
-        if limit is None:
-            cursor = await db.execute(
-                """
-                SELECT * FROM work_item_executions
-                WHERE workspace = ?
-                ORDER BY updated_at DESC, id DESC
-                """,
-                (workspace,),
-            )
-        else:
-            cursor = await db.execute(
-                """
-                SELECT * FROM work_item_executions
-                WHERE workspace = ?
-                ORDER BY updated_at DESC, id DESC
-                LIMIT ?
-                """,
-                (workspace, limit),
-            )
-    elif limit is None:
         cursor = await db.execute(
-            "SELECT * FROM work_item_executions ORDER BY updated_at DESC, id DESC"
+            """
+            SELECT * FROM work_item_executions
+            WHERE workspace = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (workspace, row_limit),
         )
     else:
         cursor = await db.execute(
             "SELECT * FROM work_item_executions ORDER BY updated_at DESC, id DESC LIMIT ?",
-            (limit,),
+            (row_limit,),
         )
     return [row_to_execution(row) for row in await cursor.fetchall()]
 

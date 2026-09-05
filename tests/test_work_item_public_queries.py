@@ -45,6 +45,12 @@ async def test_work_item_listing_scopes_workspace_without_hiding_other_workspace
         alpha.id
     ]
     assert {execution.id for execution in await list_work_item_executions()} == {alpha.id, beta.id}
+    assert await list_work_item_executions(limit=0) == []
+    assert await list_work_item_executions(workspace="alpha", limit=0) == []
+    assert [
+        execution.id for execution in await list_work_item_executions(workspace="alpha", limit=1)
+    ] == [alpha.id]
+    assert await list_work_item_executions(workspace="missing", limit=None) == []
 
 
 async def test_work_item_listing_can_return_every_execution_for_reconciliation() -> None:

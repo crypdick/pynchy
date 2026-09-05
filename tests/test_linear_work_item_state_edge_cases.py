@@ -232,8 +232,10 @@ async def test_cancellation_can_still_retire_blocked_execution(lifecycle: Lifecy
     assert cancelled.blocker == "operator reset"
 
 
+@pytest.mark.parametrize("with_receipt", [False, True])
 async def test_first_settled_transition_resolution_wins_after_unknown(
     lifecycle: Lifecycle,
+    with_receipt: bool,
 ) -> None:
     execution = await _lease(lifecycle)
     transition = await begin_work_item_transition(
@@ -245,10 +247,16 @@ async def test_first_settled_transition_resolution_wins_after_unknown(
             result_execution_status=WorkItemExecutionStatus.AWAITING_REVIEW,
         )
     )
-    review_issue = {
-        **lifecycle.state.issue,
-        "state": {"id": "state-awaiting-review", "name": "Awaiting Review"},
-    }
+    review_issue = (
+        {
+            **lifecycle.state.issue,
+            "identifier": "PYN-99",
+            "state": {"id": "state-awaiting-review", "name": "Awaiting Review"},
+            "updatedAt": None,
+        }
+        if with_receipt
+        else None
+    )
     unresolved = await resolve_work_item_transition(
         transition=transition,
         execution_status=WorkItemExecutionStatus.UNKNOWN,
@@ -256,6 +264,8 @@ async def test_first_settled_transition_resolution_wins_after_unknown(
         error="provider response lost",
     )
     assert unresolved.status is WorkItemExecutionStatus.UNKNOWN
+    assert unresolved.observed_updated_at == "2026-07-25T17:00:00+00:00"
+    assert unresolved.observed_state_id == "state-in-progress"
 
     first = await resolve_work_item_transition(
         transition=transition,
@@ -263,6 +273,11 @@ async def test_first_settled_transition_resolution_wins_after_unknown(
         transition_status=WorkItemTransitionStatus.SUCCEEDED,
         issue=review_issue,
     )
+    assert first.linear_issue_identifier == ("PYN-99" if with_receipt else "PYN-1")
+    assert first.observed_state_id == (
+        "state-awaiting-review" if with_receipt else "state-in-progress"
+    )
+    assert first.observed_updated_at == (None if with_receipt else "2026-07-25T17:00:00+00:00")
 
     retry = await resolve_work_item_transition(
         transition=transition,

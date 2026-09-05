@@ -19,7 +19,12 @@ from pynchy.state.work_item_models import (
 )
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.state.work_item_transition_records import insert_work_item_transition
-from pynchy.state.work_items import get_work_item_execution
+from pynchy.state.work_items import (
+    _issue_state,
+    _issue_str,
+    _optional_str,
+    get_work_item_execution,
+)
 from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
@@ -250,10 +255,15 @@ async def _resolve_work_item_transition(
         )
         if cursor.rowcount == 1:
             receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
-            issue_projection: tuple[str, str, str, str, str | None] | None = None
+            issue_fields = ""
+            issue_values: tuple[str | None, ...] = ()
             if issue is not None:
                 state = _issue_state(issue)
-                issue_projection = (
+                issue_fields = (
+                    "linear_issue_identifier = ?, linear_issue_url = ?, "
+                    "observed_state_id = ?, observed_state_name = ?, observed_updated_at = ?,"
+                )
+                issue_values = (
                     _issue_str(issue, "identifier"),
                     _issue_str(issue, "url"),
                     _issue_str(state, "id"),
@@ -268,11 +278,11 @@ async def _resolve_work_item_transition(
                 """,
                 (receipt, error, transition.id),
             )
-        if cursor.rowcount == 1 and issue is None:
             await db.execute(
-                """
+                # Only the fixed receipt column list varies; all provider values are bound.
+                f"""
                 UPDATE work_item_executions
-                SET status = ?,
+                SET {issue_fields} status = ?,
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
@@ -284,43 +294,9 @@ async def _resolve_work_item_transition(
                       WHERE newer.execution_id = work_item_executions.id
                         AND newer.id > ?
                   )
-                """,
+                """,  # noqa: S608 - issue_fields is a fixed host-owned SQL fragment.
                 (
-                    execution_status.value,
-                    clears_blocked_outcome,
-                    clears_blocked_outcome,
-                    now,
-                    completed_at,
-                    transition.execution_id,
-                    WorkItemExecutionStatus.COMPLETED.value,
-                    WorkItemExecutionStatus.CANCELLED.value,
-                    WorkItemExecutionStatus.HANDED_OFF.value,
-                    WorkItemExecutionStatus.FAILED.value,
-                    repairs_conflict,
-                    transition.id,
-                ),
-            )
-        elif cursor.rowcount == 1 and issue_projection is not None:
-            await db.execute(
-                """
-                UPDATE work_item_executions
-                SET linear_issue_identifier = ?, linear_issue_url = ?,
-                    observed_state_id = ?, observed_state_name = ?, observed_updated_at = ?,
-                    status = ?,
-                    blocker = CASE WHEN ? THEN NULL ELSE blocker END,
-                    handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
-                    updated_at = ?, completed_at = ?
-                WHERE id = ?
-                  AND (status NOT IN (?, ?, ?, ?) OR ?)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM work_item_transitions AS newer
-                      WHERE newer.execution_id = work_item_executions.id
-                        AND newer.id > ?
-                  )
-                """,
-                (
-                    *issue_projection,
+                    *issue_values,
                     execution_status.value,
                     clears_blocked_outcome,
                     clears_blocked_outcome,
@@ -339,22 +315,3 @@ async def _resolve_work_item_transition(
     if execution is None:
         raise RuntimeError("work item execution disappeared during transition resolution")
     return execution
-
-
-def _issue_str(payload: dict[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"Linear issue payload missing {key}")
-    return value
-
-
-def _optional_str(payload: dict[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    return value if isinstance(value, str) and value else None
-
-
-def _issue_state(issue: dict[str, Any]) -> dict[str, Any]:
-    state = issue.get("state")
-    if not isinstance(state, dict):
-        raise TypeError("Linear issue payload missing state")
-    return state
