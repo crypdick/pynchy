@@ -61,7 +61,7 @@ async def test_application_reviews_linear_plan_with_current_prompt(
     result = LinearPlanReviewResult(LinearPlanReviewDecision.PROCEED, "Looks good")
     review = AsyncMock(return_value=result)
     settings = MagicMock()
-    settings.prompts.plan_freshness = "plan-freshness"
+    settings.prompts.plan_freshness = "plan-freshness"  # noqa: V101
     settings.project_root = Path("/project")
     monkeypatch.setattr(app_module.linear_plan_review, "review_linear_plan", review)
     monkeypatch.setattr(app_module, "get_settings", lambda: settings)

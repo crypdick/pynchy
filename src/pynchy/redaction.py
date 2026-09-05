@@ -45,7 +45,7 @@ class SinkExposure(StrEnum):
     """Whether a restoration target can expose data to untrusted parties."""
 
     NON_PUBLIC = "non_public"
-    PUBLIC = "public"
+    PUBLIC = "public"  # noqa: V107
 
 
 @dataclass(frozen=True)
@@ -70,14 +70,6 @@ class RedactedText:
     """Redacted text and the opaque references it contains."""
 
     value: str
-    refs: tuple[PlaceholderRef, ...]
-
-
-@dataclass(frozen=True)
-class RedactedBytes:
-    """UTF-8 request bytes redacted without losing restoration fidelity."""
-
-    value: bytes
     refs: tuple[PlaceholderRef, ...]
 
 
@@ -279,22 +271,13 @@ class RedactionSession:
         pieces.append(source[cursor:])
         return RedactedText(value="".join(pieces), refs=tuple(refs))
 
-    def redact_bytes(self, source: bytes) -> RedactedBytes:
-        """Redact UTF-8 bytes while preserving byte-perfect restoration."""
-        redacted = self.redact_text(source.decode("utf-8"))
-        return RedactedBytes(value=redacted.value.encode("utf-8"), refs=redacted.refs)
-
-    def restore_text(self, source: str, capability: RestorationCapability) -> str:
+    def restore_text(self, source: str, capability: RestorationCapability) -> str:  # noqa: V105
         """Exercise lower-level non-public restoration policy outside the gateway."""
         originals = self._authorized_originals(source, capability)
         restored = source
         for token, original in originals:
             restored = restored.replace(token, original.value)
         return restored
-
-    def restore_bytes(self, source: bytes, capability: RestorationCapability) -> bytes:
-        """Restore authorized UTF-8 bytes exactly."""
-        return self.restore_text(source.decode("utf-8"), capability).encode("utf-8")
 
     def _allocate_token(self, data_class: SensitiveDataClass) -> str:
         while True:

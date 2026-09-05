@@ -12,7 +12,6 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_messages_for_sdk,
     format_tool_preview,
     parse_host_tag,
-    strip_internal_tags,
 )
 from pynchy.plugins.api import NewMessage
 
@@ -530,39 +529,6 @@ class TestFormatMessagesForSdk:
         }
 
         assert format_messages_for_sdk([synthetic]) == format_messages_for_sdk([ordinary])
-
-
-# ---------------------------------------------------------------------------
-# strip_internal_tags
-# ---------------------------------------------------------------------------
-
-
-class TestStripInternalTags:
-    """Test removal of <internal>...</internal> blocks."""
-
-    def test_removes_single_internal_block(self):
-        text = "Hello <internal>secret</internal> world"
-        assert strip_internal_tags(text) == "Hello  world"
-
-    def test_removes_multiple_internal_blocks(self):
-        text = "<internal>a</internal> visible <internal>b</internal>"
-        assert strip_internal_tags(text) == "visible"
-
-    def test_preserves_text_without_tags(self):
-        assert strip_internal_tags("plain text") == "plain text"
-
-    def test_removes_multiline_internal_blocks(self):
-        text = "before\n<internal>\nmultiline\ncontent\n</internal>\nafter"
-        result = strip_internal_tags(text)
-        assert "multiline" not in result
-        assert "before" in result
-        assert "after" in result
-
-    def test_empty_string(self):
-        assert not strip_internal_tags("")
-
-    def test_only_internal_content(self):
-        assert not strip_internal_tags("<internal>everything</internal>")
 
 
 # ---------------------------------------------------------------------------

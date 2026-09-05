@@ -162,20 +162,6 @@ async def select_team(
     )
 
 
-async def provision_workspace_board(
-    client: LinearQueryClient,
-    workspace: WorkspaceLike,
-    *,
-    team_key: str | None,
-) -> LinearWorkspaceBoard:
-    """Provision one workspace board for setup and administrative operations."""
-    team = await select_team(client, team_key=team_key)
-    resources = await load_team_resources(client, str(team["id"]))
-    states = await _ensure_states(client, str(team["id"]), resources["states"])
-    project = await _ensure_project(client, str(team["id"]), workspace, resources["projects"])
-    return LinearWorkspaceBoard(team=team, project=project, states=states)
-
-
 async def require_workspace_board(
     client: LinearQueryClient,
     workspace: WorkspaceLike,

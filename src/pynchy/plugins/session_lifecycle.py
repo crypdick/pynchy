@@ -24,7 +24,7 @@ class _PluginHooks(Protocol):
     pynchy_before_context_reset: _LifecycleHook
 
 
-@runtime_checkable
+@runtime_checkable  # noqa: V102
 class _PluginManager(Protocol):
     hook: _PluginHooks
 

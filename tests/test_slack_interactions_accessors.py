@@ -390,7 +390,7 @@ def test_channel_connect_initializes_the_socket_mode_lifecycle(monkeypatch) -> N
     app_module.AsyncApp = FakeApp
     bolt.adapter = adapter
     adapter.socket_mode = socket_mode
-    socket_mode.async_handler = handler_module
+    socket_mode.async_handler = handler_module  # noqa: V101
     monkeypatch.setitem(sys.modules, "slack_bolt", bolt)
     monkeypatch.setitem(sys.modules, "slack_bolt.adapter", adapter)
     monkeypatch.setitem(sys.modules, "slack_bolt.adapter.socket_mode", socket_mode)
@@ -549,7 +549,7 @@ def test_registered_slack_assistant_callbacks_route_sidebar_messages(monkeypatch
     assistant_module.AsyncAssistant = FakeAssistant
     bolt.middleware = middleware
     middleware.assistant = assistant
-    assistant.async_assistant = assistant_module
+    assistant.async_assistant = assistant_module  # noqa: V101
     monkeypatch.setitem(sys.modules, "slack_bolt", bolt)
     monkeypatch.setitem(sys.modules, "slack_bolt.middleware", middleware)
     monkeypatch.setitem(sys.modules, "slack_bolt.middleware.assistant", assistant)

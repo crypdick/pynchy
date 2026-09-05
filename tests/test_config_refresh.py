@@ -500,7 +500,7 @@ async def test_automation_prompt_change_reconciles_without_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_runtime_tree(tmp_path)
-    prompt_path = _write_automation(tmp_path)
+    _write_automation(tmp_path)
     monkeypatch.chdir(tmp_path)
     published = load_runtime_candidate()
     publish_settings(published)

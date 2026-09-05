@@ -177,14 +177,6 @@ async def _log_task_error(
     )
 
 
-async def _log_missing_group(task: ScheduledTask, start_time: datetime) -> None:
-    await _log_task_error(
-        task.id,
-        start_time=start_time,
-        error=f"Group not found: {task.group_folder}",
-    )
-
-
 async def _pause_task_for_circuit_breaker(
     task_id: str,
     *,

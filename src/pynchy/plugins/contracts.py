@@ -119,10 +119,10 @@ class InboundFetchResult:
 @dataclass
 class PluginVerification:
     plugin_name: str
-    git_sha: str
-    verified_at: str
+    git_sha: str  # noqa: V107
+    verified_at: str  # noqa: V107
     verdict: Literal["pass", "fail"]
-    reasoning: str
+    reasoning: str  # noqa: V107
     model: str
 
 
@@ -154,7 +154,7 @@ class AgentCoreSpec:
     module: str
     class_name: str
     packages: tuple[str, ...] = ()
-    host_source_path: Path | None = None
+    host_source_path: Path | None = None  # noqa: V107
 
 
 @dataclass(frozen=True, slots=True)

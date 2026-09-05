@@ -102,11 +102,11 @@ class DiscordApprovalView(discord.ui.View):
         )
         self.stop()
 
-    async def on_timeout(self) -> None:
+    async def on_timeout(self) -> None:  # noqa: V105
         if self._message_id is None or self._completed:
             return
         for item in self.children:
-            item.disabled = True
+            item.disabled = True  # noqa: V101
         try:
             channel = await self._channel.resolve_channel(self._jid)
             message = await channel.fetch_message(int(self._message_id))

@@ -287,7 +287,7 @@ def get_trace_batcher() -> TraceBatcher | None:
     return _state.trace_batcher
 
 
-def reset_trace_batcher() -> None:
+def reset_trace_batcher() -> None:  # noqa: V103
     """Clear the process-wide trace batcher before a fresh app lifecycle."""
     if _state.trace_batcher is not None:
         _state.trace_batcher.cancel()

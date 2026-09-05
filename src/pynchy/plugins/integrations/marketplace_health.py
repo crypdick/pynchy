@@ -74,7 +74,7 @@ class MarketplaceCounts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     pending: int = Field(ge=0)
-    awaiting_reply: int = Field(ge=0)
+    awaiting_reply: int = Field(ge=0)  # noqa: V107
 
 
 class ReaderHealth(BaseModel):
@@ -92,7 +92,7 @@ class MarketplaceHealthSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     counts: MarketplaceCounts
-    reader_health: ReaderHealth
+    reader_health: ReaderHealth  # noqa: V107
 
 
 @dataclass(frozen=True)

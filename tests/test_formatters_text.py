@@ -136,22 +136,6 @@ def test_render_internal_tags():
     assert "world" in result.text
 
 
-def test_render_batch():
-    fmt = TextFormatter()
-    events = [
-        OutboundEvent(type=OutboundEventType.THINKING, content="hmm"),
-        OutboundEvent(
-            type=OutboundEventType.TOOL_TRACE,
-            content="",
-            metadata={"tool_name": "Bash", "tool_input": {"command": "pwd"}},
-        ),
-    ]
-    result = fmt.render_batch(events)
-    assert "\U0001f4ad" in result.text
-    assert "\U0001f527" in result.text
-    assert "\n" in result.text
-
-
 def test_render_long_tool_result_truncated():
     """Verbose tool results exceeding the threshold are truncated with head+tail."""
     fmt = TextFormatter()

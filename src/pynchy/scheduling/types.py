@@ -127,7 +127,7 @@ class HostJob:
     command: str
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
-    created_by: str
+    created_by: str  # noqa: V107
     next_run: str | None = None
     last_run: str | None = None
     status: Literal["active", "paused", "completed"] = "active"

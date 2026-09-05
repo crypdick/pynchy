@@ -94,11 +94,6 @@ class PersonalizationPaths:
         """Return the deployment-owned prompt directory."""
         return self.personalization / PROMPTS_DIRNAME
 
-    @property
-    def personalized_skills(self) -> Path:
-        """Return the deployment-owned skill directory."""
-        return self.personalization / SKILLS_DIRNAME
-
 
 def load_layered_settings_mapping(
     project_root: Path,

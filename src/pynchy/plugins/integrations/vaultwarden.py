@@ -385,7 +385,7 @@ VAULTWARDEN_HOST_ACTIONS = HostActionRegistration(
 )
 
 
-class VaultwardenPlugin:
+class VaultwardenPlugin:  # noqa: V102
     """Expose channel-scoped secret reads through host IPC."""
 
     @hookimpl

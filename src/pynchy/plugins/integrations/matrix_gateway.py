@@ -362,7 +362,7 @@ MATRIX_HOST_ACTIONS = HostActionRegistration(
 )
 
 
-class MatrixGatewayPlugin:
+class MatrixGatewayPlugin:  # noqa: V102
     """Provide Matrix connection runtimes and route-scoped host actions."""
 
     @hookimpl

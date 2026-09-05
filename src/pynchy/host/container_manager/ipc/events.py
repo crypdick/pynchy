@@ -40,11 +40,11 @@ class IpcEventHandler(FileSystemEventHandler):
         except (ValueError, IndexError):
             pass  # File not under IPC base dir or malformed path — ignore
 
-    def on_created(self, event: object) -> None:
+    def on_created(self, event: object) -> None:  # noqa: V105
         if isinstance(event, FileCreatedEvent):
             self._enqueue_if_ipc(os.fsdecode(event.src_path))
 
-    def on_moved(self, event: object) -> None:
+    def on_moved(self, event: object) -> None:  # noqa: V105
         # Atomic writes (tmp → .json rename) generate moved events, not created
         if isinstance(event, FileMovedEvent):
             self._enqueue_if_ipc(os.fsdecode(event.dest_path))

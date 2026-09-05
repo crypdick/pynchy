@@ -182,9 +182,9 @@ class CopDegradedApprovalCanary(_NoCleanupScenario):
 
 @dataclass(frozen=True)
 class _GatewayArtifact:
-    builtin: GatewayRedactionPosture
+    builtin: GatewayRedactionPosture  # noqa: V107
     litellm: GatewayRedactionPosture
-    secret_removed: bool
+    secret_removed: bool  # noqa: V107
 
 
 class GatewayPostureCanary(_NoCleanupScenario):

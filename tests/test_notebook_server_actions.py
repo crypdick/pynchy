@@ -29,11 +29,10 @@ class _FakeMcp:
 
 class _FakeKernelClient:
     def __init__(self) -> None:
-        self.channels_started = False
         self.channels_stopped = False
 
     def start_channels(self) -> None:
-        self.channels_started = True
+        pass
 
     def stop_channels(self) -> None:
         self.channels_stopped = True

@@ -226,7 +226,7 @@ def test_connect_continues_when_bot_user_lookup_fails(monkeypatch) -> None:
     app_module.AsyncApp = FakeApp
     bolt.adapter = adapter
     adapter.socket_mode = socket_mode
-    socket_mode.async_handler = handler_module
+    socket_mode.async_handler = handler_module  # noqa: V101
     monkeypatch.setitem(sys.modules, "slack_bolt", bolt)
     monkeypatch.setitem(sys.modules, "slack_bolt.adapter", adapter)
     monkeypatch.setitem(sys.modules, "slack_bolt.adapter.socket_mode", socket_mode)

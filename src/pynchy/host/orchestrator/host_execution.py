@@ -184,11 +184,6 @@ def host_execution_cwd(
     )
 
 
-def host_codex_home(group_folder: str, operations: HostRuntimeOperations) -> Path:
-    """Return the isolated Codex home for one direct-host workspace."""
-    return operations.sessions_root / group_folder / ".codex"
-
-
 def prepare_host_codex_home(
     group_folder: str,
     plugin_manager: object | None,

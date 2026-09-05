@@ -13,7 +13,7 @@ class CodexRolloutInspectionError(RuntimeError):
     """The host could not determine whether a Codex rollout is durable."""
 
 
-def rollout_exists(codex_home: Path, thread_id: str) -> bool:
+def rollout_exists(codex_home: Path, thread_id: str) -> bool:  # noqa: V103
     """Return whether a confined Codex home contains the exact durable rollout."""
     return bool(_find_rollouts(codex_home / "sessions", thread_id, confinement_root=codex_home))
 

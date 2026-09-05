@@ -70,7 +70,7 @@ class SlackChannel:
     """Pynchy ``Channel`` protocol implementation backed by Slack Socket Mode."""
 
     prefix_assistant_name: bool = False  # Slack shows the bot username already
-    supports_direct_ask_user_callbacks: bool = True
+    supports_direct_ask_user_callbacks: bool = True  # noqa: V107
 
     def __init__(  # noqa: PLR0913 - Slack channel constructor is the plugin integration boundary.
         self,

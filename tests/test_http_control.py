@@ -211,7 +211,7 @@ def test_rate_limiter_prunes_large_expired_window_map() -> None:
 class TestRemoteControlPlanePolicy(AioHTTPTestCase):
     """Exercise policy middleware over a real TCP test listener."""
 
-    async def get_application(self) -> web.Application:
+    async def get_application(self) -> web.Application:  # noqa: V105
         runtime = ControlPlaneRuntime(
             bind_host=PUBLIC_BIND_TEST_HOST,
             port=8484,
@@ -300,7 +300,7 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
 class TestLoopbackDeployPolicy(AioHTTPTestCase):
     """Prove loopback TCP cannot masquerade as the local Unix control path."""
 
-    async def get_application(self) -> web.Application:
+    async def get_application(self) -> web.Application:  # noqa: V105
         runtime = ControlPlaneRuntime(
             bind_host="127.0.0.1",
             port=8484,
@@ -329,7 +329,7 @@ class TestLoopbackDeployPolicy(AioHTTPTestCase):
 class TestRemoteRateLimit(AioHTTPTestCase):
     """Prove unauthorized requests consume the remote request budget."""
 
-    async def get_application(self) -> web.Application:
+    async def get_application(self) -> web.Application:  # noqa: V105
         runtime = ControlPlaneRuntime(
             bind_host=PUBLIC_BIND_TEST_HOST,
             port=8484,

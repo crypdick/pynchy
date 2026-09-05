@@ -1,4 +1,4 @@
-"""Tests for watchdog-based IPC input waiting (wait_for_ipc_message)."""
+"""Tests for watchdog-based IPC input waiting."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.ipc import wait_for_ipc_message
+from agent_runner.ipc import wait_for_ipc_followup
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -48,7 +48,7 @@ def _write_message(input_dir: Path, text: str, *, index: int = 0) -> None:
 
 
 class TestReturnsMessageOnJsonFile:
-    """wait_for_ipc_message returns message content when a JSON file appears."""
+    """IPC follow-up waiting returns content when a JSON file appears."""
 
     @pytest.mark.asyncio
     async def test_single_message(self, input_dir: Path) -> None:
@@ -57,22 +57,24 @@ class TestReturnsMessageOnJsonFile:
             _write_message(input_dir, "hello world")
 
         writer_task = asyncio.create_task(write_after_delay())
-        result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
-        assert result == "hello world"
+        result = await asyncio.wait_for(wait_for_ipc_followup(), timeout=5.0)
+        assert result is not None
+        assert result.text == "hello world"
         await writer_task
 
     @pytest.mark.asyncio
     async def test_message_already_present(self, input_dir: Path) -> None:
         """If a message file is already present before waiting, it's picked up."""
         _write_message(input_dir, "pre-existing")
-        # The initial sweep in wait_for_ipc_message should catch it immediately
+        # The initial sweep should catch it immediately
         # but watchdog needs the observer running first. We give a small window.
-        result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
-        assert result == "pre-existing"
+        result = await asyncio.wait_for(wait_for_ipc_followup(), timeout=5.0)
+        assert result is not None
+        assert result.text == "pre-existing"
 
 
 class TestReturnsNoneOnClose:
-    """wait_for_ipc_message returns None when _close sentinel appears."""
+    """IPC follow-up waiting returns None when _close sentinel appears."""
 
     @pytest.mark.asyncio
     async def test_close_sentinel(self, input_dir: Path) -> None:
@@ -81,7 +83,7 @@ class TestReturnsNoneOnClose:
             (input_dir / "_close").touch()
 
         closer_task = asyncio.create_task(close_after_delay())
-        result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
+        result = await asyncio.wait_for(wait_for_ipc_followup(), timeout=5.0)
         assert result is None
         await closer_task
 
@@ -89,7 +91,7 @@ class TestReturnsNoneOnClose:
     async def test_close_sentinel_already_present(self, input_dir: Path) -> None:
         """If the _close sentinel already exists, returns None immediately."""
         (input_dir / "_close").touch()
-        result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
+        result = await asyncio.wait_for(wait_for_ipc_followup(), timeout=5.0)
         assert result is None
 
 
@@ -105,9 +107,9 @@ class TestDrainsMultipleMessages:
             _write_message(input_dir, "third", index=2)
 
         writer_task = asyncio.create_task(write_batch_after_delay())
-        result = await asyncio.wait_for(wait_for_ipc_message(), timeout=5.0)
+        result = await asyncio.wait_for(wait_for_ipc_followup(), timeout=5.0)
         assert result is not None
-        parts = result.split("\n")
+        parts = result.text.split("\n")
         # All three messages should be present (drain reads all .json files)
         assert "first" in parts
         assert "second" in parts

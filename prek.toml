@@ -116,7 +116,10 @@ files = "^tests/"
 [[repos.hooks]]
 id = "vulture"
 name = "Detect dead code"
-entry = "uv run vulture src tests --min-confidence 80"
+entry = """sh -c '
+uv run vulture src --exclude ".venv/,*/tests/*" --min-confidence 60 &&
+uv run vulture src tests --exclude ".venv/" --min-confidence 60
+'"""
 language = "system"
 pass_filenames = false
 types = ["python"]

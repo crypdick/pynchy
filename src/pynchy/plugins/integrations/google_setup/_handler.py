@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _BrowserPage(Protocol):
-    async def goto(self, url: str, *, wait_until: str) -> object: ...
+    async def goto(self, url: str, *, wait_until: str) -> object: ...  # noqa: V107
 
     async def wait_for_timeout(self, _milliseconds: int) -> object: ...
 

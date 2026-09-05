@@ -61,7 +61,7 @@ class HermeticCoverageReport:
     missing: tuple[str, ...]
     unknown: tuple[str, ...]
 
-    @property
+    @property  # noqa: V106
     def is_complete(self) -> bool:
         return not self.missing and not self.unknown
 

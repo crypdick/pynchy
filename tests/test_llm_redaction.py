@@ -34,24 +34,6 @@ def _private_capability(*classes: SensitiveDataClass) -> RestorationCapability:
     )
 
 
-def test_reversible_text_and_bytes_round_trip_exactly() -> None:
-    source = f"José <jose@example.test> token={_credential()}".encode()
-    session = RedactionSession()
-
-    redacted = session.redact_bytes(source)
-
-    assert source not in redacted.value
-    assert len(redacted.refs) == 2
-    restored = session.restore_bytes(
-        redacted.value,
-        _private_capability(
-            SensitiveDataClass.EMAIL,
-            SensitiveDataClass.CREDENTIAL,
-        ),
-    )
-    assert restored == source
-
-
 def test_overlapping_patterns_select_secret_class_without_echoing_value() -> None:
     source = "password=user@example.test"
 

@@ -102,8 +102,8 @@ class ContainerInput:
     plugin_hooks: list[dict[str, str]] = field(default_factory=list)
     system_prompt_append: str | None = None
     invocation_ts: float = 0.0
-    mcp_gateway_url: str | None = None
-    mcp_gateway_key: str | None = None
+    mcp_gateway_url: str | None = None  # noqa: V107
+    mcp_gateway_key: str | None = None  # noqa: V107
     mcp_direct_servers: list[dict[str, Any]] | None = None
     agent_tool_grants: list[str] | None = None
 

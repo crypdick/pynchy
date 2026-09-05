@@ -88,7 +88,7 @@ _INSTRUCTIONS = (
 server = Server("pynchy", instructions=_INSTRUCTIONS)
 
 type ListToolsHandler = Callable[[], Awaitable[list[Tool]]]
-type ListToolsDecorator = Callable[[ListToolsHandler], ListToolsHandler]
+type ListToolsDecorator = Callable[[ListToolsHandler], ListToolsHandler]  # noqa: V107
 
 # mcp 1.26 leaves Server.list_tools() untyped. Its runtime contract returns the
 # decorated function unchanged, so contain the missing third-party type here.

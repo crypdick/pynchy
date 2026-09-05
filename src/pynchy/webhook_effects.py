@@ -16,7 +16,7 @@ WebhookEffectId = NewType("WebhookEffectId", str)
 class WebhookEffectStatus(StrEnum):
     """Durable lifecycle for one outbound mutation and its callback evidence."""
 
-    PREPARED = "prepared"
+    PREPARED = "prepared"  # noqa: V107
     EXECUTING = "executing"
     CONFIRMED = "confirmed"
     FAILED = "failed"

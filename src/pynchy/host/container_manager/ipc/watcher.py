@@ -43,7 +43,7 @@ _IPC_SOURCE_GROUP_MISMATCH_ERROR = (
 @dataclass
 class _WatcherState:
     running: bool = False
-    runtime_sweep_task: asyncio.Task[None] | None = None
+    runtime_sweep_task: asyncio.Task[None] | None = None  # noqa: V107
 
 
 _state = _WatcherState()
@@ -450,6 +450,6 @@ async def start_ipc_watcher(deps: IpcDeps, *, ipc_base_dir: Path) -> None:
     observer.start()
     logger.info("IPC watcher started (watchdog mode)", path=str(ipc_base_dir))
 
-    _state.runtime_sweep_task = asyncio.create_task(_runtime_sweep_loop(ipc_base_dir, deps))
+    _state.runtime_sweep_task = asyncio.create_task(_runtime_sweep_loop(ipc_base_dir, deps))  # noqa: V101
 
     await _process_queue(queue, ipc_base_dir, deps)

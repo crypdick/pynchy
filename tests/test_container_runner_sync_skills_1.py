@@ -16,9 +16,6 @@ from pynchy.agent_home import (
     refresh_personalized_skills,
     sync_skills,
 )
-from pynchy.agent_protocol.api import (
-    ContainerInput,
-)
 from pynchy.workspace.api import (
     WorkspaceProfile,
 )
@@ -40,23 +37,6 @@ TEST_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
-
-TEST_INPUT = ContainerInput(
-    messages=[
-        {
-            "message_type": "user",
-            "sender": "user@s.whatsapp.net",
-            "sender_name": "User",
-            "content": "Hello",
-            "timestamp": "2024-01-01T00:00:00.000Z",
-            "metadata": None,
-        }
-    ],
-    group_folder="test-group",
-    chat_jid="test@g.us",
-    is_admin=False,
-)
-
 
 _CR_CREDS = "pynchy.host.container_manager.credentials"
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"

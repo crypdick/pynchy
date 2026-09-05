@@ -131,7 +131,7 @@ async def init_database(config: StateRuntimeConfig) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     db = await aiosqlite.connect(str(db_path))
-    db.row_factory = aiosqlite.Row
+    db.row_factory = aiosqlite.Row  # noqa: V101
     await _enable_foreign_keys(db)
     _state.db = db
     await create_schema(db)
@@ -150,7 +150,7 @@ async def init_test_database() -> None:
     if _state.db is not None:
         await _stop_connection(_state.db)
     db = await aiosqlite.connect(":memory:")
-    db.row_factory = aiosqlite.Row
+    db.row_factory = aiosqlite.Row  # noqa: V101
     await _enable_foreign_keys(db)
     _state.db = db
     await create_schema(db)

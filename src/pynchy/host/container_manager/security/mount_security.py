@@ -42,7 +42,7 @@ _ERR_REQUIRED_STRING = "{field_name} must be a string"
 _ERR_ALLOWED_ROOT_TABLE = "allowed_roots[{index}] must be a table"
 
 
-def reset_mount_allowlist_cache() -> None:
+def reset_mount_allowlist_cache() -> None:  # noqa: V103
     """Clear cached mount policy before reloading configuration."""
     _state.cached_allowlist = None
     _state.allowlist_load_error = None
@@ -405,7 +405,7 @@ def validate_additional_mounts(
     return validated
 
 
-def generate_allowlist_template() -> str:
+def generate_allowlist_template() -> str:  # noqa: V103
     """Generate a template allowlist file in TOML format for users to customize."""
     return """\
 non_admin_read_only = true

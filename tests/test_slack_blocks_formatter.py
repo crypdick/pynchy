@@ -1,7 +1,6 @@
 """Tests for SlackBlocksFormatter — Slack Block Kit rich renderer.
 
-Validates that each OutboundEventType maps to the correct Block Kit structure
-and that batch rendering respects Slack's 50-block-per-message limit.
+Validates that each OutboundEventType maps to the correct Block Kit structure.
 """
 
 from __future__ import annotations
@@ -73,25 +72,6 @@ def test_render_tool_result_uses_preformatted():
     assert any(b["type"] == "context" for b in result.blocks)
 
 
-def test_render_batch_respects_50_block_limit():
-    fmt = SlackBlocksFormatter()
-    # Create many events that would exceed 50 blocks
-    events = [OutboundEvent(type=OutboundEventType.RESULT, content="")]
-    events.extend(
-        [
-            OutboundEvent(
-                type=OutboundEventType.TOOL_TRACE,
-                content="",
-                metadata={"tool_name": "Read", "tool_input": {"file_path": f"/path/{i}"}},
-            )
-            for i in range(30)
-        ]
-    )
-    result = fmt.render_batch(events)
-    assert result.blocks is not None
-    assert len(result.blocks) <= 50
-
-
 def test_render_host_uses_context():
     fmt = SlackBlocksFormatter()
     event = OutboundEvent(type=OutboundEventType.HOST, content="deployment started")
@@ -160,31 +140,6 @@ def test_render_tool_result_verbose_shows_content():
     # Should have rich_text with preformatted content
     has_rich_text = any(b["type"] == "rich_text" for b in result.blocks)
     assert has_rich_text
-
-
-def test_render_batch_combines_blocks():
-    """Batch rendering should combine blocks from multiple events."""
-    fmt = SlackBlocksFormatter()
-    events = [
-        OutboundEvent(type=OutboundEventType.HOST, content="starting"),
-        OutboundEvent(
-            type=OutboundEventType.RESULT,
-            content="Done!",
-            metadata={"prefix_assistant_name": False},
-        ),
-    ]
-    result = fmt.render_batch(events)
-    assert result.blocks is not None
-    block_types = [b["type"] for b in result.blocks]
-    assert "context" in block_types
-    assert "markdown" in block_types
-
-
-def test_render_batch_empty_events():
-    """Batch rendering with no events should return empty text."""
-    fmt = SlackBlocksFormatter()
-    result = fmt.render_batch([])
-    assert not result.text
 
 
 def test_render_text_without_cursor():

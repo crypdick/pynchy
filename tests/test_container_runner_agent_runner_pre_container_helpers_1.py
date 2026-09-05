@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.agent_protocol.api import (
-    ContainerInput,
     ContainerOutput,
 )
 from pynchy.conversation.models import (
@@ -73,23 +72,6 @@ def test_append_post_work_prompt_preserves_non_text_content():
     messages = [{"content": ["structured", "content"]}]
 
     assert append_post_work_prompt(messages, "[POST-WORK REFLECTION]") is messages
-
-
-TEST_INPUT = ContainerInput(
-    messages=[
-        {
-            "message_type": "user",
-            "sender": "user@s.whatsapp.net",
-            "sender_name": "User",
-            "content": "Hello",
-            "timestamp": "2024-01-01T00:00:00.000Z",
-            "metadata": None,
-        }
-    ],
-    group_folder="test-group",
-    chat_jid="test@g.us",
-    is_admin=False,
-)
 
 
 _CR_CREDS = "pynchy.host.container_manager.credentials"

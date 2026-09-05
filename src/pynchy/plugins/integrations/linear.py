@@ -90,7 +90,7 @@ class _McpRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    jsonrpc: Literal["2.0"]
+    jsonrpc: Literal["2.0"]  # noqa: V107
     id: int | str | None = None
     method: str
     params: object = None

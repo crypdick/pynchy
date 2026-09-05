@@ -87,7 +87,7 @@ class _GitHubSender(_GitHubModel):
 
 class _GitHubPullRequest(_GitHubModel):
     number: int | None = None
-    html_url: str | None = None
+    html_url: str | None = None  # noqa: V107
     mergeable: bool | None = None
     mergeable_state: str | None = None
     merged: bool = False
@@ -102,7 +102,7 @@ class _GitHubIssue(_GitHubModel):
 
 class _GitHubReview(_GitHubModel):
     state: str | None = None
-    submitted_at: str | None = None
+    submitted_at: str | None = None  # noqa: V107
 
 
 class _GitHubCheckPullRequest(_GitHubModel):

@@ -42,7 +42,7 @@ def get_active_matrix_route(workspace_folder: str) -> ActiveMatrixRoute | None:
     return _active_routes.get(workspace_folder)
 
 
-def clear_active_matrix_routes() -> None:
+def clear_active_matrix_routes() -> None:  # noqa: V103
     """Clear process-local assertions during shutdown and hermetic tests."""
     _active_routes.clear()
 

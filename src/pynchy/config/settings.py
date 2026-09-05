@@ -7,7 +7,6 @@ import os
 import re
 import warnings
 from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
-    Iterable,
     Sequence,
 )
 from dataclasses import dataclass, replace
@@ -460,18 +459,6 @@ class Settings(BaseSettings):
         )
         return tuple(dict.fromkeys(model for model in models if model))
 
-    def mcp_tools_for_names(self, names: Iterable[str]) -> dict[str, McpToolConfig]:
-        """Return strict MCP provider configs for selected MCP-backed tools."""
-        result: dict[str, McpToolConfig] = {}
-        for name in names:
-            tool = self.tools.get(name)
-            if tool is None:
-                message = f"unknown tool: {name}"
-                raise ValueError(message)
-            if isinstance(tool, McpTool):
-                result[name] = tool.mcp
-        return result
-
     def _expanded_selected_profile_names(self, profile_names: Sequence[str]) -> list[str]:
         ordered: list[str] = []
         visiting: list[str] = []
@@ -501,7 +488,7 @@ class Settings(BaseSettings):
     def _expanded_profile_names(self, profile_name: str) -> list[str]:
         return self._expanded_selected_profile_names([profile_name])
 
-    @classmethod
+    @classmethod  # noqa: V105
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],

@@ -27,12 +27,12 @@ else:
 def _intents() -> discord.Intents:
     intents = discord.Intents.none()
     intents.guilds = True
-    intents.guild_messages = True
-    intents.dm_messages = True
-    intents.message_content = True  # privileged — must be enabled in the Dev Portal
-    intents.guild_reactions = True
-    intents.dm_reactions = True
-    intents.voice_states = True
+    intents.guild_messages = True  # noqa: V101
+    intents.dm_messages = True  # noqa: V101
+    intents.message_content = True  # noqa: V101  # privileged — must be enabled in the Dev Portal
+    intents.guild_reactions = True  # noqa: V101
+    intents.dm_reactions = True  # noqa: V101
+    intents.voice_states = True  # noqa: V101
     return intents
 
 

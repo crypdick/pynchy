@@ -31,7 +31,7 @@ class _BoundedResponseContent(Protocol):
     def iter_chunked(self, size: int) -> AsyncIterator[bytes]: ...
 
 
-@runtime_checkable
+@runtime_checkable  # noqa: V102
 class _BoundedResponse(Protocol):
     status: int
     content: _BoundedResponseContent

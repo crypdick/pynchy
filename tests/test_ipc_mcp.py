@@ -29,12 +29,6 @@ from agent_runner.agent_tools import (
 from pynchy.actions.api import ACTION_SPECS, ActionTransport
 
 
-def _read_request_file(path: Path) -> tuple[dict, dict]:
-    """Read a canonical request envelope and return (envelope, payload)."""
-    envelope = json.loads(path.read_text(encoding="utf-8"))
-    return envelope, envelope["payload"]
-
-
 def _runtime(tmp_path: Path, **overrides: object) -> AgentToolRuntime:
     values: dict[str, object] = {
         "chat_jid": "test@g.us",

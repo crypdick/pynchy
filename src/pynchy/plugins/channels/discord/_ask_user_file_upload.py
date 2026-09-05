@@ -102,6 +102,6 @@ class AskUserFileModal(discord.ui.Modal):
             discord.ui.Label(text=(prompt[:45] or "Upload files"), component=self.file_input)
         )
 
-    async def on_submit(self, interaction: object) -> None:
+    async def on_submit(self, interaction: object) -> None:  # noqa: V105
         answer = {"attachments": [_attachment_metadata(item) for item in self.file_input.values]}
         await self._view.finalize_answer(cast("Any", interaction), answer)

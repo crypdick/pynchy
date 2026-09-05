@@ -1,22 +1,12 @@
-"""Admin-approved repository updates.
-
-Git polling can discover a newer revision without changing the running
-checkout. This module renders that pending update through the existing
-channel ``ask_user`` surface and performs the fetch/deploy only after the
-configured admin accepts it.
-"""
+"""Handle callbacks for admin-approved repository updates."""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves these annotations at runtime.
-    Awaitable,
-    Callable,
-)
 from pathlib import (
     Path,  # noqa: TC003 - beartype resolves update-offer dependencies at runtime.
 )
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,  # noqa: TC001 - beartype resolves contract annotations at runtime.
@@ -28,9 +18,6 @@ from pynchy.deployments import (
 from pynchy.host.orchestrator.adapters import resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_workflow
 from pynchy.logger import logger
-from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
-)
 from pynchy.state.api import advance_deployment_baseline, get_deployment_state
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
@@ -63,74 +50,6 @@ class UpdateOfferDeps(Protocol):
     def needs_container_rebuild(self, old_sha: str, new_sha: str) -> bool: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
-
-
-def request_id_for_update(commit_sha: str) -> str:
-    """Build a deterministic channel-action ID for one offered revision."""
-    return f"{_REQUEST_PREFIX}{commit_sha}"
-
-
-def update_offer_questions(commit_sha: str) -> list[dict[str, object]]:
-    """Return the one-choice prompt rendered by interactive channels."""
-    return [
-        {
-            "header": "Update available",
-            "question": (
-                f"Pynchy revision {commit_sha[:8]} is available. "
-                "Fetch and upgrade this deployment now?"
-            ),
-            "options": [
-                {
-                    "label": _APPROVE_LABEL,
-                    "description": "Fetch the latest revision and deploy it.",
-                }
-            ],
-        }
-    ]
-
-
-def _interactive_sender(channel: Channel) -> Callable[..., Awaitable[str | None]] | None:
-    if not getattr(channel, "supports_direct_ask_user_callbacks", False):
-        return None
-    sender = getattr(channel, "send_ask_user", None)
-    return cast("Callable[..., Awaitable[str | None]] | None", sender) if callable(sender) else None
-
-
-async def send_update_offer(
-    *,
-    channels: list[Channel],
-    broadcast_host_message: Callable[[str, str], Awaitable[None]],
-    chat_jid: str,
-    commit_sha: str,
-) -> bool:
-    """Notify the admin, preferring a channel-native update button."""
-    channel = next((candidate for candidate in channels if candidate.owns_jid(chat_jid)), None)
-    sender = _interactive_sender(channel) if channel is not None else None
-    if sender is not None:
-        try:
-            message_id = await sender(
-                chat_jid,
-                request_id_for_update(commit_sha),
-                update_offer_questions(commit_sha),
-            )
-        # allow: exception-handling - a channel widget failure must fall back to host text.
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not send interactive update offer", error=str(exc))
-        else:
-            if message_id:
-                return True
-
-    try:
-        await broadcast_host_message(
-            chat_jid,
-            f"Pynchy update {commit_sha[:8]} is available. "
-            "Use the local control-plane `POST /deploy` endpoint to fetch and upgrade it.",
-        )
-    # allow: exception-handling - record the failed operational notification without failing sync.
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not send update notification", error=str(exc))
-        return False
-    return True
 
 
 def _offered_sha(request_id: str) -> str | None:

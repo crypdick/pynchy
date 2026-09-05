@@ -31,7 +31,7 @@ DISCORD_MISSING_ENV = "MISSING_DISCORD"
 def _install_module(name: str, *, package: bool = False) -> ModuleType:
     module = ModuleType(name)
     if package:
-        module.__path__ = []  # type: ignore[attr-defined]  # import package marker.
+        module.__path__ = []  # noqa: V101  # type: ignore[attr-defined]  # import package marker.
     sys.modules[name] = module
     return module
 
@@ -50,7 +50,7 @@ aioze.client = aioze_client
 aioze.events = aioze_events
 neonize.utils = neonize_utils
 neonize_utils.jid = neonize_jid
-neonize_utils.enum = neonize_enum
+neonize_utils.enum = neonize_enum  # noqa: V101
 
 
 class _NeonizeClient:

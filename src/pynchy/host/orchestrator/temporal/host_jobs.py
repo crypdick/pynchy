@@ -29,7 +29,7 @@ from pynchy.scheduling.api import (
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 
 
-@runtime_checkable
+@runtime_checkable  # noqa: V102
 class _HostJobRuntime(Protocol):
     project_root: Path
 

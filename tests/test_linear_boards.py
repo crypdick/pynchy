@@ -10,11 +10,11 @@ import pytest
 from pynchy.plugins.integrations.linear_boards import (
     LINEAR_TODO_STATUSES,
     LinearBoardError,
+    LinearWorkspaceBoard,
     WorkspaceTodoProposal,
     create_workspace_todo,
     list_workspace_todos,
     move_workspace_todo,
-    provision_workspace_board,
     reconcile_workspace_boards,
     require_todo_states,
     require_workspace_project,
@@ -144,6 +144,16 @@ class FakeLinearClient:
         state["position"] = variables["position"]
         self.updated_states.append(variables)
         return {"workflowStateUpdate": {"success": True, "workflowState": state}}
+
+
+async def provision_workspace_board(
+    client: FakeLinearClient,
+    workspace: WorkspaceStub,
+    *,
+    team_key: str | None,
+) -> LinearWorkspaceBoard:
+    boards = await reconcile_workspace_boards(client, [workspace], team_key=team_key)
+    return boards[workspace.folder]
 
 
 class TestSelectTeam:

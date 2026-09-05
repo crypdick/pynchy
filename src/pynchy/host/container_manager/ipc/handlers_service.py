@@ -120,7 +120,7 @@ def _get_action_catalog() -> HostActionCatalog:
     return get_host_action_catalog()
 
 
-def clear_plugin_handler_cache() -> None:
+def clear_plugin_handler_cache() -> None:  # noqa: V103
     """Clear the cached plugin handler mapping (for tests or config reload)."""
     clear_host_action_catalog_cache()
 

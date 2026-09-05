@@ -165,7 +165,7 @@ def ensure_runtime_workspace_policy_owner(
         raise ValueError("Runtime workspace policy has a different policy owner")
 
 
-def clear_runtime_workspace_policies() -> None:
+def clear_runtime_workspace_policies() -> None:  # noqa: V103
     """Clear connection-owned runtime policies during lifecycle teardown/tests."""
     _runtime_policies.clear()
 

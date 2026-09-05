@@ -260,7 +260,7 @@ class TestCollectStatus:
 class TestStatusEndpoint(AioHTTPTestCase):
     """Tests for GET /status endpoint."""
 
-    async def get_application(self) -> web.Application:
+    async def get_application(self) -> web.Application:  # noqa: V105
         self.mock_deps = MockStatusDeps(
             channels={"whatsapp": True},
             workspace_count=3,

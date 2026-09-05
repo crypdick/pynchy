@@ -32,7 +32,7 @@ class LearningPaths:
     vault_mount_path: str
     profile_root: Path
     memory_root: Path
-    mounted_profile_root: str
+    mounted_profile_root: str  # noqa: V107
     mounted_memory_root: str
 
 

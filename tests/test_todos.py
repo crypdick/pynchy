@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pynchy.host.orchestrator.todos import add_todo, get_todos
+import json
+
+from pynchy.host.orchestrator.todos import add_todo
 
 
 class TestAddTodo:
@@ -20,7 +22,7 @@ class TestAddTodo:
     def test_appends_to_existing_list(self, tmp_path):
         add_todo(tmp_path, "test-group", "first item")
         add_todo(tmp_path, "test-group", "second item")
-        items = get_todos(tmp_path, "test-group")
+        items = json.loads((tmp_path / "ipc/test-group/todos.json").read_text())
 
         assert len(items) == 2
         assert items[0]["content"] == "first item"
@@ -31,51 +33,6 @@ class TestAddTodo:
         b = add_todo(tmp_path, "test-group", "b")
 
         assert a["id"] != b["id"]
-
-
-class TestGetTodos:
-    def test_returns_empty_when_no_file(self, tmp_path):
-        items = get_todos(tmp_path, "test-group")
-
-        assert items == []
-
-    def test_returns_all_items(self, tmp_path):
-        add_todo(tmp_path, "test-group", "item 1")
-        add_todo(tmp_path, "test-group", "item 2")
-        items = get_todos(tmp_path, "test-group")
-
-        assert len(items) == 2
-
-    def test_groups_are_isolated(self, tmp_path):
-        add_todo(tmp_path, "group-a", "item for a")
-        add_todo(tmp_path, "group-b", "item for b")
-        items_a = get_todos(tmp_path, "group-a")
-        items_b = get_todos(tmp_path, "group-b")
-
-        assert len(items_a) == 1
-        assert items_a[0]["content"] == "item for a"
-        assert len(items_b) == 1
-        assert items_b[0]["content"] == "item for b"
-
-    def test_returns_empty_on_corrupted_json(self, tmp_path):
-        """Corrupted todos.json should not crash — returns empty list."""
-        todos_dir = tmp_path / "ipc" / "test-group"
-        todos_dir.mkdir(parents=True)
-        (todos_dir / "todos.json").write_text("not valid json {{{")
-
-        items = get_todos(tmp_path, "test-group")
-
-        assert items == []
-
-    def test_returns_empty_on_empty_file(self, tmp_path):
-        """Empty todos.json should not crash — returns empty list."""
-        todos_dir = tmp_path / "ipc" / "test-group"
-        todos_dir.mkdir(parents=True)
-        (todos_dir / "todos.json").write_text("")
-
-        items = get_todos(tmp_path, "test-group")
-
-        assert items == []
 
 
 class TestAddTodoAtomicWrite:
@@ -98,7 +55,7 @@ class TestAddTodoAtomicWrite:
 
         # _read_todos returns [] for corrupted file, then add_todo appends
         entry = add_todo(tmp_path, "test-group", "fresh start")
-        items = get_todos(tmp_path, "test-group")
+        items = json.loads((todos_dir / "todos.json").read_text())
 
         assert len(items) == 1
         assert items[0]["content"] == "fresh start"

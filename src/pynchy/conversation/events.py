@@ -11,18 +11,13 @@ from typing import Any
 
 
 class ConversationEventKind(StrEnum):
-    USER_MESSAGE = "user_message"
-    ASSISTANT_MESSAGE = "assistant_message"
-    HOST_MESSAGE = "host_message"
-    SYSTEM_NOTICE = "system_notice"
+    USER_MESSAGE = "user_message"  # noqa: V107
+    ASSISTANT_MESSAGE = "assistant_message"  # noqa: V107
+    SYSTEM_NOTICE = "system_notice"  # noqa: V107
 
 
 def new_turn_id() -> str:
     return f"turn_{secrets.token_urlsafe(18)}"
-
-
-def new_event_id() -> str:
-    return f"evt_{secrets.token_urlsafe(18)}"
 
 
 _WHITESPACE = re.compile(r"\s+")
@@ -73,9 +68,6 @@ class ConversationEvent:
     @property
     def preview(self) -> str:
         return content_preview(self.content)
-
-    def span_name(self) -> str:
-        return f"pynchy.conversation.{self.kind.value}"
 
     def span_attributes(self) -> dict[str, object]:
         attrs: dict[str, object] = {

@@ -131,7 +131,7 @@ class CopTaintDecision(StrEnum):
     """Semantic decisions for one heuristic secret-taint candidate."""
 
     CONFIRM = "confirm"
-    REJECT = "reject"
+    REJECT = "reject"  # noqa: V107
 
 
 @dataclass(frozen=True)

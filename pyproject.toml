@@ -150,6 +150,7 @@ src = ["src"]
 
 [tool.ruff.lint]
 preview = true
+external = ["V"]  # Vulture noqa codes (V101-V201)
 select = [
     "A",
     "ANN001",
@@ -362,17 +363,31 @@ package_module_name_map = { "discord-py" = "discord" }
 DEP002 = ["faster-whisper", "ipykernel", "jupyterlab", "pillow", "pynchy"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# vulture — dead-code detection. Runs informationally (min_confidence 80).
-# `ignore_names` covers framework "magic" names: pluggy hooks and Pydantic
-# config/validators.
+# vulture — dead-code detection. The Prek hook scans source alone before its
+# combined source/test pass so test-only references cannot hide dead code.
+# Framework-owned entry points must be ignored centrally because Vulture
+# cannot observe their dynamic registration or lookup. One-off dynamic contracts
+# use inline Vulture noqa codes at their definition sites.
 # ─────────────────────────────────────────────────────────────────────────────
 [tool.vulture]
-min_confidence = 80
+min_confidence = 60
 paths = ["src", "tests"]
 exclude = [".venv/"]
+ignore_decorators = [
+    "@field_validator",  # Pydantic
+    "@model_validator",  # Pydantic
+    "@tool",             # agent_runner tool registry
+    "@mcp.tool",         # FastMCP tool registry
+    "@*.event",          # channel SDK event registries
+    "@*.event.*",        # mautrix event variants such as client.event.qr
+    "@*.action",         # Slack action registry
+    "@assistant.*",      # Slack Assistant registry
+    "@pytest.fixture",   # pytest fixture injection
+]
 ignore_names = [
-    "pynchy_*",      # pluggy hook implementations (hookimpl-decorated)
-    "model_config",  # Pydantic
-    "field_validator",
-    "model_validator",
+    "pynchy_*",       # pluggy hook implementations (hookimpl-decorated)
+    "model_config",   # Pydantic
+    "pytest_plugins", # pytest plugin loading
+    "pytestmark",     # pytest module-level marks
+    "side_effect",    # unittest.mock and pytest-mock configuration
 ]

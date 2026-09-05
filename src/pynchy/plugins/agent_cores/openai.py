@@ -16,7 +16,7 @@ from pynchy.plugins.api import AgentCoreSpec
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
-class OpenAIAgentCorePlugin:
+class OpenAIAgentCorePlugin:  # noqa: V102
     """Built-in plugin for OpenAI Agents SDK agent core.
 
     The implementation lives in src/pynchy/agent/agent_runner/src/agent_runner/cores/openai.py

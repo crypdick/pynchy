@@ -64,7 +64,7 @@ def test_coverage_ratchet_floors_a_measurement_at_its_display_precision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _Config:
-        precision = 0
+        precision = 0  # noqa: V107
 
     class _Coverage:
         config = _Config()

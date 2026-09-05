@@ -8,14 +8,11 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config.api import (
-    BuiltinTool,
     CanaryConfig,
     ChannelOverrideConfig,
     DiscordConnectionConfig,
     JobConfig,
     MatrixConnectionConfig,
-    McpTool,
-    McpToolConfig,
     PermissionConfig,
     ProfileConfig,
     RepoConfig,
@@ -85,22 +82,6 @@ def test_discord_runtime_settings_preserve_security_allowlist() -> None:
 
     assert runtime.security is not None
     assert runtime.security.allowed_users == ["user"]
-
-
-def test_mcp_tool_lookup_returns_mcp_configs_and_rejects_unknown_tools() -> None:
-    settings = _settings(
-        tools={
-            "reader": McpTool(
-                type="mcp",
-                mcp=McpToolConfig(runtime="script", command="reader", port=8475),
-            ),
-            "shell": BuiltinTool(type="builtin"),
-        }
-    )
-
-    assert set(settings.mcp_tools_for_names(["reader", "shell"])) == {"reader"}
-    with pytest.raises(ValueError, match="unknown tool: missing"):
-        settings.mcp_tools_for_names(["missing"])
 
 
 def test_admin_clean_room_allows_workspace_tools() -> None:

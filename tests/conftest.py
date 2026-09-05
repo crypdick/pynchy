@@ -158,7 +158,7 @@ from tests.conftest_helpers import (
 from tests.conftest_linear import configure_linear_accounts_for
 
 
-def pytest_configure() -> None:
+def pytest_configure() -> None:  # noqa: V103
     pytest.register_assert_rewrite(
         "tests.action_intents_support",
         "tests.app_integration_support",
@@ -322,7 +322,7 @@ def pytest_xdist_auto_num_workers(config: pytest.Config) -> int | None:
     return min(os.process_cpu_count() or 1, memory_workers)
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser):  # noqa: V103
     """Register the opt-in dynamic action-coverage collection gate."""
     parser.addoption(
         "--action-coverage",
@@ -332,7 +332,7 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_collection_finish(session):
+def pytest_collection_finish(session):  # noqa: V103
     """Validate action markers after every test has been collected."""
     if not session.config.getoption("--action-coverage"):
         return

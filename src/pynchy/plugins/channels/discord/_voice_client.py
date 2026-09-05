@@ -38,7 +38,7 @@ class PynchyVoiceClient(discord.VoiceClient):
         self._loop = asyncio.get_running_loop()
         super().__init__(client, channel)
 
-    def create_connection_state(self) -> VoiceConnectionState:
+    def create_connection_state(self) -> VoiceConnectionState:  # noqa: V105
         return VoiceConnectionState(self, hook=self._on_voice_gateway_payload)
 
     async def _on_voice_gateway_payload(self, _websocket: object, payload: dict[str, Any]) -> None:

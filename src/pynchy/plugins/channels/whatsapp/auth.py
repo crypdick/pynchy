@@ -43,8 +43,8 @@ def _configure_neonize_event_loop() -> None:
     # Neonize keeps module-level loop references; patch both modules so events
     # and internal tasks bind to this running loop.
     loop = asyncio.get_running_loop()
-    neonize_events.event_global_loop = loop
-    neonize_client.event_global_loop = loop
+    neonize_events.event_global_loop = loop  # noqa: V101
+    neonize_client.event_global_loop = loop  # noqa: V101
 
 
 def _print_already_authenticated() -> None:

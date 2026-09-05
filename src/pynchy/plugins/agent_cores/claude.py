@@ -13,7 +13,7 @@ from pynchy.plugins.api import AgentCoreSpec
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
-class ClaudeAgentCorePlugin:
+class ClaudeAgentCorePlugin:  # noqa: V102
     """Built-in plugin for Claude SDK agent core.
 
     This is the default agent core that uses Anthropic's Claude Agent SDK.

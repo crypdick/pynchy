@@ -200,7 +200,7 @@ def _start_owned_process(
     marker = f"pynchy-mcp-{secrets.token_hex(16)}"
     process = _start_script_process(cmd, env, marker)
     instance.process = process
-    instance.process_marker = marker
+    instance.process_marker = marker  # noqa: V101
     record_path = instance.process_record_path
     if record_path is None:
         return
@@ -249,13 +249,13 @@ def terminate_process(instance: McpInstance) -> None:
     proc = instance.process
     if proc is None or proc.poll() is not None:
         instance.process = None
-        instance.process_marker = None
+        instance.process_marker = None  # noqa: V101
         _remove_process_record(instance.process_record_path)
         return
     with contextlib.suppress(ProcessLookupError, OSError):
         _terminate_process_group(proc)
     instance.process = None
-    instance.process_marker = None
+    instance.process_marker = None  # noqa: V101
     _remove_process_record(instance.process_record_path)
 
 

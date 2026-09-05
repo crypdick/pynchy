@@ -485,7 +485,7 @@ class TestReconcileWorkspaces:
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = "main"
-        mock_channel.auto_provision_configured_chats = True
+        mock_channel.auto_provision_configured_chats = True  # noqa: V101
         mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="discord:channel:789")
 

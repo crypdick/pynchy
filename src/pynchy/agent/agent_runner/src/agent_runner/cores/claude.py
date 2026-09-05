@@ -217,7 +217,7 @@ def _discover_container_plugins() -> list[SdkPluginConfig]:
 # ---------------------------------------------------------------------------
 
 
-class ClaudeAgentCore:
+class ClaudeAgentCore:  # noqa: V102
     """Agent core implementation using Claude SDK."""
 
     def __init__(self, config: AgentCoreConfig) -> None:

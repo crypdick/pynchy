@@ -134,7 +134,7 @@ DOCKER_MARKERS = frozenset({"runtime", "live"})
 DockerRun = Callable[[list[str]], str]
 
 
-def wants_reaping(marker_names: Iterable[str]) -> bool:
+def wants_reaping(marker_names: Iterable[str]) -> bool:  # noqa: V103
     """Return whether a collected session provisions Docker resources."""
     return any(name in DOCKER_MARKERS for name in marker_names)
 
@@ -218,7 +218,7 @@ def default_docker_run(cli: str = "docker") -> DockerRun:
     return run
 
 
-def reap_now(cli: str = "docker") -> list[str]:
+def reap_now(cli: str = "docker") -> list[str]:  # noqa: V103
     """Sweep abandoned test resources using real host state."""
     return reap_orphaned_test_resources(
         run=default_docker_run(cli),

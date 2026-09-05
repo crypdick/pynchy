@@ -112,18 +112,6 @@ def is_pause(matcher: CommandMatcher, text: str, metadata: dict[str, Any] | None
     return word in matcher.pause.aliases
 
 
-def is_any_magic_command(
-    matcher: CommandMatcher, text: str, metadata: dict[str, Any] | None = None
-) -> bool:
-    """Check if a message matches any lifecycle magic command."""
-    return (
-        is_pause(matcher, text, metadata)
-        or is_context_reset(matcher, text, metadata)
-        or is_end_session(matcher, text, metadata)
-        or is_redeploy(matcher, text, metadata)
-    )
-
-
 # -- Approval gate commands ----------------------------------------------------
 
 

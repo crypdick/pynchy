@@ -249,7 +249,7 @@ async def test_setup_session_reports_vnc_url_after_starting_both_processes(
     def fake_popen(args: list[str], **_kwargs: object) -> subprocess.Popen[bytes]:
         launched.append(args)
         process = popen_type.__new__(popen_type)
-        process._child_created = False
+        process._child_created = False  # noqa: V101
         process.returncode = None
         process.poll = lambda: None
         return process

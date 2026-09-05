@@ -58,7 +58,7 @@ class GroupState:
     retry_count: int = 0
     defer_interrupt_until_tool_result: bool = False
     is_host_process: bool = False
-    is_external_run: bool = False
+    is_external_run: bool = False  # noqa: V107
     host_process_lease: HostProcessLease | None = None
     boundary_interrupt_requested: bool = False
     message_waiters: list[asyncio.Future[object]] = field(default_factory=list)
@@ -105,7 +105,7 @@ class GroupState:
         self.host_process_lease = lease
         if owns_slot:
             self.active = True
-            self.is_external_run = True
+            self.is_external_run = True  # noqa: V101
         return lease
 
     def register_host_process(
@@ -162,6 +162,6 @@ class GroupState:
         self.invocation_ts = 0.0
         self.defer_interrupt_until_tool_result = False
         self.is_host_process = False
-        self.is_external_run = False
+        self.is_external_run = False  # noqa: V101
         self.host_process_lease = None
         self.boundary_interrupt_requested = False

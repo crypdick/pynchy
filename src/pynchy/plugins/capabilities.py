@@ -32,11 +32,11 @@ class CapabilityKind(StrEnum):
     """Operator-visible capability categories."""
 
     HOST_ACTION = "host_action"
-    AGENT_CORE = "agent_core"
-    CHANNEL = "channel"
-    MCP_SERVER = "mcp_server"
-    SKILL = "skill"
-    DEVICE = "device"
+    AGENT_CORE = "agent_core"  # noqa: V107
+    CHANNEL = "channel"  # noqa: V107
+    MCP_SERVER = "mcp_server"  # noqa: V107
+    SKILL = "skill"  # noqa: V107
+    DEVICE = "device"  # noqa: V107
 
 
 class CapabilityRequirementKind(StrEnum):
@@ -46,9 +46,9 @@ class CapabilityRequirementKind(StrEnum):
     CONFIG = "config"
     CREDENTIAL_REFERENCE = "credential_reference"
     HOST_BINARY = "host_binary"
-    AGENT_CORE = "agent_core"
-    RUNTIME = "runtime"
-    PERMISSION = "permission"
+    AGENT_CORE = "agent_core"  # noqa: V107
+    RUNTIME = "runtime"  # noqa: V107
+    PERMISSION = "permission"  # noqa: V107
 
 
 class CapabilityStatus(StrEnum):

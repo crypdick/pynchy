@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
 
 import pytest
 from conftest import init_test_database
@@ -26,7 +25,6 @@ from pynchy.identifiers import (
     GroupFolder,
 )
 from pynchy.plugins.api import (
-    Channel,
     InboundFetchResult,
     OutboundEvent,
 )
@@ -39,10 +37,6 @@ from pynchy.state import (
     store_chat_metadata,
 )
 from pynchy.workspace.api import WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.event_bus import Event
-    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
 @pytest.fixture(autouse=True)
@@ -87,10 +81,6 @@ def _webhook_receipt(
         occurred_at="2026-07-19T12:00:00+00:00",
         received_at=received_at,
     )
-
-
-async def _record_receipt(identity: ExternalDeliveryIdentity, subject_key: str) -> None:
-    await admit_webhook_receipt(_webhook_receipt(identity, subject_key), None)
 
 
 async def _admit(
@@ -139,30 +129,6 @@ async def _bind_control_thread(
             updated_at="2026-07-19T12:00:00+00:00",
         )
     )
-
-
-class _ClearConfirmationDeps:
-    def __init__(self) -> None:
-        self.sessions: dict[str, str] = {}
-        self.session_cleared: set[str] = set()
-        self.last_agent_timestamp: dict[str, str] = {}
-        self.queue = cast("GroupQueue", object())
-        self.channels: list[Channel] = []
-        self.workspaces: dict[str, WorkspaceProfile] = {}
-        self.events: list[str] = []
-
-    async def register_workspace(self, profile: WorkspaceProfile) -> None:
-        self.workspaces[profile.jid] = profile
-
-    async def save_state(self) -> None: ...
-
-    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        assert chat_jid == "discord:channel:thread-reset-wake"
-        assert text == "🗑️"
-        self.events.append("ack")
-
-    def emit(self, _event: Event) -> None:
-        self.events.append("cleared")
 
 
 class _DiscordThreadChannel:

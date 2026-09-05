@@ -63,11 +63,6 @@ class TextFormatter:
         }
         return renderers[event.type](event)
 
-    def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
-        """Render multiple events as a single newline-joined message."""
-        texts = [self.render(e).text for e in events]
-        return RenderedMessage(text="\n".join(texts))
-
     def _render_text(self, event: OutboundEvent) -> RenderedMessage:
         text = format_internal_tags(event.content)
         if event.metadata.get("cursor"):

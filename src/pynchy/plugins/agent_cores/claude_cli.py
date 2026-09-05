@@ -18,7 +18,7 @@ from pynchy.plugins.api import AgentCoreSpec
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
-class ClaudeCLIAgentCorePlugin:
+class ClaudeCLIAgentCorePlugin:  # noqa: V102
     """Built-in plugin for the Claude Code CLI agent core.
 
     Unlike the default ``claude`` core (Claude Agent SDK), this core owns the

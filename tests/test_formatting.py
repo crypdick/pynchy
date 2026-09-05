@@ -11,7 +11,6 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
     parse_host_tag,
-    strip_internal_tags,
 )
 
 if TYPE_CHECKING:
@@ -67,26 +66,6 @@ class TestTriggerPattern:
         assert pattern.search("@hermes hello")
         assert pattern.search("@runner hello")
         assert not pattern.search("@pynchy hello")
-
-
-# --- stripInternalTags ---
-
-
-class TestStripInternalTags:
-    def test_strips_single_line_internal_tags(self):
-        assert strip_internal_tags("hello <internal>secret</internal> world") == "hello  world"
-
-    def test_strips_multi_line_internal_tags(self):
-        assert (
-            strip_internal_tags("hello <internal>\nsecret\nstuff\n</internal> world")
-            == "hello  world"
-        )
-
-    def test_strips_multiple_internal_tag_blocks(self):
-        assert strip_internal_tags("<internal>a</internal>hello<internal>b</internal>") == "hello"
-
-    def test_returns_empty_when_only_internal_tags(self):
-        assert not strip_internal_tags("<internal>only this</internal>")
 
 
 # --- formatInternalTags ---

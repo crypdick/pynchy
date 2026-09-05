@@ -74,7 +74,7 @@ def test_drain_ipc_messages_reports_an_unreadable_input_directory(
 
 
 @pytest.mark.asyncio
-async def test_wait_for_ipc_message_returns_none_when_watchdog_is_unavailable(
+async def test_wait_for_ipc_followup_returns_none_when_watchdog_is_unavailable(
     tmp_path: Path, monkeypatch
 ) -> None:
     class _UnavailableObserver:
@@ -91,11 +91,11 @@ async def test_wait_for_ipc_message_returns_none_when_watchdog_is_unavailable(
     (tmp_path / "_close").touch()
     monkeypatch.setattr(ipc, "Observer", _UnavailableObserver)
 
-    assert await ipc.wait_for_ipc_message() is None
+    assert await ipc.wait_for_ipc_followup() is None
 
 
 @pytest.mark.asyncio
-async def test_wait_for_ipc_message_combines_pending_messages_and_stops_observer(
+async def test_wait_for_ipc_followup_combines_pending_messages_and_stops_observer(
     tmp_path: Path, monkeypatch
 ) -> None:
     observer = Mock()
@@ -116,13 +116,16 @@ async def test_wait_for_ipc_message_combines_pending_messages_and_stops_observer
     monkeypatch.setattr(ipc, "IPC_INPUT_CLOSE_SENTINEL", tmp_path / "_close")
     monkeypatch.setattr(ipc, "Observer", lambda: observer)
 
-    assert await ipc.wait_for_ipc_message() == "first\nsecond"
+    followup = await ipc.wait_for_ipc_followup()
+
+    assert followup is not None
+    assert followup.text == "first\nsecond"
     observer.stop.assert_called_once()
     observer.join.assert_called_once_with(timeout=2)
 
 
 @pytest.mark.asyncio
-async def test_wait_for_ipc_message_polls_after_a_missed_watchdog_event(
+async def test_wait_for_ipc_followup_polls_after_a_missed_watchdog_event(
     tmp_path: Path, monkeypatch
 ) -> None:
     observer = Mock()
@@ -135,5 +138,8 @@ async def test_wait_for_ipc_message_polls_after_a_missed_watchdog_event(
         (tmp_path / "001.json").write_text(json.dumps({"type": "message", "text": "polled"}))
 
     writer = asyncio.create_task(write_after_timeout())
-    assert await asyncio.wait_for(ipc.wait_for_ipc_message(), timeout=2) == "polled"
+    followup = await asyncio.wait_for(ipc.wait_for_ipc_followup(), timeout=2)
+
+    assert followup is not None
+    assert followup.text == "polled"
     await writer

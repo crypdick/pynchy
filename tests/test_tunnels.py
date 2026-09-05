@@ -187,12 +187,9 @@ class _FakeTunnel:
         self.available = available
         self.connected = connected
         self.available_error = available_error
-        self.is_available_calls = 0
         self.is_connected_calls = 0
-        self.status_summary_calls = 0
 
     def is_available(self) -> bool:
-        self.is_available_calls += 1
         if self.available_error is not None:
             raise self.available_error
         return self.available
@@ -202,7 +199,6 @@ class _FakeTunnel:
         return self.connected
 
     def status_summary(self) -> str:
-        self.status_summary_calls += 1
         return "ok" if self.connected else "disconnected"
 
 

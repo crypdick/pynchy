@@ -34,8 +34,8 @@ class LinearIssueSummary(TypedDict):
     title: NotRequired[str]
     url: NotRequired[str]
     priority: NotRequired[int]
-    createdAt: NotRequired[str]
-    updatedAt: NotRequired[str]
+    createdAt: NotRequired[str]  # noqa: V107
+    updatedAt: NotRequired[str]  # noqa: V107
     state: NotRequired[LinearIssueState | None]
     team: NotRequired[LinearIssueTeam | None]
     project: NotRequired[LinearIssueProject | None]

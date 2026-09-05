@@ -467,6 +467,6 @@ def _log_reconciliation_summary(recovered: int, retried: int) -> None:
         logger.debug("Reconciliation complete, nothing to recover")
 
 
-def reset_cooldowns() -> None:
+def reset_cooldowns() -> None:  # noqa: V103
     """Clear all cooldown state (useful for tests)."""
     _last_reconciled.clear()

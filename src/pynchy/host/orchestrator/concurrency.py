@@ -331,7 +331,7 @@ class GroupQueue:
     async def destroy_runtime_session(self, runtime_id: RuntimeId) -> None:
         await self._processes.destroy_runtime_session(runtime_id)
 
-    def is_runtime_policy_paused(self, runtime_id: RuntimeId) -> bool:
+    def is_runtime_policy_paused(self, runtime_id: RuntimeId) -> bool:  # noqa: V105
         """Return whether policy publication currently blocks this runtime."""
         return runtime_id in self._policy_paused
 

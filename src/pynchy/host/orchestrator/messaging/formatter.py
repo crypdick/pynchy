@@ -118,15 +118,6 @@ def format_messages_for_sdk(messages: list[NewMessage]) -> list[dict[str, Any]]:
     return sdk_messages
 
 
-def strip_internal_tags(text: str) -> str:
-    """Remove <internal>...</internal> blocks completely and trim whitespace.
-
-    Used during streaming to strip *completed* internal blocks before checking
-    for unclosed tags. The final display uses format_internal_tags instead.
-    """
-    return _INTERNAL_TAG_RE.sub("", text).strip()
-
-
 def format_internal_tags(text: str) -> str:
     """Transform <internal>...</internal> into 🧠 _thought_ (italic) and trim whitespace."""
     return _INTERNAL_TAG_RE.sub(_format_internal_match, text).strip()

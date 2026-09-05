@@ -26,7 +26,3 @@ class Formatter(Protocol):
     def render(self, event: OutboundEvent) -> RenderedMessage:
         """Convert an outbound event into a channel-ready message."""
         ...
-
-    def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
-        """Render multiple events as a single message (for trace batching)."""
-        ...

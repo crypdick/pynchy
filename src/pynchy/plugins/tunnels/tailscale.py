@@ -70,7 +70,7 @@ class _TailscaleTunnel:
         return f"BackendState={self._backend_state}"
 
 
-class TailscaleTunnelPlugin:
+class TailscaleTunnelPlugin:  # noqa: V102
     """Built-in plugin providing Tailscale tunnel detection."""
 
     @hookimpl

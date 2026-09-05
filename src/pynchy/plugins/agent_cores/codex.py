@@ -15,7 +15,7 @@ from pynchy.plugins.api import AgentCoreSpec
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
-class CodexAgentCorePlugin:
+class CodexAgentCorePlugin:  # noqa: V102
     """Built-in plugin for the Codex CLI agent core."""
 
     @hookimpl

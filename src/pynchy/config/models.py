@@ -601,8 +601,8 @@ class LinearTool(_ToolTrustConfig):
     workspace: str | None = None
     required_env: list[ValidatedEnvName] = Field(default_factory=lambda: ["LINEAR_API_KEY"])
     optional_env: list[ValidatedEnvName] = Field(default_factory=lambda: ["LINEAR_TEAM_KEY"])
-    project_per_workspace: bool | None = None
-    project_name_template: str | None = None
+    project_per_workspace: bool | None = None  # noqa: V107
+    project_name_template: str | None = None  # noqa: V107
 
     @model_validator(mode="after")
     def validate_linear_environment_shape(self) -> LinearTool:

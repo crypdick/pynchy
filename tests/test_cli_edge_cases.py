@@ -221,8 +221,8 @@ def test_fetch_control_payload_uses_bearer_auth_for_tcp_requests(
     token_file.write_text("secret-token\n")
     Path(token_file).chmod(stat.S_IRUSR | stat.S_IWUSR)
     response = Mock()
-    response.__enter__ = Mock(return_value=response)
-    response.__exit__ = Mock(return_value=None)
+    response.__enter__ = Mock(return_value=response)  # noqa: V101
+    response.__exit__ = Mock(return_value=None)  # noqa: V101
     response.read.return_value = json.dumps({"ok": True}).encode()
     opened = Mock(return_value=response)
     monkeypatch.setattr(cli.urllib.request, "urlopen", opened)

@@ -114,8 +114,8 @@ class WhatsAppChannel:
         self._first_connect: asyncio.Event = asyncio.Event()
 
         loop = asyncio.get_running_loop()
-        neonize_events.event_global_loop = loop
-        neonize_client.event_global_loop = loop
+        neonize_events.event_global_loop = loop  # noqa: V101
+        neonize_client.event_global_loop = loop  # noqa: V101
 
         auth_db = self._auth_db_path
         Path(auth_db).expanduser().parent.mkdir(parents=True, exist_ok=True)

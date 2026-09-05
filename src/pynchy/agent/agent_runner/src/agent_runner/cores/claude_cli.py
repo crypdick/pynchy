@@ -70,7 +70,7 @@ def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStrea
     return stream
 
 
-class ClaudeCLIAgentCore:
+class ClaudeCLIAgentCore:  # noqa: V102
     """Agent core that drives the ``claude`` CLI as a subprocess.
 
     One ``claude --print`` process is spawned per :meth:`query` (one turn), with

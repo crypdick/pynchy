@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 __all__ = ["collect_hook_results", "get_plugin_manager"]
 
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> object:  # noqa: V103
     if name in {*__all__, "_BUILTIN_PLUGIN_SPECS"}:
         from pynchy.plugins import registry  # noqa: PLC0415 - intentional lazy boundary.
 

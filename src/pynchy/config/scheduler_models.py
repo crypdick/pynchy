@@ -96,7 +96,7 @@ class CanaryConfig(_StrictModel):
 
 class IntervalsConfig(_StrictModel):
     message_poll: float = 2.0  # seconds
-    ipc_poll: float = 1.0  # seconds
+    ipc_poll: float = 1.0  # noqa: V107  # seconds
 
 
 class QueueConfig(_StrictModel):

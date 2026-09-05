@@ -431,7 +431,7 @@ async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:  # noqa: RUF029 - F
 
 @dataclass(slots=True)
 class _NotebookServerState:
-    lab_process: subprocess.Popen[bytes] | None = None
+    lab_process: subprocess.Popen[bytes] | None = None  # noqa: V107
 
 
 _state = _NotebookServerState()
@@ -439,7 +439,7 @@ _state = _NotebookServerState()
 
 def _start_jupyterlab() -> None:
     """Start JupyterLab as a viewing frontend."""
-    _state.lab_process = subprocess.Popen(  # noqa: S603 - fixed python -m jupyterlab argv; no shell.
+    _state.lab_process = subprocess.Popen(  # noqa: S603, V101 - fixed python -m jupyterlab argv; no shell.
         [
             sys.executable,
             "-m",

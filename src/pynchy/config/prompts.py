@@ -35,12 +35,12 @@ class PromptConfig(_StrictModel):
     default_soul: ValidatedPromptId = PromptName("souls/default")
     default_executor: ValidatedPromptId = PromptName("executors/default")
     default_pipeline: str = "software-delivery"
-    cop_inbound: ValidatedPromptId = PromptName("reviewers/cop-inbound")
-    cop_outbound: ValidatedPromptId = PromptName("reviewers/cop-outbound")
-    cop_bash: ValidatedPromptId = PromptName("reviewers/cop-bash")
-    cop_taint: ValidatedPromptId = PromptName("reviewers/cop-taint")
+    cop_inbound: ValidatedPromptId = PromptName("reviewers/cop-inbound")  # noqa: V107
+    cop_outbound: ValidatedPromptId = PromptName("reviewers/cop-outbound")  # noqa: V107
+    cop_bash: ValidatedPromptId = PromptName("reviewers/cop-bash")  # noqa: V107
+    cop_taint: ValidatedPromptId = PromptName("reviewers/cop-taint")  # noqa: V107
     learning: ValidatedPromptId = PromptName("reviewers/learning")
-    plan_freshness: ValidatedPromptId = PromptName("reviewers/plan-freshness")
+    plan_freshness: ValidatedPromptId = PromptName("reviewers/plan-freshness")  # noqa: V107
 
     @field_validator("default_soul")
     @classmethod

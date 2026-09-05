@@ -153,13 +153,13 @@ _TOOL_CALL_ADAPTER: TypeAdapter[ProtonToolCall] = TypeAdapter(ProtonToolCall)
 class _McpRequest(_StrictModel):
     """The JSON-RPC fields this server accepts at its HTTP boundary."""
 
-    jsonrpc: Literal["2.0"]
+    jsonrpc: Literal["2.0"]  # noqa: V107
     id: int | str | None = None
     method: str
     params: object = None
 
 
-class ProtonMailMcpPlugin:
+class ProtonMailMcpPlugin:  # noqa: V102
     """Register a host-side MCP server for Proton Mail through local Bridge."""
 
     @hookimpl

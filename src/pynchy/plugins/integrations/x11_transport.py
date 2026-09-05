@@ -20,7 +20,7 @@ class Handshake(BaseModel):
     model_config = {"extra": "ignore"}
 
     protocol_version: int
-    supported_actions: frozenset[str]
+    supported_actions: frozenset[str]  # noqa: V107
     ready: bool
 
 

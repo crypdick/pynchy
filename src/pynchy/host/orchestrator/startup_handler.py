@@ -504,7 +504,7 @@ async def dispatch_interrupted_turn_recovery(
     return resumed_chats
 
 
-async def check_deploy_continuation(
+async def check_deploy_continuation(  # noqa: V103
     deps: StartupDeps,
     *,
     active_revision: DeployRevision,

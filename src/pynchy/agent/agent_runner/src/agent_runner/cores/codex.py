@@ -114,7 +114,7 @@ def _configured_model_reasoning_effort(extra: dict[str, object]) -> str | None:
     return effort if isinstance(effort, str) else None
 
 
-class CodexCLIAgentCore:
+class CodexCLIAgentCore:  # noqa: V102
     """Agent core that drives ``codex exec --json`` as a subprocess."""
 
     def __init__(self, config: AgentCoreConfig) -> None:

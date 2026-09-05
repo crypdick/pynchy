@@ -104,7 +104,7 @@ def get_caldav_client(name: str, server_cfg: CalDAVServerOptions) -> object:
     return _caldav_client_cache[name]
 
 
-def clear_caldav_client_cache() -> None:
+def clear_caldav_client_cache() -> None:  # noqa: V103
     """Clear cached CalDAV clients (for tests or config reload)."""
     _caldav_client_cache.clear()
 
@@ -408,7 +408,7 @@ CALDAV_HOST_ACTIONS = HostActionRegistration(
 )
 
 
-class CalDAVMcpServerPlugin:
+class CalDAVMcpServerPlugin:  # noqa: V102
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
         return CALDAV_HOST_ACTIONS

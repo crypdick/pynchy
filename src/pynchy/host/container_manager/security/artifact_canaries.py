@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class _FileTaintArtifact:
     secret_tainted: bool
-    response_decision: str
+    response_decision: str  # noqa: V107
 
 
 class _SecurityCanaryDeps:

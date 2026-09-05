@@ -7,17 +7,13 @@ Run with: uv run pytest tests/live/ -m live
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
 
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.plugins.api import NewMessage
 from pynchy.state import init_test_database
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -51,7 +47,7 @@ class RecordingChannel:
     typing_states: list[tuple[str, bool]] = field(default_factory=list)
 
     # Streaming support
-    supports_streaming: bool = False
+    supports_streaming: bool = False  # noqa: V107
     _post_counter: int = 0
 
     async def connect(self) -> None:
@@ -99,7 +95,7 @@ class StreamingChannel(RecordingChannel):
     and then updated in-place as content streams in.
     """
 
-    supports_streaming: bool = True
+    supports_streaming: bool = True  # noqa: V107
     _post_counter: int = 0
 
     async def post_event(self, jid: str, event: object) -> str | None:
@@ -215,46 +211,6 @@ class _FakeStdin:
 # ---------------------------------------------------------------------------
 # Settings and app helpers
 # ---------------------------------------------------------------------------
-
-
-@contextlib.contextmanager
-def patch_test_settings(tmp_path: Path):
-    """Patch settings accessors to use tmp test directories."""
-    s = make_settings(
-        project_root=tmp_path,
-        groups_dir=tmp_path / "groups",
-        data_dir=tmp_path / "data",
-    )
-    with contextlib.ExitStack() as stack:
-        for mod in (
-            "pynchy.host.container_manager.credentials",
-            "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.messaging.router",
-        ):
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        yield s
-
-
-def make_test_message(
-    *,
-    chat_jid: str = "group@g.us",
-    content: str = "@pynchy hello",
-    sender: str = "user@s.whatsapp.net",
-    sender_name: str = "Alice",
-    msg_id: str = "m1",
-    timestamp: str = "2024-01-01T00:00:01.000Z",
-    message_type: str = "user",
-) -> NewMessage:
-    """Create a test NewMessage with sensible defaults."""
-    return NewMessage(
-        id=msg_id,
-        chat_jid=chat_jid,
-        sender=sender,
-        sender_name=sender_name,
-        content=content,
-        timestamp=timestamp,
-        message_type=message_type,
-    )
 
 
 # ---------------------------------------------------------------------------

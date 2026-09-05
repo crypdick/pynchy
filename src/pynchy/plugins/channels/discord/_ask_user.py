@@ -239,7 +239,7 @@ class AskUserTextModal(discord.ui.Modal):
         )
         self.add_item(discord.ui.Label(text=(prompt[:45] or "Answer"), component=self.answer_input))
 
-    async def on_submit(self, interaction: object) -> None:
+    async def on_submit(self, interaction: object) -> None:  # noqa: V105
         await self._view.finalize_answer(cast("Any", interaction), self.answer_input.value or "")
 
 
@@ -313,7 +313,7 @@ class AskUserFormModal(discord.ui.Modal):
         values = list(select.values)
         return values if select.max_values > 1 else (values[0] if values else "")
 
-    async def on_submit(self, interaction: object) -> None:
+    async def on_submit(self, interaction: object) -> None:  # noqa: V105
         answers = {key: self._value(component) for key, component in self._fields}
         await self._view.finalize_answer(cast("Any", interaction), answers)
 
@@ -446,10 +446,10 @@ class DiscordAskUserView(discord.ui.View):
         self._forget()
         self.stop()
 
-    async def on_timeout(self) -> None:
+    async def on_timeout(self) -> None:  # noqa: V105
         if self._message_id is not None:
             for item in self.children:
-                item.disabled = True
+                item.disabled = True  # noqa: V101
             try:
                 channel = await self._channel.resolve_channel(self._jid)
                 message = await channel.fetch_message(int(self._message_id))

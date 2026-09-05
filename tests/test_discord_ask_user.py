@@ -257,7 +257,7 @@ async def test_multiple_question_modal_uses_selects_and_text_inputs():
     assert [type(child).__name__ for child in modal.children] == ["Label", "Label"]
     select = modal.children[0].component
     text_input = modal.children[1].component
-    select._values = ["Option 2"]
+    select._values = ["Option 2"]  # noqa: V101
     text_input._value = "Project Synapse"
 
     await modal.on_submit(_interaction())
@@ -310,7 +310,7 @@ async def test_multi_select_submit_delivers_list_answer():
     view = fake.sends[0][1]["view"]
     select = next(item for item in view.children if item.__class__.__name__.endswith("Select"))
     submit = next(item for item in view.children if getattr(item, "label", None) == "Submit")
-    select._values = ["Option 1", "Option 3"]
+    select._values = ["Option 1", "Option 3"]  # noqa: V101
     interaction = _interaction()
 
     await submit.callback(interaction)
@@ -376,7 +376,7 @@ async def test_file_upload_modal_submit_delivers_attachment_metadata():
     assert isinstance(modal.file_input, discord.ui.FileUpload)
     assert modal.file_input.required is False
     assert modal.file_input.max_values == 2
-    modal.file_input._values = [_UploadedAttachment()]
+    modal.file_input._values = [_UploadedAttachment()]  # noqa: V101
 
     await modal.on_submit(_interaction())
 
@@ -462,7 +462,7 @@ async def test_multi_question_modal_supports_file_uploads():
     modal = launch_interaction.response.send_modal.call_args.args[0]
     file_input = modal.children[0].component
     text_input = modal.children[1].component
-    file_input._values = [_UploadedAttachment()]
+    file_input._values = [_UploadedAttachment()]  # noqa: V101
     text_input._value = "Project Synapse"
 
     await modal.on_submit(_interaction())
@@ -582,7 +582,7 @@ async def test_select_callback_records_allowed_selection_before_submit():
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _multi_select_question())
     view = fake.sends[0][1]["view"]
     select = next(item for item in view.children if item.__class__.__name__.endswith("Select"))
-    select._values = ["Option 1", "Option 2"]
+    select._values = ["Option 1", "Option 2"]  # noqa: V101
     interaction = _interaction()
 
     await select.callback(interaction)

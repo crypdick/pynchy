@@ -9,7 +9,6 @@ from pynchy.conversation.events import (
     ConversationEvent,
     ConversationEventKind,
     content_preview,
-    new_event_id,
     new_turn_id,
 )
 
@@ -34,7 +33,6 @@ def _event(**overrides: Any) -> ConversationEvent:
 
 def test_new_ids_are_prefixed_and_distinct() -> None:
     assert new_turn_id().startswith("turn_")
-    assert new_event_id().startswith("evt_")
     assert new_turn_id() != new_turn_id()
 
 
@@ -95,12 +93,6 @@ def test_conversation_event_metadata_exposes_deeply_immutable_values() -> None:
         metadata["nested"]["count"] = 2
     with pytest.raises((TypeError, AttributeError)):
         metadata["items"].append("late")
-
-
-def test_conversation_event_span_name_uses_kind() -> None:
-    event = _event(kind=ConversationEventKind.ASSISTANT_MESSAGE)
-
-    assert event.span_name() == "pynchy.conversation.assistant_message"
 
 
 def test_conversation_event_span_attributes_include_full_values() -> None:

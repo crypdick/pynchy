@@ -29,9 +29,6 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 
-# Slack limits messages to 50 blocks.
-_MAX_BLOCKS_PER_MESSAGE = 50
-
 
 def _markdown_block(text: str) -> dict[str, Any]:
     """Build a Slack ``markdown`` block — natively renders standard markdown."""
@@ -91,9 +88,7 @@ class SlackBlocksFormatter:
     method returns a ``RenderedMessage`` with both ``blocks`` (for rich
     rendering) and ``text`` (plain text for notifications).
 
-    ``render_batch()`` concatenates blocks from each event, enforcing the
-    50-block-per-message Slack limit by dropping oldest events that would
-    exceed the budget.
+    Each event renders independently for the channel transport.
     """
 
     def render(self, event: OutboundEvent) -> RenderedMessage:
@@ -108,32 +103,6 @@ class SlackBlocksFormatter:
             OutboundEventType.APPROVAL: self._render_approval,
         }
         return renderers[event.type](event)
-
-    def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
-        """Render multiple events as a single block list.
-
-        Concatenates blocks from each event, respecting the 50-block budget.
-        When the budget is exhausted, remaining events are dropped (their
-        plain text is still included in the text field).
-        """
-        if not events:
-            return RenderedMessage(text="", blocks=[])
-
-        all_blocks: list[dict[str, Any]] = []
-        all_texts: list[str] = []
-
-        for event in events:
-            rendered = self.render(event)
-            if rendered.text:
-                all_texts.append(rendered.text)
-            rendered_blocks = cast("list[dict[str, Any]]", rendered.blocks)
-            if len(all_blocks) + len(rendered_blocks) <= _MAX_BLOCKS_PER_MESSAGE:
-                all_blocks.extend(rendered_blocks)
-
-        return RenderedMessage(
-            text="\n".join(all_texts),
-            blocks=all_blocks if all_blocks else None,
-        )
 
     # ------------------------------------------------------------------
     # Per-type renderers

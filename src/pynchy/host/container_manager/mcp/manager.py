@@ -205,7 +205,7 @@ class McpManager:
                 instance in self.get_workspace_instance_ids(group)
             ),
         )
-        self._proxy_port: int = 0
+        self._proxy_port: int = 0  # noqa: V101
         self._configured_proxy_port = int(getattr(settings.gateway, "mcp_proxy_port", 0))
 
     @property
@@ -269,7 +269,7 @@ class McpManager:
                 instance_id: instance.server_name
                 for instance_id, instance in self._instances.items()
             }
-            self._proxy_port = await self._proxy.start(
+            self._proxy_port = await self._proxy.start(  # noqa: V101
                 instance_urls,
                 trust_map=trust_map,
                 service_names=service_names,

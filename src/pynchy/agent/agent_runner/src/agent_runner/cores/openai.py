@@ -150,7 +150,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
                 )
         return None
 
-    async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+    async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:  # noqa: V105
         if failure := await self._security_failure(op):
             return failure
         try:
@@ -164,7 +164,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
         except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001
             return ApplyPatchResult(status="failed", output=str(exc))
 
-    async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+    async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:  # noqa: V105
         if failure := await self._security_failure(op):
             return failure
         try:
@@ -179,7 +179,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
         except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001
             return ApplyPatchResult(status="failed", output=str(exc))
 
-    async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+    async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:  # noqa: V105
         if failure := await self._security_failure(op):
             return failure
         try:
@@ -295,7 +295,7 @@ def _streamable_http_server(name: str, spec: dict[str, Any]) -> MCPServerStreama
 # ---------------------------------------------------------------------------
 
 
-class OpenAIAgentCore:
+class OpenAIAgentCore:  # noqa: V102
     """Agent core implementation using OpenAI Agents SDK."""
 
     def __init__(self, config: AgentCoreConfig) -> None:

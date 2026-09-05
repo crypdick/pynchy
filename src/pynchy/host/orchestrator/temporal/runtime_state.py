@@ -15,13 +15,13 @@ _SCHEDULER_DEPS_NOT_BOUND = "Temporal scheduler dependencies are not bound"
 
 @dataclass(frozen=True)
 class TemporalSchedulerStatusSnapshot:
-    worker_running: bool = False
-    last_workflow_id: str | None = None
-    last_task_id: str | None = None
+    worker_running: bool = False  # noqa: V107
+    last_workflow_id: str | None = None  # noqa: V107
+    last_task_id: str | None = None  # noqa: V107
     last_result: str | None = None
-    last_started_at: str | None = None
-    last_completed_at: str | None = None
-    last_error: str | None = None
+    last_started_at: str | None = None  # noqa: V107
+    last_completed_at: str | None = None  # noqa: V107
+    last_error: str | None = None  # noqa: V107
     tracked_results: dict[str, TemporalTrackedActivitySnapshot] = field(default_factory=dict)
 
 

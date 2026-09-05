@@ -33,6 +33,7 @@ src = ["src"]
 
 [tool.ruff.lint]
 preview = true
+external = ["V"]  # Vulture noqa codes (V101-V201)
 select = [
     "A",
     "ANN001",

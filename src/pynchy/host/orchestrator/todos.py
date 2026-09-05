@@ -54,8 +54,3 @@ def add_todo(data_dir: Path, group_folder: str, content: str) -> dict[str, Any]:
     todos.append(entry)
     _write_todos(data_dir, group_folder, todos)
     return entry
-
-
-def get_todos(data_dir: Path, group_folder: str) -> list[dict[str, Any]]:
-    """Return all todo items for a group."""
-    return _read_todos(data_dir, group_folder)

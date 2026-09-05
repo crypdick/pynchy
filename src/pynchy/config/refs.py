@@ -32,10 +32,6 @@ def parse_chat_ref(ref: str | None) -> ChatRef | None:
     return ChatRef(platform=platform, name=name, chat=chat)
 
 
-def connection_ref_from_parts(platform: str, name: str) -> str:
-    return f"connection.{platform}.{name}"
-
-
 def channel_platform_from_name(channel_name: str | None) -> str | None:
     """Return platform name from a channel instance name."""
     if not channel_name:

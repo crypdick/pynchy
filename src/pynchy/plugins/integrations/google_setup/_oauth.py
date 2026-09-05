@@ -36,7 +36,7 @@ def _token_exchange_failure_message(error: object) -> str:
 class OAuthPage(Protocol):
     """The browser surface required to complete the OAuth consent flow."""
 
-    async def goto(self, url: str, *, wait_until: str) -> object: ...
+    async def goto(self, url: str, *, wait_until: str) -> object: ...  # noqa: V107
 
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
@@ -68,7 +68,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
     done = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
+        def do_GET(self) -> None:  # noqa: V105
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             code = query.get("code", [None])[0]
             if code:
@@ -83,7 +83,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
             )
             done.set()
 
-        def log_message(self, *args: object) -> None:
+        def log_message(self, *args: object) -> None:  # noqa: V105
             pass
 
     server = HTTPServer((OAUTH_CALLBACK_HOST, OAUTH_CALLBACK_PORT), Handler)

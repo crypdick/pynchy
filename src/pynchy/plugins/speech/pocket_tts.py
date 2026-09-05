@@ -107,7 +107,7 @@ class PocketTtsProvider:
         return f"{self._endpoint.rsplit('/', maxsplit=1)[0]}/"
 
 
-class PocketTtsPlugin:
+class PocketTtsPlugin:  # noqa: V102
     """Built-in plugin that supplies the Pocket TTS provider."""
 
     @hookimpl

@@ -139,7 +139,7 @@ class SlackLifecycle:
             coro.close()
             logger.debug("Cannot schedule Slack reconnect — event loop closing")
 
-    async def reconnect_with_backoff(self, delay: float = 5.0) -> None:
+    async def reconnect_with_backoff(self, delay: float = 5.0) -> None:  # noqa: V105
         await self._reconnect_with_backoff(delay)
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:

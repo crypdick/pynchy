@@ -269,11 +269,3 @@ def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:
         if ws.folder == source_group:
             return jid
     return None
-
-
-def resolve_workspace_by_folder(source_group: str, deps: IpcDeps) -> WorkspaceProfile | None:
-    """Look up a WorkspaceProfile by its folder name."""
-    return next(
-        (ws for ws in deps.workspaces().values() if ws.folder == source_group),
-        None,
-    )

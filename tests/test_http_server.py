@@ -157,7 +157,7 @@ def test_get_head_commit_message_exception():
 # ---------------------------------------------------------------------------
 
 
-def testpush_local_commits_nothing_to_push():
+def test_push_local_commits_nothing_to_push():
     """push_local_commits returns True when no local commits exist."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -168,7 +168,7 @@ def testpush_local_commits_nothing_to_push():
         assert push_local_commits() is True
 
 
-def testpush_local_commits_success():
+def test_push_local_commits_success():
     """push_local_commits returns True when push succeeds."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -181,14 +181,14 @@ def testpush_local_commits_success():
         assert push_local_commits() is True
 
 
-def testpush_local_commits_fetch_failure():
+def test_push_local_commits_fetch_failure():
     """push_local_commits returns False when fetch fails."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.return_value = _cp(returncode=1, stderr="network error", stdout="")
         assert push_local_commits() is False
 
 
-def testpush_local_commits_rebase_failure_retries_and_fails():
+def test_push_local_commits_rebase_failure_retries_and_fails():
     """push_local_commits retries once after rebase failure, then gives up."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -204,7 +204,7 @@ def testpush_local_commits_rebase_failure_retries_and_fails():
         assert push_local_commits() is False
 
 
-def testpush_local_commits_rebase_retry_succeeds():
+def test_push_local_commits_rebase_retry_succeeds():
     """push_local_commits succeeds on retry when origin advanced mid-push."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -220,7 +220,7 @@ def testpush_local_commits_rebase_retry_succeeds():
         assert push_local_commits() is True
 
 
-def testpush_local_commits_push_failure():
+def test_push_local_commits_push_failure():
     """push_local_commits returns False when push is rejected."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -233,7 +233,7 @@ def testpush_local_commits_push_failure():
         assert push_local_commits() is False
 
 
-def testpush_local_commits_skip_fetch():
+def test_push_local_commits_skip_fetch():
     """push_local_commits skips fetch when skip_fetch=True."""
     with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
@@ -243,7 +243,7 @@ def testpush_local_commits_skip_fetch():
         assert push_local_commits(skip_fetch=True) is True
 
 
-def testpush_local_commits_exception():
+def test_push_local_commits_exception():
     """push_local_commits returns False on unexpected exception."""
     with patch(
         "pynchy.host.git_ops.utils._run_git_process",
@@ -368,7 +368,7 @@ class MockHttpDeps:
 class TestHealthEndpoint(AioHTTPTestCase):
     """Tests for /health endpoint."""
 
-    async def get_application(self) -> web.Application:
+    async def get_application(self) -> web.Application:  # noqa: V105
         self.deps = MockHttpDeps()
         return create_http_app(self.deps, runtime=_runtime())
 

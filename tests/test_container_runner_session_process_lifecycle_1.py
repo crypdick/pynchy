@@ -10,9 +10,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.agent_protocol.api import (
-    ContainerInput,
-)
 from pynchy.host.container_manager import session as session_mod
 from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionDiedError
 from pynchy.workspace.api import (
@@ -33,23 +30,6 @@ TEST_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01T00:00:00.000Z",
 )
-
-TEST_INPUT = ContainerInput(
-    messages=[
-        {
-            "message_type": "user",
-            "sender": "user@s.whatsapp.net",
-            "sender_name": "User",
-            "content": "Hello",
-            "timestamp": "2024-01-01T00:00:00.000Z",
-            "metadata": None,
-        }
-    ],
-    group_folder="test-group",
-    chat_jid="test@g.us",
-    is_admin=False,
-)
-
 
 _CR_CREDS = "pynchy.host.container_manager.credentials"
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"

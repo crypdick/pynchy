@@ -54,7 +54,7 @@ class _SlackApp(Protocol):
     def use(self, _middleware: object) -> object: ...
 
 
-@runtime_checkable
+@runtime_checkable  # noqa: V102
 class _SlackAssistant(Protocol):
     def thread_started(self, handler: Callable[..., object]) -> Callable[..., object]: ...
 

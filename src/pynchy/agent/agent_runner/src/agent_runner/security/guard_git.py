@@ -107,7 +107,7 @@ def _is_redirection_operator(token: str) -> bool:
 def _shell_commands(command: str) -> tuple[tuple[str, ...], ...]:
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>")
-        lexer.whitespace_split = True
+        lexer.whitespace_split = True  # noqa: V101
         tokens = tuple(lexer)
     except ValueError:
         return ()

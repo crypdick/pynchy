@@ -25,11 +25,6 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class MatrixChat(_StrictModel):
-    room_id: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-
-
 class MatrixMessage(_StrictModel):
     room_id: str = Field(min_length=1)
     event_id: str = Field(min_length=1)
@@ -97,7 +92,6 @@ class MatrixConnectionGateway(Protocol):
     def room_assertion(self, *, room_id: str) -> MatrixPortalAssertion: ...
 
 
-_CHAT_LIST_ADAPTER: TypeAdapter[list[MatrixChat]] = TypeAdapter(list[MatrixChat])
 _MESSAGE_ADAPTER: TypeAdapter[MatrixMessage] = TypeAdapter(MatrixMessage)
 _SEND_RESULT_ADAPTER: TypeAdapter[MatrixSendResult] = TypeAdapter(MatrixSendResult)
 _SYNC_BATCH_ADAPTER: TypeAdapter[MatrixSyncBatch] = TypeAdapter(MatrixSyncBatch)
@@ -116,9 +110,6 @@ class MatrixGatewayClient:
     def __init__(self, command: str | None = None, *, state_dir: Path | None = None) -> None:
         self._command = command or os.environ.get("PYNCHY_MATRIX_GATEWAY", DEFAULT_GATEWAY_COMMAND)
         self._state_dir = state_dir
-
-    def list_chats(self) -> list[MatrixChat]:
-        return _CHAT_LIST_ADAPTER.validate_json(self._run(["chats"]))
 
     def list_messages(self, *, room_id: str, limit: int) -> list[MatrixMessage]:
         if not 1 <= limit <= _MAX_LIST_LIMIT:

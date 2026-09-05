@@ -74,7 +74,7 @@ def _run() -> None:
     asyncio.run(app.run())
 
 
-def whatsapp_auth() -> None:
+def whatsapp_auth() -> None:  # noqa: V103
     """Run the WhatsApp QR login with the configured credential database."""
     from pynchy.config.api import (  # noqa: PLC0415 - CLI composition resolves the auth database path.
         get_settings,
