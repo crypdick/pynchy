@@ -5,12 +5,27 @@ from __future__ import annotations
 import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
 from unittest.mock import patch
 
-from pynchy.host.git_ops.api import ensure_worktree, host_create_pr_from_worktree
+from pynchy.host.git_ops.api import ensure_worktree, host_create_pr_from_worktree, run_git
 
 pytest_plugins = ("tests.git_policy_support",)
 
 
 class TestWorktreePublicationPreconditions:
+    def test_publication_fails_closed_when_git_status_fails(self, git_env: dict):
+        repo_ctx = git_env["repo_ctx"]
+        ensure_worktree("agent-1", repo_ctx)
+
+        def fail_status(*args, **kwargs):
+            if args[0] == "status":
+                return subprocess.CompletedProcess(["git", *args], 1, "", "status failed")
+            return run_git(*args, **kwargs)
+
+        with patch("pynchy.host.git_ops.worktree_sync.run_git", side_effect=fail_status):
+            result = host_create_pr_from_worktree("agent-1", repo_ctx)
+
+        assert result["success"] is False
+        assert "Could not check worktree status" in result["message"]
+
     def test_sync_blocks_an_unregistered_worktree(self, git_env: dict):
         repo_ctx = git_env["repo_ctx"]
         (repo_ctx.worktrees_dir / "agent-1").mkdir(parents=True)

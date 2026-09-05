@@ -92,7 +92,12 @@ def _validate_sync_preconditions(  # noqa: PLR0911 - fail-closed preconditions n
         }
 
     status = run_git("status", "--porcelain", cwd=resolved_worktree)
-    if status.returncode == 0 and status.stdout.strip():
+    if status.returncode != 0:
+        return {
+            "success": False,
+            "message": "Could not check worktree status. Publication blocked.",
+        }
+    if status.stdout.strip():
         return {
             "success": False,
             "message": (
