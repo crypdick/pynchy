@@ -31,7 +31,6 @@ from pynchy.host.orchestrator.workspace_config import (
     add_workspace_to_toml,
     configure_plugin_workspaces,
     ensure_runtime_workspace_policy_owner,
-    get_repo_access,
     get_repo_access_groups,
     load_resolved_config,
     load_workspace_config,
@@ -428,32 +427,6 @@ def test_update_profile_skill_policy_rejects_unknown_profile(tmp_path, monkeypat
 def test_add_job_rejects_invalid_names(name):
     with pytest.raises(ValueError, match="Invalid automation name"):
         add_job_to_toml(name, JobConfig(schedule="0 * * * *", workspace="host", command="true"))
-
-
-class TestGetRepoAccess:
-    def test_returns_none_when_no_config(self):
-        s = _settings_with_workspaces(workspaces={})
-        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access("dev") is None
-
-    def test_returns_first_resolved_repo_slug(self):
-        s = _settings_with_workspaces(
-            profiles={
-                "base": ProfileConfig(repo=["owner/base"]),
-                "dev": ProfileConfig(includes=["base"], repo=["owner/dev"]),
-            },
-            workspaces={"dev": WorkspaceConfig(profiles=["dev"])},
-        )
-        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access("dev") == "owner/base"
-
-    def test_admin_without_repo_returns_none(self):
-        s = _settings_with_workspaces(
-            profiles={"admin": ProfileConfig(is_admin=True)},
-            workspaces={"admin-1": WorkspaceConfig(profiles=["admin"])},
-        )
-        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
-            assert get_repo_access("admin-1") is None
 
 
 class TestGetRepoAccessGroups:

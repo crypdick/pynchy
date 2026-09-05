@@ -107,7 +107,7 @@ class WebhookConversationDispatcher:
             provider = ExternalProvider(route.provider)
             route_id = ExternalRoute(route.name)
             for conversation_id in await list_route_conversation_ids(provider, route_id):
-                await self._restore_runtime_workspace(conversation_id)
+                await self.restore_existing_open_control_runtime(conversation_id)
                 await self._recover_terminal_runtime(conversation_id)
             for conversation_id in await list_idle_conversation_ids(provider, route_id):
                 await self._sync_control_state(route, conversation_id)
@@ -302,18 +302,6 @@ class WebhookConversationDispatcher:
                     route=route.name,
                     conversation_id=conversation_id,
                 )
-
-    async def _restore_runtime_workspace(
-        self,
-        conversation_id: ConversationId,
-    ) -> None:
-        """Restore a bound routed workspace before channel messages can arrive."""
-        async with conversation_runtime_lock(conversation_id):
-            await restore_runtime_workspace(
-                self.deps,
-                conversation_id,
-                self._register_runtime_workspace_policy,
-            )
 
     async def _recover_terminal_runtime(
         self,

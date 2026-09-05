@@ -47,7 +47,6 @@ from tests.message_handler_support import (
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
@@ -162,7 +161,6 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             deps.repo_is_dirty.return_value = True
             await process_group_messages(deps, "g@g.us")
@@ -189,7 +187,6 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             await process_group_messages(deps, "g@g.us")
 
@@ -213,7 +210,6 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             await process_group_messages(deps, "g@g.us")
 
@@ -234,7 +230,6 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             await process_group_messages(deps, "g@g.us")
 
@@ -289,7 +284,6 @@ class TestProcessGroupMessages:
             _patch_msgs_since([notice, user_msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             result = await process_group_messages(deps, "g@g.us")
 
@@ -396,7 +390,6 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             await process_group_messages(deps, "g@g.us")
 
@@ -418,7 +411,6 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             await process_group_messages(deps, "g@g.us")
 
@@ -441,7 +433,6 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             deps.repo_is_dirty.return_value = True
             await process_group_messages(deps, "g@g.us")
@@ -465,7 +456,6 @@ class TestCheckDirtyRepo:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             deps.repo_is_dirty.side_effect = OSError("permission denied")
             # Should not raise
@@ -541,7 +531,6 @@ class TestHandleResetHandoff:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
-            patch(_P_GET_RA, return_value=None),
         ):
             result = await process_group_messages(deps, "g@g.us")
 
