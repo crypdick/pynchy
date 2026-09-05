@@ -77,13 +77,7 @@ from pynchy.host.git_ops.worktree import (
     install_repo_hooks,
     reconcile_worktrees_at_startup,
 )
-from pynchy.host.git_ops.worktree_sync import (
-    GIT_POLICY_MERGE,
-    GIT_POLICY_PR,
-    GitSyncDeps,
-    host_sync_worktree,
-    resolve_git_policy,
-)
+from pynchy.host.git_ops.worktree_sync import GitSyncDeps
 from pynchy.host.git_ops.worktree_venv import mark_worktree_used, prune_stale_worktree_venvs
 
 check_local_head_drift = _check_local_head_drift
@@ -122,8 +116,6 @@ def resolve_routed_host_worktree_cwd(
 
 
 __all__ = [
-    "GIT_POLICY_MERGE",
-    "GIT_POLICY_PR",
     "GitSyncDeps",
     "GitSyncRuntime",
     "HostSyncState",
@@ -161,7 +153,6 @@ __all__ = [
     "host_get_origin_main_sha",
     "host_notify_worktree_updates",
     "host_source_files_changed",
-    "host_sync_worktree",
     "host_update_main",
     "host_update_main_result",
     "install_repo_hooks",
@@ -179,7 +170,6 @@ __all__ = [
     "repo",
     "repo_container_path",
     "repo_host_root",
-    "resolve_git_policy",
     "resolve_managed_feature_publication",
     "resolve_repos_for_group",
     "resolve_routed_host_worktree_cwd",

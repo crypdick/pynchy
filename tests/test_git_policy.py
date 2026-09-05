@@ -15,11 +15,9 @@ from pynchy.host.container_manager.ipc.handlers_lifecycle import PublicationRepo
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import (
-    GIT_POLICY_MERGE,
     RepoContext,
     ensure_worktree,
     host_create_pr_from_worktree,
-    resolve_git_policy,
 )
 from tests.git_policy_support import GitPolicyDeps, git
 
@@ -55,12 +53,6 @@ def publication_turn(turn_id: str, source_group: str) -> InFlightTurn:
         input_end_cursor="",
         started_at="2026-08-19T21:00:00+00:00",
     )
-
-
-class TestResolveGitPolicy:
-    def test_default_is_merge_to_main(self):
-        """Worktree sync has one config-driven policy: merge-to-main."""
-        assert resolve_git_policy("nonexistent") == GIT_POLICY_MERGE
 
 
 class TestHostCreatePrFromWorktree:
