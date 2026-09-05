@@ -6,6 +6,7 @@ import shlex
 import shutil
 import sqlite3
 import subprocess  # noqa: S404 - local SQLite regression probe only.
+from contextlib import closing
 from subprocess import CompletedProcess  # noqa: S404 - synthetic subprocess results only.
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize("operation", ["messages", "events"])
 def test_ops_reads_wait_for_a_database_writer(tmp_path: Path, operation: str) -> None:
     database = tmp_path / "messages.db"
-    with sqlite3.connect(database) as writer:
+    with closing(sqlite3.connect(database)) as writer:
         writer.executescript(
             "CREATE TABLE messages(timestamp, chat_jid, sender_name, message_type, content);"
             "CREATE TABLE events(timestamp, chat_jid, payload, event_type);"
