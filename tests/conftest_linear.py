@@ -60,9 +60,6 @@ from pynchy.plugins.integrations.linear_work_items import (
     configure_linear_work_items_runtime,
 )
 from pynchy.state import (
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
-    WorkItemTransitionResolution,
     apply_conversation_control_state,
     begin_webhook_effect,
     begin_work_item_transition,
@@ -235,9 +232,7 @@ def configure_linear_accounts_for(
             get_execution=get_work_item_execution,
             get_active_execution=get_active_work_item_execution,
             create_claim=create_work_item_claim,
-            claim_request=WorkItemClaimRequest,
             begin_transition=begin_work_item_transition,
-            transition_resolution=WorkItemTransitionResolution,
             resolve_transition=resolve_work_item_transition,
             resolve_transition_if_lifecycle_current=resolve_work_item_transition_if_lifecycle_current,
         )
@@ -247,7 +242,6 @@ def configure_linear_accounts_for(
             get_execution_for_issue=get_work_item_execution_for_issue,
             get_transition_by_request=get_work_item_transition_by_request,
             get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
-            transition_request=WorkItemTransitionRequest,
             begin_transition=begin_work_item_transition,
             begin_transition_if_lifecycle_current=begin_work_item_transition_if_lifecycle_current,
         )

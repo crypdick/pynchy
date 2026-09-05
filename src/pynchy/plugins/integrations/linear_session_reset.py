@@ -7,13 +7,17 @@ from collections.abc import (  # noqa: TC003 - beartype resolves cancellation an
     Callable,
 )
 from dataclasses import dataclass
-from typing import Any
 
 import aiohttp
 
+from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    Conversation,
+    ConversationControlBinding,
+    ConversationId,
+)
 from pynchy.identifiers import ChatJid
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     transition_linked_work_item,
@@ -21,6 +25,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
 )
 from pynchy.workspace.api import (
     WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
@@ -37,58 +42,45 @@ _RESET_BLOCKER = (
 class LinearSessionResetState:
     """Durable operations needed to settle a Linear-owned execution."""
 
-    get_control_by_thread: Callable[[ChatJid], Awaitable[Any]]
-    get_conversation: Callable[[Any], Awaitable[Any]]
+    get_control_by_thread: Callable[[ChatJid], Awaitable[ConversationControlBinding | None]]
+    get_conversation: Callable[[ConversationId], Awaitable[Conversation | None]]
     get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
     cancel_task: Callable[[str], Awaitable[None]]
-    cancel_execution: Callable[..., Awaitable[object]]
-    transition_request: Callable[..., Any]
+    cancel_execution: Callable[..., Awaitable[WorkItemExecution]]
 
 
-async def _block_linear_issue(
-    execution: WorkItemExecution,
-    state: LinearSessionResetState,
-) -> None:
+async def _block_linear_issue(execution: WorkItemExecution) -> None:
     """Best-effort provider transition after the local attempt is stopped."""
-    try:
+    try:  # noqa: PLW0717 - provider transition and explanatory comment share one failure boundary.
         async with linear_client(workspace=execution.workspace) as client:
-            await _apply_blocked_transition(client, execution, state)
+            updated = await transition_linked_work_item(
+                client,
+                execution.workspace,
+                execution.linear_issue_id,
+                WorkItemTransitionRequest(
+                    execution=execution,
+                    request_id=f"context-reset:{execution.id}",
+                    operation="context_reset_cancel",
+                    target_status="blocked",
+                    result_execution_status=WorkItemExecutionStatus.CANCELLED,
+                    blocker=_RESET_BLOCKER,
+                ),
+                {"in_progress", "awaiting_review", "follow_ups", "blocked"},
+            )
+            if updated.status is WorkItemExecutionStatus.CANCELLED:
+                await client.create_comment(execution.linear_issue_id, _RESET_BLOCKER)
+            else:
+                logger.warning(
+                    "Linear reset transition did not reach Blocked",
+                    execution_id=execution.id,
+                    status=updated.status,
+                )
     except (aiohttp.ClientError, LinearError, TimeoutError, ValueError) as exc:
         logger.warning(
             "Linear provider update failed during context reset",
             execution_id=execution.id,
             err=str(exc),
         )
-
-
-async def _apply_blocked_transition(
-    client: LinearClient,
-    execution: WorkItemExecution,
-    state: LinearSessionResetState,
-) -> None:
-    """Apply the provider transition and retain a human-readable explanation."""
-    updated = await transition_linked_work_item(
-        client,
-        execution.workspace,
-        execution.linear_issue_id,
-        state.transition_request(
-            execution=execution,
-            request_id=f"context-reset:{execution.id}",
-            operation="context_reset_cancel",
-            target_status="blocked",
-            result_execution_status=WorkItemExecutionStatus.CANCELLED,
-            blocker=_RESET_BLOCKER,
-        ),
-        {"in_progress", "awaiting_review", "follow_ups", "blocked"},
-    )
-    if updated.status is WorkItemExecutionStatus.CANCELLED:
-        await client.create_comment(execution.linear_issue_id, _RESET_BLOCKER)
-        return
-    logger.warning(
-        "Linear reset transition did not reach Blocked",
-        execution_id=execution.id,
-        status=updated.status,
-    )
 
 
 async def cancel_linear_execution_for_reset(
@@ -118,6 +110,6 @@ async def cancel_linear_execution_for_reset(
     if execution.task_id is not None:
         await state.cancel_task(execution.task_id)
 
-    await _block_linear_issue(execution, state)
+    await _block_linear_issue(execution)
     await state.cancel_execution(execution.id, blocker=_RESET_BLOCKER)
     return True

@@ -13,10 +13,6 @@ from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotat
 )
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.conversation_lifecycle_fences import lifecycle_fence_matches
-from pynchy.state.work_item_models import (
-    WorkItemTransitionRequest,
-    WorkItemTransitionResolution,
-)
 from pynchy.state.work_item_rows import row_to_transition
 from pynchy.state.work_item_transition_records import insert_work_item_transition
 from pynchy.state.work_items import (
@@ -29,6 +25,8 @@ from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransition,
+    WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
     WorkItemTransitionStatus,
 )
 

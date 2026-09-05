@@ -13,7 +13,6 @@ from pynchy.plugins.integrations.linear_session_reset import (
     LinearSessionResetState,
     cancel_linear_execution_for_reset,
 )
-from pynchy.state import WorkItemTransitionRequest
 from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
@@ -102,7 +101,6 @@ async def test_reset_cancels_attempt_blocks_issue_and_preserves_worktree(
         get_active_execution=get_execution,
         cancel_task=cancel_task,
         cancel_execution=cancel_local,
-        transition_request=WorkItemTransitionRequest,
     )
     with (
         patch(
@@ -175,7 +173,6 @@ async def test_reset_returns_false_when_no_linear_execution_is_owned(
         get_active_execution=AsyncMock(return_value=execution),
         cancel_task=AsyncMock(),
         cancel_execution=AsyncMock(),
-        transition_request=WorkItemTransitionRequest,
     )
 
     assert (
@@ -205,7 +202,6 @@ async def test_reset_cancels_locally_when_linear_transition_fails() -> None:
         get_active_execution=AsyncMock(return_value=execution),
         cancel_task=cancel_task,
         cancel_execution=cancel_execution,
-        transition_request=WorkItemTransitionRequest,
     )
 
     with patch(
@@ -250,7 +246,6 @@ async def test_reset_handles_execution_without_scheduled_or_task_work() -> None:
         get_active_execution=AsyncMock(return_value=execution),
         cancel_task=cancel_task,
         cancel_execution=cancel_execution,
-        transition_request=WorkItemTransitionRequest,
     )
 
     @asynccontextmanager

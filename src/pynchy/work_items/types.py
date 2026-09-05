@@ -116,3 +116,26 @@ class WorkItemTransitionRequest:
     blocker: str | None = None
     handoff_to: str | None = None
     requester_delivery_turn_id: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkItemClaimRequest:
+    """Host-derived provenance and observed Linear state for a claim."""
+
+    workspace: str
+    issue: dict[str, Any]
+    turn_id: str | None
+    task_id: str | None
+    initiated_by: str
+    request_id: str
+
+
+@dataclass(frozen=True)
+class WorkItemTransitionResolution:
+    """Provider receipt and intended local terminal outcome for one transition."""
+
+    transition: WorkItemTransition
+    execution_status: WorkItemExecutionStatus
+    transition_status: WorkItemTransitionStatus
+    issue: dict[str, Any] | None = None
+    error: str | None = None

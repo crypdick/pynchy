@@ -131,7 +131,6 @@ async def test_linear_plugin_settles_its_execution_before_reset() -> None:
             get_active_execution=MagicMock(),
             cancel_task=MagicMock(),
             cancel_execution=MagicMock(),
-            transition_request=MagicMock(),
         )
         await LinearMcpPlugin(
             cancel_scheduled_workflow=cancel_workflow,

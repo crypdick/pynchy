@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pynchy.state import (
-    WorkItemClaimRequest,
     cancel_work_item_execution,
     create_work_item_claim,
     list_work_item_executions,
     retire_terminal_execution_resources_if_unowned,
 )
+from pynchy.work_items.api import WorkItemClaimRequest
 
 pytest_plugins = ("tests.state_support",)
 

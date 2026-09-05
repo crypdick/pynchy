@@ -11,8 +11,6 @@ from pynchy.scheduling.api import (
     SessionPolicy,
 )
 from pynchy.state import (
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
     begin_work_item_transition,
     bind_work_item_execution_to_task,
     bind_work_item_execution_to_turn,
@@ -38,7 +36,9 @@ from pynchy.state import (
 )
 from pynchy.state.connection import atomic_write
 from pynchy.work_items.api import (
+    WorkItemClaimRequest,
     WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
     WorkItemTransitionStatus,
 )
 from pynchy.workspace.api import (

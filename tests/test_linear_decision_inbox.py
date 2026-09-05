@@ -17,7 +17,6 @@ from pynchy.scheduling.api import (
     SessionPolicy,
 )
 from pynchy.state import (
-    WorkItemTransitionRequest,
     begin_work_item_transition,
     create_task,
     get_active_work_item_execution,
@@ -29,6 +28,7 @@ from pynchy.state import (
 )
 from pynchy.work_items.api import (
     WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
     WorkItemTransitionStatus,
 )
 from tests.linear_decision_inbox_support import (

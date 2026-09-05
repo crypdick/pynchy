@@ -36,10 +36,12 @@ from pynchy.plugins.integrations.linear_statuses import (
 )
 from pynchy.work_items.api import (
     WorkItemClaimConflictError,
+    WorkItemClaimRequest,
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransition,
     WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
     WorkItemTransitionStatus,
 )
 
@@ -91,10 +93,8 @@ class LinearWorkItemRuntime:
     get_transition_by_request: Callable[[str], Awaitable[WorkItemTransition | None]]
     get_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
     get_active_execution: Callable[[str], Awaitable[WorkItemExecution | None]]
-    create_claim: Callable[[Any], Awaitable[WorkItemExecution]]
-    claim_request: Callable[..., Any]
-    begin_transition: Callable[[Any], Awaitable[WorkItemTransition]]
-    transition_resolution: Callable[..., Any]
+    create_claim: Callable[[WorkItemClaimRequest], Awaitable[WorkItemExecution]]
+    begin_transition: Callable[[WorkItemTransitionRequest], Awaitable[WorkItemTransition]]
     resolve_transition: Callable[..., Awaitable[WorkItemExecution]]
     resolve_transition_if_lifecycle_current: Callable[..., Awaitable[WorkItemExecution | None]]
 
@@ -228,7 +228,7 @@ async def _acquire_work_item_lease(
         raise ValueError(admission_error)
     try:
         execution = await runtime.create_claim(
-            runtime.claim_request(
+            WorkItemClaimRequest(
                 workspace=request.workspace,
                 issue=issue,
                 turn_id=request.turn_id,
@@ -399,7 +399,7 @@ async def reconcile_work_item(
                 target_status="in_progress",
             ),
         )
-    resolution = runtime.transition_resolution(
+    resolution = WorkItemTransitionResolution(
         transition=transition,
         execution_status=(
             transition.result_execution_status if matches_target else WorkItemExecutionStatus.FAILED

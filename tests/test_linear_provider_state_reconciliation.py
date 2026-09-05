@@ -21,7 +21,6 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     configure_linear_work_item_runtime,
     reconcile_work_item,
 )
-from pynchy.state.api import WorkItemTransitionResolution
 from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
@@ -415,9 +414,7 @@ async def test_pending_claim_mismatch_is_not_replayed(
             get_execution=AsyncMock(return_value=execution),
             get_active_execution=AsyncMock(),
             create_claim=AsyncMock(),
-            claim_request=AsyncMock(),
             begin_transition=AsyncMock(),
-            transition_resolution=WorkItemTransitionResolution,
             resolve_transition=resolve,
             resolve_transition_if_lifecycle_current=AsyncMock(),
         )

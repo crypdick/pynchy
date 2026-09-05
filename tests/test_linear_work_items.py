@@ -15,7 +15,6 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     acquire_human_started_work_item_lease,
 )
 from pynchy.state import (
-    WorkItemClaimConflictError,
     cancel_work_item_execution,
     clear_in_flight_turn,
     get_active_work_item_execution,
@@ -25,6 +24,7 @@ from pynchy.state import (
     mark_work_item_delivery_delivered_for_turn,
 )
 from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
     WorkItemExecutionStatus,
 )
 from tests.linear_work_items_support import (

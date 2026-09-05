@@ -8,10 +8,12 @@ import pytest
 from aiosqlite import IntegrityError
 
 from pynchy.state import (
-    WorkItemClaimConflictError,
-    WorkItemClaimRequest,
     create_work_item_claim,
     get_work_item_execution_for_turn,
+)
+from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
+    WorkItemClaimRequest,
 )
 
 pytest_plugins = ("tests.state_support",)
