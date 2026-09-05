@@ -11,6 +11,14 @@ _SSH_TIMEOUT_SECONDS = 30
 _PYNCHY_CONTAINER = "pynchy"
 _PYNCHY_DEPLOYMENT = "pynchy"
 _PYNCHY_CLI = "/opt/pynchy/.venv/bin/pynchy"
+# NOTE: docs/installation/kubernetes.md documents the bounded diagnostic lock wait.
+_SQLITE_READ_COMMAND = (
+    "sqlite3",
+    "-readonly",
+    "-cmd",
+    ".timeout 5000",
+    "/srv/pynchy/app/data/messages.db",
+)
 _MESSAGES_QUERY = (
     "SELECT timestamp, chat_jid, sender_name, message_type, substr(content, 1, 160) "
     "FROM messages ORDER BY timestamp DESC LIMIT 20;"
@@ -131,14 +139,12 @@ def remote_logs(target: RemoteOpsTarget) -> str:
 
 def remote_messages(target: RemoteOpsTarget) -> str:
     """Return a fixed bounded recent-message projection."""
-    return _exec(
-        target, "sqlite3", "-readonly", "/srv/pynchy/app/data/messages.db", _MESSAGES_QUERY
-    )
+    return _exec(target, *_SQLITE_READ_COMMAND, _MESSAGES_QUERY)
 
 
 def remote_events(target: RemoteOpsTarget) -> str:
     """Return a fixed bounded recent-agent-event projection."""
-    return _exec(target, "sqlite3", "-readonly", "/srv/pynchy/app/data/messages.db", _EVENTS_QUERY)
+    return _exec(target, *_SQLITE_READ_COMMAND, _EVENTS_QUERY)
 
 
 def run_remote_op(config: object, operation: str) -> str:

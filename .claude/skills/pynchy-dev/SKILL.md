@@ -22,12 +22,19 @@ uvx prek run --all-files  # Run all repository hooks
 ./src/pynchy/agent/build.sh     # Rebuild agent container
 ```
 
-## Isolated feature runtimes
+## Managed worktrees and optional runtimes
 
-Use `new-feature` from the control checkout when a feature needs an isolated Pynchy runtime.
+Use `new-feature create <slug> --no-agent` from the control checkout before any source or
+documentation edit. Work in the resulting `.worktrees/<slug>` directory; direct edits on the
+target branch are blocked. Setup installs dependencies but does not start a runtime. Start
+an isolated Pynchy runtime only when interactive diagnosis needs one.
 See [the feature-runtime workflow](../../../docs/contributing/new-feature.md) for create, merge,
 restart, and teardown commands. Do not use raw `git worktree` commands for managed features.
 Install or verify its host dependencies with `./scripts/install_new_feature_dependencies.py`.
+
+Private overlay edits belong in the independent personalization repository's own managed
+worktree, not in the public Pynchy worktree. See
+[editing personalization](../../../docs/usage/personalization.md#edit-with-managed-worktrees).
 
 ## Documentation Lookup
 
