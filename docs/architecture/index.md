@@ -43,7 +43,6 @@ graph TB
 | [Message routing](message-routing.md) | Routing behavior, transparent token stream |
 | [Routed conversations](conversation-routing.md) | Stable external subjects, FIFO delivery claims, and replaceable Discord controls |
 | [Message types](message-types.md) | Type system, storage, SDK integration |
-| [Service boundaries](service-boundaries-roadmap.md) | Package roles, public surfaces, contracts, and baseline burn-down |
 | [Git sync](git-sync.md) | Coordinated worktree sync, host-mediated merges |
 | [Security](security.md) | Trust model, security boundaries, credential handling |
 | [MCP management](mcp-management.md) | McpManager internals, instance deduplication, LiteLLM integration |

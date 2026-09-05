@@ -4,7 +4,7 @@ Personal Claude assistant. See [README.md](README.md) for philosophy. See [insta
 
 ## Architectural Direction
 
-Pynchy's architectural ambition is a modular monolith with semantic domain contracts, use-case-owned ports, concrete adapters, and explicit composition roots—not a distributed-services or dependency-injection-framework rewrite. Before changing a cross-subsystem dependency, read the [service boundary guide](docs/architecture/service-boundaries-roadmap.md). Treat `architecture.toml` as the executable source of truth for current package ownership, public surfaces, and allowed role dependencies.
+Pynchy's architectural ambition is a modular monolith with semantic domain contracts, use-case-owned ports, concrete adapters, and explicit composition roots—not a distributed-services or dependency-injection-framework rewrite. Before changing a cross-subsystem dependency, read [architecture.toml](architecture.toml), the executable source of truth for current package ownership, public surfaces, and allowed role dependencies.
 
 Burn down `architecture-baseline.toml` package by package. For each multi-module
 package with cross-package consumers, migrate its sole public surface to
@@ -55,7 +55,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | Guide | When to Read |
 |-------|-------------|
 | [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
-| [Service boundary guide](docs/architecture/service-boundaries-roadmap.md) | Cross-subsystem dependencies, package-by-package baseline burn-down, and boundary policy |
+| [Architecture policy](architecture.toml) | Package ownership, public surfaces, and allowed role dependencies |
 | [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |
 | [Worktree isolation](docs/usage/worktrees.md) | How non-admin groups get isolated git worktrees |
