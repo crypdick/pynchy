@@ -70,7 +70,7 @@ The `metadata` column stores structured JSON data for additional context:
 ```python
 # Host message (operational)
 await store_message_direct(
-    id="host-123",
+    message_id="host-123",
     chat_jid="chat@g.us",
     sender="host",
     sender_name="host",
@@ -82,7 +82,7 @@ await store_message_direct(
 
 # Tool result (command output)
 await store_message_direct(
-    id="cmd-123",
+    message_id="cmd-123",
     chat_jid="chat@g.us",
     sender="command_output",
     sender_name="command",
@@ -122,16 +122,16 @@ The container receives `messages` (a list of SDK-format messages with host messa
 
 ## Key Adapters
 
-### HostMessageBroadcaster
+### Host notifications
 
-Handles operational notifications:
+`PynchyApp.broadcast_host_message()` delegates to the shared host notification function:
 
 - Stores the message with `message_type='host'`
-- Broadcasts to channels with 🏠 emoji
+- Sends a `HOST` event through the shared channel bus for each channel to render
 - Emits an event for operational observers
 - Never forwards the message to the LLM
 
-### UserMessageHandler
+### User message ingestion
 
 Handles user message ingestion:
 

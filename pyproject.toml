@@ -133,7 +133,6 @@ markers = [
     "action(*ids): semantic action IDs covered by this behavioral test",
     "live: live integration tests that require real service connections (deselected by default)",
     "runtime: deterministic full-stack runtime tests managed by scripts/runtime_harness.py (deselected by default)",
-    "parity: channel parity tests — verify output consistency across built-in channels",
 ]
 filterwarnings = [
     # aiohttp request/application types subclass typing.MutableMapping[...] generics

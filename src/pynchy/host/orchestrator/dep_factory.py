@@ -58,7 +58,6 @@ from pynchy.host.orchestrator.action_intents import (
     prepare_action_intent,
 )
 from pynchy.host.orchestrator.adapters import (
-    HostMessageBroadcaster,
     SessionManager,
     resolve_admin_notification_jid,
 )
@@ -108,6 +107,8 @@ from pynchy.plugins.api import (  # beartype resolves dependency adapter annotat
     Channel,
     HostActionDescriptor,
     NewMessage,
+    OutboundEvent,
+    OutboundEventType,
 )
 from pynchy.plugins.integrations.api import work_item_execution_to_dict
 from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
@@ -353,7 +354,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
 
 async def _start_temporal_deploy(
     *,
-    host_broadcaster: HostMessageBroadcaster,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
     workspaces: dict[str, WorkspaceProfile],
     previous_sha: str,
     rebuild: bool = True,
@@ -368,7 +369,7 @@ async def _start_temporal_deploy(
             if rebuild
             else "Code/config changed — starting deploy workflow..."
         )
-        await host_broadcaster.broadcast_host_message(chat_jid, msg)
+        await broadcast_host_message(chat_jid, msg)
 
     await start_deploy_workflow(
         DeployRequest(
@@ -412,7 +413,6 @@ async def _request_ipc_deploy(
 
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
-    broadcaster, host_broadcaster = app.message_broadcaster, app.host_broadcaster
     settings = get_settings()
 
     class HttpDeps:
@@ -427,8 +427,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
             is_repo_dirty=is_repo_dirty,
             start_deploy_workflow=start_deploy_workflow,
         )
-        broadcast_host_message = host_broadcaster.broadcast_host_message
-        broadcast_synthetic_user_input = broadcaster.broadcast_synthetic_user_input
+        broadcast_host_message = app.broadcast_host_message
         complete_conversation_delivery = staticmethod(complete_conversation_delivery)
         conversation_control_state_matches = staticmethod(conversation_control_state_matches)
         get_conversation = staticmethod(get_conversation)
@@ -436,6 +435,16 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
         get_terminal_conversation_retirement = staticmethod(get_terminal_conversation_retirement)
         data_dir = settings.data_dir
         project_root = settings.project_root
+
+        async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None:
+            await app.broadcast_to_channels(
+                jid,
+                OutboundEvent(
+                    type=OutboundEventType.TEXT,
+                    content=content,
+                    metadata={"synthetic_user_input": True},
+                ),
+            )
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
             await app.on_inbound(
@@ -484,14 +493,11 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
         def workspaces(self) -> dict[str, WorkspaceProfile]:
             return app.workspaces
 
-        async def register_workspace(self, profile: WorkspaceProfile) -> None:
-            await app.register_workspace(profile)
+        register_workspace = app.register_workspace
 
-        async def unregister_workspace(self, jid: str) -> None:
-            await app.unregister_workspace(jid)
+        unregister_workspace = app.unregister_workspace
 
-        async def rebind_workspace(self, profile: WorkspaceProfile) -> None:
-            await app.rebind_workspace(profile)
+        rebind_workspace = app.rebind_workspace
 
         async def bind_session(self, folder: str, session_id: SessionId) -> None:
             await app.bind_routed_session(folder, session_id)
@@ -519,15 +525,14 @@ def make_provider_execution_retirement(
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition owns built-in handlers.
     """Create the dependency object for the IPC watcher."""
     snapshot_data_dir = get_settings().data_dir
-    broadcaster, host_broadcaster = app.message_broadcaster, app.host_broadcaster
     workspaces, channels = app.workspaces, app.channels
     register_workspace = app.register_workspace
     session_manager = SessionManager(app.sessions, app.session_cleared)
 
     class IpcDeps:
-        broadcast_to_channels = broadcaster.broadcast_to_channels
-        broadcast_host_message = host_broadcaster.broadcast_host_message
-        broadcast_system_notice = host_broadcaster.broadcast_system_notice
+        broadcast_to_channels = app.broadcast_to_channels
+        broadcast_host_message = app.broadcast_host_message
+        broadcast_system_notice = app.broadcast_system_notice
         get_available_groups = app.get_available_groups
         clear_chat_history = app.send_clear_confirmation
 
@@ -750,7 +755,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
 
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(
-                host_broadcaster=host_broadcaster,
+                broadcast_host_message=app.broadcast_host_message,
                 workspaces=app.workspaces,
                 previous_sha=previous_sha,
                 rebuild=rebuild,
