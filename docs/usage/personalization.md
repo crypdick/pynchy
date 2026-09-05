@@ -41,6 +41,23 @@ Do not use a Git submodule or linked Git worktree. `data/personalization/` is
 ignored by the public Pynchy repository, so the nested checkout remains
 independent and Pynchy does not publish its URL or commit identity.
 
+## Edit with managed worktrees
+
+For agent edits, run `new-feature create <slug> --no-agent` from the independent
+personalization repository, then edit its `.worktrees/<slug>` checkout. Validate
+that candidate from a Pynchy checkout with:
+
+```bash
+uv run pynchy validate-personalization /path/to/personalization/.worktrees/<slug>
+```
+
+Commit, merge, and push through the personalization repository's own lifecycle.
+The live host's ordinary `data/personalization/` checkout receives the published
+commit through its sync loop. Do not replace that live checkout with a linked
+worktree or commit private files to the public Pynchy repository. A Pynchy
+deterministic runtime generates test personalization; it does not copy the
+control checkout's private overlay.
+
 ## Publish local changes
 
 Run this command from the Pynchy host checkout when a valid local repair must

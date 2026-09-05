@@ -3,13 +3,55 @@
 from __future__ import annotations
 
 import shlex
+import shutil
+import sqlite3
+import subprocess  # noqa: S404 - local SQLite regression probe only.
 from subprocess import CompletedProcess  # noqa: S404 - synthetic subprocess results only.
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from pynchy.config.api import OpsConfig
 from pynchy.remote_ops import RemoteOpsError, run_remote_op
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+@pytest.mark.skipif(shutil.which("sqlite3") is None, reason="requires SQLite CLI")
+@pytest.mark.parametrize("operation", ["messages", "events"])
+def test_ops_reads_wait_for_a_database_writer(tmp_path: Path, operation: str) -> None:
+    database = tmp_path / "messages.db"
+    with sqlite3.connect(database) as writer:
+        writer.executescript(
+            "CREATE TABLE messages(timestamp, chat_jid, sender_name, message_type, content);"
+            "CREATE TABLE events(timestamp, chat_jid, payload, event_type);"
+            "INSERT INTO messages VALUES ('today', 'chat', 'sender', 'text', 'lock released');"
+            "INSERT INTO events VALUES "
+            "('today', 'chat', '{\"tool_name\":\"lock released\"}', 'agent_trace');"
+        )
+        writer.execute("BEGIN EXCLUSIVE")
+
+        def run_local_sqlite(command: list[str], **_: object) -> CompletedProcess[str]:
+            remote_command = shlex.split(command[3])
+            local_command = remote_command[remote_command.index("sqlite3") :]
+            local_command[local_command.index("/srv/pynchy/app/data/messages.db")] = str(database)
+            with subprocess.Popen(  # noqa: S603 - repository-owned SQLite argv, temporary DB.
+                local_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            ) as process:
+                try:
+                    with pytest.raises(subprocess.TimeoutExpired):
+                        process.communicate(timeout=0.1)
+                finally:
+                    writer.commit()
+                stdout, stderr = process.communicate(timeout=10)
+                return CompletedProcess(local_command, process.returncode, stdout, stderr)
+
+        with patch("pynchy.remote_ops.subprocess.run", side_effect=run_local_sqlite):
+            output = run_remote_op(OpsConfig(ssh_host="ops-host", namespace="pynchy"), operation)
+
+    assert "lock released" in output
 
 
 def test_ops_status_uses_only_fixed_ssh_and_kubernetes_commands() -> None:
@@ -56,6 +98,8 @@ def test_ops_status_uses_only_fixed_ssh_and_kubernetes_commands() -> None:
                 "--",
                 "sqlite3",
                 "-readonly",
+                "-cmd",
+                ".timeout 5000",
                 "/srv/pynchy/app/data/messages.db",
                 (
                     "SELECT timestamp, chat_jid, sender_name, message_type, "
@@ -74,6 +118,8 @@ def test_ops_status_uses_only_fixed_ssh_and_kubernetes_commands() -> None:
                 "--",
                 "sqlite3",
                 "-readonly",
+                "-cmd",
+                ".timeout 5000",
                 "/srv/pynchy/app/data/messages.db",
                 (
                     "SELECT timestamp, chat_jid, json_extract(payload, '$.tool_name') "

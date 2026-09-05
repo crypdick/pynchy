@@ -141,6 +141,29 @@ before K3s starts. Make it writable by UID and GID `3000`, and set its root
 directory's group to `3000`. The runtime leaves synchronization-owned vault
 permissions unchanged.
 
+## Configuration and read-only diagnostics
+
+The Pynchy container works in `/srv/pynchy/app`. Its settings layers are
+`data/defaults/pynchy.toml`, `data/personalization/pynchy.toml`, then environment
+overrides, including those supplied by the `pynchy-env` Secret. There is no
+`config.toml` beside the database. See the
+[personalization contract](../usage/personalization.md#directory-contract) for
+configuration precedence and related files. Inspect paths or selected non-secret
+fields; never dump the Secret, environment, or full configuration into diagnostics.
+
+From an operator checkout with private `[ops]` settings, prefer `uv run pynchy ops
+events` and `uv run pynchy ops messages`. Both open the database read-only and wait
+up to five seconds for a writer lock. For a custom bounded query:
+
+```bash
+kubectl -n pynchy exec deploy/pynchy -c pynchy -- \
+  sqlite3 -readonly -cmd '.timeout 5000' /srv/pynchy/app/data/messages.db \
+  'SELECT timestamp, event_type FROM events ORDER BY timestamp DESC LIMIT 20;'
+```
+
+Persistent lock failures need diagnosis; do not delete database sidecars or restart
+the service solely to make a diagnostic query succeed.
+
 ## Back up runtime state
 
 Install `deploy/k3s/backup.sh` on the node and schedule it with
