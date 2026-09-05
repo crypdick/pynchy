@@ -235,9 +235,10 @@ from pynchy.host.orchestrator import (
     update_offer,
 )
 from pynchy.host.orchestrator.adapters import (
-    HostMessageBroadcaster,
-    MessageBroadcaster,
-    make_host_message_broadcaster,
+    broadcast_host_message as send_host_message,
+)
+from pynchy.host.orchestrator.adapters import (
+    broadcast_system_notice as send_system_notice,
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.config_refresh import (
@@ -270,6 +271,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # beartype resolves metho
     DirectCommandOutput,
 )
 from pynchy.host.orchestrator.messaging.reconciler import configure_allowed_message_filter
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_messages
 from pynchy.host.orchestrator.runtime_process_control import ContainerRuntimeOperations
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
@@ -961,14 +963,6 @@ class PynchyApp(ThreadRouting):
         self.connection_runtime_owner = ConnectionRuntimeOwner()
         self.plugin_manager: pluggy.PluginManager | None = None
 
-        # Shared broadcast infrastructure — single code path for all channel sends.
-        # Uses lambda so broadcaster always reads current self.channels reference.
-        self._broadcaster = MessageBroadcaster(lambda: self.channels)
-        self._host_broadcaster = make_host_message_broadcaster(
-            self._broadcaster,
-            self.event_bus.emit,
-        )
-
     async def apply_config_candidate(
         self,
         candidate: object,
@@ -1279,16 +1273,6 @@ class PynchyApp(ThreadRouting):
         )
         configure_cop_prompt_provider(_read_current_prompt)
 
-    @property
-    def message_broadcaster(self) -> MessageBroadcaster:
-        """Return the shared raw channel broadcaster."""
-        return self._broadcaster
-
-    @property
-    def host_broadcaster(self) -> HostMessageBroadcaster:
-        """Return the shared host/system notice broadcaster."""
-        return self._host_broadcaster
-
     def is_shutting_down(self) -> bool:
         """Return whether shutdown has started."""
         return self._shutting_down
@@ -1587,9 +1571,7 @@ class PynchyApp(ThreadRouting):
     async def broadcast_to_channels(
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None:
-        await self._broadcaster.broadcast_to_channels(
-            chat_jid, event, suppress_errors=suppress_errors
-        )
+        await broadcast(self, chat_jid, event, suppress_errors=suppress_errors)
 
     async def send_reaction_to_channels(
         self, chat_jid: str, message_id: str, sender: str, emoji: str
@@ -1624,7 +1606,7 @@ class PynchyApp(ThreadRouting):
         await channel_handler.set_typing_on_channels(self, chat_jid, is_typing=is_typing)
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
-        await self._host_broadcaster.broadcast_host_message(chat_jid, text)
+        await send_host_message(self, chat_jid, text)
 
     def direct_command_workdir(self, group: WorkspaceProfile) -> Path:
         """Resolve a direct command workspace from host-owned configuration."""
@@ -1681,7 +1663,7 @@ class PynchyApp(ThreadRouting):
         await cancel_task_and_checkpoint(task_id)
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
-        await self._host_broadcaster.broadcast_system_notice(chat_jid, text)
+        await send_system_notice(self, chat_jid, text)
 
     async def run_declared_canaries(
         self, target_profile: str, scenario_ids: tuple[str, ...]

@@ -2,32 +2,28 @@
 
 Tests critical routing and broadcasting logic in adapters.py:
 - resolve_admin_notification_jid() — finding the configured notification target
-- HostMessageBroadcaster — dual store+broadcast with correct formatting
+- Host notifications — matching durable history, channel output, and events
 """
 
 from __future__ import annotations
-
-from typing import Any
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import NullChannel
 from freezegun import freeze_time
 
+from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn, InFlightWorkKind
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
-    HostMessageBroadcaster,
-    MessageBroadcaster,
     SessionManager,
-    make_host_message_broadcaster,
     resolve_admin_notification_jid,
 )
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.dep_factory import make_http_deps
 from pynchy.plugins.api import (
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.state.api import get_chat_history, init_test_database
+from pynchy.state.api import begin_in_flight_turn, get_chat_history, init_test_database, pause_chat
 from pynchy.workspace.api import WorkspaceProfile
 
 CHANNEL_DOWN_MESSAGE = "channel down"
@@ -106,172 +102,120 @@ class TestResolveAdminNotificationJid:
         assert not resolve_admin_notification_jid(groups, "general")
 
 
-# ---------------------------------------------------------------------------
-# HostMessageBroadcaster
-# ---------------------------------------------------------------------------
+@pytest.fixture
+async def app() -> PynchyApp:
+    await init_test_database()
+    return PynchyApp()
 
 
-class TestHostMessageBroadcaster:
-    """Test broadcast_host_message and broadcast_system_notice.
+@pytest.mark.parametrize(
+    ("method", "sender", "sender_name", "message_type", "event_type", "content", "prefix"),
+    [
+        (
+            "broadcast_host_message",
+            "host",
+            "host",
+            "host",
+            OutboundEventType.HOST,
+            "Update",
+            "host-",
+        ),
+        (
+            "broadcast_system_notice",
+            "system_notice",
+            "System",
+            "user",
+            OutboundEventType.SYSTEM,
+            "[System Notice] Update",
+            "sys-notice-",
+        ),
+    ],
+)
+async def test_host_notification_history_matches_channel_and_event(
+    app,
+    monkeypatch,
+    method,
+    sender,
+    sender_name,
+    message_type,
+    event_type,
+    content,
+    prefix,
+):
+    channel = FakeChannel()
+    app.channels = [channel]
+    emitted = []
+    monkeypatch.setattr(app.event_bus, "emit", emitted.append)
 
-    These are the critical paths for operational notifications and system
-    announcements. They must store to DB, send to channels, and emit events.
-    """
+    await getattr(app, method)("group@g.us", "Update")
 
-    def _make_broadcaster(
-        self,
-    ) -> tuple[HostMessageBroadcaster, FakeChannel, AsyncMock, AsyncMock, list]:
-        channel = FakeChannel()
-        msg_broadcaster = MessageBroadcaster([channel])
-        store_host_fn = AsyncMock()
-        store_notice_fn = AsyncMock()
-        emitted: list[Any] = []
-        host_broadcaster = HostMessageBroadcaster(
-            msg_broadcaster,
-            store_host_fn,
-            store_notice_fn,
-            emitted.append,
-            AsyncMock(return_value=False),
-        )
-        return host_broadcaster, channel, store_host_fn, store_notice_fn, emitted
+    [stored] = await get_chat_history("group@g.us", limit=10)
+    assert stored.id.startswith(prefix)
+    assert stored.sender == sender
+    assert stored.sender_name == sender_name
+    assert stored.message_type == message_type
+    assert stored.content == content
+    assert stored.is_from_me is True
+    assert stored.metadata == {"source": "host_broadcaster"}
+    assert channel.sent == [("group@g.us", OutboundEvent(type=event_type, content=content))]
+    assert emitted == [MessageEvent("group@g.us", sender_name, content, stored.timestamp, True)]
 
-    async def test_host_message_stores_in_db(self):
-        broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
-        await broadcaster.broadcast_host_message("group@g.us", "⚠️ Error occurred")
 
-        store_host_fn.assert_called_once()
-        kwargs = store_host_fn.call_args.kwargs
-        assert kwargs["chat_jid"] == "group@g.us"
-        assert kwargs["sender"] == "host"
-        assert kwargs["sender_name"] == "host"
-        assert kwargs["content"] == "⚠️ Error occurred"
-        assert kwargs["is_from_me"] is True
-
-    async def test_host_message_sends_event_to_channel(self):
-        broadcaster, channel, _, _, _ = self._make_broadcaster()
-        await broadcaster.broadcast_host_message("group@g.us", "Test message")
-
-        assert len(channel.sent) == 1
-        jid, event = channel.sent[0]
-        assert jid == "group@g.us"
-        assert event.type == OutboundEventType.HOST
-        assert event.content == "Test message"
-
-    async def test_host_message_emits_event(self):
-        broadcaster, _, _, _, emitted = self._make_broadcaster()
-        await broadcaster.broadcast_host_message("group@g.us", "Test")
-
-        assert len(emitted) == 1
-        event = emitted[0]
-        assert isinstance(event, MessageEvent)
-        assert event.chat_jid == "group@g.us"
-        assert event.sender_name == "host"
-        assert event.content == "Test"
-        assert event.is_bot is True
-
-    async def test_system_notice_stores_with_system_notice_sender(self):
-        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
-        await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
-
-        store_notice_fn.assert_called_once()
-        kwargs = store_notice_fn.call_args.kwargs
-        assert kwargs["sender"] == "system_notice"
-        assert kwargs["sender_name"] == "System"
-
-    async def test_system_notice_prefixes_content(self):
-        """System notices are prefixed with [System Notice] for LLM visibility."""
-        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
-        await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
-
-        kwargs = store_notice_fn.call_args.kwargs
-        assert kwargs["content"] == "[System Notice] Config changed"
-
-    async def test_system_notice_uses_notice_store_fn(self):
-        """System notices use the notice store fn, not the host store fn."""
-        broadcaster, _, store_host_fn, store_notice_fn, _ = self._make_broadcaster()
-        await broadcaster.broadcast_system_notice("group@g.us", "Update")
-
-        store_host_fn.assert_not_called()
-        store_notice_fn.assert_called_once()
-
-    async def test_host_message_uses_host_store_fn(self):
-        """Host messages use the host store fn, not the notice store fn."""
-        broadcaster, _, store_host_fn, store_notice_fn, _ = self._make_broadcaster()
-        await broadcaster.broadcast_host_message("group@g.us", "Status update")
-
-        store_host_fn.assert_called_once()
-        store_notice_fn.assert_not_called()
-
-    async def test_system_notice_sends_event_to_channel(self):
-        broadcaster, channel, _, _, _ = self._make_broadcaster()
-        await broadcaster.broadcast_system_notice("group@g.us", "Update")
-
-        assert len(channel.sent) == 1
-        _, event = channel.sent[0]
-        assert event.type == OutboundEventType.SYSTEM
-        assert event.content == "[System Notice] Update"
-
-    async def test_host_message_id_starts_with_host_prefix(self):
-        broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
-        await broadcaster.broadcast_host_message("group@g.us", "Test")
-
-        msg_id = store_host_fn.call_args.kwargs["message_id"]
-        assert msg_id.startswith("host-")
-
-    async def test_system_notice_id_starts_with_sys_notice_prefix(self):
-        broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
-        await broadcaster.broadcast_system_notice("group@g.us", "Test")
-
-        msg_id = store_notice_fn.call_args.kwargs["message_id"]
-        assert msg_id.startswith("sys-notice-")
-
-    async def test_paused_chat_suppresses_system_notice_but_not_host_confirmation(self):
-        channel = FakeChannel()
-        store_host_fn = AsyncMock()
-        store_notice_fn = AsyncMock()
-        broadcaster = HostMessageBroadcaster(
-            MessageBroadcaster([channel]),
-            store_host_fn,
-            store_notice_fn,
-            lambda _: None,
-            is_chat_paused=AsyncMock(return_value=True),
-        )
-
-        await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
-        await broadcaster.broadcast_host_message("group@g.us", "⏸️")
-
-        store_notice_fn.assert_not_awaited()
-        store_host_fn.assert_awaited_once()
-        assert [event.content for _, event in channel.sent] == ["⏸️"]
-
-    async def test_durable_pause_suppresses_system_notice(self):
-        channel = FakeChannel()
-        with patch(
-            "pynchy.host.orchestrator.adapters.is_chat_paused",
-            AsyncMock(return_value=True),
-        ):
-            broadcaster = make_host_message_broadcaster(
-                MessageBroadcaster([channel]),
-                lambda _: None,
+@pytest.mark.parametrize(
+    "pause_source",
+    ["durable", CheckpointControlState.PAUSE_REQUESTED, CheckpointControlState.PAUSED],
+)
+async def test_paused_chat_keeps_host_confirmation_but_suppresses_notice(app, pause_source):
+    channel = FakeChannel()
+    app.channels = [channel]
+    if pause_source == "durable":
+        await pause_chat("group@g.us")
+    else:
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-1",
+                chat_jid="group@g.us",
+                group_folder="test",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-09-05T12:00:00Z",
+                control_state=pause_source,
             )
-            await broadcaster.broadcast_system_notice("group@g.us", "Config changed")
+        )
 
-        assert channel.sent == []
+    await app.broadcast_system_notice("group@g.us", "Config changed")
+    await app.broadcast_host_message("group@g.us", "Paused")
+
+    history = await get_chat_history("group@g.us", limit=10)
+    assert [(message.message_type, message.content) for message in history] == [("host", "Paused")]
+    assert [event.content for _, event in channel.sent] == ["Paused"]
+
+
+async def test_host_notifications_follow_channel_changes(app):
+    first, second = FakeChannel(), FakeChannel()
+    app.channels = [first]
+    await app.broadcast_host_message("group@g.us", "First")
+    app.channels = [second]
+    await app.broadcast_system_notice("group@g.us", "Second")
+    assert [event.content for _, event in first.sent] == ["First"]
+    assert [event.content for _, event in second.sent] == ["[System Notice] Second"]
 
 
 # ---------------------------------------------------------------------------
-# MessageBroadcaster
+# Raw channel broadcasts
 # ---------------------------------------------------------------------------
 
 
-class TestMessageBroadcaster:
+class TestChannelBroadcast:
     """Test channel broadcast behavior including error suppression."""
 
-    async def test_synthetic_user_input_reuses_channel_broadcast(self):
+    async def test_synthetic_user_input_reuses_channel_broadcast(self, app):
         channel = FakeChannel()
-        broadcaster = MessageBroadcaster([channel])
+        app.channels = [channel]
 
-        await broadcaster.broadcast_synthetic_user_input(
+        await make_http_deps(app).broadcast_synthetic_user_input(
             "discord:channel:1", "use native search_skills"
         )
 
@@ -281,26 +225,26 @@ class TestMessageBroadcaster:
         assert event.content == "use native search_skills"
         assert event.metadata == {"synthetic_user_input": True}
 
-    async def test_sends_to_all_connected_channels(self):
+    async def test_sends_to_all_connected_channels(self, app):
         ch1 = FakeChannel()
         ch2 = FakeChannel()
-        broadcaster = MessageBroadcaster([ch1, ch2])
+        app.channels = [ch1, ch2]
         event = _make_event("hello")
-        await broadcaster.broadcast_to_channels("group@g.us", event)
+        await app.broadcast_to_channels("group@g.us", event)
 
         assert len(ch1.sent) == 1
         assert len(ch2.sent) == 1
 
-    async def test_skips_disconnected_channels(self):
+    async def test_skips_disconnected_channels(self, app):
         connected = FakeChannel(connected=True)
         disconnected = FakeChannel(connected=False)
-        broadcaster = MessageBroadcaster([connected, disconnected])
-        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
+        app.channels = [connected, disconnected]
+        await app.broadcast_to_channels("group@g.us", _make_event("hello"))
 
         assert len(connected.sent) == 1
         assert len(disconnected.sent) == 0
 
-    async def test_suppresses_channel_errors(self):
+    async def test_suppresses_channel_errors(self, app):
         """Channel send failures should be silently suppressed."""
 
         class FailingChannel(FakeChannel):
@@ -309,17 +253,17 @@ class TestMessageBroadcaster:
 
         failing = FailingChannel()
         working = FakeChannel()
-        broadcaster = MessageBroadcaster([failing, working])
+        app.channels = [failing, working]
 
         # Should not raise
-        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
+        await app.broadcast_to_channels("group@g.us", _make_event("hello"))
         assert len(working.sent) == 1
 
-    async def test_broadcast_to_empty_channel_list(self):
+    async def test_broadcast_to_empty_channel_list(self, app):
         """Broadcasting to empty channel list is a no-op."""
-        broadcaster = MessageBroadcaster([])
+        app.channels = []
         # Should not raise
-        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
+        await app.broadcast_to_channels("group@g.us", _make_event("hello"))
 
 
 # ---------------------------------------------------------------------------
