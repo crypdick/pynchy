@@ -6,16 +6,13 @@ HTTP server, and IPC watcher. Reduces boilerplate delegation code in PynchyApp.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from pynchy.agent_protocol.api import CheckpointControlState
-from pynchy.async_tasks import create_background_task
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
-from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.plugins.api import (
     Channel,
@@ -23,7 +20,6 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.state.api import (
-    clear_session,
     get_in_flight_turns,
     is_chat_paused,
     store_message_direct,
@@ -295,7 +291,7 @@ def resolve_admin_notification_jid(
 
 
 class SessionManager:
-    """Manages agent session state."""
+    """Projects active sessions; context resets belong to session_handler."""
 
     def __init__(
         self,
@@ -328,64 +324,3 @@ class SessionManager:
     def has_active_session(self, group_folder: str) -> bool:
         """Check if a group has an active (non-cleared) session."""
         return group_folder in self._sessions and group_folder not in self._session_cleared
-
-    async def clear_session(self, group_folder: str) -> None:
-        """Clear session state for a group."""
-        self._sessions.pop(group_folder, None)
-        self._session_cleared.add(group_folder)
-        await clear_session(GroupFolder(group_folder))
-
-
-class GroupMetadataManager:
-    """Manages group chat metadata operations."""
-
-    def __init__(
-        self,
-        channels: list[Channel],
-        get_available_groups_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
-    ) -> None:
-        self._channels = channels
-        self._get_available_groups = get_available_groups_fn
-
-    async def get_available_groups(self) -> list[dict[str, Any]]:
-        """Get list of all available groups."""
-        return await self._get_available_groups()
-
-    async def sync_group_metadata(self, *, force: bool) -> None:
-        """Sync group metadata from channels."""
-        for channel in self._channels:
-            if hasattr(channel, "sync_group_metadata"):
-                await channel.sync_group_metadata(force=force)
-
-    def channels(self) -> list[Channel]:
-        """Return all channels."""
-        return self._channels
-
-
-class GroupRegistrationManager:
-    """Manages group registration operations."""
-
-    def __init__(
-        self,
-        groups_dict: dict[str, WorkspaceProfile],
-        register_workspace_fn: Callable[[WorkspaceProfile], Coroutine[Any, Any, None]],
-        send_clear_confirmation_fn: Callable[[str], Awaitable[None]],
-    ) -> None:
-        self._groups = groups_dict
-        self._register_workspace = register_workspace_fn
-        self._send_clear_confirmation = send_clear_confirmation_fn
-
-    def workspaces(self) -> dict[str, WorkspaceProfile]:
-        """Return all registered groups."""
-        return self._groups
-
-    def register_workspace(self, profile: WorkspaceProfile) -> None:
-        """Register a workspace (async operation scheduled)."""
-        create_background_task(
-            self._register_workspace(profile),
-            name=f"register-workspace-{profile.folder}",
-        )
-
-    async def clear_chat_history(self, chat_jid: str) -> None:
-        """Clear chat history and send confirmation."""
-        await self._send_clear_confirmation(chat_jid)

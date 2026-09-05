@@ -59,10 +59,7 @@ from pynchy.host.orchestrator.action_intents import (
     prepare_action_intent,
 )
 from pynchy.host.orchestrator.adapters import (
-    GroupMetadataManager,
-    GroupRegistrationManager,
     HostMessageBroadcaster,
-    MessageBroadcaster,
     SessionManager,
     resolve_admin_notification_jid,
 )
@@ -159,15 +156,6 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.webhook_terminal_retirement import (
         TerminalConversationRetirementDeps,
     )
-
-
-def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
-    """Return the app's shared broadcaster pair.
-
-    All subsystems reuse the same MessageBroadcaster and HostMessageBroadcaster
-    instances from PynchyApp, ensuring a single code path for all channel sends.
-    """
-    return app.message_broadcaster, app.host_broadcaster
 
 
 async def _load_cop_inspection_context(chat_jid: str) -> CopInspectionContext:
@@ -425,7 +413,7 @@ async def _request_ipc_deploy(
 
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
-    broadcaster, host_broadcaster = _get_broadcasters(app)
+    broadcaster, host_broadcaster = app.message_broadcaster, app.host_broadcaster
     settings = get_settings()
 
     class HttpDeps:
@@ -532,21 +520,34 @@ def make_provider_execution_retirement(
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition owns built-in handlers.
     """Create the dependency object for the IPC watcher."""
     snapshot_data_dir = get_settings().data_dir
-    broadcaster, host_broadcaster = _get_broadcasters(app)
-    registration_manager = GroupRegistrationManager(
-        app.workspaces, app.register_workspace, app.send_clear_confirmation
-    )
+    broadcaster, host_broadcaster = app.message_broadcaster, app.host_broadcaster
+    workspaces, channels = app.workspaces, app.channels
+    register_workspace = app.register_workspace
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
 
     class IpcDeps:
         broadcast_to_channels = broadcaster.broadcast_to_channels
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
-        workspaces = registration_manager.workspaces
-        register_workspace = registration_manager.register_workspace
-        sync_group_metadata = metadata_manager.sync_group_metadata
-        get_available_groups = metadata_manager.get_available_groups
+        get_available_groups = app.get_available_groups
+        clear_chat_history = app.send_clear_confirmation
+
+        def workspaces(self) -> dict[str, WorkspaceProfile]:
+            return workspaces
+
+        def channels(self) -> list[Channel]:
+            return channels
+
+        def register_workspace(self, profile: WorkspaceProfile) -> None:
+            create_background_task(
+                register_workspace(profile),
+                name=f"register-workspace-{profile.folder}",
+            )
+
+        async def sync_group_metadata(self, *, force: bool) -> None:
+            for channel in channels:
+                if hasattr(channel, "sync_group_metadata"):
+                    await channel.sync_group_metadata(force=force)
 
         def write_groups_snapshot(
             self,
@@ -567,8 +568,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
         has_active_session = session_manager.has_active_session
 
         wake_worktree_conflict = app.start_interactive_turn
-        clear_chat_history = registration_manager.clear_chat_history
-        channels = metadata_manager.channels
         pending_question_store = staticmethod(_PendingQuestionStore)
         scheduled_work_store = staticmethod(_ScheduledWorkStore)
         messaging_source_health = staticmethod(SourceHealthProjection)
@@ -657,7 +656,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
             if not claude_md_path.exists():
                 claude_md_path.write_text(request.claude_md)
 
-            channel = _command_center_channel(metadata_manager.channels(), command_center)
+            channel = _command_center_channel(channels, command_center)
             if channel is None:
                 logger.warning(
                     "Command center does not support create_group; "
@@ -674,7 +673,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
                 )
                 return
 
-            registration_manager.register_workspace(
+            self.register_workspace(
                 WorkspaceProfile(
                     jid=jid,
                     name=request.name.replace("-", " ").title(),
@@ -764,7 +763,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
+    channels = app.channels
     settings = get_settings()
     configured_repo_slugs = tuple(
         dict.fromkeys(
@@ -795,7 +794,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             return app.is_shutting_down()
 
         def get_channel_status(self) -> dict[str, bool]:
-            return {ch.name: ch.is_connected() for ch in metadata_manager.channels()}
+            return {ch.name: ch.is_connected() for ch in channels}
 
         def get_connection_status(self) -> dict[str, bool]:
             return app.connection_runtime_owner.status()
@@ -848,7 +847,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
-    _broadcaster, host_broadcaster = _get_broadcasters(app)
+    host_broadcaster = app.host_broadcaster
     session_manager = SessionManager(app.sessions, app.session_cleared)
 
     class GitSyncDeps:

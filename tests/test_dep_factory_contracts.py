@@ -255,7 +255,7 @@ async def test_ipc_adapter_projects_sessions_snapshot_and_context_reset(tmp_path
     profile = _workspace("project", is_admin=False)
     app.workspaces[profile.jid] = profile
     app.sessions["project"] = "session-1"
-    app.channels = []
+    app.channels = [NullChannel()]
     with (
         patch.object(dep_factory, "get_settings", return_value=settings),
         patch.object(dep_factory, "session_handler") as session_handler,
@@ -263,6 +263,7 @@ async def test_ipc_adapter_projects_sessions_snapshot_and_context_reset(tmp_path
         session_handler.clear_durable_context = AsyncMock()
         deps = dep_factory.make_ipc_deps(app)
         assert deps.workspaces() is app.workspaces
+        assert deps.channels() is app.channels
         assert deps.get_active_sessions() == {profile.jid: "session-1"}
         assert deps.connection_statuses() == {}
         await deps.clear_session("project")
@@ -415,10 +416,6 @@ async def test_ipc_adapter_deploy_paths_and_periodic_agent(tmp_path: Path) -> No
         patch.object(
             dep_factory,
             "create_background_task",
-            lambda coro, name: (created_tasks.append(name), coro.close()),
-        ),
-        patch(
-            "pynchy.host.orchestrator.adapters.create_background_task",
             lambda coro, name: (created_tasks.append(name), coro.close()),
         ),
         patch.object(dep_factory, "start_deploy_workflow", new_callable=AsyncMock) as start_deploy,
