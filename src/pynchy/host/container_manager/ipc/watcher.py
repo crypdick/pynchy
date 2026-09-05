@@ -4,7 +4,6 @@ Uses watchdog for event-driven processing and startup recovery.
 """
 
 import asyncio
-import contextlib
 from dataclasses import dataclass
 from pathlib import Path  # beartype resolves IPC watcher paths at runtime.
 
@@ -17,6 +16,7 @@ from pynchy.host.container_manager.ipc.deps import (
 from pynchy.host.container_manager.ipc.events import IpcEventHandler
 from pynchy.host.container_manager.ipc.file_claims import (
     claim_ipc_file,
+    move_failed_ipc_file,
     release_ipc_file,
 )
 from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
@@ -47,26 +47,6 @@ class _WatcherState:
 
 
 _state = _WatcherState()
-
-
-def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
-    """Move a failed IPC file to the errors/ directory for later inspection.
-
-    Safe to call inside ``except`` blocks — catches its own OSError so a
-    failed move never masks the error being handled or escapes the handler.
-    """
-    try:
-        error_dir = ipc_base_dir / "errors"
-        error_dir.mkdir(parents=True, exist_ok=True)
-        file_path.rename(error_dir / f"{source_group}-{file_path.name}")
-    except OSError:
-        logger.warning(
-            "Failed to move IPC file to error dir, deleting instead",
-            file=file_path.name,
-            source_group=source_group,
-        )
-        with contextlib.suppress(OSError):
-            file_path.unlink()
 
 
 def _log_sweep_error(message: str, exc: OSError, source_group: str) -> None:
@@ -102,7 +82,7 @@ async def process_ipc_message_file(
             file=file_path.name,
             source_group=source_group,
         )
-        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+        await asyncio.to_thread(move_failed_ipc_file, ipc_base_dir, source_group, file_path)
     finally:
         release_ipc_file(file_path)
 
@@ -132,7 +112,7 @@ async def process_ipc_request_file(
             file=file_path.name,
             source_group=source_group,
         )
-        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+        await asyncio.to_thread(move_failed_ipc_file, ipc_base_dir, source_group, file_path)
     finally:
         release_ipc_file(file_path)
 
@@ -167,15 +147,6 @@ async def _handle_request_file(
     if _claim_request_for_execution(envelope, ipc_base_dir):
         await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
     await asyncio.to_thread(file_path.unlink)
-
-
-async def process_ipc_output_file(
-    file_path: Path,
-    source_group: str,
-    ipc_base_dir: Path,
-) -> None:
-    """Process a single output event file from a container."""
-    await process_output_file(file_path, source_group, ipc_base_dir)
 
 
 async def _sweep_messages(
@@ -237,7 +208,7 @@ async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, output_dir):
-            await process_ipc_output_file(file_path, source_group, ipc_base_dir)
+            await process_output_file(file_path, source_group, ipc_base_dir)
             count += 1
     except OSError as exc:
         _log_sweep_error(
@@ -446,7 +417,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
             deps=deps,
         )
     elif queued.subdir == "output":
-        await process_ipc_output_file(queued.path, queued.source_group, ipc_base_dir)
+        await process_output_file(queued.path, queued.source_group, ipc_base_dir)
 
 
 async def start_ipc_watcher(deps: IpcDeps, *, ipc_base_dir: Path) -> None:

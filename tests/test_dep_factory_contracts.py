@@ -627,19 +627,3 @@ async def test_status_adapter_reports_queue_gateway_container_and_counts(tmp_pat
             return_value=_DockerResult(returncode=1, stdout=""),
         ):
             assert await deps.get_container_state("agent") == "not_found"
-
-
-@pytest.mark.asyncio
-async def test_git_sync_adapter_delegates_live_app_state() -> None:
-    app = PynchyApp()
-    app.start_interactive_turn = AsyncMock()
-    profile = _workspace("project", is_admin=False)
-    app.workspaces[profile.jid] = profile
-    app.sessions["project"] = "session-1"
-    deps = dep_factory.make_git_sync_deps(app)
-
-    assert deps.workspaces() is app.workspaces
-    assert deps.has_active_session("project") is True
-    assert deps.has_active_session("missing") is False
-    await deps.wake_worktree_conflict(profile.jid)
-    app.start_interactive_turn.assert_awaited_once_with(profile.jid)

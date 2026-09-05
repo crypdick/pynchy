@@ -1991,38 +1991,23 @@ class PynchyApp(ThreadRouting):
         await temporal_scheduler.start_learning_review_workflow(packet)
 
     # ------------------------------------------------------------------
-    # Internal delegation for session_handler (used by dep_factory adapters)
-    async def _ingest_user_message(
+    async def ingest_user_message(
         self, msg: NewMessage, *, source_channel: str | None = None
     ) -> None:
         await session_handler.ingest_user_message(self, msg, source_channel=source_channel)
 
-    async def ingest_user_message(
-        self, msg: NewMessage, *, source_channel: str | None = None
-    ) -> None:
-        await self._ingest_user_message(msg, source_channel=source_channel)
-
-    async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
-        await session_handler.on_inbound(self, _jid, msg)
-
     async def on_inbound(self, jid: str, msg: NewMessage) -> None:
-        await self._on_inbound(jid, msg)
+        await session_handler.on_inbound(self, jid, msg)
 
-    async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
+    async def on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
         await reaction_handler.handle_reaction(self, jid, message_ts, user_id, emoji)
 
-    async def on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
-        await self._on_reaction(jid, message_ts, user_id, emoji)
-
-    async def _on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
+    async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
         if await update_offer.handle_update_offer_answer(request_id, answer, self):
             return
         await ask_user_handler.handle_ask_user_answer(request_id, answer, self)
-
-    async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
-        await self._on_ask_user_answer(request_id, answer)
 
     def has_active_host_process(self, group_folder: str) -> bool:
         """Return whether a direct host agent is blocked on this group's IPC."""
@@ -2068,11 +2053,8 @@ class PynchyApp(ThreadRouting):
         await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
         await self.start_interactive_turn(chat_jid)
 
-    async def _send_clear_confirmation(self, chat_jid: str) -> None:
-        await session_handler.send_clear_confirmation(self, chat_jid)
-
     async def send_clear_confirmation(self, chat_jid: str) -> None:
-        await self._send_clear_confirmation(chat_jid)
+        await session_handler.send_clear_confirmation(self, chat_jid)
 
     # ------------------------------------------------------------------
     # Channel history catch-up
