@@ -24,7 +24,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_tool_preview,
     parse_host_tag,
 )
-from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.orchestrator.messaging.streaming import (
     OutputDeps,
     StreamState,
@@ -406,12 +406,13 @@ async def _handle_final_result(request: _FinalResultRequest) -> tuple[bool, bool
     # For channels that were streaming, finalize the existing message.
     # For all others, post normally via broadcast.
     stream_ids = request.stream_state.message_ids if request.stream_state else None
-    delivered = await finalize_stream_or_broadcast(
+    delivered = await broadcast(
         request.deps,
         request.chat_jid,
         event,
-        stream_ids,
         suppress_errors=False,
+        stream_message_ids=stream_ids,
+        source="agent",
     )
 
     # Stash per-channel message IDs for post-run reactions (e.g. zzz).

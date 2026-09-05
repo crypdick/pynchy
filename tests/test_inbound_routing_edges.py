@@ -35,16 +35,17 @@ async def _run_with_messages(
     deps,
     messages: list[NewMessage],
     pending: list[NewMessage],
-) -> None:
+) -> AsyncMock:
     with (
         patch(f"{_PR}.get_new_messages", new_callable=AsyncMock, return_value=(messages, "poll")),
         patch(
             "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
             new_callable=AsyncMock,
             return_value=pending,
-        ),
+        ) as get_pending,
     ):
         await _run_loop_once(deps)
+    return get_pending
 
 
 @pytest.mark.asyncio
@@ -56,11 +57,7 @@ async def test_filtered_messages_do_not_poll_or_start_a_turn() -> None:
     deps.filter_allowed_messages.return_value = []
     message = _make_message(chat_jid=jid)
 
-    with patch(
-        "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
-        new_callable=AsyncMock,
-    ) as get_pending:
-        await _run_with_messages(deps, [message], [message])
+    get_pending = await _run_with_messages(deps, [message], [message])
 
     get_pending.assert_not_awaited()
     deps.start_interactive_turn.assert_not_awaited()
@@ -167,11 +164,7 @@ async def test_message_for_unknown_workspace_is_ignored() -> None:
     message = _make_message(chat_jid="unknown@g.us")
     deps = _make_deps(groups={})
 
-    with patch(
-        "pynchy.host.orchestrator.messaging.sender_policy.get_messages_since",
-        new_callable=AsyncMock,
-    ) as get_pending:
-        await _run_with_messages(deps, [message], [message])
+    get_pending = await _run_with_messages(deps, [message], [message])
 
     get_pending.assert_not_awaited()
     deps.start_interactive_turn.assert_not_awaited()
