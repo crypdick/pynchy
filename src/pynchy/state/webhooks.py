@@ -11,8 +11,7 @@ from aiosqlite import (  # noqa: TC002 - beartype resolves state boundary annota
 
 from pynchy.conversation.api import ConversationDeliveryStatus
 from pynchy.scheduling.api import (
-    ScheduledTask,
-    SessionPolicy,
+    ScheduledTask,  # noqa: TC001 - beartype resolves admission annotations at runtime.
 )
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.conversation_controls import (
@@ -20,6 +19,7 @@ from pynchy.state.conversation_controls import (
     _retire_conversation_for_terminal,
 )
 from pynchy.state.conversation_routing import _admit_conversation_delivery
+from pynchy.state.tasks import _insert_task, _row_to_task
 from pynchy.state.webhook_effect_admission import admit_webhook_effect_delivery
 from pynchy.state.webhook_models import (
     WebhookAdmission,
@@ -47,50 +47,6 @@ def _row_to_receipt(row: Row) -> WebhookReceipt:
         task_id=row["task_id"],
         occurred_at=row["occurred_at"],
         received_at=row["received_at"],
-    )
-
-
-def _row_to_task(row: Row | None) -> ScheduledTask | None:
-    if row is None:
-        return None
-    return ScheduledTask(
-        id=row["id"],
-        group_folder=row["group_folder"],
-        chat_jid=row["chat_jid"],
-        prompt=row["prompt"],
-        schedule_type=row["schedule_type"],
-        schedule_value=row["schedule_value"],
-        session_policy=SessionPolicy(row["session_policy"] or SessionPolicy.RESET_BEFORE_RUN),
-        next_run=row["next_run"],
-        last_run=row["last_run"],
-        last_result=row["last_result"],
-        status=row["status"],
-        created_at=row["created_at"],
-        memory_enabled=bool(row["memory_enabled"]),
-        repo_access=row["repo_access"] or None,
-        input_source=row["input_source"] or "scheduled_task",
-        config_job_name=row["config_job_name"] or None,
-        config_job_is_deterministic=(
-            None
-            if row["config_job_is_deterministic"] is None
-            else bool(row["config_job_is_deterministic"])
-        ),
-        config_job_command=row["config_job_command"] or None,
-        config_job_cwd=row["config_job_cwd"] or None,
-        config_job_timeout_seconds=row["config_job_timeout_seconds"],
-        config_job_display_name=row["config_job_display_name"] or None,
-        config_job_pre_run_command=row["config_job_pre_run_command"] or None,
-        config_job_pre_run_cwd=row["config_job_pre_run_cwd"] or None,
-        config_job_pre_run_timeout_seconds=row["config_job_pre_run_timeout_seconds"],
-        derived_thread_name=row["derived_thread_name"] or None,
-        bound_chat_jid=row["bound_chat_jid"] or None,
-        bound_group_folder=row["bound_group_folder"] or None,
-        conversation_id=row["conversation_id"] or None,
-        last_reset_occurrence=row["last_reset_occurrence"] or None,
-        occurrence_generation=row["occurrence_generation"],
-        occurrence_due_at=row["occurrence_due_at"] or None,
-        superseded_occurrence_generation=row["superseded_occurrence_generation"],
-        superseded_occurrence_due_at=row["superseded_occurrence_due_at"] or None,
     )
 
 
@@ -136,7 +92,7 @@ async def _existing_admission(
     decision = await _effect_decision(database, existing)
     return WebhookAdmission(
         receipt=existing,
-        task=_row_to_task(task_row),
+        task=_row_to_task(task_row) if task_row is not None else None,
         created=False,
         outbound_effect_suppressed=decision == "suppressed",
         outbound_effect_held=decision == "held",
@@ -168,59 +124,6 @@ async def _ensure_external_receipt(database: Connection, receipt: WebhookReceipt
     admitted = await cursor.fetchone()
     if admitted is None or admitted["payload_sha256"] != receipt.payload_sha256:
         raise ValueError("Webhook delivery identity has conflicting receipt evidence")
-
-
-async def _insert_task(database: Connection, task: ScheduledTask) -> None:
-    await database.execute(
-        """
-        INSERT INTO scheduled_tasks
-            (id, group_folder, chat_jid, prompt, schedule_type,
-             schedule_value, session_policy, next_run, status, created_at,
-             memory_enabled, repo_access, input_source, config_job_name,
-             config_job_is_deterministic,
-             config_job_command, config_job_cwd, config_job_timeout_seconds,
-             config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
-             config_job_pre_run_timeout_seconds, derived_thread_name,
-             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
-             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
-             superseded_occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            task.id,
-            task.group_folder,
-            task.chat_jid,
-            task.prompt,
-            task.schedule_type,
-            task.schedule_value,
-            task.session_policy,
-            task.next_run,
-            task.status,
-            task.created_at,
-            task.memory_enabled,
-            task.repo_access,
-            task.input_source,
-            task.config_job_name,
-            task.config_job_is_deterministic,
-            task.config_job_command,
-            task.config_job_cwd,
-            task.config_job_timeout_seconds,
-            task.config_job_display_name,
-            task.config_job_pre_run_command,
-            task.config_job_pre_run_cwd,
-            task.config_job_pre_run_timeout_seconds,
-            task.derived_thread_name,
-            task.bound_chat_jid,
-            task.bound_group_folder,
-            task.conversation_id,
-            task.last_reset_occurrence,
-            task.occurrence_generation,
-            task.occurrence_due_at,
-            task.superseded_occurrence_generation,
-            task.superseded_occurrence_due_at,
-        ),
-    )
 
 
 async def _insert_receipt(database: Connection, receipt: WebhookReceipt) -> None:

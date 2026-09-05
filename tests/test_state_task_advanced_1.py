@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from sqlite3 import IntegrityError
 
+import pytest
 from freezegun import freeze_time
 
 from pynchy.agent_protocol.api import (
@@ -21,6 +23,7 @@ from pynchy.state import (
     begin_in_flight_turn,
     clear_in_flight_turn,
     create_task,
+    create_task_if_absent,
     delete_task,
     get_active_task_for_group,
     get_all_tasks,
@@ -38,6 +41,8 @@ from pynchy.state import (
     update_task,
 )
 
+pytest_plugins = ("tests.state_support",)
+
 
 class TestTaskAdvanced:
     """Tests for task querying and lifecycle functions."""
@@ -53,6 +58,56 @@ class TestTaskAdvanced:
         status="active",
         created_at="2024-01-01T00:00:00.000Z",
     )
+
+    @pytest.mark.parametrize(
+        ("create", "expected_next_run"),
+        [(create_task, None), (create_task_if_absent, "2026-07-29T00:00:00+00:00")],
+    )
+    async def test_creation_preserves_task_definition_and_occurrence(
+        self, create, expected_next_run
+    ):
+        task = replace(
+            self._TASK_TEMPLATE,
+            id="defined-task",
+            next_run="2026-07-29T00:00:00+00:00",
+            memory_enabled=False,
+            repo_access="owner/pynchy",
+            input_source="webhook",
+            config_job_name="watchdog",
+            config_job_is_deterministic=True,
+            config_job_command="scripts/watchdog.py",
+            config_job_cwd="/srv/watchdog",
+            config_job_timeout_seconds=45,
+            config_job_display_name="Watchdog",
+            config_job_pre_run_command="scripts/prepare.py",
+            config_job_pre_run_cwd="/srv/prepare",
+            config_job_pre_run_timeout_seconds=20,
+            derived_thread_name="Watchdog runs",
+            bound_chat_jid="thread@g.us",
+            bound_group_folder="main/thread",
+            conversation_id="watchdog-conversation",
+            last_reset_occurrence="2026-07-28T00:00:00+00:00",
+            occurrence_generation=2,
+            occurrence_due_at="2026-07-29T00:00:00+00:00",
+            superseded_occurrence_generation=1,
+            superseded_occurrence_due_at="2026-07-28T00:00:00+00:00",
+        )
+
+        await create(task)
+
+        assert await get_task_by_id(task.id) == replace(task, next_run=expected_next_run)
+        assert task.next_run == "2026-07-29T00:00:00+00:00"
+
+    async def test_duplicate_creation_keeps_the_original_task(self):
+        task = replace(self._TASK_TEMPLATE, id="first-task")
+        assert await create_task_if_absent(task) is True
+        replacement = replace(task, prompt="Replacement prompt")
+
+        assert await create_task_if_absent(replacement) is False
+        with pytest.raises(IntegrityError):
+            await create_task(replacement)
+
+        assert await get_all_tasks() == [task]
 
     async def test_get_tasks_for_group(self):
         await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))

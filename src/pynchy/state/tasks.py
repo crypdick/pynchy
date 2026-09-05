@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from aiosqlite import Row
-else:
-    Row = Any
+from aiosqlite import (  # noqa: TC002 - beartype resolves state boundary annotations at runtime.
+    Connection,
+    Row,
+)
 
 from pynchy.scheduling.api import (
     ScheduledTask,
@@ -77,12 +78,14 @@ def _row_to_task_run_log(row: Row) -> TaskRunLog:
     )
 
 
-async def create_task(task: ScheduledTask) -> None:
-    """Create a scheduled task."""
-    async with atomic_write() as db:
-        await db.execute(
-            """
-        INSERT INTO scheduled_tasks
+async def _insert_task(
+    database: Connection, task: ScheduledTask, *, ignore_conflicts: bool = False
+) -> bool:
+    """Insert within the caller's transaction, including webhook receipt admission."""
+    conflict_clause = "OR IGNORE" if ignore_conflicts else ""
+    cursor = await database.execute(
+        f"""
+        INSERT {conflict_clause} INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
              memory_enabled, repo_access, input_source, config_job_name,
@@ -93,99 +96,32 @@ async def create_task(task: ScheduledTask) -> None:
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
              occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
              superseded_occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                task.id,
-                task.group_folder,
-                task.chat_jid,
-                task.prompt,
-                task.schedule_type,
-                task.schedule_value,
-                task.session_policy,
-                None,
-                task.status,
-                task.created_at,
-                task.memory_enabled,
-                task.repo_access or None,
-                task.input_source,
-                task.config_job_name,
-                task.config_job_is_deterministic,
-                task.config_job_command,
-                task.config_job_cwd,
-                task.config_job_timeout_seconds,
-                task.config_job_display_name,
-                task.config_job_pre_run_command,
-                task.config_job_pre_run_cwd,
-                task.config_job_pre_run_timeout_seconds,
-                task.derived_thread_name,
-                task.bound_chat_jid,
-                task.bound_group_folder,
-                task.conversation_id,
-                task.last_reset_occurrence,
-                task.occurrence_generation,
-                task.occurrence_due_at,
-                task.superseded_occurrence_generation,
-                task.superseded_occurrence_due_at,
-            ),
-        )
+        VALUES (:id, :group_folder, :chat_jid, :prompt, :schedule_type,
+                :schedule_value, :session_policy, :next_run, :status, :created_at,
+                :memory_enabled, :repo_access, :input_source, :config_job_name,
+                :config_job_is_deterministic,
+                :config_job_command, :config_job_cwd, :config_job_timeout_seconds,
+                :config_job_display_name, :config_job_pre_run_command, :config_job_pre_run_cwd,
+                :config_job_pre_run_timeout_seconds, :derived_thread_name,
+                :bound_chat_jid, :bound_group_folder, :conversation_id, :last_reset_occurrence,
+                :occurrence_generation, :occurrence_due_at, :superseded_occurrence_generation,
+                :superseded_occurrence_due_at)
+        """,  # noqa: S608 - conflict clause uses fixed literals; task values are bound parameters.
+        asdict(task),
+    )
+    return cursor.rowcount == 1
+
+
+async def create_task(task: ScheduledTask) -> None:
+    """Create a task with next_run unset; Temporal owns its schedule."""
+    async with atomic_write() as db:
+        await _insert_task(db, replace(task, next_run=None, repo_access=task.repo_access or None))
 
 
 async def create_task_if_absent(task: ScheduledTask) -> bool:
     """Atomically create an externally discovered task once by stable ID."""
     async with atomic_write() as db:
-        cursor = await db.execute(
-            """
-        INSERT OR IGNORE INTO scheduled_tasks
-            (id, group_folder, chat_jid, prompt, schedule_type,
-             schedule_value, session_policy, next_run, status, created_at,
-             memory_enabled, repo_access, input_source, config_job_name,
-             config_job_is_deterministic,
-             config_job_command, config_job_cwd, config_job_timeout_seconds,
-             config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
-             config_job_pre_run_timeout_seconds, derived_thread_name,
-             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
-             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
-             superseded_occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                task.id,
-                task.group_folder,
-                task.chat_jid,
-                task.prompt,
-                task.schedule_type,
-                task.schedule_value,
-                task.session_policy,
-                task.next_run,
-                task.status,
-                task.created_at,
-                task.memory_enabled,
-                task.repo_access,
-                task.input_source,
-                task.config_job_name,
-                task.config_job_is_deterministic,
-                task.config_job_command,
-                task.config_job_cwd,
-                task.config_job_timeout_seconds,
-                task.config_job_display_name,
-                task.config_job_pre_run_command,
-                task.config_job_pre_run_cwd,
-                task.config_job_pre_run_timeout_seconds,
-                task.derived_thread_name,
-                task.bound_chat_jid,
-                task.bound_group_folder,
-                task.conversation_id,
-                task.last_reset_occurrence,
-                task.occurrence_generation,
-                task.occurrence_due_at,
-                task.superseded_occurrence_generation,
-                task.superseded_occurrence_due_at,
-            ),
-        )
-    return cursor.rowcount == 1
+        return await _insert_task(db, task, ignore_conflicts=True)
 
 
 async def get_task_by_id(task_id: str) -> ScheduledTask | None:
