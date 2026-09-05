@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.sender import broadcast, finalize_stream_or_broadcast
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.plugins.api import (
     Channel,
     OutboundEvent,
@@ -160,7 +160,7 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch1, ch2])
         event = _make_event("final text")
 
-        await finalize_stream_or_broadcast(deps, "group@g.us", event, None)
+        await broadcast(deps, "group@g.us", event, stream_message_ids=None, source="agent")
 
         ch1.send_event.assert_awaited_once_with("group@g.us", event)
         ch2.send_event.assert_awaited_once_with("group@g.us", event)
@@ -170,7 +170,9 @@ class TestFinalizeStreamOrBroadcast:
         ch = _make_channel()
         deps = _make_deps([ch])
 
-        await finalize_stream_or_broadcast(deps, "group@g.us", _make_event("final text"), {})
+        await broadcast(
+            deps, "group@g.us", _make_event("final text"), stream_message_ids={}, source="agent"
+        )
 
         ch.send_event.assert_awaited_once()
 
@@ -181,7 +183,7 @@ class TestFinalizeStreamOrBroadcast:
         event = _make_event("final text")
 
         stream_ids = {"slack": "msg-123"}
-        await finalize_stream_or_broadcast(deps, "group@g.us", event, stream_ids)
+        await broadcast(deps, "group@g.us", event, stream_message_ids=stream_ids, source="agent")
 
         ch.update_event.assert_awaited_once_with("group@g.us", "msg-123", event)
         ch.send_event.assert_not_awaited()
@@ -195,7 +197,7 @@ class TestFinalizeStreamOrBroadcast:
         event = _make_event("final text")
 
         stream_ids = {"slack": "msg-123"}  # Only slack was streaming
-        await finalize_stream_or_broadcast(deps, "group@g.us", event, stream_ids)
+        await broadcast(deps, "group@g.us", event, stream_message_ids=stream_ids, source="agent")
 
         ch_streaming.update_event.assert_awaited_once()
         ch_normal.send_event.assert_awaited_once_with("group@g.us", event)
@@ -205,8 +207,12 @@ class TestFinalizeStreamOrBroadcast:
         ch = _make_channel(name="wa", connected=False)
         deps = _make_deps([ch])
 
-        await finalize_stream_or_broadcast(
-            deps, "group@g.us", _make_event("final text"), {"other": "x"}
+        await broadcast(
+            deps,
+            "group@g.us",
+            _make_event("final text"),
+            stream_message_ids={"other": "x"},
+            source="agent",
         )
 
         ch.send_event.assert_not_awaited()
@@ -218,8 +224,12 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch])
 
         # Should not raise
-        await finalize_stream_or_broadcast(
-            deps, "group@g.us", _make_event("final text"), {"slack": "msg-1"}
+        await broadcast(
+            deps,
+            "group@g.us",
+            _make_event("final text"),
+            stream_message_ids={"slack": "msg-1"},
+            source="agent",
         )
 
     @pytest.mark.asyncio
@@ -230,8 +240,12 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch])
 
         # Should not raise — errors are caught in the finalize path
-        await finalize_stream_or_broadcast(
-            deps, "group@g.us", _make_event("final text"), {"other": "x"}
+        await broadcast(
+            deps,
+            "group@g.us",
+            _make_event("final text"),
+            stream_message_ids={"other": "x"},
+            source="agent",
         )
 
     @pytest.mark.asyncio
@@ -241,7 +255,13 @@ class TestFinalizeStreamOrBroadcast:
         ch.owns_jid = MagicMock(return_value=False)
         deps = _make_deps([ch])
 
-        await finalize_stream_or_broadcast(deps, "group@g.us", _make_event("text"), {"other": "x"})
+        await broadcast(
+            deps,
+            "group@g.us",
+            _make_event("text"),
+            stream_message_ids={"other": "x"},
+            source="agent",
+        )
 
         ch.send_event.assert_not_awaited()
 
@@ -253,8 +273,13 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch])
 
         with pytest.raises(RuntimeError, match="bug in channel code"):
-            await finalize_stream_or_broadcast(
-                deps, "group@g.us", _make_event("text"), {"other": "x"}, suppress_errors=True
+            await broadcast(
+                deps,
+                "group@g.us",
+                _make_event("text"),
+                suppress_errors=True,
+                stream_message_ids={"other": "x"},
+                source="agent",
             )
 
     @pytest.mark.asyncio
@@ -266,8 +291,13 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch])
 
         with pytest.raises(RuntimeError, match="bug in channel code"):
-            await finalize_stream_or_broadcast(
-                deps, "group@g.us", _make_event("text"), {"slack": "msg-1"}, suppress_errors=True
+            await broadcast(
+                deps,
+                "group@g.us",
+                _make_event("text"),
+                suppress_errors=True,
+                stream_message_ids={"slack": "msg-1"},
+                source="agent",
             )
 
     @pytest.mark.asyncio
@@ -278,6 +308,11 @@ class TestFinalizeStreamOrBroadcast:
         deps = _make_deps([ch])
 
         # Should NOT raise — suppress_errors=False catches Exception
-        await finalize_stream_or_broadcast(
-            deps, "group@g.us", _make_event("text"), {"other": "x"}, suppress_errors=False
+        await broadcast(
+            deps,
+            "group@g.us",
+            _make_event("text"),
+            suppress_errors=False,
+            stream_message_ids={"other": "x"},
+            source="agent",
         )

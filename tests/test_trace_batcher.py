@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pynchy.agent_protocol.api import ContainerOutput
-from pynchy.host.orchestrator.messaging import router, streaming, updating
-from pynchy.host.orchestrator.messaging.streaming import OutputDeps, TraceBatcher
-from pynchy.host.orchestrator.messaging.updating import (
+from pynchy.host.orchestrator.messaging import router, sender, streaming
+from pynchy.host.orchestrator.messaging.sender import (
     UpdatingMessage,
     deliver_updating_event,
 )
+from pynchy.host.orchestrator.messaging.streaming import OutputDeps, TraceBatcher
 from pynchy.plugins.api import (
     Channel,
     OutboundEvent,
@@ -149,8 +149,8 @@ async def test_update_failure_is_recorded_as_a_fallback_post(
     channel.update_event = AsyncMock(side_effect=OSError("edit failed"))
     record = AsyncMock(return_value=42)
     mark = AsyncMock()
-    monkeypatch.setattr(updating.state, "record_outbound_deliveries", record)
-    monkeypatch.setattr(updating.state, "mark_delivery_succeeded", mark)
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", record)
+    monkeypatch.setattr(sender.state, "mark_delivery_succeeded", mark)
 
     messages = await deliver_updating_event(
         _deps(channel),
@@ -185,8 +185,8 @@ async def test_delivery_continues_when_outbound_ledger_write_fails(
     channel = _channel("discord")
     record = AsyncMock(side_effect=RuntimeError("ledger unavailable"))
     mark = AsyncMock()
-    monkeypatch.setattr(updating.state, "record_outbound_deliveries", record)
-    monkeypatch.setattr(updating.state, "mark_delivery_succeeded", mark)
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", record)
+    monkeypatch.setattr(sender.state, "mark_delivery_succeeded", mark)
 
     messages = await deliver_updating_event(
         _deps(channel),

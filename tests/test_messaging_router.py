@@ -51,7 +51,7 @@ def _make_deps() -> MagicMock:
     deps.workspaces = {}
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()
-    # Provide a mock channel so finalize_stream_or_broadcast (bus) can work.
+    # Final results use the channel bus directly.
     # The bus iterates deps.channels directly for result finalization.
     ch = MagicMock(spec=Channel)
     ch.name = "test"
@@ -386,7 +386,7 @@ class TestHandleStreamedOutput:
         assert saved["content"] == "Hello user!"
         assert saved["metadata"]["source"] == "agent_result"
         assert saved["metadata"]["workspace_name"] == group.name
-        # Result finalization goes through the bus (finalize_stream_or_broadcast)
+        # Result finalization goes through the channel bus.
         # which calls ch.send_event on the mock channel.
         deps._test_channel.send_event.assert_awaited()
 
@@ -622,7 +622,7 @@ class TestHandleStreamedOutput:
         assert cast("AsyncMock", router.store_message_direct).await_count == 1
         # Metadata stats go through deps.broadcast_to_channels (trace path)
         assert deps.broadcast_to_channels.await_count >= 1
-        # Result text goes through the bus (finalize_stream_or_broadcast -> ch.send_event)
+        # Result text reaches the channel through the bus.
         deps._test_channel.send_event.assert_awaited()
 
     @pytest.mark.asyncio

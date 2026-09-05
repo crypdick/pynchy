@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging import updating
-from pynchy.host.orchestrator.messaging.updating import (
+from pynchy.host.orchestrator.messaging import sender
+from pynchy.host.orchestrator.messaging.sender import (
     UpdatingMessage,
     deliver_updating_event,
 )
 from pynchy.plugins.api import Channel, OutboundEvent, OutboundEventType
-from pynchy.state.outbound import OutboundDeliveryOperation
+from pynchy.state.api import OutboundDeliveryOperation, get_pending_outbound
+from tests.conftest import init_test_database
 
 
 def _event(content: str = "delta") -> OutboundEvent:
@@ -65,8 +66,8 @@ async def test_updating_delivery_falls_back_from_post_to_send(
     channel.post_event.side_effect = OSError("post failed")
     record = AsyncMock(return_value=7)
     mark = AsyncMock()
-    monkeypatch.setattr(updating.state, "record_outbound_deliveries", record)
-    monkeypatch.setattr(updating.state, "mark_delivery_succeeded", mark)
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", record)
+    monkeypatch.setattr(sender.state, "mark_delivery_succeeded", mark)
 
     result = await deliver_updating_event(_deps(channel), "chat:1", _event(), {}, source="test")
 
@@ -84,8 +85,8 @@ async def test_updating_delivery_handles_falsey_post_and_failed_send(
     channel.send_event.side_effect = OSError("send failed")
     record = AsyncMock(side_effect=[None, 8])
     mark_error = AsyncMock(side_effect=RuntimeError("ledger unavailable"))
-    monkeypatch.setattr(updating.state, "record_outbound_deliveries", record)
-    monkeypatch.setattr(updating.state, "mark_delivery_error", mark_error)
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", record)
+    monkeypatch.setattr(sender.state, "mark_delivery_error", mark_error)
 
     first = await deliver_updating_event(
         _deps(channel), "chat:1", _event("first"), {}, source="test"
@@ -107,8 +108,8 @@ async def test_updating_delivery_keeps_updated_message_when_ledger_mark_fails(
 ) -> None:
     channel = _channel("chat")
     mark = AsyncMock(side_effect=RuntimeError("ledger unavailable"))
-    monkeypatch.setattr(updating.state, "record_outbound_deliveries", AsyncMock(return_value=9))
-    monkeypatch.setattr(updating.state, "mark_delivery_succeeded", mark)
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", AsyncMock(return_value=9))
+    monkeypatch.setattr(sender.state, "mark_delivery_succeeded", mark)
 
     result = await deliver_updating_event(
         _deps(channel),
@@ -121,3 +122,25 @@ async def test_updating_delivery_keeps_updated_message_when_ledger_mark_fails(
     assert result["chat"] == UpdatingMessage("message-1", "old\nnew")
     channel.update_event.assert_awaited_once()
     mark.assert_awaited_once_with(9, "chat", OutboundDeliveryOperation.EDIT, "message-1")
+
+
+@pytest.mark.asyncio
+async def test_failed_update_and_fallback_keep_anchor_and_pending_content() -> None:
+    await init_test_database()
+    channel = _channel("chat")
+    channel.update_event.side_effect = OSError("edit failed")
+    channel.post_event.side_effect = OSError("post failed")
+    channel.send_event.side_effect = OSError("send failed")
+    messages = {"chat": UpdatingMessage("message-1", "old")}
+
+    result = await deliver_updating_event(
+        _deps(channel), "chat:1", _event("new"), messages, source="test"
+    )
+
+    assert result == {"chat": UpdatingMessage("message-1", "old")}
+    assert messages == result
+    channel.send_event.assert_awaited_once()
+    [pending] = await get_pending_outbound("chat", "chat:1")
+    assert pending.content == "old\nnew"
+    assert pending.operation is OutboundDeliveryOperation.EDIT
+    assert pending.remote_message_id == "message-1"

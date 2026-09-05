@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
-from pynchy.host.orchestrator.messaging.sender import broadcast, finalize_stream_or_broadcast
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.state import (
     get_channel_cursor,
@@ -156,11 +156,12 @@ async def test_interrupted_stream_finalization_retries_the_existing_message():
     ch.update_event = update_event
     deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
     finalization = asyncio.create_task(
-        finalize_stream_or_broadcast(
+        broadcast(
             deps,
             "group@g.us",
             OutboundEvent(type=OutboundEventType.RESULT, content="final answer"),
-            {"slack": "stream-message-1"},
+            stream_message_ids={"slack": "stream-message-1"},
+            source="agent",
         )
     )
     await update_started.wait()

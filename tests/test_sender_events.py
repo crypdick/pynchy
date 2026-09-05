@@ -1,8 +1,4 @@
-"""Tests for the OutboundEvent-based sender pipeline.
-
-Verifies that broadcast() and finalize_stream_or_broadcast() work with
-OutboundEvent objects instead of raw text strings.
-"""
+"""Outbound events reach channels despite best-effort ledger failures."""
 
 from __future__ import annotations
 
@@ -12,10 +8,7 @@ import pytest
 
 from pynchy.host.orchestrator.messaging import sender
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.host.orchestrator.messaging.sender import (
-    broadcast,
-    finalize_stream_or_broadcast,
-)
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.plugins.api import (
     Channel,
     OutboundEvent,
@@ -37,11 +30,6 @@ def _make_deps(channels):
     deps = MagicMock()
     type(deps).channels = PropertyMock(return_value=channels)
     return deps
-
-
-# ---------------------------------------------------------------------------
-# broadcast() tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -88,10 +76,10 @@ async def test_broadcast_skip_channel_parameter():
 async def test_broadcast_keeps_delivery_successful_when_ledger_mark_fails(monkeypatch):
     ch = _make_channel("slack")
     deps = _make_deps([ch])
-    monkeypatch.setattr(sender.state, "record_outbound", AsyncMock(return_value=1))
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", AsyncMock(return_value=1))
     monkeypatch.setattr(
         sender.state,
-        "mark_delivered",
+        "mark_delivery_succeeded",
         AsyncMock(side_effect=RuntimeError("ledger unavailable")),
     )
 
@@ -110,7 +98,7 @@ async def test_broadcast_keeps_delivery_failure_best_effort_when_ledger_mark_fai
     ch = _make_channel("slack")
     ch.send_event.side_effect = OSError("network down")
     deps = _make_deps([ch])
-    monkeypatch.setattr(sender.state, "record_outbound", AsyncMock(return_value=1))
+    monkeypatch.setattr(sender.state, "record_outbound_deliveries", AsyncMock(return_value=1))
     monkeypatch.setattr(
         sender.state,
         "mark_delivery_error",
@@ -127,17 +115,12 @@ async def test_broadcast_keeps_delivery_failure_best_effort_when_ledger_mark_fai
     ch.send_event.assert_awaited_once()
 
 
-# ---------------------------------------------------------------------------
-# finalize_stream_or_broadcast() tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_finalize_no_stream_falls_back_to_broadcast():
     ch = _make_channel("slack")
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.RESULT, content="done")
-    await finalize_stream_or_broadcast(deps, "slack:C123", event, None)
+    await broadcast(deps, "slack:C123", event, stream_message_ids=None, source="agent")
     ch.send_event.assert_called_once_with("slack:C123", event)
 
 
@@ -147,9 +130,35 @@ async def test_finalize_with_stream_updates_event():
     ch.update_event = AsyncMock()
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
-    await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"})
+    await broadcast(
+        deps, "slack:C123", event, stream_message_ids={"slack": "msg-123"}, source="agent"
+    )
     ch.update_event.assert_called_once_with("slack:C123", "msg-123", event)
     ch.send_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected", [True, False])
+async def test_finalization_edits_before_sending_despite_stale_connection_status(connected):
+    ordinary = _make_channel("ordinary")
+    streaming = _make_channel("streaming")
+    streaming.is_connected.return_value = connected
+    delivered = []
+    ordinary.send_event.side_effect = lambda *_args: delivered.append("send")
+    streaming.update_event = AsyncMock(side_effect=lambda *_args: delivered.append("edit"))
+    event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
+
+    assert await broadcast(
+        _make_deps([ordinary, streaming]),
+        "slack:C123",
+        event,
+        stream_message_ids={"streaming": "message-1"},
+        source="agent",
+    )
+
+    assert delivered == ["edit", "send"]
+    streaming.update_event.assert_awaited_once_with("slack:C123", "message-1", event)
+    streaming.send_event.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -164,7 +173,9 @@ async def test_finalize_keeps_delivery_successful_when_ledger_write_fails(monkey
     )
     event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
 
-    delivered = await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"})
+    delivered = await broadcast(
+        deps, "slack:C123", event, stream_message_ids={"slack": "msg-123"}, source="agent"
+    )
 
     assert delivered is True
     ch.update_event.assert_awaited_once_with("slack:C123", "msg-123", event)
@@ -176,7 +187,9 @@ async def test_finalize_stream_update_failure_falls_back_to_send():
     ch.update_event = AsyncMock(side_effect=Exception("update failed"))
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
-    await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"})
+    await broadcast(
+        deps, "slack:C123", event, stream_message_ids={"slack": "msg-123"}, source="agent"
+    )
     # Should fall back to send_event after update_event fails
     ch.send_event.assert_called_once_with("slack:C123", event)
 
@@ -189,7 +202,10 @@ async def test_finalize_ignores_stream_id_for_channel_that_does_not_own_jid():
     event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
 
     assert (
-        await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"}) is False
+        await broadcast(
+            deps, "slack:C123", event, stream_message_ids={"slack": "msg-123"}, source="agent"
+        )
+        is False
     )
     ch.send_event.assert_not_called()
 
@@ -203,7 +219,10 @@ async def test_finalize_suppresses_failed_stream_fallback_send():
     event = OutboundEvent(type=OutboundEventType.RESULT, content="final result")
 
     assert (
-        await finalize_stream_or_broadcast(deps, "slack:C123", event, {"slack": "msg-123"}) is False
+        await broadcast(
+            deps, "slack:C123", event, stream_message_ids={"slack": "msg-123"}, source="agent"
+        )
+        is False
     )
     ch.update_event.assert_awaited_once()
     ch.send_event.assert_awaited_once()

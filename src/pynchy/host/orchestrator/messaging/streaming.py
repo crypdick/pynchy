@@ -13,10 +13,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.async_tasks import create_background_task
-from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
-from pynchy.host.orchestrator.messaging.updating import (
+from pynchy.host.orchestrator.messaging.sender import (
     UpdatingMessage,
     deliver_updating_event,
+    resolve_target_jid,
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (  # beartype resolves streaming annotations at runtime.
@@ -181,13 +181,6 @@ _DEFAULT_TRACE_COOLDOWN = 3.0
 _TRACE_LEDGER_SOURCE = "agent_trace"
 
 
-@dataclass
-class _TraceRun:
-    """Per-channel editable messages for one consecutive tool run."""
-
-    messages: dict[str, UpdatingMessage] = field(default_factory=dict)
-
-
 class TraceBatcher:
     """Buffer tool events per JID and update one message across cooldowns.
 
@@ -200,7 +193,7 @@ class TraceBatcher:
         self._deps = deps
         self._cooldown = cooldown
         self._buffers: dict[str, list[OutboundEvent]] = {}
-        self._runs: dict[str, _TraceRun] = {}
+        self._runs: dict[str, dict[str, UpdatingMessage]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._timers: dict[str, asyncio.TimerHandle] = {}
 
@@ -246,12 +239,12 @@ class TraceBatcher:
             type=OutboundEventType.TEXT,
             content="\n".join(event.content for event in events),
         )
-        run = self._runs.setdefault(chat_jid, _TraceRun())
-        run.messages = await deliver_updating_event(
+        messages = self._runs.setdefault(chat_jid, {})
+        self._runs[chat_jid] = await deliver_updating_event(
             self._deps,
             chat_jid,
             delta,
-            run.messages,
+            messages,
             source=_TRACE_LEDGER_SOURCE,
         )
 
