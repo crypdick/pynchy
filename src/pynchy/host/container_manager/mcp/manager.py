@@ -40,8 +40,7 @@ from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - bearty
 )
 from pynchy.host.container_manager.mcp.lifecycle import (
     ensure_docker_running,
-    ensure_script_running,
-    ensure_stdio_running,
+    ensure_process_running,
     reap_stale_processes,
     terminate_process,
     warm_image_cache,
@@ -461,10 +460,8 @@ class McpManager:
         start = time.monotonic()
         instance.last_activity = start
 
-        if instance.server_config.type == "script":
-            await ensure_script_running(instance)
-        elif instance.server_config.type == "stdio":
-            await ensure_stdio_running(instance)
+        if instance.server_config.type in ("script", "stdio"):
+            await ensure_process_running(instance)
         else:
             await ensure_docker_running(instance)
 

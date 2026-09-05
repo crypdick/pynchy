@@ -15,8 +15,7 @@ from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
     ensure_docker_running,
-    ensure_script_running,
-    ensure_stdio_running,
+    ensure_process_running,
     expand_arg_placeholders,
     reap_stale_processes,
     warm_image_cache,
@@ -399,7 +398,7 @@ class TestStdioLifecycle:
         )
 
         with pytest.raises(RuntimeError, match="Stdio MCP has no host port: android"):
-            await ensure_stdio_running(instance)
+            await ensure_process_running(instance)
 
     @pytest.mark.asyncio
     async def test_ensure_stdio_runs_loopback_bridge_with_filtered_environment(self, monkeypatch):
@@ -433,7 +432,7 @@ class TestStdioLifecycle:
             wait_healthy_mock,
         )
 
-        await ensure_stdio_running(instance)
+        await ensure_process_running(instance)
 
         command, environment, marker = start_process.call_args.args
         assert command == [
@@ -467,7 +466,7 @@ class TestStdioLifecycle:
 
 class TestScriptLifecycle:
     @pytest.mark.asyncio
-    async def test_ensure_script_running_preserves_a_live_process(self, monkeypatch):
+    async def test_ensure_process_running_preserves_a_live_process(self, monkeypatch):
         process = subprocess.Popen.__new__(subprocess.Popen)
         process.poll = MagicMock(return_value=None)
         instance = McpInstance(
@@ -491,7 +490,7 @@ class TestScriptLifecycle:
             start_process,
         )
 
-        await ensure_script_running(instance)
+        await ensure_process_running(instance)
 
         start_process.assert_not_called()
 
@@ -527,7 +526,7 @@ class TestScriptLifecycle:
         )
 
         with pytest.raises(TimeoutError, match="not ready"):
-            await ensure_script_running(instance)
+            await ensure_process_running(instance)
 
         terminate.assert_called_once_with(instance)
         assert instance.process is None
@@ -567,7 +566,7 @@ class TestScriptLifecycle:
             AsyncMock(),
         )
 
-        await ensure_script_running(instance)
+        await ensure_process_running(instance)
 
         command, environment, marker = start_process.call_args.args
         assert command == ["uv", "run", "linear-server", "--port", "8474"]

@@ -97,7 +97,7 @@ async def test_proxy_backend_lease_releases_nested_requests(tmp_path, monkeypatc
         ("browser",),
     )
     start = AsyncMock()
-    monkeypatch.setattr(manager_module, "ensure_script_running", start)
+    monkeypatch.setattr(manager_module, "ensure_process_running", start)
 
     async with manager.proxy_backend_lease("browser"), manager.proxy_backend_lease("browser"):
         pass
@@ -166,7 +166,7 @@ async def test_stop_idle_ignores_url_exited_process_and_stopped_container(tmp_pa
     process.poll.return_value = 0
     monkeypatch.setattr(
         manager_module,
-        "ensure_script_running",
+        "ensure_process_running",
         AsyncMock(side_effect=lambda instance: setattr(instance, "process", process)),
     )
     terminate = MagicMock()

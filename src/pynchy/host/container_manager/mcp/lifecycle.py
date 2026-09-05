@@ -82,79 +82,39 @@ async def ensure_docker_running(instance: McpInstance) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Script lifecycle
+# Host process lifecycle
 # ---------------------------------------------------------------------------
 
 
-async def ensure_script_running(instance: McpInstance) -> None:
-    """Start a script MCP subprocess if not already running."""
+async def ensure_process_running(instance: McpInstance) -> None:
+    """Start a script or stdio MCP process and wait for HTTP readiness."""
     if instance.process is not None and instance.process.poll() is None:
         return  # still alive
 
     cfg = instance.server_config
-    # Expand {key} placeholders (e.g. {port}, {workspace}) in args
-    placeholders = _build_placeholders(instance)
-    expanded_args = expand_arg_placeholders(list(cfg.args), placeholders)
-    cmd = [cfg.command or "", *expanded_args]
-    cmd.extend(kwargs_to_args(instance.kwargs))
+    cmd = [cfg.command or "", *_command_args(instance, _build_placeholders(instance))]
+    if cfg.type == "stdio":
+        if instance.port is None:
+            raise RuntimeError(f"Stdio MCP has no host port: {instance.instance_id}")
+        cmd = [
+            sys.executable,
+            "-m",
+            "pynchy.host.container_manager.mcp.stdio_bridge",
+            "--port",
+            str(instance.port),
+            "--",
+            *cmd,
+        ]
 
     merged_env = filtered_process_environment({**cfg.env, **instance.tool_environment})
     logger.info(
-        "Starting MCP script on-demand",
+        "Starting MCP process on-demand",
         instance_id=instance.instance_id,
+        runtime_type=cfg.type,
         command=cmd,
     )
 
     await asyncio.to_thread(_start_owned_process, instance, cmd, merged_env)
-
-    # Health-check via localhost using instance port (unique per workspace)
-    health_url = f"http://localhost:{instance.port}"
-    try:
-        await wait_healthy(
-            HealthCheckRequest(
-                container_name=instance.instance_id,
-                url=health_url,
-                any_non_5xx=True,
-                process=instance.process,
-                health_timeout_seconds=instance.server_config.startup_timeout_seconds,
-            )
-        )
-    except (TimeoutError, RuntimeError):
-        logger.error(
-            "MCP script failed health check",
-            instance_id=instance.instance_id,
-        )
-        await asyncio.to_thread(terminate_process, instance)
-        raise
-
-    logger.info("MCP script ready", instance_id=instance.instance_id)
-
-
-# ---------------------------------------------------------------------------
-# Stdio lifecycle
-# ---------------------------------------------------------------------------
-
-
-async def ensure_stdio_running(instance: McpInstance) -> None:
-    """Start a loopback HTTP bridge for a configured stdio MCP server."""
-    if instance.process is not None and instance.process.poll() is None:
-        return
-
-    if instance.port is None:
-        raise RuntimeError(f"Stdio MCP has no host port: {instance.instance_id}")
-
-    cmd = _stdio_bridge_command(instance)
-    logger.info(
-        "Starting MCP stdio bridge on-demand",
-        instance_id=instance.instance_id,
-        command=cmd,
-    )
-    await asyncio.to_thread(
-        _start_owned_process,
-        instance,
-        cmd,
-        build_stdio_env(instance.server_config, instance.tool_environment),
-    )
 
     try:
         await wait_healthy(
@@ -163,15 +123,19 @@ async def ensure_stdio_running(instance: McpInstance) -> None:
                 url=f"http://localhost:{instance.port}",
                 any_non_5xx=True,
                 process=instance.process,
-                health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+                health_timeout_seconds=cfg.startup_timeout_seconds,
             )
         )
     except (TimeoutError, RuntimeError):
-        logger.error("MCP stdio bridge failed health check", instance_id=instance.instance_id)
+        logger.error(
+            "MCP process failed health check",
+            instance_id=instance.instance_id,
+            runtime_type=cfg.type,
+        )
         await asyncio.to_thread(terminate_process, instance)
         raise
 
-    logger.info("MCP stdio bridge ready", instance_id=instance.instance_id)
+    logger.info("MCP process ready", instance_id=instance.instance_id, runtime_type=cfg.type)
 
 
 def _start_script_process(
@@ -374,7 +338,7 @@ def _build_placeholders(instance: McpInstance) -> dict[str, str]:
     return placeholders
 
 
-def _docker_command_args(instance: McpInstance, placeholders: dict[str, str]) -> list[str]:
+def _command_args(instance: McpInstance, placeholders: dict[str, str]) -> list[str]:
     args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
     args.extend(kwargs_to_args(instance.kwargs))
     return args
@@ -392,12 +356,6 @@ def _docker_publish_args(instance: McpInstance) -> list[str]:
     for extra_port in instance.server_config.extra_ports:
         args.extend(["-p", f"{extra_port}:{extra_port}"])
     return args
-
-
-def _expanded_volume_spec(vol: str, placeholders: dict[str, str]) -> str:
-    for key, value in placeholders.items():
-        vol = vol.replace(f"{{{key}}}", value)
-    return vol
 
 
 def _resolved_volume_arg(vol: str, project_root: Path) -> list[str]:
@@ -419,8 +377,7 @@ def _docker_volume_args(
     placeholders: dict[str, str],
 ) -> list[str]:
     args: list[str] = []
-    for vol in instance.server_config.volumes:
-        volume = _expanded_volume_spec(vol, placeholders)
+    for volume in expand_arg_placeholders(list(instance.server_config.volumes), placeholders):
         args.extend(_resolved_volume_arg(volume, instance.project_root))
     return args
 
@@ -439,7 +396,7 @@ async def _start_docker_container(
         *build_env_args(container_environment),
         *_docker_volume_args(instance, placeholders),
         instance.server_config.image or "",
-        *_docker_command_args(instance, placeholders),
+        *_command_args(instance, placeholders),
         environment=filtered_process_environment(container_environment),
     )  # fmt: skip
 
@@ -486,34 +443,6 @@ def kwargs_to_args(kwargs: dict[str, str]) -> list[str]:
     for key, value in sorted(kwargs.items()):
         args.extend([f"--{key}", value])
     return args
-
-
-def build_stdio_env(
-    config: McpServerConfig,
-    tool_environment: Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    """Return the intentionally small host environment for a stdio bridge.
-
-    Host tooling gets only the operational process baseline, static runtime
-    configuration, and variables declared by the selected tool.
-    """
-    return filtered_process_environment({**config.env, **(tool_environment or {})})
-
-
-def _stdio_bridge_command(instance: McpInstance) -> list[str]:
-    placeholders = _build_placeholders(instance)
-    args = expand_arg_placeholders(list(instance.server_config.args), placeholders)
-    return [
-        sys.executable,
-        "-m",
-        "pynchy.host.container_manager.mcp.stdio_bridge",
-        "--port",
-        str(instance.port),
-        "--",
-        instance.server_config.command or "",
-        *args,
-        *kwargs_to_args(instance.kwargs),
-    ]
 
 
 def build_env_args(

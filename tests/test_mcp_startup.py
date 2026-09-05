@@ -325,7 +325,7 @@ class TestMcpManagerLifecycleContracts:
         )
         ensure = AsyncMock()
         clock = iter((0.0, 1.0))
-        monkeypatch.setattr(mcp_manager, "ensure_script_running", ensure)
+        monkeypatch.setattr(mcp_manager, "ensure_process_running", ensure)
         monkeypatch.setattr(mcp_manager, "time", MagicMock(monotonic=lambda: next(clock)))
 
         await manager.ensure_running("script")
@@ -341,7 +341,7 @@ class TestMcpManagerLifecycleContracts:
         ensure = AsyncMock()
         terminate = MagicMock()
         clock = [0.0]
-        monkeypatch.setattr(mcp_manager, "ensure_script_running", ensure)
+        monkeypatch.setattr(mcp_manager, "ensure_process_running", ensure)
         monkeypatch.setattr(mcp_manager, "terminate_process", terminate)
         monkeypatch.setattr(mcp_manager, "time", MagicMock(monotonic=lambda: clock[0]))
 
@@ -384,11 +384,9 @@ class TestMcpManagerLifecycleContracts:
         manager = await _synced_manager(
             tmp_path, monkeypatch, server_names=tuple(configs), server_configs=configs
         )
-        script = AsyncMock()
-        stdio = AsyncMock()
+        process = AsyncMock()
         docker = AsyncMock()
-        monkeypatch.setattr(mcp_manager, "ensure_script_running", script)
-        monkeypatch.setattr(mcp_manager, "ensure_stdio_running", stdio)
+        monkeypatch.setattr(mcp_manager, "ensure_process_running", process)
         monkeypatch.setattr(mcp_manager, "ensure_docker_running", docker)
 
         await manager.ensure_running("script")
@@ -396,8 +394,7 @@ class TestMcpManagerLifecycleContracts:
         await manager.ensure_running("url")
         await manager.ensure_running("unknown")
 
-        assert script.await_args.args[0].server_name == "script"
-        assert stdio.await_args.args[0].server_name == "stdio"
+        assert [call.args[0].server_name for call in process.await_args_list] == ["script", "stdio"]
         docker.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -532,7 +529,7 @@ class TestMcpManagerLifecycleContracts:
         running = AsyncMock(return_value=True)
         stop = AsyncMock()
         clock = [0.0]
-        monkeypatch.setattr(mcp_manager, "ensure_script_running", start_script)
+        monkeypatch.setattr(mcp_manager, "ensure_process_running", start_script)
         monkeypatch.setattr(mcp_manager, "terminate_process", terminate)
         monkeypatch.setattr(mcp_manager, "is_container_running", running)
         monkeypatch.setattr(mcp_manager, "stop_container", stop)
