@@ -232,7 +232,7 @@ def test_start_virtual_display_reuses_live_display_and_repairs_vnc(
     repaired = [_FakeProcess()]
     monkeypatch.setattr(
         browser,
-        "_resolve_executables",
+        "resolve_executables",
         lambda *_names: {"Xvfb": "Xvfb", "x11vnc": "x11vnc", "websockify": "websockify"},
     )
     monkeypatch.setattr(browser, "display_is_live", lambda _display: True)
@@ -260,7 +260,7 @@ def test_start_virtual_display_reports_a_stack_process_that_exits(
     processes = [_FakeProcess() for _ in range(failed_index)] + [_FakeProcess(failed_index + 2)]
     monkeypatch.setattr(
         browser,
-        "_resolve_executables",
+        "resolve_executables",
         lambda *_names: {"Xvfb": "Xvfb", "x11vnc": "x11vnc", "websockify": "websockify"},
     )
     monkeypatch.setattr(browser, "display_is_live", lambda _display: False)
@@ -311,6 +311,38 @@ def test_ensure_vnc_stack_alive_does_nothing_when_both_processes_are_live(
     monkeypatch.setattr(browser, "_is_process_running", lambda _name: True)
 
     assert browser.ensure_vnc_stack_alive() == []
+
+
+@pytest.mark.parametrize(
+    ("already_running", "missing"), [("x11vnc", "websockify"), ("websockify", "x11vnc")]
+)
+def test_vnc_repair_starts_only_the_missing_process(monkeypatch, already_running, missing):
+    process = _FakeProcess()
+    popen = Mock(return_value=process)
+    monkeypatch.setattr(browser, "_is_process_running", lambda name: name == already_running)
+    monkeypatch.setattr(browser.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(browser.subprocess, "Popen", popen)
+    monkeypatch.setattr(browser.time, "sleep", lambda _seconds: None)
+
+    assert browser.ensure_vnc_stack_alive() == [process]
+    popen.assert_called_once()
+    assert popen.call_args.args[0][0] == f"/usr/bin/{missing}"
+
+
+@pytest.mark.parametrize("failure", ["exit", "spawn"])
+def test_vnc_repair_cleans_up_partial_startup(monkeypatch, failure):
+    running = _FakeProcess()
+    failed = _FakeProcess(7) if failure == "exit" else OSError("cannot launch websockify")
+    monkeypatch.setattr(browser, "_is_process_running", lambda _name: False)
+    monkeypatch.setattr(browser.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(browser.subprocess, "Popen", Mock(side_effect=[running, failed]))
+    monkeypatch.setattr(browser.time, "sleep", lambda _seconds: None)
+
+    error = RuntimeError if failure == "exit" else OSError
+    with pytest.raises(error, match="websockify"):
+        browser.ensure_vnc_stack_alive()
+
+    assert running.terminated is True
 
 
 def test_ensure_vnc_stack_alive_reports_a_missing_repair_executable(

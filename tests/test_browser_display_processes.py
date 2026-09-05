@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import subprocess  # noqa: S404 - test double subclasses Popen; no subprocess launch.
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from pynchy.plugins.integrations import browser
 from pynchy.plugins.integrations.x_integration import XIntegrationPlugin
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 class _FakeProcess(subprocess.Popen[bytes]):
@@ -107,7 +104,7 @@ def test_browser_start_reports_missing_headless_dependencies(
 ) -> None:
     monkeypatch.setattr(
         browser,
-        "_resolve_executables",
+        "resolve_executables",
         lambda *_names: (_ for _ in ()).throw(RuntimeError("Xvfb")),
     )
 
@@ -177,7 +174,7 @@ def test_browser_stops_processes_and_kills_stragglers() -> None:
 def test_browser_reuses_live_virtual_display(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         browser,
-        "_resolve_executables",
+        "resolve_executables",
         lambda *_names: {"Xvfb": "xvfb", "x11vnc": "x11vnc", "websockify": "websockify"},
     )
     monkeypatch.setattr(browser, "display_is_live", lambda _display: True)
@@ -225,28 +222,27 @@ async def test_x_session_setup_uses_resolved_display_executables(
     action = XIntegrationPlugin().pynchy_service_handler().action_for("setup_x_session")
     assert action is not None
     setup_tool = action.handler
-    setup_handler = getattr(
-        setup_tool,
-        "__wrapped__",
-        setup_tool,
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
     )
-    action_globals = setup_handler.__globals__
-    ensure_xvfb: Callable[[], None] = action_globals["ensure_xvfb"]
-    display_globals = getattr(ensure_xvfb, "__wrapped__", ensure_xvfb).__globals__
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions._run_x_session_setup",
+        fake_run_session_setup,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._display._state", MagicMock(xvfb_proc=None)
+    )
+    monkeypatch.setattr(browser.shutil, "which", paths.__getitem__)
+    monkeypatch.setattr(browser.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(browser.time, "sleep", lambda _seconds: None)
 
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "_run_x_session_setup", fake_run_session_setup)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
-    monkeypatch.setitem(display_globals, "has_display", lambda: False)
-    monkeypatch.setattr(display_globals["shutil"], "which", paths.__getitem__)
-    monkeypatch.setattr(display_globals["subprocess"], "Popen", fake_popen)
-    monkeypatch.setattr(display_globals["time"], "sleep", lambda _seconds: None)
-    display_globals["_state"].xvfb_proc = None
-
-    try:
-        result = await setup_tool({"timeout_seconds": 1})
-    finally:
-        display_globals["_state"].xvfb_proc = None
+    result = await setup_tool({"timeout_seconds": 1})
 
     assert result == {
         "result": {

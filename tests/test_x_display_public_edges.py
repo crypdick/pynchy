@@ -29,11 +29,14 @@ def _action_globals(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 @pytest.mark.asyncio
 async def test_setup_session_reports_missing_xvfb(monkeypatch: pytest.MonkeyPatch) -> None:
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.shutil.which",
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.browser.shutil.which",
         lambda _name: None,
     )
 
@@ -51,16 +54,21 @@ async def test_setup_session_reports_missing_xvfb(monkeypatch: pytest.MonkeyPatc
 async def test_setup_session_reports_missing_vnc_dependencies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.stop_procs",
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.ensure_xvfb", lambda: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.browser.stop_procs",
         lambda _procs: None,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.shutil.which",
+        "pynchy.plugins.integrations.browser.shutil.which",
         lambda name: "/usr/bin/Xvfb" if name in {"Xvfb", "x11vnc"} else None,
     )
 
@@ -82,12 +90,14 @@ async def test_setup_session_uses_existing_xvfb_without_vnc(
     class DisplayState:
         xvfb_proc = RunningProcess()
 
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: True)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
-    monkeypatch.setitem(
-        action_globals,
-        "_run_x_session_setup",
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: True
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions._run_x_session_setup",
         AsyncMock(return_value={"result": {"status": "ok"}}),
     )
     monkeypatch.setattr("pynchy.plugins.integrations.x_integration._display._state", DisplayState())
@@ -116,12 +126,14 @@ async def test_setup_session_starts_xvfb_when_no_native_display_exists(
         def poll(self) -> int | None:
             return self.returncode
 
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: True)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
-    monkeypatch.setitem(
-        action_globals,
-        "_run_x_session_setup",
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: True
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions._run_x_session_setup",
         AsyncMock(return_value={"result": {"status": "ok"}}),
     )
     monkeypatch.setattr(
@@ -133,7 +145,7 @@ async def test_setup_session_starts_xvfb_when_no_native_display_exists(
         lambda: False,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.shutil.which",
+        "pynchy.plugins.integrations.browser.shutil.which",
         lambda _name: "/usr/bin/Xvfb",
     )
     monkeypatch.setattr(
@@ -141,7 +153,7 @@ async def test_setup_session_starts_xvfb_when_no_native_display_exists(
         lambda _args, **_kwargs: RunningProcess(),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.time.sleep",
+        "pynchy.plugins.integrations.browser.time.sleep",
         lambda _seconds: None,
     )
     monkeypatch.delenv("DISPLAY", raising=False)
@@ -156,15 +168,15 @@ async def test_setup_session_starts_xvfb_when_no_native_display_exists(
 async def test_setup_session_skips_xvfb_when_native_display_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: True)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: True
+    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.x_integration._display.has_display",
         lambda: True,
     )
-    monkeypatch.setitem(
-        action_globals,
-        "_run_x_session_setup",
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions._run_x_session_setup",
         AsyncMock(return_value={"result": {"status": "ok"}}),
     )
     monkeypatch.setattr(
@@ -179,17 +191,25 @@ async def test_setup_session_skips_xvfb_when_native_display_exists(
 async def test_setup_session_reports_xvfb_exiting_immediately(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class ExitedProcess:
-        returncode = 7
+    class ExitedProcess(subprocess.Popen[bytes]):
+        def __init__(self) -> None:
+            self.returncode = 7
 
         def poll(self) -> int:
             return self.returncode
 
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+        def wait(self, *, timeout: float) -> int:
+            del timeout
+            return self.returncode
+
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.shutil.which",
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.browser.shutil.which",
         lambda name: "/usr/bin/Xvfb" if name == "Xvfb" else None,
     )
     monkeypatch.setattr(
@@ -197,7 +217,7 @@ async def test_setup_session_reports_xvfb_exiting_immediately(
         lambda *_args, **_kwargs: ExitedProcess(),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.time.sleep",
+        "pynchy.plugins.integrations.browser.time.sleep",
         lambda _seconds: None,
     )
 
@@ -254,34 +274,38 @@ async def test_setup_session_reports_vnc_url_after_starting_both_processes(
         process.poll = lambda: None
         return process
 
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.ensure_xvfb", lambda: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
 
     async def fake_setup(_timeout: object, novnc_url: str | None) -> dict[str, object]:
         await asyncio.sleep(0)
         return {"result": {"status": "ok", "novnc_url": novnc_url}}
 
-    monkeypatch.setitem(
-        action_globals,
-        "_run_x_session_setup",
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions._run_x_session_setup",
         fake_setup,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display._resolve_executables",
-        lambda *_names: {"x11vnc": "/usr/bin/x11vnc", "websockify": "/usr/bin/websockify"},
+        "pynchy.plugins.integrations.browser.shutil.which",
+        lambda name: f"/usr/bin/{name}",
     )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.x_integration._display.subprocess.Popen",
         fake_popen,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.time.sleep",
+        "pynchy.plugins.integrations.browser.time.sleep",
         lambda _seconds: None,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.Path.is_dir",
+        "pynchy.plugins.integrations.browser.Path.is_dir",
         lambda _path: True,
     )
 
@@ -329,24 +353,29 @@ async def test_setup_session_reports_a_vnc_process_that_exits(
             return self.returncode
 
     processes = iter(FakeProcess(code) for code in returncodes)
-    action_globals = _action_globals(monkeypatch)
-    monkeypatch.setitem(action_globals, "has_display", lambda: False)
-    monkeypatch.setitem(action_globals, "ensure_xvfb", lambda: None)
-    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.stop_procs",
+        "pynchy.plugins.integrations.x_integration._actions.has_display", lambda: False
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.ensure_xvfb", lambda: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.x_integration._actions.stop_procs", lambda _procs: None
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.browser.stop_procs",
         lambda _procs: None,
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display._resolve_executables",
-        lambda *_names: {"x11vnc": "/usr/bin/x11vnc", "websockify": "/usr/bin/websockify"},
+        "pynchy.plugins.integrations.browser.shutil.which",
+        lambda name: f"/usr/bin/{name}",
     )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.x_integration._display.subprocess.Popen",
         lambda _args, **_kwargs: next(processes),
     )
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.x_integration._display.time.sleep",
+        "pynchy.plugins.integrations.browser.time.sleep",
         lambda _seconds: None,
     )
 

@@ -98,9 +98,6 @@ _CHROME_NOT_INSTALLED_MESSAGE = (
     "After installing, either ensure the binary is in a standard path or "
     "set CHROME_PATH in .env to point to it."
 )
-_XVFB_EXITED_MESSAGE = "Xvfb exited immediately (code {returncode})"
-_X11VNC_EXITED_MESSAGE = "x11vnc exited immediately (code {returncode})"
-_WEBSOCKIFY_EXITED_MESSAGE = "websockify exited immediately (code {returncode})"
 _HEADLESS_DISPLAY_REQUIRED_MESSAGE = (
     "Headless display requires: {error}. Install with: apt install xvfb x11vnc novnc"
 )
@@ -180,15 +177,7 @@ def profile_dir(name: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_executable(name: str) -> str:
-    """Return an absolute executable path from PATH or raise a clear error."""
-    path = shutil.which(name)
-    if path is None:
-        raise RuntimeError(name)
-    return path
-
-
-def _resolve_executables(*names: str) -> dict[str, str]:
+def resolve_executables(*names: str) -> dict[str, str]:
     """Return absolute executable paths, collecting all missing tools."""
     resolved: dict[str, str] = {}
     missing: list[str] = []
@@ -273,99 +262,47 @@ def _resolve_novnc_url() -> str:
     return f"http://{host}:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
 
-def _launch_virtual_display_processes(
+def launch_display_processes(
     tool_paths: dict[str, str],
 ) -> list[subprocess.Popen[bytes]]:
+    """Launch display tools in order, rolling back every partial startup."""
+    commands = {
+        "Xvfb": [_XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
+        "x11vnc": [
+            "-display",
+            _XVFB_DISPLAY,
+            "-forever",
+            "-nopw",
+            "-rfbport",
+            str(_VNC_PORT),
+            "-quiet",
+        ],
+        "websockify": [str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"],
+    }
+    if Path(_NOVNC_WEB_DIR).is_dir():
+        commands["websockify"][0:0] = ["--web", _NOVNC_WEB_DIR]
+
     procs: list[subprocess.Popen[bytes]] = []
     with contextlib.ExitStack() as stack:
-        xvfb = subprocess.Popen(  # noqa: S603 - fixed argv to resolved Xvfb path.
-            [tool_paths["Xvfb"], _XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(xvfb)
         stack.callback(stop_procs, procs)
-        time.sleep(0.5)
-        if xvfb.poll() is not None:
-            raise RuntimeError(_XVFB_EXITED_MESSAGE.format(returncode=xvfb.returncode))
-
-        x11vnc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved x11vnc path.
-            [
-                tool_paths["x11vnc"],
-                "-display",
-                _XVFB_DISPLAY,
-                "-forever",
-                "-nopw",
-                "-rfbport",
-                str(_VNC_PORT),
-                "-quiet",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(x11vnc)
-        time.sleep(0.5)
-        if x11vnc.poll() is not None:
-            raise RuntimeError(_X11VNC_EXITED_MESSAGE.format(returncode=x11vnc.returncode))
-
-        ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
-        if Path(_NOVNC_WEB_DIR).is_dir():
-            ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(  # noqa: S603 - fixed argv to resolved path.
-            ws_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(websockify_proc)
-        time.sleep(0.5)
-        if websockify_proc.poll() is not None:
-            raise RuntimeError(
-                _WEBSOCKIFY_EXITED_MESSAGE.format(returncode=websockify_proc.returncode)
+        for name, executable in tool_paths.items():
+            process = subprocess.Popen(  # noqa: S603 - fixed argv to resolved display executable.
+                [executable, *commands[name]],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
+            procs.append(process)
+            time.sleep(0.5)
+            if process.poll() is not None:
+                raise RuntimeError(f"{name} exited immediately (code {process.returncode})")
         stack.pop_all()
     return procs
 
 
 def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
-    """Restart x11vnc and/or websockify if they died while Xvfb is still up.
-
-    Returns list of newly started processes (caller should track for cleanup).
-    """
-    procs: list[subprocess.Popen[bytes]] = []
-
-    if not _is_process_running("x11vnc"):
-        x11vnc_path = _resolve_executable("x11vnc")
-        p = subprocess.Popen(  # noqa: S603 - fixed argv to resolved x11vnc path.
-            [
-                x11vnc_path,
-                "-display",
-                _XVFB_DISPLAY,
-                "-forever",
-                "-nopw",
-                "-rfbport",
-                str(_VNC_PORT),
-                "-quiet",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(p)
-        time.sleep(0.5)
-
-    if not _is_process_running("websockify"):
-        websockify_path = _resolve_executable("websockify")
-        ws_cmd = [websockify_path, str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
-        if Path(_NOVNC_WEB_DIR).is_dir():
-            ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        p = subprocess.Popen(  # noqa: S603 - fixed argv to resolved websockify path.
-            ws_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(p)
-        time.sleep(0.5)
-
-    return procs
+    """Repair missing VNC processes; the caller owns only the returned processes."""
+    missing = [name for name in ("x11vnc", "websockify") if not _is_process_running(name)]
+    return launch_display_processes(resolve_executables(*missing))
 
 
 def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
@@ -377,7 +314,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
     Requires system packages: ``apt install xvfb x11vnc novnc``
     """
     try:
-        tool_paths = _resolve_executables("Xvfb", "x11vnc", "websockify")
+        tool_paths = resolve_executables("Xvfb", "x11vnc", "websockify")
     except RuntimeError as exc:
         raise RuntimeError(_HEADLESS_DISPLAY_REQUIRED_MESSAGE.format(error=exc)) from exc
 
@@ -389,7 +326,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
         repair_procs = ensure_vnc_stack_alive()
         return repair_procs, novnc_url
 
-    procs = _launch_virtual_display_processes(tool_paths)
+    procs = launch_display_processes(tool_paths)
     os.environ["DISPLAY"] = _XVFB_DISPLAY
     return procs, novnc_url
 
