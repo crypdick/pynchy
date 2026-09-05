@@ -7,12 +7,10 @@ and tooling, but leaves provider auth and model routing with LiteLLM.
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import os
 import shutil
-import signal
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -42,31 +40,23 @@ from ._codex_event_parsing import (
     item_is_error,
     item_text,
 )
+from .cli_process import cli_process, interrupt_process, json_objects
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import AsyncIterator
 
     from agent_runner.core import AgentCoreConfig
     from agent_runner.events import AgentEvent
 
-_STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"
 _CORE_NAME = "codex-cli"
-_MISSING_STREAM_ERROR = "{core_name} subprocess missing {stream_name} stream after creation"
 
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
     sys.stderr.write(f"[codex-cli-core] {message}\n")
     sys.stderr.flush()
-
-
-def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStream:
-    if stream is None:
-        raise RuntimeError(
-            _MISSING_STREAM_ERROR.format(core_name=_CORE_NAME, stream_name=stream_name)
-        )
-    return stream
 
 
 def _codex_home() -> Path:
@@ -204,63 +194,27 @@ class CodexCLIAgentCore:  # noqa: V102
         self._terminal_error_emitted = False
         self._pending_error = None
         _log(f"spawn codex (session: {self._session_id or 'new'})")
-        proc = await self._spawn_process()
-        await self._write_prompt(proc, prompt)
-
         saw_result = False
-        async for event in self._stream_events(proc):
-            if isinstance(event, ResultEvent):
-                saw_result = True
-            yield event
-
-        stderr_text, return_code = await self._finish_process(proc)
+        try:
+            async with cli_process(
+                self._build_args(),
+                self._build_stdin(prompt),
+                cwd=self.config.cwd,
+                env=self._env,
+                core_name=_CORE_NAME,
+            ) as (proc, stdout, stderr_read):
+                self._proc = proc
+                async for obj in json_objects(stdout, _log):
+                    for event in self.map_stream_event(obj):
+                        if isinstance(event, ResultEvent):
+                            saw_result = True
+                        yield event  # noqa: ASYNC119 - AgentCore.stop() owns early termination.
+                stderr_text = (await stderr_read).decode(errors="replace")
+                return_code = await proc.wait()
+        finally:
+            self._proc = None
         if not saw_result:
             yield self._synthesize_result(return_code, stderr_text)
-
-    async def _spawn_process(self) -> asyncio.subprocess.Process:
-        proc = await asyncio.create_subprocess_exec(
-            *self._build_args(),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=self.config.cwd,
-            env=self._env,
-            limit=_STREAM_LINE_LIMIT,
-        )
-        self._proc = proc
-        return proc
-
-    async def _write_prompt(self, proc: asyncio.subprocess.Process, prompt: str) -> None:
-        stdin = _require_stream(proc.stdin, "stdin")
-        _ = _require_stream(proc.stdout, "stdout")
-        _ = _require_stream(proc.stderr, "stderr")
-        stdin.write(self._build_stdin(prompt))
-        await stdin.drain()
-        stdin.close()
-
-    async def _stream_events(self, proc: asyncio.subprocess.Process) -> AsyncIterator[AgentEvent]:
-        stdout = _require_stream(proc.stdout, "stdout")
-        async for raw in stdout:
-            line = raw.decode(errors="replace").strip()
-            if not line:
-                continue
-            for event in self._events_from_line(line):
-                yield event
-
-    def _events_from_line(self, line: str) -> list[AgentEvent]:
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            _log(f"skipping non-JSON stdout line: {line[:200]}")
-            return []
-        return self.map_stream_event(obj) if isinstance(obj, dict) else []
-
-    async def _finish_process(self, proc: asyncio.subprocess.Process) -> tuple[str, int]:
-        stderr = _require_stream(proc.stderr, "stderr")
-        stderr_text = (await stderr.read()).decode(errors="replace")
-        return_code = await proc.wait()
-        self._proc = None
-        return stderr_text, return_code
 
     def _synthesize_result(self, return_code: int, stderr_text: str) -> AgentEvent:
         if self._pending_error is not None:
@@ -463,20 +417,8 @@ class CodexCLIAgentCore:  # noqa: V102
         return {"input": tool_input}
 
     async def stop(self) -> None:
-        """Interrupt any still-running Codex process."""
-        proc = self._proc
-        if proc is not None and proc.returncode is None:
-            try:
-                proc.send_signal(signal.SIGINT)
-                await asyncio.wait_for(proc.wait(), timeout=5)
-            except (TimeoutError, ProcessLookupError):
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-            # cleanup; logged via _log()
-            except Exception as exc:  # allow: exception-handling  # noqa: BLE001
-                _log(f"error during process cleanup: {exc}")
-            finally:
-                self._proc = None
+        """Interrupt and reap the active turn, allowing its transcript to checkpoint."""
+        await interrupt_process(self._proc)
 
     @property
     def session_id(self) -> str | None:

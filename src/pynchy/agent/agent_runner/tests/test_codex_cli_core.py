@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import signal
 import tomllib
 from unittest.mock import AsyncMock, patch
 
@@ -92,37 +91,18 @@ class _FakeProc:
         self,
         *,
         returncode: int | None = 0,
-        stdout: _FinishedStdout | _BlockingStdout | None = None,
+        stdout: _FinishedStdout | None = None,
     ) -> None:
         self.returncode = returncode
-        self.signals: list[int] = []
-        self.killed = False
         self.stdin = _FakeStdin()
         self.stdout = stdout or _FinishedStdout()
         self.stderr = _FakeStderr()
 
-    def send_signal(self, sig: int) -> None:
-        self.signals.append(sig)
-
-    def kill(self) -> None:
-        self.killed = True
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return b"", b""
 
     async def wait(self) -> int:
         return self.returncode or 0
-
-
-class _BlockingStdout:
-    def __init__(self) -> None:
-        self.started = asyncio.Event()
-        self.release = asyncio.Event()
-
-    def __aiter__(self) -> _BlockingStdout:
-        return self
-
-    async def __anext__(self) -> bytes:
-        self.started.set()
-        await self.release.wait()
-        raise StopAsyncIteration
 
 
 async def _run_query(
@@ -130,7 +110,7 @@ async def _run_query(
     proc: _FakeProc,
 ) -> tuple[list[object], AsyncMock]:
     with patch(
-        "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+        "agent_runner.cores.cli_process.asyncio.create_subprocess_exec",
         new_callable=AsyncMock,
         return_value=proc,
     ) as spawn:
@@ -415,7 +395,7 @@ def test_public_queries_reset_terminal_error_guard_between_turns():
 
     async def run_queries():
         with patch(
-            "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+            "agent_runner.cores.cli_process.asyncio.create_subprocess_exec",
             new_callable=AsyncMock,
             side_effect=[first_proc, second_proc],
         ):
@@ -427,68 +407,3 @@ def test_public_queries_reset_terminal_error_guard_between_turns():
 
     assert [event.result for event in first if isinstance(event, ResultEvent)] == ["first failed"]
     assert [event.result for event in second if isinstance(event, ResultEvent)] == ["second failed"]
-
-
-async def _start_active_query(core: CodexCLIAgentCore, proc: _FakeProc):
-    with patch(
-        "agent_runner.cores.codex.asyncio.create_subprocess_exec",
-        new_callable=AsyncMock,
-        return_value=proc,
-    ):
-        query = core.query("stop test")
-        next_event = asyncio.create_task(anext(query))
-        assert isinstance(proc.stdout, _BlockingStdout)
-        await proc.stdout.started.wait()
-    return query, next_event
-
-
-async def _finish_query(proc: _FakeProc, next_event: asyncio.Task) -> None:
-    assert isinstance(proc.stdout, _BlockingStdout)
-    proc.stdout.release.set()
-    event = await next_event
-    assert event.type == "result"
-
-
-async def _stop_active_query(core: CodexCLIAgentCore, proc: _FakeProc) -> None:
-    _query, next_event = await _start_active_query(core, proc)
-    await core.stop()
-    await _finish_query(proc, next_event)
-
-
-def test_stop_sends_sigint_to_an_active_public_query():
-    core = _core()
-    proc = _FakeProc(returncode=None, stdout=_BlockingStdout())
-
-    asyncio.run(_stop_active_query(core, proc))
-
-    assert proc.signals == [signal.SIGINT]
-    assert proc.killed is False
-
-
-def test_stop_escalates_to_kill_on_timeout(monkeypatch):
-    core = _core()
-    proc = _FakeProc(returncode=None, stdout=_BlockingStdout())
-
-    def _raise_timeout(awaitable=None, *_args, **_kwargs):
-        if hasattr(awaitable, "close"):
-            awaitable.close()
-        raise TimeoutError
-
-    monkeypatch.setattr(asyncio, "wait_for", _raise_timeout)
-    asyncio.run(_stop_active_query(core, proc))
-
-    assert proc.killed is True
-
-
-def test_stop_leaves_an_already_exited_public_query_alone():
-    core = _core()
-    proc = _FakeProc(returncode=0, stdout=_BlockingStdout())
-
-    asyncio.run(_stop_active_query(core, proc))
-
-    assert proc.signals == []
-    assert proc.killed is False
-
-
-def test_stop_noop_when_no_active_public_query():
-    asyncio.run(_core().stop())

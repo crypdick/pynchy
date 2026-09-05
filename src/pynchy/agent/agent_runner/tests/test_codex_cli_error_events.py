@@ -67,6 +67,9 @@ class _FakeProc:
         self.stdout = _FinishedStream([_json_line(event) for event in events])
         self.stderr = _FinishedStream([], stderr)
 
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return b"", b""
+
     async def wait(self) -> int:
         return self.returncode
 
@@ -83,7 +86,7 @@ def _run_query(
 
     async def run() -> list[object]:
         with patch(
-            "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+            "agent_runner.cores.cli_process.asyncio.create_subprocess_exec",
             new_callable=AsyncMock,
             return_value=proc,
         ):
