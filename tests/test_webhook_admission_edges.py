@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from sqlite3 import OperationalError
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -35,6 +36,8 @@ from pynchy.state import (
     WebhookReceipt,
     admit_webhook_conversation,
     admit_webhook_receipt,
+    get_task_by_id,
+    get_webhook_receipt,
     init_test_database,
 )
 from tests.webhook_lifecycle_support import _lifecycle_event, _message_event, _route
@@ -130,8 +133,28 @@ async def test_existing_admission_reconstructs_its_scheduled_task() -> None:
     admission = await admit_webhook_receipt(receipt, task)
 
     assert admission.created is False
-    assert admission.task is not None
-    assert admission.task.id == task.id
+    assert admission.task == task
+
+
+async def test_receipt_write_failure_rolls_back_task_and_delivery_identity() -> None:
+    await init_test_database()
+    task = _task()
+    receipt = _receipt(task_id=task.id, disposition="accepted")
+    with (
+        patch(
+            "pynchy.state.webhooks._insert_receipt",
+            new=AsyncMock(side_effect=OperationalError("receipt write failed")),
+        ),
+        pytest.raises(OperationalError, match="receipt write failed"),
+    ):
+        await admit_webhook_receipt(receipt, task)
+
+    assert await get_task_by_id(task.id) is None
+    assert await get_webhook_receipt(receipt.provider, receipt.route, receipt.delivery_id) is None
+    retry = replace(receipt, payload_sha256="retried-delivery")
+    admission = await admit_webhook_receipt(retry, task)
+    assert admission.created is True
+    assert admission.task == task
 
 
 async def test_webhook_task_identity_and_effect_pairings_are_rejected() -> None:
