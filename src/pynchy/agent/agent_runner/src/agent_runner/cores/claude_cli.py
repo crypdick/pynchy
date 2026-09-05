@@ -21,12 +21,9 @@ to the SDK's in-process hook.
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
 import os
 import shutil
-import signal
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -41,33 +38,23 @@ from agent_runner.events import (
     ToolUseEvent,
 )
 
+from .cli_process import cli_process, interrupt_process, json_objects
 from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import AsyncIterator
 
     from agent_runner.core import AgentCoreConfig
     from agent_runner.events import AgentEvent
 
-# stream-json lines can carry large tool results; lift the asyncio reader limit
-# well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.
-_STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CORE_NAME = "claude-cli"
-_MISSING_STREAM_ERROR = "{core_name} subprocess missing {stream_name} stream after creation"
 
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
     sys.stderr.write(f"[claude-cli-core] {message}\n")
     sys.stderr.flush()
-
-
-def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStream:
-    if stream is None:
-        raise RuntimeError(
-            _MISSING_STREAM_ERROR.format(core_name=_CORE_NAME, stream_name=stream_name)
-        )
-    return stream
 
 
 class ClaudeCLIAgentCore:  # noqa: V102
@@ -214,50 +201,28 @@ class ClaudeCLIAgentCore:  # noqa: V102
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Spawn one ``claude --print`` turn and stream its events."""
-        args = self._build_args()
         _log(f"spawn claude (session: {self._session_id or 'new'})")
-
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=self.config.cwd,
-            env=self._env,
-            limit=_STREAM_LINE_LIMIT,
-        )
-        self._proc = proc
-        stdin = _require_stream(proc.stdin, "stdin")
-        stdout = _require_stream(proc.stdout, "stdout")
-        stderr = _require_stream(proc.stderr, "stderr")
-
-        # Send the single user message, then EOF so the CLI stops reading input.
-        stdin.write(self._build_stdin(prompt))
-        await stdin.drain()
-        stdin.close()
-
         saw_result = False
-        async for raw in stdout:
-            line = raw.decode(errors="replace").strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                _log(f"skipping non-JSON stdout line: {line[:200]}")
-                continue
-            for event in self.map_stream_line(obj):
-                if event.type == "result":
-                    saw_result = True
-                yield event
+        try:
+            async with cli_process(
+                self._build_args(),
+                self._build_stdin(prompt),
+                cwd=self.config.cwd,
+                env=self._env,
+                core_name=_CORE_NAME,
+            ) as (proc, stdout, stderr_read):
+                self._proc = proc
+                async for obj in json_objects(stdout, _log):
+                    for event in self.map_stream_line(obj):
+                        if event.type == "result":
+                            saw_result = True
+                        yield event  # noqa: ASYNC119 - AgentCore.stop() owns early termination.
+                stderr_text = (await stderr_read).decode(errors="replace")
+                return_code = await proc.wait()
+        finally:
+            self._proc = None
 
-        stderr_text = (await stderr.read()).decode(errors="replace")
-        return_code = await proc.wait()
-        self._proc = None
-
-        # The runner contract requires query() to yield at least one "result"
-        # event. If the CLI died before emitting one, synthesize an error result
-        # so the turn terminates cleanly instead of hanging.
+        # A CLI that dies before its result still needs to terminate the turn.
         if not saw_result:
             _log(
                 f"claude exited rc={return_code} with no result event; stderr: {stderr_text[:500]}"
@@ -386,26 +351,8 @@ class ClaudeCLIAgentCore:  # noqa: V102
         return []
 
     async def stop(self) -> None:
-        """Interrupt any still-running turn process.
-
-        Send SIGINT first (what Ctrl+C sends): the ``claude`` CLI treats it as a
-        graceful interrupt and checkpoints its session JSONL, so the next
-        ``--resume`` sees a consistent transcript. Escalate to SIGKILL only if it
-        doesn't exit in time.
-        """
-        proc = self._proc
-        if proc is not None and proc.returncode is None:
-            try:
-                proc.send_signal(signal.SIGINT)
-                await asyncio.wait_for(proc.wait(), timeout=5)
-            except (TimeoutError, ProcessLookupError):
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-            # cleanup; logged via _log()
-            except Exception as exc:  # allow: exception-handling  # noqa: BLE001
-                _log(f"error during process cleanup: {exc}")
-            finally:
-                self._proc = None
+        """Interrupt and reap the active turn, allowing its transcript to checkpoint."""
+        await interrupt_process(self._proc)
 
     @property
     def session_id(self) -> str | None:
