@@ -43,11 +43,7 @@ class AskUserRuntimeOperations:
 
 @runtime_checkable
 class AskUserDeps(Protocol):
-    """Dependencies for ask_user answer delivery.
-
-    The App class satisfies this protocol — it already has message
-    ingestion via _on_inbound.
-    """
+    """Answer delivery and cold-start enqueue capabilities supplied by the app."""
 
     async def enqueue_message(self, chat_jid: str, text: str) -> None: ...
 

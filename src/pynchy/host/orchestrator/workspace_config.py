@@ -348,29 +348,6 @@ def prompt_ids_for_context(
     )
 
 
-def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:
-    if resolved is None:
-        return None
-    return resolved.repo[0] if resolved.repo else None
-
-
-def get_repo_access(group_folder: str) -> str | None:
-    """Return the first resolved repo slug for a group folder, if configured.
-
-    Existing runtime call sites still accept one slug. The active schema resolves
-    ``repo`` as an ordered list; repo mount/runtime code should consume the
-    full list directly.
-    """
-    resolved = load_resolved_config(group_folder)
-    slug = _first_repo(resolved)
-    logger.debug(
-        "Checked repo access",
-        folder=group_folder,
-        slug=slug,
-    )
-    return slug
-
-
 def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
     """Return a mapping of resolved repo slug → list of group folder names."""
     result: dict[str, list[str]] = {}

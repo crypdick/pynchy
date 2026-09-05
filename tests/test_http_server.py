@@ -28,12 +28,10 @@ from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRa
 from pynchy.host.orchestrator.http_server import (
     ControlPlaneReadiness,
     HttpDeployOperations,
-    PreparedHttpServer,
     activate_http_server,
     create_http_app,
     prepare_http_server,
     publish_http_server,
-    start_http_server,
 )
 
 if TYPE_CHECKING:
@@ -620,63 +618,6 @@ async def test_prepare_http_server_cleans_runner_when_setup_fails() -> None:
     ):
         await prepare_http_server(MockHttpDeps(), runtime=_runtime())
     cleanup.assert_awaited_once_with()
-
-
-def _prepared_http_server(runner: web.AppRunner) -> PreparedHttpServer:
-    return PreparedHttpServer(
-        runner=runner,
-        runtime=_runtime(),
-        app=web.Application(),
-        readiness=ControlPlaneReadiness(),
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("failure_stage", ["activate", "recover"])
-async def test_start_http_server_cleans_runner_after_lifecycle_failure(
-    failure_stage: str,
-) -> None:
-    runner = web.AppRunner(web.Application())
-    cleanup = AsyncMock()
-    prepared = _prepared_http_server(runner)
-    activate = AsyncMock(return_value=runner)
-    recover = AsyncMock()
-    if failure_stage == "activate":
-        activate.side_effect = RuntimeError("activation failed")
-    else:
-        recover.side_effect = RuntimeError("route recovery failed")
-    with (
-        patch(
-            "pynchy.host.orchestrator.http_server.prepare_http_server",
-            new=AsyncMock(return_value=prepared),
-        ),
-        patch("pynchy.host.orchestrator.http_server.activate_http_server", new=activate),
-        patch("pynchy.host.orchestrator.http_server.recover_http_routes", new=recover),
-        patch("aiohttp.web_runner.AppRunner.cleanup", new=cleanup),
-        pytest.raises(RuntimeError),
-    ):
-        await start_http_server(MockHttpDeps(), runtime=_runtime())
-    cleanup.assert_awaited_once_with()
-
-
-@pytest.mark.asyncio
-async def test_start_http_server_publishes_after_recovery() -> None:
-    runner = web.AppRunner(web.Application())
-    prepared = _prepared_http_server(runner)
-    activate = AsyncMock(return_value=runner)
-    recover = AsyncMock()
-    with (
-        patch(
-            "pynchy.host.orchestrator.http_server.prepare_http_server",
-            new=AsyncMock(return_value=prepared),
-        ),
-        patch("pynchy.host.orchestrator.http_server.activate_http_server", new=activate),
-        patch("pynchy.host.orchestrator.http_server.recover_http_routes", new=recover),
-        patch("pynchy.host.orchestrator.http_server.publish_http_server") as publish,
-    ):
-        actual_runner = await start_http_server(MockHttpDeps(), runtime=_runtime())
-    assert actual_runner is runner
-    publish.assert_called_once_with(prepared)
 
 
 @pytest.mark.asyncio

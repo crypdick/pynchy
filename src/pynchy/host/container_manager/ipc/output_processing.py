@@ -11,6 +11,7 @@ from pynchy.agent_protocol.api import (
     parse_container_output,
 )
 from pynchy.host.container_manager import session as session_manager
+from pynchy.host.container_manager.ipc.file_claims import move_failed_ipc_file
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
@@ -18,29 +19,6 @@ from pynchy.logger import logger
 # Watchdog and runtime recovery can observe different files concurrently.
 # Serialize each group so a later file cannot overtake an in-flight callback.
 _output_group_locks: dict[str, asyncio.Lock] = {}
-
-
-def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
-    try:
-        error_dir = ipc_base_dir / "errors"
-        error_dir.mkdir(parents=True, exist_ok=True)
-        file_path.rename(error_dir / f"{source_group}-{file_path.name}")
-    except OSError:
-        logger.warning(
-            "Failed to move IPC file to error dir, deleting instead",
-            file=file_path.name,
-            source_group=source_group,
-        )
-        with contextlib.suppress(OSError):
-            file_path.unlink()
-
-
-def _unlink_path(path: Path) -> None:
-    path.unlink()
-
-
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def _get_output_handler(group_folder: str) -> OnOutput | None:
@@ -71,29 +49,20 @@ async def process_output_file(
 ) -> None:
     """Process a single output event file from a container."""
     async with _output_group_locks.setdefault(source_group, asyncio.Lock()):
-        await _process_output_file(file_path, source_group, ipc_base_dir)
-
-
-async def _process_output_file(
-    file_path: Path,
-    source_group: str,
-    ipc_base_dir: Path,
-) -> None:
-    """Process one serialized output file."""
-    try:
-        await _handle_claimed_output_file(file_path, source_group)
-    except Exception:  # noqa: BLE001 - output file processing is an isolation boundary.
-        logger.exception(
-            "Error processing output file",
-            file=file_path.name,
-            source_group=source_group,
-        )
-        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+        try:
+            await _handle_claimed_output_file(file_path, source_group)
+        except Exception:  # noqa: BLE001 - output file processing is an isolation boundary.
+            logger.exception(
+                "Error processing output file",
+                file=file_path.name,
+                source_group=source_group,
+            )
+            await asyncio.to_thread(move_failed_ipc_file, ipc_base_dir, source_group, file_path)
 
 
 async def _handle_claimed_output_file(file_path: Path, source_group: str) -> None:
     try:
-        json_str = await asyncio.to_thread(_read_text, file_path)
+        json_str = await asyncio.to_thread(file_path.read_text, encoding="utf-8")
     except FileNotFoundError:
         # Watchdog and the periodic runtime sweep can both discover the
         # same output file. Whichever loses that race should be a no-op.
@@ -109,7 +78,7 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
             query_id=output.query_id,
         )
         with contextlib.suppress(FileNotFoundError):
-            await asyncio.to_thread(_unlink_path, file_path)
+            await asyncio.to_thread(file_path.unlink)
         return
 
     handler = _get_output_handler(source_group)
@@ -132,4 +101,4 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
 
     if handler is not None:
         with contextlib.suppress(FileNotFoundError):
-            await asyncio.to_thread(_unlink_path, file_path)
+            await asyncio.to_thread(file_path.unlink)

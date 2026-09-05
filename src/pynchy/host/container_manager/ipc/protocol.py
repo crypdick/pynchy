@@ -1,11 +1,4 @@
-"""IPC protocol definitions — signal format and validation.
-
-Tier 1 signals carry no payload; the host derives behavior from which
-group sent the signal and from its own state.
-
-Tier 2 requests carry a payload with a request_id for response tracking. A
-future Deputy layer will mediate them before dispatch.
-"""
+"""Canonical IPC request envelopes and handler payload models."""
 
 from __future__ import annotations
 
@@ -24,18 +17,12 @@ from pynchy.workspace.api import ContainerConfig
 
 IPC_SCHEMA_VERSION = 1
 
-UNKNOWN_SIGNAL_TYPE_MESSAGE = "Unknown signal type: {signal!r}"
-SIGNAL_PAYLOAD_KEYS_MESSAGE = (
-    "Signal {signal!r} contains unexpected payload keys: {extra_keys}. "
-    "Signals must be payload-free."
-)
 MISSING_ENVELOPE_FIELDS_MESSAGE = "Missing IPC request envelope fields: {fields}"
 UNSUPPORTED_SCHEMA_VERSION_MESSAGE = "Unsupported IPC request schema_version: {value!r}"
 UNKNOWN_REQUEST_KIND_MESSAGE = "Unknown IPC request kind: {kind!r}"
 NON_EMPTY_STRING_MESSAGE = "{label} must be a non-empty string"
 STRING_OR_NULL_MESSAGE = "{label} must be a string or null"
 PAYLOAD_OBJECT_MESSAGE = "IPC request envelope payload must be an object"
-INVALID_SIGNAL_TYPE_MESSAGE = "Not a valid signal type: {signal_type!r}"
 
 # Tier 1: Signal-only IPC types (no payload crosses the boundary)
 SIGNAL_TYPES = frozenset(
@@ -108,29 +95,6 @@ READ_ONLY_REQUEST_TYPES = frozenset(
         "automation_definition",
     }
 )
-
-
-def validate_signal(data: dict[str, Any]) -> str | None:
-    """Check if data is a valid Tier 1 signal.
-
-    Returns the signal type if valid, None if it's not a signal
-    (i.e. it's a Tier 2 data-carrying request).
-
-    Raises ValueError if the file claims to be a signal but is malformed.
-    """
-    signal = data.get("signal")
-    if signal is None:
-        return None
-
-    if signal not in SIGNAL_TYPES:
-        raise ValueError(UNKNOWN_SIGNAL_TYPE_MESSAGE.format(signal=signal))
-
-    # Signals must not carry payload data beyond the signal field itself
-    extra_keys = set(data.keys()) - {"signal", "timestamp"}
-    if extra_keys:
-        raise ValueError(SIGNAL_PAYLOAD_KEYS_MESSAGE.format(signal=signal, extra_keys=extra_keys))
-
-    return cast("str", signal)
 
 
 def parse_ipc_file(file_path: Path) -> dict[str, Any]:
@@ -313,16 +277,6 @@ def request_requires_idempotency_ledger(kind: str) -> bool:
     ):
         return False
     return not kind.startswith("security:")
-
-
-def make_signal(signal_type: str) -> dict[str, str]:
-    """Create a Tier 1 signal payload (for container-side use).
-
-    This is the canonical format for signal-only IPC files.
-    """
-    if signal_type not in SIGNAL_TYPES:
-        raise ValueError(INVALID_SIGNAL_TYPE_MESSAGE.format(signal_type=signal_type))
-    return {"signal": signal_type}
 
 
 # --- Handler payload models (parse, don't validate) ---

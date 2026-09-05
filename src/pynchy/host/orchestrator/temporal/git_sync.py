@@ -79,35 +79,14 @@ class TemporalGitSyncRuntime:
     refresh_host_config: Callable[[str], Any]
 
 
-_runtime = TemporalGitSyncRuntime(
-    get_settings=_unconfigured_runtime,
-    check_local_head_drift=_unconfigured_runtime,
-    check_origin_drift=_unconfigured_runtime,
-    find_pynchy_repo_ctx=_unconfigured_runtime,
-    get_deploy_config_hash=_unconfigured_runtime,
-    get_local_head_sha=_unconfigured_runtime,
-    get_repo_context=_unconfigured_runtime,
-    git_env_with_token=_unconfigured_runtime,
-    host_get_origin_main_sha=_unconfigured_runtime,
-    host_notify_worktree_updates=_unconfigured_runtime,
-    host_update_main_result=_unconfigured_runtime,
-    last_notified_sha={},
-    needs_deploy=_unconfigured_runtime,
-    probe_origin_main_sha=_unconfigured_runtime,
-    prune_stale_worktree_venvs=_unconfigured_runtime,
-    refresh_host_config=_unconfigured_runtime,
-)
-
-
 def configure_temporal_git_sync_runtime(runtime: TemporalGitSyncRuntime) -> None:
     """Bind Temporal Git sync operations at host composition."""
-    global _runtime, get_settings, _check_local_head_drift, _find_pynchy_repo_ctx  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
+    global get_settings, _check_local_head_drift, _find_pynchy_repo_ctx  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global get_deploy_config_hash, get_local_head_sha, get_repo_context, git_env_with_token  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global host_get_origin_main_sha, host_notify_worktree_updates  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global host_update_main_result, check_origin_drift  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global probe_origin_main_sha, last_notified_sha, needs_deploy, refresh_host_config  # noqa: PLW0603 - one host process owns Temporal Git sync operations.
     global prune_stale_worktree_venvs  # noqa: PLW0603 - composition owns this source-control port.
-    _runtime = runtime
     get_settings = runtime.get_settings
     _check_local_head_drift = runtime.check_local_head_drift
     _find_pynchy_repo_ctx = runtime.find_pynchy_repo_ctx

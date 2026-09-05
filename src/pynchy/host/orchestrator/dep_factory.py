@@ -39,7 +39,6 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.git_ops.api import (
     # beartype resolves dependency factory annotations at runtime.
-    GitSyncDeps,
     count_unpushed_commits,
     detect_main_branch,
     files_changed_between,
@@ -843,32 +842,3 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
         get_canary_report = staticmethod(get_canary_report)
 
     return _StatusDeps()
-
-
-def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
-    """Create the dependency object for the git sync loop."""
-    host_broadcaster = app.host_broadcaster
-    session_manager = SessionManager(app.sessions, app.session_cleared)
-
-    class GitSyncDeps:
-        broadcast_host_message = host_broadcaster.broadcast_host_message
-        broadcast_system_notice = host_broadcaster.broadcast_system_notice
-
-        def has_active_session(self, group_folder: str) -> bool:
-            return session_manager.has_active_session(group_folder)
-
-        async def wake_worktree_conflict(self, jid: str) -> None:
-            await app.start_interactive_turn(jid)
-
-        def workspaces(self) -> dict[str, Any]:
-            return app.workspaces
-
-        async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
-            await _start_temporal_deploy(
-                host_broadcaster=host_broadcaster,
-                workspaces=app.workspaces,
-                previous_sha=previous_sha,
-                rebuild=rebuild,
-            )
-
-    return GitSyncDeps()

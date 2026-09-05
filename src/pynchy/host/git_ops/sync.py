@@ -1,7 +1,6 @@
-"""Coordinated git sync between host and container worktrees.
+"""Host-mediated pull request publication from isolated worktrees.
 
-Host owns main — agents never push to main directly. The host mediates
-all merges into main, pushes to origin, and syncs other running agents.
+The host owns publication credentials and pushes branches, never main.
 
 Container-side errors must be self-contained and actionable since
 containers can't read host state (logs, config, etc.).
@@ -72,7 +71,7 @@ def host_create_pr_from_worktree(
 
     Successful PR creation or update also returns its canonical ``pr_url``.
     """
-    ctx = _validate_sync_preconditions(group_folder, repo_ctx, compare_with_origin=True)
+    ctx = _validate_sync_preconditions(group_folder, repo_ctx)
     if isinstance(ctx, dict):
         return ctx
     return _create_pr_from_context(

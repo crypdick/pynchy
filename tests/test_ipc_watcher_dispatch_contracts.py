@@ -48,7 +48,7 @@ class _SeedHandler:
     [
         ("messages", "process_ipc_message_file"),
         ("requests", "process_ipc_request_file"),
-        ("output", "process_ipc_output_file"),
+        ("output", "process_output_file"),
     ],
 )
 async def test_start_dispatches_each_queued_ipc_subdirectory(subdir: str, processor_name: str):

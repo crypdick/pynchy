@@ -506,24 +506,6 @@ def publish_http_server(prepared: PreparedHttpServer) -> None:
     logger.info("HTTP control plane ready")
 
 
-async def start_http_server(
-    deps: HttpServerDeps,
-    *,
-    runtime: ControlPlaneRuntime,
-    status_deps: StatusDeps | None = None,
-) -> web.AppRunner:
-    """Create, start, and return the HTTP server runner."""
-    prepared = await prepare_http_server(deps, runtime=runtime, status_deps=status_deps)
-    try:
-        await activate_http_server(prepared)
-        await recover_http_routes(prepared)
-    except BaseException:
-        await prepared.runner.cleanup()
-        raise
-    publish_http_server(prepared)
-    return prepared.runner
-
-
 def create_http_app(
     deps: HttpDeps,
     *,

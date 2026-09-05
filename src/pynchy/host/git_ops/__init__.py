@@ -27,10 +27,7 @@ from pynchy.host.git_ops.worktree import (
     install_repo_hooks,
     reconcile_worktrees_at_startup,
 )
-from pynchy.host.git_ops.worktree_sync import (
-    GitSyncDeps,
-    host_sync_worktree,
-)
+from pynchy.host.git_ops.worktree_sync import GitSyncDeps
 
 __all__ = [
     "GitSyncDeps",
@@ -46,7 +43,6 @@ __all__ = [
     "get_head_sha",
     "git_env_with_token",
     "host_notify_worktree_updates",
-    "host_sync_worktree",
     "install_repo_hooks",
     "is_repo_dirty",
     "needs_container_rebuild",

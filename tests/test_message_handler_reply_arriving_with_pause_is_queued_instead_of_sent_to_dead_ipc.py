@@ -50,7 +50,6 @@ from tests.message_handler_support import (
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
