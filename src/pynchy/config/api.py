@@ -12,7 +12,7 @@ from pynchy.config.access import (
 )
 from pynchy.config.caldav import CalDAVConfig, CalDAVServerConfig
 from pynchy.config.jobs import JobConfig
-from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
+from pynchy.config.merge import merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
     BuiltinTool,
@@ -94,12 +94,12 @@ from pynchy.config.toml_io import (
     parse_settings_toml,
 )
 from pynchy.config.tool_access import (
-    ResolvedToolAccess,
     apply_tool_access,
     resolve_tool_access,
     tool_process_environment,
 )
 from pynchy.config.workspace_names import dynamic_thread_folder, static_workspace_name
+from pynchy.workspace.api import ResolvedToolAccess, ResolvedWorkspaceConfig
 
 __all__ = [
     "LITELLM_FILENAME",

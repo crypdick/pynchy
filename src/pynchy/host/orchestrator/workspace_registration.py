@@ -17,13 +17,12 @@ from pynchy.identifiers import (
 from pynchy.logger import logger
 from pynchy.state.api import rebind_workspace_profile, set_workspace_profile
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,
     # beartype resolves workspace registration annotations at runtime.
-    ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
 
-type ResolvedWorkspaceConfig = Any
 type Settings = Any
 type WorkspaceConfig = Any
 
@@ -133,12 +132,8 @@ def resolve_display_name(folder: str) -> str:
     return folder.replace("-", " ").title()
 
 
-def workspace_security(
-    _config: WorkspaceConfig, resolved: ResolvedWorkspaceConfig
-) -> WorkspaceSecurity:
-    services: dict[str, ServiceTrustConfig] = {}
+def workspace_security(resolved: ResolvedWorkspaceConfig) -> WorkspaceSecurity:
     return WorkspaceSecurity(
-        services=services,
         contains_secrets=resolved.contains_secrets,
         cop_active=resolved.cop_active,
         capabilities=dict(resolved.capabilities),
@@ -192,7 +187,7 @@ async def ensure_workspace_registered(  # noqa: PLR0911,PLR0913 - registration b
                 trigger=f"@{settings.agent.name}",
                 added_at=current_profile.added_at,
                 is_admin=resolved.is_admin,
-                security=workspace_security(config, resolved),
+                security=workspace_security(resolved),
             )
             await rebind_fn(profile)
             workspaces.pop(jid, None)
@@ -243,7 +238,7 @@ async def ensure_workspace_registered(  # noqa: PLR0911,PLR0913 - registration b
         trigger=f"@{settings.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         is_admin=resolved.is_admin,
-        security=workspace_security(config, resolved),
+        security=workspace_security(resolved),
     )
     await register_fn(profile)
     workspaces[created_jid] = profile
@@ -305,29 +300,33 @@ def _workspace_creation_channel(
     )
 
 
-async def sync_workspace_profile(  # noqa: PLR0913 - sync boundary mirrors the stored workspace profile update contract.
+async def sync_workspace_profile(
     jid: str | None,
     workspaces: dict[str, WorkspaceProfile],
     folder: str,
     display_name: str,
-    config: WorkspaceConfig,
     resolved: ResolvedWorkspaceConfig,
 ) -> None:
     """Update the stored workspace profile if resolved config changed."""
     if jid is None or jid not in workspaces:
         return
     profile = workspaces[jid]
-    changed: dict[str, object] = {}
-    if profile.name != display_name:
-        changed["name"] = display_name
-    if profile.is_admin != resolved.is_admin:
-        changed["is_admin"] = resolved.is_admin
-    security = workspace_security(config, resolved)
-    if profile.security != security:
-        changed["security"] = security
-    if not changed:
+    updated = replace(
+        profile,
+        name=display_name,
+        is_admin=resolved.is_admin,
+        security=workspace_security(resolved),
+    )
+    if updated == profile:
         return
-    updated = replace(profile, **cast("Any", changed))
     workspaces[jid] = updated
     await set_workspace_profile(updated)
-    logger.info("Updated workspace profile", folder=folder, changed=list(changed.keys()))
+    logger.info(
+        "Updated workspace profile",
+        folder=folder,
+        changed=[
+            name
+            for name in ("name", "is_admin", "security")
+            if getattr(profile, name) != getattr(updated, name)
+        ],
+    )

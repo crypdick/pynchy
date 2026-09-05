@@ -148,3 +148,42 @@ class RuntimeTarget:
     @classmethod
     def from_binding(cls, folder: str, chat_jid: str) -> RuntimeTarget:
         return cls(folder=GroupFolder(folder), chat_jid=ChatJid(chat_jid))
+
+
+@dataclass(frozen=True)
+class ResolvedWorkspaceConfig:
+    """Fully resolved config after expanding and merging selected profiles."""
+
+    skills: list[str]
+    tools: list[str]
+    repo: list[str]
+    model: str | None
+    execution_mode: str
+    cwd: str | None
+    is_admin: bool
+    contains_secrets: bool
+    model_reasoning_effort: str | None = None
+    cop_active: bool = True
+    soul: str | None = None
+    pipeline: str | None = None
+    denied_skills: list[str] = field(default_factory=list)
+    capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedToolAccess:
+    """One workspace's available tool grants without credential values in metadata."""
+
+    tools: tuple[str, ...]
+    companion_skills: tuple[str, ...]
+    workspace_env: dict[str, str]
+    missing_requirements: dict[str, tuple[str, ...]]
+    agent_tool_grants: tuple[str, ...] = ()
+
+    @property
+    def notices(self) -> tuple[str, ...]:
+        return tuple(
+            f"Tool {name!r} is unavailable; missing required environment: "
+            + ", ".join(requirements)
+            for name, requirements in self.missing_requirements.items()
+        )

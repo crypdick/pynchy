@@ -12,6 +12,7 @@ from pynchy.agent_protocol.api import (
     InFlightTurn,
     InFlightWorkKind,
 )
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationClaimId,
@@ -32,7 +33,6 @@ from pynchy.host.orchestrator.conversation_control import (
     ensure_conversation_control,
 )
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.identifiers import (
     ChatJid,
     GroupFolder,

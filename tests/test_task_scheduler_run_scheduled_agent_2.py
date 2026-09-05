@@ -28,8 +28,8 @@ from pynchy.agent_protocol.api import (
     InFlightWorkKind,
 )
 from pynchy.config.api import JobConfig, ProfileConfig, WorkspaceConfig
+from pynchy.conversation.api import dynamic_thread_folder
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.identifiers import RuntimeId
 from pynchy.scheduling.api import (
     ScheduledTask,

@@ -194,7 +194,7 @@ def configure_workspace_placement_for(settings: Settings) -> None:
             folder=folder,
             trigger=control_parent.trigger,
             container_config=control_parent.container_config,
-            security=workspace_security(config, resolved),
+            security=workspace_security(resolved),
             is_admin=resolved.is_admin,
             added_at=datetime.now(UTC).isoformat(),
         )

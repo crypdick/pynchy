@@ -17,9 +17,8 @@ from pynchy.logger import logger
 from pynchy.plugins.api import (
     Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
-from pynchy.workspace.api import WorkspaceProfile
+from pynchy.workspace.api import ResolvedWorkspaceConfig, WorkspaceProfile
 
-type ResolvedWorkspaceConfig = Any
 type WorkspaceConfig = Any
 type WorkspaceThreadConfig = Any
 
@@ -53,7 +52,6 @@ def _child_profile(  # noqa: PLR0913 - profile construction keeps policy and pla
     child_jid: str,
     thread_name: str,
     folder: str,
-    config: WorkspaceConfig,
     resolved: ResolvedWorkspaceConfig,
     existing: WorkspaceProfile | None,
 ) -> WorkspaceProfile:
@@ -68,7 +66,7 @@ def _child_profile(  # noqa: PLR0913 - profile construction keeps policy and pla
         folder=folder,
         trigger=parent.trigger,
         container_config=parent.container_config,
-        security=workspace_security(config, resolved),
+        security=workspace_security(resolved),
         is_admin=resolved.is_admin,
         added_at=existing.added_at if existing is not None else datetime.now(UTC).isoformat(),
     )
@@ -79,7 +77,6 @@ def _declared_child_profile(
     child_jid: str,
     declared_thread: WorkspaceThreadConfig,
     existing: WorkspaceProfile | None,
-    fallback_config: WorkspaceConfig,
 ) -> WorkspaceProfile:
     """Build either an inherited category child or a semantic policy owner."""
     if declared_thread.workspace is None:
@@ -96,7 +93,6 @@ def _declared_child_profile(
 
     settings = get_settings()
     child_folder = declared_thread.workspace
-    child_config = settings.workspace_config(child_folder) or fallback_config
     resolved = settings.resolved_workspace_config(child_folder)
     if resolved is None:
         raise RuntimeError(f"Declared workspace thread lacks policy: {child_folder}")
@@ -105,7 +101,6 @@ def _declared_child_profile(
         child_jid,
         declared_thread.name,
         child_folder,
-        child_config,
         resolved,
         existing,
     )
@@ -201,7 +196,6 @@ async def reconcile_workspace_threads(  # noqa: PLR0913 - registration and optio
                 child_jid,
                 declared_thread,
                 existing,
-                config,
             )
             if existing == profile:
                 continue

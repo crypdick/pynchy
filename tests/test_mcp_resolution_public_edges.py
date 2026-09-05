@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pynchy.config.api import BuiltinTool, McpTool, McpToolConfig, validate_settings_mapping
-from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
     build_trust_map,
@@ -17,7 +16,7 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_workspace_servers,
 )
 from pynchy.plugins.api import McpServerConfig
-from pynchy.workspace.api import ServiceTrustConfig
+from pynchy.workspace.api import ResolvedWorkspaceConfig, ServiceTrustConfig
 
 
 @dataclass

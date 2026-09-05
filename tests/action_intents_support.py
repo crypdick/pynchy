@@ -12,11 +12,7 @@ import pytest
 from conftest import NullIpcDeps, make_settings
 
 from pynchy.actions.api import ActionId
-from pynchy.config.api import (
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
-    ResolvedWorkspaceConfig,
-)
+from pynchy.config.api import MatrixConnectionConfig, MatrixEndpointConfig
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -62,6 +58,7 @@ from pynchy.state import (
     mark_action_intent_awaiting_approval,
 )
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,
     WorkspaceSecurity,
 )
 from tests.approval_support import write_encrypted_pending_approval
