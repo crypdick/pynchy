@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import signal
 import subprocess  # noqa: S404 - tests model configured process ownership.
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,10 +14,8 @@ import pytest
 
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
-    build_stdio_env,
     ensure_docker_running,
-    ensure_script_running,
-    ensure_stdio_running,
+    ensure_process_running,
     expand_arg_placeholders,
     kwargs_to_args,
     reap_stale_processes,
@@ -59,6 +59,41 @@ def _script_instance(*, process: subprocess.Popen[bytes] | None = None) -> McpIn
     )
 
 
+async def test_chatty_mcp_process_reaches_readiness(tmp_path: Path, monkeypatch):
+    ready = tmp_path / "ready"
+    instance = _script_instance()
+    instance.server_config = McpServerConfig(
+        type="script",
+        command=sys.executable,
+        args=[
+            "-c",
+            (
+                "import os, pathlib, sys, time; "
+                "os.write(2, b'x' * (2 * 1024 * 1024)); "
+                "pathlib.Path(sys.argv[1]).write_text('ready'); time.sleep(60)"
+            ),
+            str(ready),
+        ],
+        port=8000,
+    )
+
+    async def wait_until_ready(_request):
+        async with asyncio.timeout(3):
+            while not ready.exists():  # noqa: ASYNC110 - external process signals readiness through a file.
+                await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(
+        "pynchy.host.container_manager.mcp.lifecycle.wait_healthy", wait_until_ready
+    )
+    try:
+        await ensure_process_running(instance)
+        assert ready.read_text() == "ready"
+        assert instance.process is not None
+        assert instance.process.poll() is None
+    finally:
+        terminate_process(instance)
+
+
 async def test_stdio_health_failure_terminates_the_owned_process():
     instance = McpInstance(
         server_name="stdio",
@@ -88,7 +123,7 @@ async def test_stdio_health_failure_terminates_the_owned_process():
         ),
         pytest.raises(RuntimeError, match="bridge failed"),
     ):
-        await ensure_stdio_running(instance)
+        await ensure_process_running(instance)
 
     terminate.assert_called_once_with(instance)
 
@@ -102,7 +137,7 @@ async def test_stdio_start_preserves_a_live_process():
     )
 
     with patch("pynchy.host.container_manager.mcp.lifecycle._start_owned_process") as start:
-        await ensure_stdio_running(instance)
+        await ensure_process_running(instance)
 
     start.assert_not_called()
 
@@ -121,7 +156,7 @@ async def test_stdio_start_requires_a_host_port():
     )
 
     with pytest.raises(RuntimeError, match="has no host port"):
-        await ensure_stdio_running(instance)
+        await ensure_process_running(instance)
 
 
 async def test_stdio_start_builds_the_bridge_command_and_waits_for_health():
@@ -149,7 +184,7 @@ async def test_stdio_start_builds_the_bridge_command_and_waits_for_health():
             new=AsyncMock(),
         ),
     ):
-        await ensure_stdio_running(instance)
+        await ensure_process_running(instance)
 
     command = start.call_args.args[1]
     assert command[:6] == [
@@ -173,7 +208,7 @@ async def test_script_start_fails_when_process_supervision_shell_is_missing(monk
     monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.shutil.which", lambda _: None)
 
     with pytest.raises(RuntimeError, match="requires sh"):
-        await ensure_script_running(_script_instance())
+        await ensure_process_running(_script_instance())
 
 
 async def test_script_start_uses_the_available_process_supervision_shell(monkeypatch):
@@ -188,7 +223,7 @@ async def test_script_start_uses_the_available_process_supervision_shell(monkeyp
     monkeypatch.setattr("pynchy.host.container_manager.mcp.lifecycle.wait_healthy", wait_healthy)
 
     instance = _script_instance()
-    await ensure_script_running(instance)
+    await ensure_process_running(instance)
 
     assert instance.process is process
     command = popen.call_args.args[0]
@@ -217,7 +252,7 @@ async def test_script_start_terminates_process_when_record_persistence_fails(tmp
         patch("pynchy.host.container_manager.mcp.lifecycle.terminate_process", terminate),
         pytest.raises(OSError, match="disk full"),
     ):
-        await ensure_script_running(instance)
+        await ensure_process_running(instance)
 
     terminate.assert_called_once_with(instance)
 
@@ -580,7 +615,7 @@ def test_expand_arg_placeholders_preserves_unknown_placeholders():
     ) == ["--workspace", "research", "--unknown", "{missing}"]
 
 
-def test_kwargs_and_environment_helpers_are_deterministic_and_filtered(monkeypatch):
+def test_kwargs_and_environment_flags_are_deterministic():
     assert kwargs_to_args({"workspace": "research", "port": "9000"}) == [
         "--port",
         "9000",
@@ -593,23 +628,3 @@ def test_kwargs_and_environment_helpers_are_deterministic_and_filtered(monkeypat
         "-e",
         "ZED",
     ]
-
-    monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.setenv("UNRELATED_SECRET", "do-not-forward")
-    config = McpServerConfig(
-        type="stdio",
-        command="bridge",
-        port=8000,
-        transport="streamable_http",
-        env={"STATIC": "value"},
-    )
-    with patch(
-        "pynchy.host.container_manager.mcp.lifecycle.filtered_process_environment",
-        side_effect=lambda env: env,
-    ):
-        environment = build_stdio_env(config, {"SELECTED": "token"})
-
-    assert environment == {
-        "STATIC": "value",
-        "SELECTED": "token",
-    }
