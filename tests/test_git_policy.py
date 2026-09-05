@@ -87,6 +87,11 @@ class TestHostCreatePrFromWorktree:
 
         def mock_run(args, **kwargs):
             if args[0] == "gh":
+                if args[1:3] == ["pr", "create"]:
+                    assert args[args.index("--title") + 1] == "add feature"
+                    assert args[args.index("--body") + 1] == (
+                        "Automated PR from workspace `agent-1`.\n\n### Commits\n- add feature"
+                    )
                 return mock_run.results.pop(0)
             return real_run(args, **kwargs)
 

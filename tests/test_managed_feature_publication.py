@@ -139,6 +139,13 @@ class TestManagedFeaturePublication:
             "--head",
             "selected-feature",
         ]
+        assert gh_calls[2][gh_calls[2].index("--title") + 1] == (
+            "configure selected feature attributes"
+        )
+        assert gh_calls[2][gh_calls[2].index("--body") + 1] == (
+            "Automated PR from managed feature `selected-feature`.\n\n### Commits\n"
+            "- configure selected feature attributes\n- add selected-feature"
+        )
         assert gh_calls[0][gh_calls[0].index("--repo") : gh_calls[0].index("--json")] == [
             "--repo",
             "owner/repo",
