@@ -96,7 +96,9 @@ async def _handle_automation_mutation(
         return
     if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary = f"automation={name}, operation={operation}"
-        if not await cop_gate_module.cop_gate(operation, summary, data, source_group, deps):
+        if not await cop_gate_module.cop_gate(
+            operation, summary, data, source_group, deps, request_id=_request_id(data)
+        ):
             return
     envelope_fields = {"type", "request_id", "name", "source_group", "reply_to", "deadline"}
     values = {key: value for key, value in data.items() if key not in envelope_fields}
