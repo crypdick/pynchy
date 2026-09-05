@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -24,6 +25,7 @@ from pynchy.state import (
     get_all_tasks,
     get_task_run_logs,
     log_task_run,
+    record_task_completion,
 )
 from pynchy.workspace.api import WorkspaceProfile
 
@@ -32,6 +34,18 @@ class TestJobReconcile:
     @pytest.fixture
     async def db(self):
         await init_test_database()
+
+    @pytest.fixture
+    def registered(self):
+        return {
+            "slack:CADMIN": WorkspaceProfile(
+                jid="slack:CADMIN",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            )
+        }
 
     def _patch_settings(self, monkeypatch, tmp_path, *, jobs: dict[str, JobConfig]):
         settings = make_settings(
@@ -50,7 +64,9 @@ class TestJobReconcile:
         )
         return settings
 
-    async def test_agent_job_creates_scheduled_task_for_workspace(self, db, monkeypatch, tmp_path):
+    async def test_agent_job_creates_scheduled_task_for_workspace(
+        self, db, monkeypatch, tmp_path, registered
+    ):
         self._patch_settings(
             monkeypatch,
             tmp_path,
@@ -64,15 +80,6 @@ class TestJobReconcile:
                 )
             },
         )
-        registered = {
-            "slack:CADMIN": WorkspaceProfile(
-                jid="slack:CADMIN",
-                name="Admin",
-                folder="admin",
-                trigger="@Pynchy",
-                is_admin=True,
-            )
-        }
 
         await reconcile_workspaces(registered, [], AsyncMock())
 
@@ -94,7 +101,7 @@ class TestJobReconcile:
 
     @pytest.mark.parametrize("cwd", [None, "runtime"])
     async def test_deterministic_job_persists_its_execution_values(
-        self, db, monkeypatch, tmp_path, cwd
+        self, db, monkeypatch, tmp_path, registered, cwd
     ):
         settings = self._patch_settings(
             monkeypatch,
@@ -111,15 +118,6 @@ class TestJobReconcile:
                 )
             },
         )
-        registered = {
-            "slack:CADMIN": WorkspaceProfile(
-                jid="slack:CADMIN",
-                name="Admin",
-                folder="admin",
-                trigger="@Pynchy",
-                is_admin=True,
-            )
-        }
 
         await reconcile_workspaces(registered, [], AsyncMock())
 
@@ -267,7 +265,9 @@ class TestJobReconcile:
         assert tasks["pynchy-dev"].chat_jid == "discord:channel:admin"
         assert tasks["pynchy-dev"].derived_thread_name == "⚙️ pynchy-check"
 
-    async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
+    async def test_one_time_agent_job_creates_once_task(
+        self, db, monkeypatch, tmp_path, registered
+    ):
         run_at = "2026-07-08T18:30:00-07:00"
         self._patch_settings(
             monkeypatch,
@@ -281,15 +281,6 @@ class TestJobReconcile:
                 )
             },
         )
-        registered = {
-            "slack:CADMIN": WorkspaceProfile(
-                jid="slack:CADMIN",
-                name="Admin",
-                folder="admin",
-                trigger="@Pynchy",
-                is_admin=True,
-            )
-        }
 
         await reconcile_workspaces(registered, [], AsyncMock())
 
@@ -300,10 +291,10 @@ class TestJobReconcile:
         assert task.schedule_value == run_at
         assert task.next_run is None
 
-    async def test_job_reconcile_updates_delivery_when_workspace_jid_changes(
+    async def test_job_reconcile_updates_config_and_preserves_execution_state(
         self, db, monkeypatch, tmp_path
     ):
-        self._patch_settings(
+        settings = self._patch_settings(
             monkeypatch,
             tmp_path,
             jobs={
@@ -313,6 +304,9 @@ class TestJobReconcile:
                     workspace="admin",
                     prompt="Run the daily triage memo.",
                     memory=False,
+                    pre_run_command="scripts/prepare.py",
+                    pre_run_cwd="/srv/triage",
+                    pre_run_timeout_seconds=30,
                 )
             },
         )
@@ -321,16 +315,42 @@ class TestJobReconcile:
                 id="job-daily-triage",
                 group_folder="admin",
                 chat_jid="slack:COLD",
-                prompt="Run the daily triage memo.",
+                prompt="Old triage prompt.",
                 schedule_type="interval",
-                schedule_value="0 7 * * *",
-                session_policy=SessionPolicy.RESET_BEFORE_RUN,
-                next_run=datetime(2026, 7, 8, 8, 0, tzinfo=UTC).isoformat(),
+                schedule_value="900000",
+                session_policy=SessionPolicy.CONTINUE,
                 status="active",
-                created_at=datetime.now(UTC).isoformat(),
+                created_at="2026-07-08T08:00:00+00:00",
                 repo_access="crypdick/pynchy",
+                config_job_is_deterministic=True,
+                config_job_command="scripts/old.py",
+                config_job_cwd="/srv/old",
+                config_job_timeout_seconds=42,
+                config_job_display_name="Old triage",
+                bound_chat_jid="slack:CTRIAGE",
+                bound_group_folder="admin/daily-triage",
+                conversation_id="triage-conversation",
+                last_reset_occurrence="2026-07-08T08:00:00+00:00",
+                occurrence_generation=3,
+                occurrence_due_at="2026-07-08T08:30:00+00:00",
+                superseded_occurrence_generation=2,
+                superseded_occurrence_due_at="2026-07-08T08:15:00+00:00",
             )
         )
+        await record_task_completion(
+            "job-daily-triage", last_result="Previous triage memo", completed=False
+        )
+        await log_task_run(
+            TaskRunLog(
+                task_id="job-daily-triage",
+                run_at="2026-07-08T08:00:00+00:00",
+                duration_ms=100,
+                status="success",
+                result="Previous triage memo",
+            )
+        )
+        original = (await get_all_tasks())[0]
+        history = await get_task_run_logs(original.id)
         registered = {
             "slack:CNEW": WorkspaceProfile(
                 jid="slack:CNEW",
@@ -343,12 +363,58 @@ class TestJobReconcile:
 
         await reconcile_workspaces(registered, [], AsyncMock())
 
-        task = await get_active_task_for_group("admin")
-        assert task is not None
-        assert task.chat_jid == "slack:CNEW"
-        assert task.config_job_name == "daily-triage"
-        assert task.memory_enabled is False
-        assert task.schedule_value == "0 8 * * *"
+        expected = replace(
+            original,
+            chat_jid="slack:CNEW",
+            prompt="Run the daily triage memo.",
+            schedule_type="cron",
+            schedule_value="0 8 * * *",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
+            memory_enabled=False,
+            repo_access=None,
+            config_job_name="daily-triage",
+            config_job_is_deterministic=False,
+            config_job_command=None,
+            config_job_cwd=None,
+            config_job_timeout_seconds=None,
+            config_job_display_name=None,
+            config_job_pre_run_command="scripts/prepare.py",
+            config_job_pre_run_cwd="/srv/triage",
+            config_job_pre_run_timeout_seconds=30,
+            derived_thread_name="⚙️ daily-triage",
+        )
+        assert await get_all_tasks() == [expected]
+
+        settings.jobs["daily-triage"] = JobConfig(
+            interval_minutes=5,
+            workspace="admin",
+            agent=False,
+            command="scripts/triage.py",
+            cwd="/srv/triage",
+            timeout_seconds=60,
+            display_name="Triage",
+        )
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        assert await get_all_tasks() == [
+            replace(
+                expected,
+                prompt="",
+                schedule_type="interval",
+                schedule_value="300000",
+                memory_enabled=True,
+                config_job_is_deterministic=True,
+                config_job_command="scripts/triage.py",
+                config_job_cwd="/srv/triage",
+                config_job_timeout_seconds=60,
+                config_job_display_name="Triage",
+                config_job_pre_run_command=None,
+                config_job_pre_run_cwd=None,
+                config_job_pre_run_timeout_seconds=None,
+                derived_thread_name="⚙️ Triage",
+            )
+        ]
+        assert await get_task_run_logs(original.id) == history
 
     async def test_job_reconcile_rebinds_an_explicit_parent_workspace(
         self, db, monkeypatch, tmp_path
@@ -454,7 +520,7 @@ class TestJobReconcile:
         assert await get_all_tasks() == []
 
     async def test_reconciling_an_unchanged_agent_job_has_no_updates(
-        self, db, monkeypatch, tmp_path
+        self, db, monkeypatch, tmp_path, registered
     ):
         self._patch_settings(
             monkeypatch,
@@ -468,23 +534,15 @@ class TestJobReconcile:
                 )
             },
         )
-        registered = {
-            "slack:CADMIN": WorkspaceProfile(
-                jid="slack:CADMIN",
-                name="Admin",
-                folder="admin",
-                trigger="@Pynchy",
-                is_admin=True,
-            )
-        }
 
         await reconcile_workspaces(registered, [], AsyncMock())
+        original = await get_all_tasks()
         await reconcile_workspaces(registered, [], AsyncMock())
 
-        assert len(await get_all_tasks()) == 1
+        assert await get_all_tasks() == original
 
     async def test_enabled_job_resets_failures_when_reactivating_config_task(
-        self, db, monkeypatch, tmp_path
+        self, db, monkeypatch, tmp_path, registered
     ):
         self._patch_settings(
             monkeypatch,
@@ -522,15 +580,6 @@ class TestJobReconcile:
                 error="stale implementation failure",
             )
         )
-        registered = {
-            "slack:CADMIN": WorkspaceProfile(
-                jid="slack:CADMIN",
-                name="Admin",
-                folder="admin",
-                trigger="@Pynchy",
-                is_admin=True,
-            )
-        }
 
         await reconcile_workspaces(registered, [], AsyncMock())
 
