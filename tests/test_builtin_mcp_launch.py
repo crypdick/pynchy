@@ -26,6 +26,8 @@ def test_builtin_mcp_launch_ignores_unusable_checkout(tmp_path: Path, provider: 
         ).pynchy_mcp_server_spec()[0]
     else:
         spec = ProtonMailMcpPlugin().pynchy_mcp_server_spec()[0]
+    # Allow headroom above the observed 4.915s concurrent host startup envelope.
+    assert spec.config.startup_timeout_seconds == 10
     assert spec.config.command is not None
     args = [
         argument.replace("{port}", "0").replace("{workspace}", "test")

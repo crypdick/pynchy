@@ -143,6 +143,8 @@ class LinearMcpPlugin:
                     port=DEFAULT_PORT,
                     transport="streamable_http",
                     idle_timeout=600,
+                    # Concurrent host imports can consume nearly five seconds before HTTP binds.
+                    startup_timeout_seconds=10,
                     inject_workspace=True,
                 ),
                 trust=ServiceTrustConfig(
