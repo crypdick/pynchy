@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import NewType
 
-from pynchy.conversation_primitives import (  # noqa: TC001 - beartype resolves effect results.
+from pynchy.conversation_primitives import (
     ConversationDeliveryCompletion,
 )
 

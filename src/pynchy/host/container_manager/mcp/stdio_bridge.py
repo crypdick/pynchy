@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from collections.abc import (  # noqa: TC003 - lifespan annotations must resolve at runtime.
+from collections.abc import (
     AsyncIterator,
     Awaitable,
     Callable,

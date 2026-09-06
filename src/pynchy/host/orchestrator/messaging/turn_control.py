@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
+from pathlib import Path
 from typing import Any
 
 from pynchy.agent_protocol.api import (
@@ -15,7 +15,7 @@ from pynchy.agent_protocol.api import (
     InFlightWorkKind,
 )
 from pynchy.event_bus import AgentActivityEvent
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.host.orchestrator.messaging.deps import (
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.host_controls import (
@@ -34,7 +34,7 @@ from pynchy.host.orchestrator.messaging.turn_recovery import (
     resume_interrupted_message_if_present,
 )
 from pynchy.identifiers import RuntimeId
-from pynchy.plugins.api import NewMessage  # noqa: TC001 - beartype resolves annotations.
+from pynchy.plugins.api import NewMessage
 from pynchy.state.api import (
     clear_chat_pause,
     clear_in_flight_turn,

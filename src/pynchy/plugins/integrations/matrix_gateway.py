@@ -7,8 +7,8 @@ import json
 import os
 import shutil
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves Matrix runtime callbacks at runtime.
-    Callable,  # noqa: TC003 - beartype resolves Matrix runtime callbacks at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +18,11 @@ import pluggy
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from pynchy.actions.api import ActionId
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves Matrix runtime callbacks at runtime.
+from pynchy.conversation.api import (
     ConversationId,
 )
 from pynchy.identifiers import (
-    ChatJid,  # noqa: TC001 - beartype resolves Matrix runtime callbacks at runtime.
+    ChatJid,
 )
 from pynchy.plugins.api import (
     ActionIntentContract,
@@ -64,7 +64,7 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     ActiveMatrixRoute,
     get_active_matrix_route,
 )
-from pynchy.plugins.integrations.matrix_route_resolution import (  # noqa: TC001 - beartype resolves Matrix runtime annotations.
+from pynchy.plugins.integrations.matrix_route_resolution import (
     ResolvedMatrixRoute,
 )
 

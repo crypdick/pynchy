@@ -236,13 +236,15 @@ def test_reports_rebase_preparation_outcomes(
 @pytest.mark.parametrize("failure", ["spawn", "missing-pipe", "index"])
 def test_reports_verified_base_copy_failures(tmp_path, failure: str) -> None:
     publication = _publication(tmp_path)
-    transport = MagicMock(args=(), root=tmp_path)
     source = MagicMock()
     source.stdin = None if failure == "missing-pipe" else BytesIO()
     source.stdout = BytesIO()
     popen_error = OSError("git unavailable") if failure == "spawn" else None
     index_error = OSError("index failed") if failure == "index" else None
     with (
+        patch(
+            "pynchy.host.git_ops.managed_feature._ManagedGitTransport", autospec=True
+        ) as transport_type,
         patch(
             "pynchy.host.git_ops.managed_feature_rebase._resolve_managed_feature",
             return_value=ManagedFeatureResolution(publication, None),
@@ -253,7 +255,7 @@ def test_reports_verified_base_copy_failures(tmp_path, failure: str) -> None:
         ),
         patch(
             "pynchy.host.git_ops.managed_feature_rebase._isolated_managed_git",
-            return_value=nullcontext(transport),
+            return_value=nullcontext(transport_type.return_value),
         ),
         patch(
             "pynchy.host.git_ops.managed_feature_rebase._fetch_remote_ref",
@@ -274,6 +276,8 @@ def test_reports_verified_base_copy_failures(tmp_path, failure: str) -> None:
             side_effect=index_error,
         ),
     ):
+        transport_type.return_value.args = ()
+        transport_type.return_value.root = tmp_path
         result = host_rebase_managed_feature("safe-feature", [publication.repo_ctx])
 
     assert result == {

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404 - PR helpers use fixed no-shell gh argv.
 import tempfile
-from collections.abc import (  # noqa: TC003 - beartype resolves managed publication signatures at runtime.
+from collections.abc import (
     Mapping,
     Sequence,
 )
@@ -35,7 +35,7 @@ from pynchy.host.git_ops.managed_transport import (
     _push_managed_feature,
 )
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves git sync signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import (
     git_env_with_token,

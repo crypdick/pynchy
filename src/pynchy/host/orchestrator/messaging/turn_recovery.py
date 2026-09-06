@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable  # noqa: TC003 - beartype resolves annotations.
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
+from pathlib import Path
 
 from pynchy.agent_protocol.api import (
     CheckpointControlState,

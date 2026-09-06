@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Callable,
     Mapping,
 )

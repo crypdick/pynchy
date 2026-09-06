@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import subprocess  # noqa: S404 - fixed no-shell gh commands.
 from collections.abc import Callable
-from pathlib import Path  # noqa: TC003 - beartype resolves managed GitHub signatures at runtime.
+from pathlib import Path
 from typing import Any
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves managed GitHub signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.worktree_sync import (
-    _WorktreeContext,  # noqa: TC001 - beartype resolves managed GitHub signatures at runtime.
+    _WorktreeContext,
 )
 
 _GitHubRunner = Callable[..., subprocess.CompletedProcess[str]]

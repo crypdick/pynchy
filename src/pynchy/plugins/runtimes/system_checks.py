@@ -6,19 +6,19 @@ import os
 import subprocess  # noqa: S404 - system checks use fixed no-shell runtime CLI argv.
 import sys
 import threading
-from collections.abc import Iterator  # noqa: TC003 - beartype validates contextmanager annotations.
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves system-check annotations at runtime.
+    Path,
 )
 from typing import cast
 
 from pynchy.identifiers import (
-    OrphanReapAgeMs,  # noqa: TC001 - beartype resolves the public startup contract.
+    OrphanReapAgeMs,
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    RuntimeProvider,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    RuntimeProvider,
 )
 from pynchy.plugins.runtimes.apple_build_lock import apple_build_lock
 from pynchy.plugins.runtimes.cleanup import (

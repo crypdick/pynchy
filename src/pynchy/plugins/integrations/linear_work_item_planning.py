@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.plugins.integrations.linear_client import (
-    LinearClient,  # noqa: TC001 - beartype resolves provider annotations.
+    LinearClient,
 )
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (

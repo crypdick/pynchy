@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import (  # noqa: TC003 - beartype resolves runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -32,7 +32,7 @@ from pynchy.plugins.api import (
     McpServerSpec,
     WebhookRoute,  # beartype resolves the hook return annotation at runtime.
 )
-from pynchy.plugins.integrations.linear_accounts import (  # noqa: TC001 - beartype resolves plugin configuration annotations at runtime.
+from pynchy.plugins.integrations.linear_accounts import (
     LinearAccount,
 )
 from pynchy.plugins.integrations.linear_boards import (

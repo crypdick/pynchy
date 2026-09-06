@@ -11,17 +11,17 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pynchy.conversation.api import (
-    ConversationId,  # noqa: TC001 - beartype resolves lifecycle payloads.
-    ConversationLifecycleFence,  # noqa: TC001 - beartype resolves lifecycle payloads.
-    ConversationSubject,  # noqa: TC001 - beartype resolves webhook targets.
-    ExternalDeliveryIdentity,  # noqa: TC001 - beartype resolves lifecycle payloads.
+    ConversationId,
+    ConversationLifecycleFence,
+    ConversationSubject,
+    ExternalDeliveryIdentity,
 )
 from pynchy.identifiers import (
-    ChatJid,  # noqa: TC001 - beartype resolves contract annotations at runtime.
-    GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ChatJid,
+    GroupFolder,
 )
 from pynchy.logger import logger
-from pynchy.webhook_effects import (  # noqa: TC001 - beartype resolves webhook evidence.
+from pynchy.webhook_effects import (
     WebhookEffectEvidence,
 )
 from pynchy.workspace.api import WorkspaceProfile

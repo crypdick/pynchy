@@ -7,7 +7,7 @@ import os
 import signal
 import threading
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves lifecycle annotations at runtime.
+    Callable,
 )
 from contextlib import AsyncExitStack
 from pathlib import Path  # beartype resolves lifecycle annotations.
@@ -38,7 +38,7 @@ from pynchy.host.orchestrator import (
     task_scheduler,
     workspace_config,
 )
-from pynchy.host.orchestrator.app import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
+from pynchy.host.orchestrator.app import (
     PynchyApp,
 )
 from pynchy.host.orchestrator.deploy import current_deploy_revision
@@ -63,7 +63,7 @@ from pynchy.plugins.api import (
 )
 from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
 from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves lifecycle annotations at runtime.
+from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_boot import (

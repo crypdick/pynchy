@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pydantic.fields import FieldInfo  # noqa: TC002 - beartype resolves this annotation at runtime.
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from pynchy.config.personalization import load_layered_settings_mapping

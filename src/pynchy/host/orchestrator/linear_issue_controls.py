@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.conversation.api import (
-    Conversation,  # noqa: TC001 - beartype resolves this runtime annotation.
+    Conversation,
 )
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiosqlite import Connection  # noqa: TC002 - beartype resolves annotations.
+from aiosqlite import Connection
 
 
 async def ensure_chat_parent(

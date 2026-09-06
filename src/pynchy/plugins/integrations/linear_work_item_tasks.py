@@ -20,7 +20,7 @@ from pynchy.linear_plan_types import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves task annotations.
+from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceLike,
 )

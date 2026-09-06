@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 # allow: file-length - one composition root keeps plugin wiring and lifecycle ownership explicit.
-from collections.abc import (  # noqa: TC003 - beartype resolves callback annotations at startup.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-import tomlkit  # noqa: TC002 - beartype resolves mutation annotations at runtime.
+import tomlkit
 from temporalio.service import RPCError
 
 from pynchy.canaries.api import (
@@ -19,7 +19,7 @@ from pynchy.canaries.api import (
     registered_canary_scenarios,
 )
 from pynchy.canary_contracts import (
-    CanaryScenario,  # noqa: TC001 - beartype resolves registration callback annotations at runtime.
+    CanaryScenario,
 )
 from pynchy.config.api import (  # beartype resolves composition annotations at runtime.
     CalDAVTool,
@@ -169,7 +169,7 @@ from pynchy.plugins.integrations.matrix_gateway import (
     MatrixGatewayRuntime,
     configure_matrix_gateway_runtime,
 )
-from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001 - beartype resolves Matrix callback annotations at runtime.
+from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixPortalAssertion,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import (
@@ -246,7 +246,7 @@ from pynchy.state.api import (
     update_task,
 )
 from pynchy.work_items.api import (
-    WorkItemExecution,  # noqa: TC001 - beartype resolves composition callback annotations.
+    WorkItemExecution,
 )
 from pynchy.workspace.api import (
     CapabilityRule,

@@ -313,7 +313,8 @@ class CodexCLIAgentCore:  # noqa: V102
         }
 
     def _map_error_result(self, obj: dict[str, object], fallback_subtype: str) -> AgentEvent:
-        err = obj.get("error") if isinstance(obj.get("error"), dict) else {}
+        error = obj.get("error")
+        err = error if isinstance(error, dict) else {}
         message = err.get("message") or obj.get("message") or "Codex turn failed"
         subtype = err.get("code") or obj.get("code") or fallback_subtype
         return ResultEvent(

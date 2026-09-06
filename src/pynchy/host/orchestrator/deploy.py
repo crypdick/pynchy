@@ -7,13 +7,13 @@ import os
 import re
 import signal
 import subprocess  # noqa: S404 - deploy helper invokes the repo-local build script without a shell.
-from collections.abc import (  # noqa: TC003 - beartype resolves deploy annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves deploy path annotations at runtime.
+    Path,
 )
 from typing import Any, cast
 

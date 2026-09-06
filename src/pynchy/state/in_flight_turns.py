@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from aiosqlite import (  # noqa: TC002 - beartype resolves transactional annotations at runtime.
+from aiosqlite import (
     Connection,
 )
 

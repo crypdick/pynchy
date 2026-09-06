@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves configured work-item callbacks at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -11,7 +11,7 @@ from typing import Any, cast, overload
 
 import aiohttp
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.conversation.api import (
     ConversationLifecycleFence,
 )
 from pynchy.logger import logger

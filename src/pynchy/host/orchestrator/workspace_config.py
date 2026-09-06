@@ -7,15 +7,15 @@ Runtime creation (e.g. via IPC) writes the corresponding workspace document.
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
-    Iterable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
+    Awaitable,
+    Callable,
+    Iterable,
 )
 from dataclasses import dataclass, field, replace
-from pathlib import Path  # noqa: TC003 - beartype resolves publication callback annotations.
+from pathlib import Path
 from typing import Any, NoReturn, cast
 
-import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
+import pluggy
 import tomlkit
 
 from pynchy.atomic_json import write_text_atomic

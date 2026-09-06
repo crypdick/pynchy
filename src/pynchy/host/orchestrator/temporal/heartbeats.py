@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator  # noqa: TC003 - context manager annotation.
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from temporalio import activity

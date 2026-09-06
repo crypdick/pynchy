@@ -8,7 +8,7 @@ import platform
 import shutil
 import subprocess  # noqa: S404 - resolved Cua binary runs with closed argv.
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
+from pathlib import Path
 from typing import Annotated, Any
 
 import pluggy

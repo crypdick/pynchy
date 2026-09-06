@@ -11,7 +11,7 @@ import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import Literal
 
 PersonalProvider = Literal["whatsapp", "signal", "google_messages"]

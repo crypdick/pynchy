@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves snapshot annotations.
+from pathlib import Path
 from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.orchestrator.workspace_config as workspace_config

@@ -7,8 +7,8 @@ import os
 import re
 import tempfile
 from collections.abc import (
-    Iterator,  # noqa: TC003 - beartype resolves managed-feature iterator annotations at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves managed-feature resolver annotations at runtime.
+    Iterator,
+    Sequence,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +32,7 @@ from pynchy.host.git_ops.managed_feature_remote import (
 from pynchy.host.git_ops.managed_feature_remote import remote_ref_sha as _remote_ref_sha
 from pynchy.host.git_ops.managed_transport import managed_object_store_is_safe
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves managed-feature signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import (
     git_env_with_token,

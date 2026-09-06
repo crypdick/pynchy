@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess  # noqa: S404 - repo helpers use fixed no-shell git/gh argv.
 import uuid
-from collections.abc import (  # noqa: TC003 - beartype resolves repository runtime annotations.
+from collections.abc import (
     Callable,
     Mapping,
 )
@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 from pynchy.host.paths import AGENT_SOURCE_CONTAINER_ROOT
 from pynchy.logger import logger
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
+    ResolvedWorkspaceConfig,
 )
 
 # Warn when a token expires within this many days

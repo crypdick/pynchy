@@ -15,7 +15,7 @@ from pynchy.host.container_manager.api import (
     destroy_gate,
     handle_artifact_security_check,
 )
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
+from pynchy.plugins.api import (
     OutboundEvent,
 )
 from pynchy.workspace.api import (

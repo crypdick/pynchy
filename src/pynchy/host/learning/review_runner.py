@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.reviewer import build_review_prompt, should_review
-from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.learning_packets import (
     LearningPacket,
 )
 from pynchy.workspace.api import WorkspaceProfile

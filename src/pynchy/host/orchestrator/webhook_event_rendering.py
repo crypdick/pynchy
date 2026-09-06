@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 
 from pynchy.content_fencing import fence_untrusted_content
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves rendering annotations at runtime.
+from pynchy.plugins.api import (
     WebhookEvent,
     WebhookRoute,
 )

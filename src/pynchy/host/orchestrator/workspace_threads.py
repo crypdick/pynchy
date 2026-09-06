@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves workspace-thread annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves workspace-thread annotations at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_look
 from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    Channel,
 )
 from pynchy.workspace.api import ResolvedWorkspaceConfig, WorkspaceProfile
 

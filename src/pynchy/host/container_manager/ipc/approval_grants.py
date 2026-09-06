@@ -11,7 +11,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001 - beartype resolves approval annotations.
+    IpcDeps,
 )
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval

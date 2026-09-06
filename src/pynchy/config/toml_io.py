@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves annotations at runtime.
+    Callable,
 )
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
+from pathlib import Path
 from typing import Any
 
 import tomlkit

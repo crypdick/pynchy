@@ -8,7 +8,7 @@ import logging
 import os
 import signal
 from asyncio.subprocess import PIPE, Process
-from collections.abc import (  # noqa: TC003 - beartype resolves this runtime annotation.
+from collections.abc import (
     Mapping,
 )
 from dataclasses import dataclass

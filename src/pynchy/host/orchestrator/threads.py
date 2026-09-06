@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence  # noqa: TC003 - beartype resolves sequence annotations.
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves this runtime annotation.
+    Channel,
 )
 
 type ThreadKind = Literal["issue", "automation", "planning", "testing", "topic"]

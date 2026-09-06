@@ -12,7 +12,7 @@ from pynchy.plugins.api import (
     WebhookEvent,
     WebhookProcessingError,
 )
-from pynchy.plugins.integrations.github_webhook_models import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+from pynchy.plugins.integrations.github_webhook_models import (
     GitHubWebhookRouteConfig,
 )
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError

@@ -10,7 +10,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._oauth import (

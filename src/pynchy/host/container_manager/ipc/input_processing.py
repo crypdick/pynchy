@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves IPC paths at runtime.
+from pathlib import Path
 
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # beartype resolves IPC deps at runtime.

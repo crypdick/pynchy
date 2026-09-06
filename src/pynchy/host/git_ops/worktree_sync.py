@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves worktree sync signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -16,7 +16,7 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

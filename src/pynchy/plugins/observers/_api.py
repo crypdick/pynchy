@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from typing import Protocol, TypeGuard, runtime_checkable
 
-import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
+import pluggy
 
 from pynchy.event_bus import (
-    EventBus,  # noqa: TC001 - beartype resolves this runtime annotation.
+    EventBus,
 )
 from pynchy.logger import logger
 

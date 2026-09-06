@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import AsyncExitStack
 
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves runtime annotations.
+from pynchy.plugins.api import (
     ConnectionRuntime,
 )
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Protocol
 
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves sender policy annotations.
+from pynchy.plugins.api import (
     Channel,
     NewMessage,
 )
 from pynchy.state.api import get_messages_since
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves sender policy annotations at runtime.
+from pynchy.workspace.api import (
     WorkspaceProfile,
 )
 

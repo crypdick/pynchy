@@ -40,7 +40,7 @@ from pynchy.state.api import (
     retire_terminal_execution_resources_if_unowned,
 )
 from pynchy.work_items.api import (
-    WorkItemExecution,  # noqa: TC001 - beartype resolves adapter annotations at runtime.
+    WorkItemExecution,
 )
 
 

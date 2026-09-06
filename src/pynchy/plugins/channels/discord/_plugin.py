@@ -4,31 +4,31 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves this runtime annotation.
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Awaitable,
+    Callable,
 )
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves this plugin factory annotation at runtime.
+    Path,
 )
 
 import pluggy
 
-from pynchy.discord import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.discord import (
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves hook annotations at runtime.  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.api import (
     AudioTranscriptionResult,
     ChannelPluginContext,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
     NewMessage,
 )
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves plugin annotations at runtime.
+from pynchy.plugins.speech.api import (
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves this runtime annotation.
+    WorkspaceProfile,
 )
 
 from ._channel import DiscordChannel

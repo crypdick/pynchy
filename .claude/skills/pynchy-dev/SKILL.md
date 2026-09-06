@@ -36,6 +36,17 @@ Private overlay edits belong in the independent personalization repository's own
 worktree, not in the public Pynchy worktree. See
 [editing personalization](../../../docs/usage/personalization.md#edit-with-managed-worktrees).
 
+## Quality checks
+
+Keep correctness, security, architecture, and coverage checks blocking. The
+comment-language check is advisory. Host beartype violations warn in production
+and fail tests; fix the contract or test double instead of suppressing violations.
+Host annotations used by beartype need runtime imports; Ruff's host configuration
+handles this without per-import exemptions. Agent-runner uses its own lint config.
+
+Run focused checks while editing a coherent change. The managed merge owns the
+full verification sequence; repeat it only after changes or unresolved failures.
+
 ## Documentation Lookup
 
 When you need documentation for a library or framework, use the context7 MCP server to get up-to-date docs. Don't rely on training data for API details that may have changed.

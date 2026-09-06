@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.agent_protocol.api import ContainerOutput  # noqa: TC001 - see above.
+from pynchy.agent_protocol.api import ContainerOutput
 from pynchy.host.orchestrator.pipeline_context import reviewer_ids_for_context
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspacePolicy,
@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_policy,
 )
 from pynchy.logger import logger
-from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves scheduler annotations.
+from pynchy.scheduling.api import (
     ScheduledTask,
 )
 from pynchy.workspace.api import (

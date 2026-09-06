@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.conversation.api import (
     ConversationLifecycleFence,
 )
 from pynchy.state.connection import atomic_write

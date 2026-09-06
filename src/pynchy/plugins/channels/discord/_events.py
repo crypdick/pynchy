@@ -6,12 +6,12 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves these runtime annotations.
-    Callable,  # noqa: TC003 - beartype resolves these runtime annotations.
+    Awaitable,
+    Callable,
 )
 from datetime import UTC, datetime
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
+    Path,
 )
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 

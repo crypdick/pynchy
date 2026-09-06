@@ -25,12 +25,12 @@ import json
 import os
 import secrets
 import string
-from collections.abc import (  # noqa: TC003 - beartype resolves expiry callback annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves approval file paths at runtime.
+from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken

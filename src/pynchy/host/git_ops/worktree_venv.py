@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import time
-from pathlib import Path  # noqa: TC003 - beartype validates worktree retention paths.
+from pathlib import Path
 
 from pynchy.logger import logger
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import re
-import subprocess  # noqa: S404, TC003 - trusted display helper handles and beartype runtime annotation binding.
+import subprocess  # noqa: S404 - trusted display helper handles and beartype runtime annotation binding.
 from typing import Any, cast
 
 from pynchy.logger import logger
@@ -25,7 +25,7 @@ from pynchy.plugins.integrations.x_integration._browser import (
     validate_content,
     with_browser,
 )
-from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001 - beartype validates nested action contracts at runtime.
+from pynchy.plugins.integrations.x_integration._contracts import (
     XLocator,
     XPage,
 )

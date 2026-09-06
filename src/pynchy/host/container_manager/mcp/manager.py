@@ -20,8 +20,8 @@ import asyncio
 import hashlib
 import time
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003 - beartype resolves lease return annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves MCP manager runtime annotations.
+    AsyncIterator,
+    Callable,
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -35,7 +35,7 @@ from pynchy.host.container_manager.docker import (
     stop_container,
 )
 from pynchy.host.container_manager.gateway import LiteLLMGateway, resolve_container_host
-from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves manager callback annotations at runtime.
+from pynchy.host.container_manager.mcp.approval import (
     ApprovalRequestFn,
 )
 from pynchy.host.container_manager.mcp.lifecycle import (
@@ -62,7 +62,7 @@ from pynchy.host.container_manager.mcp.resolution import (
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    McpServerConfig,  # noqa: TC001 - beartype resolves MCP manager signatures at runtime.
+    McpServerConfig,
 )
 from pynchy.workspace.api import (
     ResolvedWorkspaceConfig,

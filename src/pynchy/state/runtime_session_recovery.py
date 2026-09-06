@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from aiosqlite import Connection  # noqa: TC002 - beartype resolves recovery annotations.
+from aiosqlite import Connection
 
-from pynchy.identifiers import (  # noqa: TC001 - beartype resolves recovery annotations at runtime.
+from pynchy.identifiers import (
     ChatJid,
     GroupFolder,
     SessionId,

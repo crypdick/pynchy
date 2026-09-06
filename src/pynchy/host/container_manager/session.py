@@ -11,24 +11,24 @@ import asyncio
 import contextlib
 import sys
 import time
-from collections.abc import (  # noqa: TC003 - beartype resolves session callback signatures at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves session path annotations at runtime.
+    Path,
 )
 from typing import Any
 
-import pluggy  # noqa: TC002 - beartype resolves startup plugin annotations.
+import pluggy
 
 from pynchy.agent_protocol.api import (
-    AgentExecutionRuntime,  # noqa: TC001 - beartype resolves startup contracts.
-    ContainerInput,  # noqa: TC001 - beartype resolves startup contracts.
-    McpStartupFailure,  # noqa: TC001 - beartype resolves startup contracts.
-    OnOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    AgentExecutionRuntime,
+    ContainerInput,
+    McpStartupFailure,
+    OnOutput,
 )
 from pynchy.async_tasks import create_background_task
 from pynchy.host.container_manager.ipc.write import (
@@ -46,11 +46,11 @@ from pynchy.host.container_manager.process import (
 )
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, resolve_security
 from pynchy.identifiers import (
-    GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    GroupFolder,
 )
 from pynchy.logger import logger
 from pynchy.progress_wait import ProgressTimeoutError, wait_for_progress
-from pynchy.workspace.api import WorkspaceProfile  # noqa: TC001 - beartype resolves startup inputs.
+from pynchy.workspace.api import WorkspaceProfile
 
 
 class SessionDiedError(Exception):

@@ -6,11 +6,11 @@ import asyncio
 import json
 import os
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves startup runtime annotations.
+    Callable,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves startup annotations at runtime.
+from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (

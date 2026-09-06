@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves these annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
     Iterable,
@@ -22,12 +22,12 @@ from pynchy.plugins.integrations.linear_accounts import (
     configured_linear_accounts,
     linear_account_for_workspace,
 )
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves inbox annotations at runtime.
+from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
 from pynchy.plugins.integrations.linear_issue_mutations import update_issue_state
-from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+from pynchy.plugins.integrations.linear_plan_admission import (
     LinearPlanReviewer,
 )
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
@@ -57,7 +57,7 @@ from pynchy.plugins.integrations.linear_work_item_tasks import (
     decision_state_id,
 )
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves controller annotations.
+    ScheduledTask,
 )
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.

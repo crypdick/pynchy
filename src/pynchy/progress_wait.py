@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import (  # noqa: TC003 - beartype resolves this runtime annotation.
+from collections.abc import (
     Awaitable,
 )
 

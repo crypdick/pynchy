@@ -11,7 +11,7 @@ from typing import Any, cast
 
 from pynchy.host.git_ops.utils import redact_git_diagnostic, run_git
 from pynchy.host.git_ops.worktree_sync import (
-    _WorktreeContext,  # noqa: TC001 - beartype resolves managed transport signatures at runtime.
+    _WorktreeContext,
 )
 
 _GIT_OBJECT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")

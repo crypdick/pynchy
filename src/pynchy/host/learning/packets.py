@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves workflow callback annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves workflow callback annotations at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,7 +13,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001 - beartype resolves these runtime annotations.
+    ContainerOutput,
 )
 from pynchy.host.learning.paths import (
     LearningConfigError,
@@ -23,10 +23,10 @@ from pynchy.learning_packets import LearningPacket
 from pynchy.learning_packets import packet_to_payload as _packet_to_payload
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    NewMessage,  # noqa: TC001 - beartype resolves these runtime annotations.
+    NewMessage,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
+    WorkspaceProfile,
 )
 
 _MAX_PACKET_MESSAGES = 8

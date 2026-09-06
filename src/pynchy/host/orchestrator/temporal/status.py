@@ -16,7 +16,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     database_host_job_workflow_id,
 )
 from pynchy.logger import logger
-from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves runtime annotations.
+from pynchy.scheduling.api import (
     HostJob,
     ScheduledTask,
 )

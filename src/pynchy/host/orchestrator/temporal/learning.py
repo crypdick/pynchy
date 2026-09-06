@@ -7,7 +7,7 @@ from typing import Any, cast
 from temporalio import activity
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    SchedulerDependencies,  # noqa: TC001 - beartype resolves Temporal learning annotations at runtime.
+    SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,

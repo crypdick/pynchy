@@ -6,35 +6,35 @@ Loads and validates host-side channel plugins and resolves the default channel.
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves these runtime annotations.
-    Callable,  # noqa: TC003 - beartype resolves these runtime annotations.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass, field
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import Any
 
-import pluggy  # noqa: TC002 - beartype resolves the plugin-manager annotation at runtime.
+import pluggy
 
-from pynchy.channels import (  # noqa: TC001 - beartype resolves these runtime annotations.
+from pynchy.channels import (
     SlackConnectionSettings,
     WhatsAppConnectionSettings,
 )
-from pynchy.discord import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.discord import (
     DiscordConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.contracts import (  # noqa: TC001 - beartype resolves these runtime annotations.
+from pynchy.plugins.contracts import (
     AudioTranscriptionResult,
     Channel,
     InboundAudioProcessingRequest,
     InboundAudioProcessingResult,
     NewMessage,
 )
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.speech.api import (
     SpeechSynthesizer,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
+    WorkspaceProfile,
 )
 
 _DEFAULT_CHANNEL_NOT_FOUND = (

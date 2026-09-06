@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves assessor annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves the canary response path at runtime.
+    Path,
 )
 from typing import Any, Protocol, runtime_checkable
 
@@ -30,10 +30,10 @@ from pynchy.host.container_manager.security.package_metadata import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    OutboundEvent,  # noqa: TC001 - beartype resolves protocol annotations.
+    OutboundEvent,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves protocol annotations.
+    WorkspaceProfile,
 )
 
 _MAX_TAINT_CANDIDATES = 8

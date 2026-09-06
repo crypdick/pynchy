@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from pynchy.discord import (  # noqa: TC001 - beartype resolves these runtime annotations.
+from pynchy.discord import (
     DiscordChannelSettings,
     DiscordConnectionSettings,
     DiscordGuildSettings,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from pynchy.async_tasks import create_background_task
 from pynchy.host.orchestrator.queue_serialization import await_queued_task
-from pynchy.host.orchestrator.queue_state import (  # noqa: TC001 - beartype resolves queue annotations.
+from pynchy.host.orchestrator.queue_state import (
     HostProcessLease,
     QueuedTask,
 )
@@ -24,11 +24,11 @@ from pynchy.host.orchestrator.runtime_process_control import (
 )
 from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    RuntimeId,
 )
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import (
-    RuntimeTarget,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    RuntimeTarget,
 )
 
 _ResultT = TypeVar("_ResultT")

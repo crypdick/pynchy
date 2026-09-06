@@ -31,14 +31,14 @@ from pynchy.identifiers import (
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    Channel,
 )
 from pynchy.scheduling.api import (
     ScheduledTask,
     SessionPolicy,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

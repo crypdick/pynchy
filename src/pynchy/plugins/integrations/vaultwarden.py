@@ -11,10 +11,10 @@ import threading
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - Pydantic/beartype resolve runtime annotations.
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from uuid import UUID  # noqa: TC003 - Pydantic resolves runtime annotations.
+from uuid import UUID
 
 import pluggy
 from pydantic import BaseModel, ConfigDict, field_validator

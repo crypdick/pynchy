@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.plugins.api import (
-    OutboundEvent,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    OutboundEvent,
 )
 
 

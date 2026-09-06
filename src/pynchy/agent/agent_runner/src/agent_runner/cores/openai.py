@@ -42,7 +42,8 @@ from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 from .openai_shell import make_shell_executor
 
 if TYPE_CHECKING:
-    from collections.abc import AbstractAsyncContextManager, AsyncIterator, Callable
+    from collections.abc import AsyncIterator, Callable
+    from contextlib import AbstractAsyncContextManager
 
     from agent_runner.core import AgentCoreConfig
     from agent_runner.events import AgentEvent

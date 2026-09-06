@@ -9,7 +9,7 @@ container workers use the same IPC/MCP lookup contract.
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves security resolution annotations.
+from collections.abc import (
     Callable,
     Mapping,
 )

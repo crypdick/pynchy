@@ -7,7 +7,7 @@ import asyncio
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor, monotonic_cursor
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves control annotations.
+from pynchy.host.orchestrator.messaging.deps import (
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.messaging.sender_policy import load_allowed_group_
 from pynchy.host.orchestrator.scheduled_turn import pause_queued_once_task
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves control annotations at runtime.
+from pynchy.plugins.api import (
     NewMessage,
 )
 from pynchy.state.api import (
@@ -29,7 +29,7 @@ from pynchy.state.api import (
     request_in_flight_turn_control,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves control annotations.
+    WorkspaceProfile,
 )
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}

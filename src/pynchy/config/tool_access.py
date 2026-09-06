@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import (  # noqa: TC003 - beartype resolves tool-access annotations at runtime.
+from collections.abc import (
     Mapping,
 )
 from dataclasses import replace

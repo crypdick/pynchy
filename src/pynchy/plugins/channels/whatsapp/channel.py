@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import sys
 from collections import deque
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
@@ -42,7 +42,7 @@ from pynchy.plugins.api import (
     OutboundEvent,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 from .ask_user import resolve_ask_user_answer

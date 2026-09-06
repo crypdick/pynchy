@@ -28,6 +28,7 @@ def _result(
 
 class _Deps:
     def __init__(self) -> None:
+        self.wake_worktree_conflict = AsyncMock()
         self.offer_update = None
         self.trigger_deploy = AsyncMock()
 

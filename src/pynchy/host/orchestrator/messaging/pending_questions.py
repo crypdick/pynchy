@@ -21,7 +21,7 @@ from collections.abc import (
 )
 from datetime import UTC, datetime
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves pending-question path annotations at runtime.
+    Path,
 )
 from typing import Any, cast
 

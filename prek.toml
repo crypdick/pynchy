@@ -126,8 +126,9 @@ types = ["python"]
 
 [[repos.hooks]]
 id = "check-timeless-comments"
-name = "Flag temporal language in comments"
-entry = "uv run python scripts/prek_hooks/check_timeless_comments.py"
+name = "Review temporal language in comments (advisory)"
+entry = "uv run python scripts/prek_hooks/check_timeless_comments.py --advisory"
+verbose = true
 language = "system"
 types = ["python"]
 files = "^src/"

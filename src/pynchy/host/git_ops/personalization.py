@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves this runtime annotation.
+from collections.abc import (
     Callable,
 )
 from pathlib import Path  # beartype resolves this runtime annotation.

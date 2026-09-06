@@ -38,6 +38,7 @@ def runtime() -> ControlPlaneRuntime:
 class _NoRuntimeIngress:
     def __init__(self) -> None:
         delegate = MockHttpDeps()
+        self.broadcast_synthetic_user_input = delegate.broadcast_synthetic_user_input
         self.capability_status_operations = delegate.capability_status_operations
         self.deploy_operations = delegate.deploy_operations
         self.canary_run_to_dict = delegate.canary_run_to_dict

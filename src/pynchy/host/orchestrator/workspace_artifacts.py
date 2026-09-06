@@ -11,10 +11,10 @@ from pathlib import Path
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
 from pynchy.host.orchestrator.threads import provider_conversation_exists
 from pynchy.logger import logger
-from pynchy.plugins.api import Channel  # noqa: TC001 - beartype resolves callbacks.
-from pynchy.scheduling.api import ScheduledTask  # noqa: TC001 - beartype resolves tasks.
+from pynchy.plugins.api import Channel
+from pynchy.scheduling.api import ScheduledTask
 from pynchy.state.api import get_all_sessions, get_all_tasks, get_in_flight_turns
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves workspace ownership.
+from pynchy.workspace.api import (
     WorkspaceProfile,
 )
 

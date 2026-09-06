@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import nullcontext
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves scheduler annotations.
+from pathlib import Path
 from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio import activity
@@ -39,7 +39,7 @@ from pynchy.host.orchestrator.scheduled_turn import (
     TaskAgentRequest,
     run_task_agent,
 )
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001 - public runtime re-export.
+from pynchy.host.orchestrator.scheduler_deps import (
     SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.api import (
@@ -69,7 +69,7 @@ from pynchy.state.api import (
 )
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 _task_run_locks: dict[str, asyncio.Lock] = {}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves policy annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -13,7 +13,7 @@ from pynchy.scheduling.api import (  # beartype resolves policy annotations at r
     SessionPolicy,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves policy annotations at runtime.
+    WorkspaceProfile,
 )
 
 

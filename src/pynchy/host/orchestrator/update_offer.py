@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves update-offer dependencies at runtime.
+    Path,
 )
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
-    AgentExecutionRuntime,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    AgentExecutionRuntime,
 )
 from pynchy.deployments import (
     DeployClaimStatus,
@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.temporal.api import DeployRequest, start_deploy_wo
 from pynchy.logger import logger
 from pynchy.state.api import advance_deployment_baseline, get_deployment_state
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 _REQUEST_PREFIX = "host-update:"

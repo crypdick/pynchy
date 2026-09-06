@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-import aiosqlite  # noqa: TC002 - beartype resolves this at runtime.
+import aiosqlite
 
 from pynchy.work_items.api import (
     WorkItemTransitionRequest,

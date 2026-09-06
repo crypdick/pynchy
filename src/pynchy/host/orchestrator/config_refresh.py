@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves runtime operation annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )

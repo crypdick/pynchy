@@ -33,11 +33,11 @@ Implementation lives in:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves gateway runtime annotations.
+from collections.abc import (
     Callable,
     Mapping,
 )
-from pathlib import Path  # noqa: TC003 - beartype resolves gateway runtime annotations.
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.plugins.api import (  # beartype resolves the collector return annotation at runtime.
@@ -56,13 +56,13 @@ from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
     LiteLLMGatewayCredentials,
 )
-from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves gateway callback annotations at runtime.
+from pynchy.host.container_manager.mcp.approval import (
     ApprovalRequestFn,
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import McpServerSpec
 from pynchy.workspace.api import (
-    ServiceTrustConfig,  # noqa: TC001 - beartype resolves the collector return annotation at runtime.
+    ServiceTrustConfig,
 )
 
 _GATEWAY_MASTER_KEY_REQUIRED_ERROR = (

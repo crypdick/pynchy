@@ -9,7 +9,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 from temporalio import activity
 
 from pynchy.agent_protocol.api import (
-    AgentExecutionRuntime,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    AgentExecutionRuntime,
 )
 from pynchy.deployments import (
     DeployChangeKind,

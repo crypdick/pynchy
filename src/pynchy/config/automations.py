@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from pynchy.config.errors import PersonalizationError
-from pynchy.config.jobs import (  # noqa: TC001 - Pydantic resolves document annotations.
+from pynchy.config.jobs import (
     JobConfig,
 )
 

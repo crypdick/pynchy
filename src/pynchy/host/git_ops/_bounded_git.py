@@ -10,7 +10,7 @@ import subprocess  # noqa: S404 - fixed no-shell Git commands.
 import time
 import typing
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves Git helper signatures at runtime.
+from pathlib import Path
 
 from pynchy.host.git_ops.utils import (
     _PROCESS_GROUP_TERMINATION_GRACE_SECONDS,

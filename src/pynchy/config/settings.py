@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import re
 import warnings
-from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
+from collections.abc import (
     Sequence,
 )
 from dataclasses import replace
@@ -23,7 +23,7 @@ from pydantic_settings import (
 
 from pynchy.config import settings_validation
 from pynchy.config.jobs import (
-    JobConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
+    JobConfig,
 )
 from pynchy.config.merge import merge_workspace_profiles
 from pynchy.config.models import (
@@ -49,10 +49,10 @@ from pynchy.config.models import (
     WorkspaceTool,
 )
 from pynchy.config.permissions import (
-    PermissionConfig,  # noqa: TC001 - beartype resolves this runtime annotation.
+    PermissionConfig,
 )
 from pynchy.config.profiles import (
-    ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
+    ProfileConfig,
 )
 from pynchy.config.prompts import (
     PipelineConfig,

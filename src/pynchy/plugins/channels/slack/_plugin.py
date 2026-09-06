@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,
 )
 from typing import Any
 
 import pluggy
 
 from pynchy.channels import (
-    SlackConnectionSettings,  # noqa: TC001 - beartype resolves this runtime annotation.
+    SlackConnectionSettings,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (
     ChannelPluginContext,
     NewMessage,
 )

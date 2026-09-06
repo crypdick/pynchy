@@ -6,17 +6,17 @@ All hooks use the "pynchy" namespace and are validated by pluggy at registration
 
 from __future__ import annotations
 
-from collections.abc import Awaitable  # noqa: TC003 - hook contracts resolve at runtime.
+from collections.abc import Awaitable
 from typing import TYPE_CHECKING
 
 import pluggy
 
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
+from pynchy.plugins.api import (
     Channel,
     RuntimeProvider,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 if TYPE_CHECKING:

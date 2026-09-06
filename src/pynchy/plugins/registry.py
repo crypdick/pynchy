@@ -19,8 +19,8 @@ import asyncio
 import importlib
 import warnings
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
-    Mapping,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,
+    Mapping,
 )
 from typing import TypeGuard
 

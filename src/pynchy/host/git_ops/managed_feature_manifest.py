@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves manifest helper annotations at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import run_git
 

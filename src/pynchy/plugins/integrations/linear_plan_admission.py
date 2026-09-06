@@ -12,7 +12,7 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewResult,
 )
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan

@@ -6,9 +6,9 @@ import fcntl
 import os
 import stat
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
-    Iterator,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves routed-worktree annotations at runtime.
+    Callable,
+    Iterator,
+    Sequence,
 )
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,7 +21,7 @@ from pynchy.host.git_ops._worktree_models import (
     WorktreeResult,
 )
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves routed-worktree annotations at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, run_git
 from pynchy.logger import logger

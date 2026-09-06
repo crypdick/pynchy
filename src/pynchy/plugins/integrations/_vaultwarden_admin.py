@@ -8,9 +8,9 @@ import os
 import re
 import stat
 import threading
-from collections.abc import Callable  # noqa: TC003 - beartype resolves runtime annotations.
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves runtime annotations.
+from pathlib import Path
 from typing import Any
 
 from ._vaultwarden_admin_cli import AdminBwRunner, BwClient, BwSession, run_bw

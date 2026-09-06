@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves skill-runtime annotations at runtime.
-    Mapping,  # noqa: TC003 - beartype resolves skill-runtime annotations at runtime.
+    Callable,
+    Mapping,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

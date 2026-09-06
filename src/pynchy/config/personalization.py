@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from pynchy.config.automations import load_automations
 from pynchy.config.errors import PersonalizationError
 from pynchy.config.models import (
-    WorkspaceConfig,  # noqa: TC001 - Pydantic resolves the field annotation at runtime.
+    WorkspaceConfig,
 )
 from pynchy.config.prompts import (
     PipelineConfig,

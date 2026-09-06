@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves inbound routing annotations at runtime.
+    Callable,
 )
 
 import pynchy.host.orchestrator.todos as todos
@@ -20,7 +20,7 @@ from pynchy.agent_protocol.api import (
     InFlightWorkKind,  # beartype resolves inbound routing annotations at runtime.
 )
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves routing annotations.
+from pynchy.host.orchestrator.messaging.deps import (
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.host_controls import (
@@ -50,7 +50,7 @@ from pynchy.state.api import (
     message_cursor,
 )
 from pynchy.workspace.api import (  # beartype resolves inbound routing annotations at runtime.
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves inbound routing annotations.
+    WorkspaceProfile,
 )
 
 

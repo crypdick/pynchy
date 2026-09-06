@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path  # noqa: TC003 - beartype resolves dataclass annotations at runtime.
+from pathlib import Path
 
 
 class WorktreeError(Exception):

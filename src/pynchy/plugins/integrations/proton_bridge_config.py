@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping  # noqa: TC003 - beartype resolves this annotation at runtime.
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 

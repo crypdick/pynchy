@@ -14,12 +14,12 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves git sync helper signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

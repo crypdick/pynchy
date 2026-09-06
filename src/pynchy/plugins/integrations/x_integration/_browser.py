@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import re
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import Any, cast
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
-from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001 - beartype validates browser helper contracts at runtime.
+from pynchy.plugins.integrations.x_integration._contracts import (
     XLocator,
     XPage,
 )

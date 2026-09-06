@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - parser annotation is part of this port.
+from collections.abc import (
     Callable,
     Mapping,
 )

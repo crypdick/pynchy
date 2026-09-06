@@ -7,7 +7,7 @@ import os
 import secrets
 import stat
 from contextlib import suppress
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 
 
 def write_text_atomic(path: Path, payload: str, *, mode: int | None = None) -> None:

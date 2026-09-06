@@ -14,7 +14,7 @@ from weakref import WeakValueDictionary
 
 from pynchy.identifiers import ChannelName, ChatJid
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves delivery annotations.
+from pynchy.plugins.api import (
     Channel,
     OutboundEvent,
 )

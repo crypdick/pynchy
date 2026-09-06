@@ -6,7 +6,7 @@ import asyncio
 import os
 import shutil
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger

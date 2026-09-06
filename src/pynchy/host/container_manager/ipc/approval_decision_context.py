@@ -11,7 +11,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
 )
 from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
-from pynchy.host.container_manager.security.gate import (  # noqa: TC001 - beartype resolves replay-gate annotations.
+from pynchy.host.container_manager.security.gate import (
     SecurityGate,
 )
 from pynchy.workspace.api import APPROVAL_TIMEOUT_SECONDS

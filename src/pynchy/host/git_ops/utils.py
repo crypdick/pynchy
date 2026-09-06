@@ -7,9 +7,9 @@ import os
 import re
 import signal
 import subprocess  # noqa: S404 - shared git helper uses fixed no-shell argv.
-from collections.abc import Callable  # noqa: TC003 - beartype resolves this runtime annotation.
+from collections.abc import Callable
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves git helper signatures at runtime.
+    Path,
 )
 
 from pynchy.host.git_ops._environment import (  # noqa: F401 - preserve utility-module imports.

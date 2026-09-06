@@ -12,7 +12,7 @@ from typing import Protocol, runtime_checkable
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    Channel,
 )
 
 

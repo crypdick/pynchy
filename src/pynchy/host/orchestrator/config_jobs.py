@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves job reconciliation annotations at runtime.
+    Callable,
 )
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -18,8 +18,8 @@ from pynchy.scheduling.api import (  # beartype resolves job reconciliation anno
 )
 from pynchy.state.api import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations at runtime.
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves job reconciliation annotations at runtime.
+    ResolvedWorkspaceConfig,
+    WorkspaceProfile,
 )
 
 type JobConfig = Any

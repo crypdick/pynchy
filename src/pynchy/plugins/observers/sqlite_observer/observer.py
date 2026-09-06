@@ -6,8 +6,8 @@ Schema lives in ``db/_schema.py``; storage is delegated to ``db.store_event()``.
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves observer callback annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves observer callback annotations at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass
 

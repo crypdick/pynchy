@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from pynchy.action_intents import ActionIntent, ActionIntentStatus
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves runtime annotations.
+from pynchy.plugins.api import (
     ActionIntentContract,
     HostActionDescriptor,
 )

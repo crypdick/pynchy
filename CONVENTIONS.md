@@ -123,7 +123,7 @@ concrete value in code is *also* stated in prose (the security trust model,
 of sync unless they reference each other.
 
 ```python
-# NOTE: Update docs/architecture.md § Security model if you change these defaults.
+# NOTE: Update docs/architecture/security.md § Trust Model if you change these defaults.
 class ServiceTrustConfig: ...
 ```
 

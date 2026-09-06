@@ -135,6 +135,7 @@ markers = [
     "runtime: deterministic full-stack runtime tests managed by scripts/runtime_harness.py (deselected by default)",
 ]
 filterwarnings = [
+    "error::beartype.roar.BeartypeWarning",
     # aiohttp request/application types subclass typing.MutableMapping[...] generics
     # (not beartype.typing's PEP 585 form) in aiohttp's own source; see
     # src/pynchy/__init__.py for the full explanation. Not fixable on our side.
@@ -251,6 +252,9 @@ select = [
 # selectors until a focused readability migration can review them together.
 ignore = ["RUF105", "RUF201"]
 [tool.ruff.lint.per-file-ignores]
+# Host annotations are evaluated by the package-wide beartype import hook.
+# Agent-runner has its own config and does not install that hook.
+"src/pynchy/**/*.py" = ["TC001", "TC002", "TC003"]
 # Tests legitimately capture unused returns, assert directly, touch private implementation
 # details, use boolean positional helpers, and use high-complexity parameterized setup.
 # RUF012: test-only fixture/template dicts don't carry the shared-mutable-state
@@ -285,17 +289,14 @@ warn_return_any = true
 warn_unused_configs = true
 show_error_codes = true
 pretty = true
-# Pragmatic exceptions for this project's frameworks:
-#   attr-defined/union-attr/override — pluggy hooks use dynamic attrs
-#   call-arg — Pydantic model constructors trip false positives
-# TODO: Scope these exceptions to adapter boundaries; they also suppress invalid
-# first-party attribute access and call contracts throughout the application.
-disable_error_code = [
-    "attr-defined",
-    "union-attr",
-    "override",
-    "call-arg",
-]
+# Attribute contracts are being migrated package by package. Call signatures
+# and overrides are checked throughout host code.
+disable_error_code = ["attr-defined", "union-attr"]
+
+# These packages have complete attribute contracts; keep them checked as they grow.
+[[tool.mypy.overrides]]
+module = ["pynchy.state.*", "pynchy.workspace.*", "pynchy.agent_protocol.*"]
+enable_error_code = ["attr-defined", "union-attr"]
 
 # Dynamic test fixtures are relaxed by default; contract checks opt in below.
 [[tool.mypy.overrides]]

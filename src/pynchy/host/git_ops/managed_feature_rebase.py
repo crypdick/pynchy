@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess  # noqa: S404 - streams fixed Git commands between host-owned repositories.
-from collections.abc import Sequence  # noqa: TC003 - beartype resolves signatures at runtime.
+from collections.abc import Sequence
 from pathlib import Path
 
 from pynchy.host.git_ops.managed_feature import (
@@ -16,10 +16,10 @@ from pynchy.host.git_ops.managed_feature import (
 )
 from pynchy.host.git_ops.managed_feature_manifest import _ManifestValidationError
 from pynchy.host.git_ops.managed_feature_models import (
-    ManagedFeaturePublication,  # noqa: TC001 - beartype resolves signatures at runtime.
+    ManagedFeaturePublication,
 )
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves signatures at runtime.
+    RepoContext,
 )
 from pynchy.host.git_ops.utils import git_env_without_credentials, redact_git_diagnostic, run_git
 

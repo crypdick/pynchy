@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves plugin-job runtime annotations.
+    Callable,
 )
 from dataclasses import dataclass
 from typing import Any, NoReturn, cast

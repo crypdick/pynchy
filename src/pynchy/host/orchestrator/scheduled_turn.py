@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
     Iterator,
@@ -11,7 +11,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves these runtime a
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves request annotations.
+from pathlib import Path
 from typing import Any
 
 from pynchy.agent_protocol.api import (
@@ -28,13 +28,13 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     requested_control_outcome,
     semantic_resume_messages,
 )
-from pynchy.host.orchestrator.scheduled_turn_deps import (  # noqa: TC001 - beartype resolves request annotations.
+from pynchy.host.orchestrator.scheduled_turn_deps import (
     ScheduledTurnDeps,
 )
 from pynchy.identifiers import RuntimeId
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ScheduledTask,
 )
 from pynchy.state.api import (
     clear_in_flight_turn,
@@ -43,11 +43,11 @@ from pynchy.state.api import (
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves terminal outcome annotations at runtime.
+from pynchy.turn_outcomes import (
     TurnOutcome,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 SCHEDULED_TURN_INTERRUPTED = "__scheduled_turn_interrupted__"

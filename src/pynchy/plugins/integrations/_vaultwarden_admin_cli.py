@@ -9,7 +9,7 @@ import subprocess  # noqa: S404 - client invokes one fixed host binary without a
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves runtime annotations.
+from pathlib import Path
 
 from pynchy.process_environment import filtered_process_environment
 

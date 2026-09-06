@@ -16,10 +16,10 @@ from typing import Any, NewType
 from pynchy.action_intents import ActionIntent
 from pynchy.actions.api import ActionId, ActionSpec, ActionTransport
 from pynchy.identifiers import (
-    CapabilityId,  # noqa: TC001 - beartype resolves descriptor annotations at runtime.
+    CapabilityId,
 )
 from pynchy.workspace.api import (
-    ServiceTrustConfig,  # noqa: TC001 - beartype resolves descriptor annotations at runtime.
+    ServiceTrustConfig,
 )
 
 HostToolName = NewType("HostToolName", str)

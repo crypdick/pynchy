@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003 - beartype resolves this public signature at runtime.
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config.personalization import (

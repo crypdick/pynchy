@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves Path annotations at runtime.
+from pathlib import Path
 from typing import Any, cast
 
 import aiohttp
 
 from pynchy.host.container_manager.gateway_litellm import (
-    LiteLLMGateway,  # noqa: TC001 - beartype resolves LiteLLM sync signatures at runtime.
+    LiteLLMGateway,
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam
 from pynchy.logger import logger

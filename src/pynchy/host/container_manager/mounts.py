@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves mount operation annotations at runtime.
+    Callable,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +30,7 @@ from pynchy.host.paths import (
 )
 from pynchy.plugins.api import agent_hook_mounts
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves mount annotations at runtime.
+    WorkspaceProfile,
 )
 
 

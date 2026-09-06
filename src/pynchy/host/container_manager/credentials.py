@@ -7,7 +7,7 @@ agent process only when its selected tool explicitly authorizes that exposure.
 from __future__ import annotations
 
 import subprocess  # noqa: S404 - credential discovery uses fixed no-shell gh/git argv.
-from collections.abc import (  # noqa: TC003 - beartype resolves credential runtime annotations.
+from collections.abc import (
     Callable,
 )
 from typing import Protocol, cast, runtime_checkable

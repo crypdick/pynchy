@@ -10,7 +10,7 @@ from typing import Literal, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves dispatch inputs at runtime.
+from pynchy.conversation.api import (
     ConversationId,
 )
 from pynchy.host.orchestrator.http_control import ClientAddress, RequestRateLimiter
@@ -47,7 +47,7 @@ from pynchy.state.api import (
 )
 from pynchy.webhook_effects import WebhookEffectCallbackDecision
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

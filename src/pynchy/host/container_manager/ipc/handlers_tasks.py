@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
-    Callable,  # noqa: TC003 - beartype resolves task handler callbacks at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime

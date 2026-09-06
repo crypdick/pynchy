@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pluggy  # noqa: TC002 - beartype resolves agent-core annotations at runtime.
+import pluggy
 
 from pynchy.host.orchestrator.action_intents import (
     execute_action_intent,
@@ -67,10 +67,10 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.plugins.api import AgentCoreSpec
 from pynchy.turn_outcomes import (
-    TurnOutcome,  # noqa: TC001 - beartype resolves public API annotations at runtime.
+    TurnOutcome,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

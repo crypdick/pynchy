@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable  # noqa: TC003 - Protocol annotations.
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
@@ -32,7 +32,7 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )

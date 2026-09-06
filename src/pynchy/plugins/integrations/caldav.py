@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import (
-    Mapping,  # noqa: TC003 - beartype resolves CalDAV runtime annotations at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves CalDAV protocol annotations at runtime.
+    Mapping,
+    Sequence,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta

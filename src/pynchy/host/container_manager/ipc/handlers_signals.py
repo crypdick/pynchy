@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001 - beartype resolves signal handler signatures at runtime.
+    IpcDeps,
 )
 from pynchy.logger import logger
 

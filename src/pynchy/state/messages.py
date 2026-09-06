@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import (
-    Sequence,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Sequence,
 )
 from typing import TYPE_CHECKING, Any, cast
 
