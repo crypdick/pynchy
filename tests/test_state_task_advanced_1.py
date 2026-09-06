@@ -35,6 +35,7 @@ from pynchy.state import (
     get_tasks_for_group,
     log_task_run,
     record_task_completion,
+    record_terminal_scheduled_task_failure,
     resume_once_task_after_unclaimed_scheduled_turn,
     resume_task,
     resume_task_if_no_in_flight_turn,
@@ -304,6 +305,37 @@ class TestTaskAdvanced:
         assert logs[0].turn_id == "turn-1"
         assert logs[0].error_signature == "ValueError: failed on port #"
         assert logs[0].escalation_reason == "stagnation"
+
+    async def test_terminal_failure_is_idempotent_per_temporal_run(self):
+        await create_task(replace(self._TASK_TEMPLATE, id="terminal-task", next_run=None))
+
+        first = await record_terminal_scheduled_task_failure(
+            task_id="terminal-task",
+            temporal_workflow_id="workflow-1",
+            temporal_workflow_run_id="workflow-run-1",
+            error="WorkerShutdown",
+        )
+        duplicate = await record_terminal_scheduled_task_failure(
+            task_id="terminal-task",
+            temporal_workflow_id="workflow-1",
+            temporal_workflow_run_id="workflow-run-1",
+            error="WorkerShutdown",
+        )
+        next_run = await record_terminal_scheduled_task_failure(
+            task_id="terminal-task",
+            temporal_workflow_id="workflow-1",
+            temporal_workflow_run_id="workflow-run-2",
+            error="WorkerShutdown",
+        )
+
+        logs = await get_task_run_logs("terminal-task")
+
+        assert (first, duplicate, next_run) == (True, False, True)
+        assert [(log.temporal_workflow_id, log.temporal_workflow_run_id) for log in logs] == [
+            ("workflow-1", "workflow-run-2"),
+            ("workflow-1", "workflow-run-1"),
+        ]
+        assert {log.escalation_reason for log in logs} == {"temporal_retry_exhausted"}
 
     async def test_resume_task_preserves_history_and_resets_failure_window(self):
         await create_task(

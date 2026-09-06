@@ -18,6 +18,8 @@ from pynchy.scheduling.api import (
 )
 from pynchy.state.connection import _get_db, _update_by_id, atomic_write
 
+_TERMINAL_RETRY_EXHAUSTED = "temporal_retry_exhausted"
+
 
 def _row_to_task(row: Row) -> ScheduledTask:
     return ScheduledTask(
@@ -393,6 +395,50 @@ async def log_task_run(log: TaskRunLog) -> None:
                 log.escalation_reason,
             ),
         )
+
+
+async def record_terminal_scheduled_task_failure(
+    *,
+    task_id: str,
+    temporal_workflow_id: str,
+    temporal_workflow_run_id: str,
+    error: str,
+) -> bool:
+    """Persist terminal workflow failure once per durable Temporal run."""
+    now = datetime.now(UTC).isoformat()
+    async with atomic_write() as db:
+        cursor = await db.execute(
+            """
+            INSERT INTO task_run_logs (
+                task_id, run_at, duration_ms, status, result, error,
+                temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
+                turn_id, error_signature, escalation_reason
+            )
+            SELECT ?, ?, ?, 'error', NULL, ?, ?, ?, NULL, NULL, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM task_run_logs
+                WHERE task_id = ?
+                  AND temporal_workflow_id = ?
+                  AND temporal_workflow_run_id = ?
+                  AND escalation_reason = ?
+            )
+            """,
+            (
+                task_id,
+                now,
+                0,
+                error,
+                temporal_workflow_id,
+                temporal_workflow_run_id,
+                None,
+                _TERMINAL_RETRY_EXHAUSTED,
+                task_id,
+                temporal_workflow_id,
+                temporal_workflow_run_id,
+                _TERMINAL_RETRY_EXHAUSTED,
+            ),
+        )
+    return cursor.rowcount == 1
 
 
 async def get_task_run_logs(task_id: str, *, limit: int = 20) -> list[TaskRunLog]:

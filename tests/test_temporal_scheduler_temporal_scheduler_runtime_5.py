@@ -28,6 +28,8 @@ from pynchy.deployments import (
 )
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
+from pynchy.scheduling.api import ScheduledTask, SessionPolicy
+from pynchy.state import create_task, get_task_run_logs, init_test_database
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 from tests.temporal_scheduler_support import (
@@ -71,6 +73,7 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler.run_interactive_runtime_turn,
             temporal_scheduler.run_interrupted_agent_turn,
             temporal_scheduler.clear_terminal_scheduled_turn,
+            temporal_scheduler.record_terminal_scheduled_task_failure_activity,
             temporal_scheduler.run_learning_review,
             temporal_scheduler.run_deploy,
             temporal_scheduler.run_host_git_sync,
@@ -192,17 +195,90 @@ class TestTemporalSchedulerRuntime:
             activity_id="activity-1",
             retry_state=None,
         )
-        execute_activity = AsyncMock(side_effect=[terminal_error, "cleared"])
+        execute_activity = AsyncMock(side_effect=[terminal_error, "recorded", "cleared"])
         monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
+        workflow_info = type("WorkflowInfo", (), {"workflow_id": "workflow-1", "run_id": "run-1"})()
+
+        def fake_workflow_info():
+            return workflow_info
+
+        monkeypatch.setattr(
+            temporal_workflows.workflow,
+            "info",
+            fake_workflow_info,
+        )
 
         with pytest.raises(ActivityError, match="scheduled task failed"):
             await temporal_workflows.ScheduledAgentTaskWorkflow().run("task-1")
 
-        assert execute_activity.await_count == 2
+        assert execute_activity.await_count == 3
         assert execute_activity.await_args_list[1].args == (
+            "record_terminal_scheduled_task_failure",
+            {
+                "task_id": "task-1",
+                "workflow_id": "workflow-1",
+                "workflow_run_id": "run-1",
+                "error": "scheduled task failed",
+            },
+        )
+        assert execute_activity.await_args_list[2].args == (
             "clear_terminal_scheduled_turn",
             "task-1",
         )
+
+    @pytest.mark.asyncio
+    async def test_retry_exhaustion_records_one_terminal_failure(self):
+        await init_test_database()
+        task = ScheduledTask(
+            id="terminal-failure-task",
+            group_folder="group",
+            chat_jid="slack:group",
+            prompt="run",
+            schedule_type="once",
+            schedule_value="2026-09-06T20:00:00+00:00",
+            session_policy=SessionPolicy.CONTINUE,
+        )
+        await create_task(task)
+        attempts = 0
+        task_queue = f"pynchy-temporal-test-{uuid4()}"
+
+        @activity.defn(name="run_scheduled_agent_task")
+        async def fail_scheduled_task(_task_id: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            await asyncio.sleep(0)
+            raise RuntimeError("WorkerShutdown")
+
+        env = await WorkflowEnvironment.start_time_skipping()
+        try:
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[temporal_workflows.ScheduledAgentTaskWorkflow],
+                activities=[
+                    fail_scheduled_task,
+                    temporal_scheduler.record_terminal_scheduled_task_failure_activity,
+                    temporal_scheduler.clear_terminal_scheduled_turn,
+                ],
+                workflow_runner=temporal_scheduler.scheduler_workflow_runner(),
+            ):
+                with pytest.raises(WorkflowFailureError):
+                    await env.client.execute_workflow(
+                        temporal_workflows.ScheduledAgentTaskWorkflow.run,
+                        task.id,
+                        id=f"pynchy-temporal-test-{uuid4()}",
+                        task_queue=task_queue,
+                    )
+        finally:
+            await env.shutdown()
+
+        logs = await get_task_run_logs(task.id)
+        assert attempts == 3
+        assert len(logs) == 1
+        assert logs[0].status == "error"
+        assert logs[0].temporal_workflow_id is not None
+        assert logs[0].temporal_workflow_run_id is not None
+        assert logs[0].escalation_reason == "temporal_retry_exhausted"
 
     @pytest.mark.asyncio
     async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):
