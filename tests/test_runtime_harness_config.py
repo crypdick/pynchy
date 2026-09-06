@@ -29,9 +29,9 @@ def test_pre_merge_uses_a_fresh_runtime_that_cleans_up_its_live_resources() -> N
     commands = _project()["tool"]["new-feature"]["pre_merge"]
 
     assert commands[:2] == [
-        "uv run python scripts/runtime_harness.py stop",
+        "env -u VIRTUAL_ENV uv run python scripts/runtime_harness.py stop",
         (
-            "uv run python scripts/runtime_harness.py run -- "
+            "env -u VIRTUAL_ENV uv run python scripts/runtime_harness.py run -- "
             "uv run pytest -o addopts='' -n 0 -m runtime"
         ),
     ]
@@ -87,10 +87,10 @@ def test_merge_stages_the_ratchet_after_integrated_coverage() -> None:
     assert commands[:3] == [
         (
             "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT "
-            "PYNCHY_RUNTIME_NAMESPACE; uv run pytest --cov=pynchy "
+            "PYNCHY_RUNTIME_NAMESPACE; env -u VIRTUAL_ENV uv run pytest --cov=pynchy "
             "--cov-report=term-missing"
         ),
-        "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update",
+        "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_coverage_ratchet.py --update",
         "git add pyproject.toml",
     ]
 
@@ -103,3 +103,24 @@ def test_prek_checks_and_updates_the_coverage_ratchet() -> None:
     assert by_id["check-coverage-ratchet"]["always_run"] is True
     assert hooks.index(by_id["pytest"]) < hooks.index(by_id["update-coverage-ratchet"])
     assert by_id["update-coverage-ratchet"]["stages"] == ["manual"]
+
+
+def test_host_verification_commands_clear_inherited_virtualenv() -> None:
+    project = _project()["tool"]["new-feature"]
+    commands = [*project["pre_merge"], *project["post_merge"], *project["teardown"]]
+
+    assert all(
+        command.startswith("env -u VIRTUAL_ENV") or "; env -u VIRTUAL_ENV" in command
+        for command in commands
+        if "uv" in command
+    )
+
+    config = tomllib.loads(Path("prek.toml").read_text(encoding="utf-8"))
+    hooks = config["repos"][-1]["hooks"]
+    host_entries = [
+        hook["entry"]
+        for hook in hooks
+        if "agent-runner" not in hook["id"] and "uv run" in hook["entry"]
+    ]
+
+    assert all("env -u VIRTUAL_ENV uv run" in entry for entry in host_entries)

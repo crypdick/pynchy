@@ -44,63 +44,63 @@ repo = "local"
 [[repos.hooks]]
 id = "ruff-check"
 name = "Ruff check"
-entry = "uv run ruff check --fix --quiet"
+entry = "env -u VIRTUAL_ENV uv run ruff check --fix --quiet"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "ruff-format"
 name = "Ruff format"
-entry = "uv run ruff format --quiet"
+entry = "env -u VIRTUAL_ENV uv run ruff format --quiet"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "fix-future-annotations"
 name = "Fix 'from __future__ import annotations' placement"
-entry = "uv run python scripts/prek_hooks/fix_future_annotations.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/fix_future_annotations.py"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "pyupgrade"
 name = "Upgrade syntax to target Python version"
-entry = "uv run pyupgrade --py313-plus"
+entry = "env -u VIRTUAL_ENV uv run pyupgrade --py313-plus"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "flynt"
 name = "Convert to f-strings"
-entry = "uv run flynt --line-length=100"
+entry = "env -u VIRTUAL_ENV uv run flynt --line-length=100"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "check-print-statements"
 name = "Ban print() in favor of structured logging"
-entry = "uv run python scripts/prek_hooks/check_print_statements.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_print_statements.py"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "forbid-superpowers-docs"
 name = "Forbid docs/superpowers plans"
-entry = "uv run python scripts/prek_hooks/forbid_superpowers_docs.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/forbid_superpowers_docs.py"
 language = "system"
 files = "^docs/superpowers/"
 
 [[repos.hooks]]
 id = "check-exception-handling"
 name = "Ban bare/broad exception handling"
-entry = "uv run python scripts/prek_hooks/check_exception_handling.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_exception_handling.py"
 language = "system"
 types = ["python"]
 
 [[repos.hooks]]
 id = "check-file-length"
 name = "Enforce 450-logical-line file budget"
-entry = "uv run python scripts/prek_hooks/check_file_length.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_file_length.py"
 language = "system"
 types = ["python"]
 files = "^src/"
@@ -108,7 +108,7 @@ files = "^src/"
 [[repos.hooks]]
 id = "check-test-file-length"
 name = "Enforce 600-logical-line test file budget"
-entry = "uv run python scripts/prek_hooks/check_file_length.py --max-lines=600"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_file_length.py --max-lines=600"
 language = "system"
 types = ["python"]
 files = "^tests/"
@@ -117,8 +117,8 @@ files = "^tests/"
 id = "vulture"
 name = "Detect dead code"
 entry = """sh -c '
-uv run vulture src --exclude ".venv/,*/tests/*" --min-confidence 60 &&
-uv run vulture src tests --exclude ".venv/" --min-confidence 60
+env -u VIRTUAL_ENV uv run vulture src --exclude ".venv/,*/tests/*" --min-confidence 60 &&
+env -u VIRTUAL_ENV uv run vulture src tests --exclude ".venv/" --min-confidence 60
 '"""
 language = "system"
 pass_filenames = false
@@ -127,7 +127,7 @@ types = ["python"]
 [[repos.hooks]]
 id = "check-timeless-comments"
 name = "Review temporal language in comments (advisory)"
-entry = "uv run python scripts/prek_hooks/check_timeless_comments.py --advisory"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_timeless_comments.py --advisory"
 verbose = true
 language = "system"
 types = ["python"]
@@ -136,7 +136,7 @@ files = "^src/"
 [[repos.hooks]]
 id = "check-private-test-imports"
 name = "Forbid private first-party test imports"
-entry = "uv run python scripts/prek_hooks/check_private_test_imports.py --package pynchy --package agent_runner --package scripts"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_private_test_imports.py --package pynchy --package agent_runner --package scripts"
 language = "system"
 types = ["python"]
 files = "(^tests/|^src/pynchy/agent/agent_runner/tests/)"
@@ -144,7 +144,7 @@ files = "(^tests/|^src/pynchy/agent/agent_runner/tests/)"
 [[repos.hooks]]
 id = "check-architecture-boundaries"
 name = "Enforce first-party architecture boundaries"
-entry = "uv run python -m scripts.prek_hooks.check_architecture_boundaries"
+entry = "env -u VIRTUAL_ENV uv run python -m scripts.prek_hooks.check_architecture_boundaries"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -152,7 +152,7 @@ always_run = true
 [[repos.hooks]]
 id = "check-coverage-ratchet"
 name = "Forbid lowering the coverage ratchet"
-entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_coverage_ratchet.py"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -160,7 +160,7 @@ always_run = true
 [[repos.hooks]]
 id = "check-test-simple-namespace"
 name = "Ban SimpleNamespace in tests"
-entry = "uv run python scripts/prek_hooks/check_test_simple_namespace.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_test_simple_namespace.py"
 language = "system"
 types = ["python"]
 files = "(^tests/|/tests/)"
@@ -168,7 +168,7 @@ files = "(^tests/|/tests/)"
 [[repos.hooks]]
 id = "check-prompt-assertions"
 name = "Ban hard-coded prompt assertions in tests"
-entry = "uv run python scripts/prek_hooks/check_prompt_assertions.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_prompt_assertions.py"
 language = "system"
 types = ["python"]
 files = "(^tests/|/tests/)"
@@ -176,7 +176,7 @@ files = "(^tests/|/tests/)"
 [[repos.hooks]]
 id = "check-repository-hygiene"
 name = "Forbid maintainer-local markers"
-entry = "uv run pytest -q -n 0 tests/test_repository_hygiene.py"
+entry = "env -u VIRTUAL_ENV uv run pytest -q -n 0 tests/test_repository_hygiene.py"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -184,7 +184,7 @@ always_run = true
 [[repos.hooks]]
 id = "deptry-host"
 name = "Check host dependency declarations"
-entry = "uv run deptry src/pynchy"
+entry = "env -u VIRTUAL_ENV uv run deptry src/pynchy"
 language = "system"
 pass_filenames = false
 types = ["python"]
@@ -200,7 +200,7 @@ files = "^src/pynchy/agent/agent_runner/"
 [[repos.hooks]]
 id = "mypy"
 name = "Strict host type check"
-entry = "uv run mypy src tests"
+entry = "env -u VIRTUAL_ENV uv run mypy src tests"
 language = "system"
 pass_filenames = false
 types = ["python"]
@@ -218,7 +218,7 @@ verbose = true
 [[repos.hooks]]
 id = "mkdocs-linkcheck"
 name = "Check documentation links"
-entry = "uv run mkdocs build --strict"
+entry = "env -u VIRTUAL_ENV uv run mkdocs build --strict"
 language = "system"
 pass_filenames = false
 files = "^(docs/|mkdocs\\.yml)"
@@ -226,7 +226,7 @@ files = "^(docs/|mkdocs\\.yml)"
 [[repos.hooks]]
 id = "action-coverage"
 name = "Check semantic action coverage"
-entry = "uv run python scripts/prek_hooks/check_action_coverage.py"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_action_coverage.py"
 language = "system"
 pass_filenames = false
 always_run = true
@@ -235,7 +235,7 @@ files = "^(src/pynchy/.*action.*\\.py|tests/|scripts/prek_hooks/check_action_cov
 [[repos.hooks]]
 id = "pytest"
 name = "Run host tests with branch coverage"
-entry = "uv run pytest --cov=pynchy --cov-report=term-missing"
+entry = "env -u VIRTUAL_ENV uv run pytest --cov=pynchy --cov-report=term-missing"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"
@@ -244,7 +244,7 @@ stages = ["manual"]
 [[repos.hooks]]
 id = "update-coverage-ratchet"
 name = "Raise the coverage ratchet from the full test run"
-entry = "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update"
+entry = "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_coverage_ratchet.py --update"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"
