@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -511,6 +512,383 @@ class TestCooldown:
 
 @pytest.mark.usefixtures("_db")
 class TestCursorGC:
+    @pytest.mark.asyncio
+    async def test_removed_workspace_is_not_kept_active_after_pair_failure(self):
+        fetch_started = asyncio.Event()
+        release_fetch = asyncio.Event()
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def fetch_then_fail(*_args: object) -> InboundFetchResult:
+            fetch_started.set()
+            await release_fetch.wait()
+            raise OSError("provider unavailable")
+
+        slack.fetch_inbound_since.side_effect = fetch_then_fail
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await fetch_started.wait()
+        workspaces.pop("group@g.us")
+        release_fetch.set()
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            await reconcile_task
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_after_inbound_cursor_lookup(self, monkeypatch):
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def inbound_cursor_then_retire(*_args: object) -> str:
+            await asyncio.sleep(0)
+            workspaces.pop("group@g.us")
+            return ""
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.get_channel_cursor",
+            inbound_cursor_then_retire,
+        )
+        await reconcile_all_channels(deps)
+
+        slack.fetch_inbound_since.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_after_outbound_cursor_lookup(self, monkeypatch):
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        cursor_lookups = 0
+
+        async def cursor_lookup(*_args: object) -> str:
+            nonlocal cursor_lookups
+            cursor_lookups += 1
+            await asyncio.sleep(0)
+            if cursor_lookups == 2:
+                workspaces.pop("group@g.us")
+            return ""
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.get_channel_cursor",
+            cursor_lookup,
+        )
+        await reconcile_all_channels(deps)
+
+        slack.send_event.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_after_pending_delivery_lookup(self, monkeypatch):
+        pending_lookup_started = asyncio.Event()
+        release_pending_lookup = asyncio.Event()
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def pending_after_wait(*_args: object) -> list[OutboundDelivery]:
+            pending_lookup_started.set()
+            await release_pending_lookup.wait()
+            return []
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.get_pending_outbound",
+            pending_after_wait,
+        )
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await pending_lookup_started.wait()
+        workspaces.pop("group@g.us")
+        release_pending_lookup.set()
+        await reconcile_task
+
+        slack.send_event.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_skips_edit_fallback_post(self):
+        update_started = asyncio.Event()
+        release_update = asyncio.Event()
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await record_outbound_deliveries(
+            "group@g.us",
+            "edit",
+            "broadcast",
+            [
+                OutboundDelivery(
+                    channel_name="slack",
+                    operation=OutboundDeliveryOperation.EDIT,
+                    remote_message_id="message-1",
+                )
+            ],
+        )
+
+        async def update_event(*_args: object) -> None:
+            update_started.set()
+            await release_update.wait()
+            raise OSError("stale message")
+
+        slack.update_event = update_event
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await update_started.wait()
+        workspaces.pop("group@g.us")
+        release_update.set()
+        await reconcile_task
+
+        slack.send_event.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_does_not_process_fetched_messages(self):
+        fetch_started = asyncio.Event()
+        release_fetch = asyncio.Event()
+        msg = NewMessage(
+            id="removed-during-fetch",
+            chat_jid="slack:C123",
+            sender="U1",
+            sender_name="Alice",
+            content="skip me",
+            timestamp="2024-06-01T00:00:00",
+        )
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def fetch_inbound(*_args: object) -> InboundFetchResult:
+            fetch_started.set()
+            await release_fetch.wait()
+            return InboundFetchResult(messages=[msg], high_water_mark=msg.timestamp)
+
+        slack.fetch_inbound_since.side_effect = fetch_inbound
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await fetch_started.wait()
+        workspaces.pop("group@g.us")
+        release_fetch.set()
+        await reconcile_task
+
+        deps.ingest_user_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_remaining_inbound_messages(self):
+        first_ingest_started = asyncio.Event()
+        release_first_ingest = asyncio.Event()
+        messages = [
+            NewMessage(
+                id=f"removed-during-ingest-{index}",
+                chat_jid="slack:C123",
+                sender="U1",
+                sender_name="Alice",
+                content="skip me",
+                timestamp=f"2024-06-01T00:00:0{index}",
+            )
+            for index in range(2)
+        ]
+        slack = _make_channel(name="slack", inbound=messages)
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def ingest_message(*_args: object, **_kwargs: object) -> None:
+            first_ingest_started.set()
+            await release_first_ingest.wait()
+
+        deps.ingest_user_message.side_effect = ingest_message
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await first_ingest_started.wait()
+        workspaces.pop("group@g.us")
+        release_first_ingest.set()
+        await reconcile_task
+
+        assert deps.ingest_user_message.await_count == 1
+        deps.start_interactive_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_remaining_outbound_retries(self):
+        first_send_started = asyncio.Event()
+        release_first_send = asyncio.Event()
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await record_outbound("group@g.us", "first", "broadcast", ["slack"])
+        await record_outbound("group@g.us", "second", "broadcast", ["slack"])
+
+        async def send_event(*_args: object) -> None:
+            if slack.send_event.await_count == 1:
+                first_send_started.set()
+                await release_first_send.wait()
+
+        slack.send_event.side_effect = send_event
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await first_send_started.wait()
+        workspaces.pop("group@g.us")
+        release_first_send.set()
+        await reconcile_task
+
+        assert slack.send_event.await_count == 1
+        [pending] = await get_pending_outbound("slack", "group@g.us")
+        assert pending.content == "second"
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_is_not_ingested_after_message_lookup(
+        self, monkeypatch
+    ):
+        message_lookup_started = asyncio.Event()
+        release_message_lookup = asyncio.Event()
+        msg = NewMessage(
+            id="removed-during-lookup",
+            chat_jid="slack:C123",
+            sender="U1",
+            sender_name="Alice",
+            content="skip me",
+            timestamp="2024-06-01T00:00:00",
+        )
+        slack = _make_channel(name="slack", inbound=[msg])
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def message_exists_after_wait(*_args: object) -> bool:
+            message_lookup_started.set()
+            await release_message_lookup.wait()
+            return False
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.message_exists",
+            message_exists_after_wait,
+        )
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await message_lookup_started.wait()
+        workspaces.pop("group@g.us")
+        release_message_lookup.set()
+        await reconcile_task
+
+        deps.ingest_user_message.assert_not_awaited()
+        deps.start_interactive_turn.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cursor_cleanup_excludes_workspace_removed_during_later_pair(self):
+        active_fetch_started = asyncio.Event()
+        release_active_fetch = asyncio.Event()
+        removed_jid = "removed@g.us"
+        active_jid = "active@g.us"
+        slack = _make_channel(name="slack")
+        workspaces = {
+            removed_jid: WorkspaceProfile(
+                jid=removed_jid,
+                name="Removed",
+                folder="removed",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            ),
+            active_jid: WorkspaceProfile(
+                jid=active_jid,
+                name="Active",
+                folder="active",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            ),
+        }
+
+        async def fetch_inbound(jid: str, _cursor: str) -> InboundFetchResult:
+            if jid == active_jid:
+                active_fetch_started.set()
+                await release_active_fetch.wait()
+            return InboundFetchResult(messages=[], high_water_mark="")
+
+        slack.fetch_inbound_since.side_effect = fetch_inbound
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await set_channel_cursor("slack", removed_jid, "inbound", "2024-06-01")
+
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await active_fetch_started.wait()
+        workspaces.pop(removed_jid)
+        release_active_fetch.set()
+        await reconcile_task
+
+        assert not await get_channel_cursor("slack", removed_jid, "inbound")
+
+    @pytest.mark.asyncio
+    async def test_retirement_after_cursor_write_does_not_keep_cooldown(self, monkeypatch):
+        slack = _make_channel(name="slack", high_water_mark="2024-06-02T00:00:00")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01T00:00:00")
+
+        async def advance_then_retire(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(0)
+            workspaces.pop("group@g.us")
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.advance_cursors_atomic",
+            advance_then_retire,
+        )
+        await reconcile_all_channels(deps)
+
+        workspaces["group@g.us"] = TEST_GROUP
+        await reconcile_all_channels(deps)
+
+        assert slack.fetch_inbound_since.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_removed_later_workspace_is_skipped_after_an_await(self):
+        first_fetch_started = asyncio.Event()
+        release_first_fetch = asyncio.Event()
+        removed_jid = "removed@g.us"
+        slack = _make_channel(name="slack")
+        workspaces = {
+            "group@g.us": TEST_GROUP,
+            removed_jid: WorkspaceProfile(
+                jid=removed_jid,
+                name="Removed",
+                folder="removed",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            ),
+        }
+
+        async def fetch_inbound(jid: str, _cursor: str) -> InboundFetchResult:
+            if jid == "group@g.us":
+                first_fetch_started.set()
+                await release_first_fetch.wait()
+            return InboundFetchResult(messages=[], high_water_mark="")
+
+        slack.fetch_inbound_since.side_effect = fetch_inbound
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await set_channel_cursor("slack", removed_jid, "inbound", "2024-06-01")
+
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await first_fetch_started.wait()
+        workspaces.pop(removed_jid)
+        release_first_fetch.set()
+        await reconcile_task
+
+        assert [call.args[0] for call in slack.fetch_inbound_since.await_args_list] == [
+            "group@g.us"
+        ]
+        assert not await get_channel_cursor("slack", removed_jid, "inbound")
+
+    @pytest.mark.asyncio
+    async def test_removed_workspace_does_not_keep_post_await_cooldown(self):
+        outbound_started = asyncio.Event()
+        release_outbound = asyncio.Event()
+        slack = _make_channel(name="slack", high_water_mark="2024-06-02T00:00:00")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01T00:00:00")
+        await record_outbound("group@g.us", "stale retry", "broadcast", ["slack"])
+
+        async def send_event(*_args: object) -> None:
+            outbound_started.set()
+            await release_outbound.wait()
+
+        slack.send_event.side_effect = send_event
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await outbound_started.wait()
+        workspaces.pop("group@g.us")
+        release_outbound.set()
+        await reconcile_task
+
+        workspaces["group@g.us"] = TEST_GROUP
+        slack.send_event.side_effect = None
+        await reconcile_all_channels(deps)
+
+        assert slack.fetch_inbound_since.await_count == 2
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-02T00:00:00"
+
     @pytest.mark.asyncio
     async def test_owned_pair_failure_preserves_its_recovery_cursor(self):
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01")
