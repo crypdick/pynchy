@@ -182,6 +182,8 @@ async def _ingest_remote_message(
     # Remap chat_jid to canonical (the channel returned channel-native JIDs)
     msg.chat_jid = request.canonical_jid
     exists = await message_exists(msg.id, request.canonical_jid)
+    if _current_workspace(request.deps, request.canonical_jid) is None:
+        return False
     logger.debug(
         "reconciler_trace",
         step="msg_check",
@@ -212,7 +214,11 @@ async def _ingest_remote_message(
 
 
 async def _deliver_pending_outbound_row(
-    ch: Channel, chat_jid: str, row: PendingDelivery, outbound_cursor: str
+    deps: ReconcilerDeps,
+    ch: Channel,
+    chat_jid: str,
+    row: PendingDelivery,
+    outbound_cursor: str,
 ) -> str:
     event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
     update_event = getattr(ch, "update_event", None)
@@ -230,6 +236,8 @@ async def _deliver_pending_outbound_row(
                 ledger_id=row.ledger_id,
                 error=str(exc),
             )
+            if _current_workspace(deps, chat_jid) is None:
+                return outbound_cursor
         else:
             await mark_delivery_succeeded(
                 row.ledger_id,
@@ -253,17 +261,22 @@ async def _deliver_pending_outbound_row(
 
 
 async def _retry_outbound(
-    ch: Channel, canonical_jid: str, outbound_cursor: str
+    deps: ReconcilerDeps, ch: Channel, canonical_jid: str, outbound_cursor: str
 ) -> tuple[str, int, str | None]:
     """Retry pending outbound deliveries and report an exhausted failure."""
     async with outbound_delivery_lock(canonical_jid):
         pending = await get_pending_outbound(ChannelName(ch.name), ChatJid(canonical_jid))
+        if _current_workspace(deps, canonical_jid) is None:
+            return outbound_cursor, 0, None
         new_outbound_cursor = outbound_cursor
         retried = 0
         failure = None
         for row in pending:
+            if _current_workspace(deps, canonical_jid) is None:
+                break
             try:
                 new_outbound_cursor = await _deliver_pending_outbound_row(
+                    deps,
                     ch,
                     canonical_jid,
                     row,
@@ -332,7 +345,10 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     _log_reconciliation_summary(recovered, retried)
 
-    pruned = await prune_stale_cursors(active_pairs)
+    current_pairs = {
+        pair for pair in active_pairs if _current_workspace(deps, pair[1]) is not None
+    }
+    pruned = await prune_stale_cursors(current_pairs)
     if pruned:
         logger.info("Pruned stale cursors", count=pruned)
     if failures:
@@ -381,7 +397,7 @@ async def _reconcile_channel_pair(
     if _current_workspace(deps, canonical_jid) is None:
         return None
     new_outbound_cursor, pair_retried, pair_failure = await _retry_outbound(
-        ch, canonical_jid, outbound_cursor
+        deps, ch, canonical_jid, outbound_cursor
     )
     if _current_workspace(deps, canonical_jid) is None:
         return None
@@ -391,7 +407,7 @@ async def _reconcile_channel_pair(
         inbound=new_inbound_cursor if new_inbound_cursor != inbound.fetch_since else None,
         outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
     )
-    if pair_failure is None:
+    if _current_workspace(deps, canonical_jid) is not None and pair_failure is None:
         _last_reconciled[ch.name, canonical_jid] = now
     return pair_recovered, pair_retried, pair_failure
 
