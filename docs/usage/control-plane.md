@@ -41,6 +41,11 @@ details such as replies and attachments; it excludes provider, routing, authorit
 and synthetic-input metadata. This route accepts Discord channel JIDs only and
 uses the same control-plane authentication policy as other `/canaries/*` routes.
 
+A `200` response means Discord accepted the send; check message and agent evidence
+separately to verify ingestion and completion. If delivery fails or no connected
+channel owns the target, the route returns `503`. Synthetic inputs are attempted
+once and are not queued for automatic outbound retries.
+
 ## Readiness and operational status
 
 `GET /health` returns only `{"status": "ok"}`. It stays unauthenticated so a local

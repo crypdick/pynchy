@@ -119,7 +119,7 @@ class HttpDeps(Protocol):
 
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
-    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None: ...
+    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> bool: ...
 
     def admin_chat_jid(self) -> str: ...
 
@@ -437,7 +437,8 @@ async def _handle_canary_message(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=400)
     if not jid.startswith("discord:channel:"):
         return web.json_response({"error": "jid must identify a Discord channel"}, status=400)
-    await request.app[deps_key].broadcast_synthetic_user_input(jid, content)
+    if not await request.app[deps_key].broadcast_synthetic_user_input(jid, content):
+        return web.json_response({"error": "Synthetic input was not delivered"}, status=503)
     return web.json_response({"status": "accepted"})
 
 

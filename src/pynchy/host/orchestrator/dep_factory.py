@@ -72,6 +72,7 @@ from pynchy.host.orchestrator.http_server import (
     HttpServerDeps,
 )
 from pynchy.host.orchestrator.messaging import pending_questions
+from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (
@@ -408,14 +409,16 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
         data_dir = settings.data_dir
         project_root = settings.project_root
 
-        async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None:
-            await app.broadcast_to_channels(
+        async def broadcast_synthetic_user_input(self, jid: str, content: str) -> bool:
+            return await broadcast(
+                app,
                 jid,
                 OutboundEvent(
                     type=OutboundEventType.TEXT,
                     content=content,
                     metadata={"synthetic_user_input": True},
                 ),
+                suppress_errors=False,
             )
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
