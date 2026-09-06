@@ -19,6 +19,63 @@ def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
     assert "storage.example.yaml" not in kustomization
 
 
+def test_temporal_retention_is_reconciled_in_cluster(tmp_path: Path) -> None:
+    deployment = _documents("deploy/k3s/application/temporal.yaml")[0]
+    pod = deployment["spec"]["template"]["spec"]
+    server = next(container for container in pod["containers"] if container["name"] == "temporal")
+    reconciler = next(
+        container for container in pod["containers"] if container["name"] == "retention-reconciler"
+    )
+
+    assert {"name": "DEFAULT_NAMESPACE_RETENTION", "value": "192h"} in server["env"]
+    assert reconciler["image"] == server["image"]
+    assert reconciler["command"] == ["/bin/sh", "-ec"]
+    assert (
+        "temporal operator namespace update --namespace default --retention 192h"
+        in reconciler["args"][0]
+    )
+    assert '"workflowExecutionRetentionTtl": "691200s"' in reconciler["args"][0]
+    assert "sleep 300" in reconciler["args"][0]
+    readiness_probe = reconciler["readinessProbe"]
+    assert readiness_probe["initialDelaySeconds"] == 1
+    assert readiness_probe["periodSeconds"] == 5
+
+    temporal = tmp_path / "temporal"
+    temporal.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$TEMPORAL_DESCRIBE"\n',
+        encoding="utf-8",
+    )
+    temporal.chmod(0o755)
+    environment = os.environ | {"PATH": f"{tmp_path}:{os.environ['PATH']}"}
+    command = readiness_probe["exec"]["command"]
+
+    pending = subprocess.run(  # noqa: S603 - test runs the repository-owned probe command.
+        command,
+        env=environment | {"TEMPORAL_DESCRIBE": '"workflowExecutionRetentionTtl": "86400s"'},
+        check=False,
+    )
+    ready = subprocess.run(  # noqa: S603 - test runs the repository-owned probe command.
+        command,
+        env=environment | {"TEMPORAL_DESCRIBE": '"workflowExecutionRetentionTtl": "691200s"'},
+        check=False,
+    )
+
+    assert pending.returncode != 0
+    assert ready.returncode == 0
+    assert reconciler["securityContext"] == {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+        "readOnlyRootFilesystem": True,
+        "runAsGroup": 1000,
+        "runAsNonRoot": True,
+        "runAsUser": 1000,
+    }
+    assert reconciler["resources"] == {
+        "requests": {"cpu": "10m", "memory": "32Mi"},
+        "limits": {"cpu": "100m", "memory": "128Mi"},
+    }
+
+
 def test_host_image_installs_locked_dependencies() -> None:
     dockerfile = Path("deploy/k3s/host.Dockerfile").read_text(encoding="utf-8")
 

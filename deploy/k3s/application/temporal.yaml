@@ -49,6 +49,8 @@ spec:
               value: pynchy-postgres
             - name: BIND_ON_IP
               value: 0.0.0.0
+            - name: DEFAULT_NAMESPACE_RETENTION
+              value: 192h
           ports:
             - name: grpc
               containerPort: 7233
@@ -69,6 +71,51 @@ spec:
             limits:
               cpu: "4"
               memory: 4Gi
+        - name: retention-reconciler
+          image: temporalio/auto-setup:1.29.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              until temporal operator cluster health | grep -q SERVING; do
+                sleep 1
+              done
+              # NOTE: Update docs/installation/kubernetes.md § Temporal namespace retention if this policy changes.
+              # Auto-setup creates namespaces but does not correct existing retention drift.
+              while true; do
+                temporal operator namespace update --namespace default --retention 192h
+                temporal operator namespace describe --namespace default --output json \
+                  | grep -q '"workflowExecutionRetentionTtl": "691200s"'
+                sleep 300
+              done
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: 127.0.0.1:7233
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - >-
+                  temporal operator namespace describe --namespace default --output json
+                  | grep -q '"workflowExecutionRetentionTtl": "691200s"'
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
 ---
 apiVersion: v1
 kind: Service
