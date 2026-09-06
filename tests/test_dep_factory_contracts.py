@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -585,3 +586,16 @@ async def test_status_adapter_reports_queue_gateway_container_and_counts(tmp_pat
             return_value=_DockerResult(returncode=1, stdout=""),
         ):
             assert await deps.get_container_state("agent") == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_ipc_registration_runs_the_application_registration() -> None:
+    app = PynchyApp()
+    profile = _workspace()
+    registered = asyncio.get_running_loop().create_future()
+    app.register_workspace = AsyncMock(side_effect=registered.set_result)
+
+    dep_factory.make_ipc_deps(app).register_workspace(profile)
+
+    assert await asyncio.wait_for(registered, timeout=1) is profile
+    app.register_workspace.assert_awaited_once_with(profile)

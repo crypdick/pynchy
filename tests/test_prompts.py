@@ -155,3 +155,15 @@ def test_prompt_scope_and_pipeline_validation() -> None:
                 PipelineStageConfig(name="interactive", executor="executors/default"),
             ]
         )
+
+
+@pytest.mark.parametrize(
+    ("values", "scope"),
+    [
+        ({"default_executor": "souls/default"}, "executors/ scope"),
+        ({"cop_inbound": "executors/default"}, "reviewers/ scope"),
+    ],
+)
+def test_prompt_config_rejects_cross_scope_roles(values, scope) -> None:
+    with pytest.raises(ValueError, match=scope):
+        PromptConfig(**values)

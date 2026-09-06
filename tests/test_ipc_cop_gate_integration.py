@@ -334,13 +334,19 @@ class TestSyncWorktreeCopGate:
 class TestRegisterGroupCopGate:
     """register_group should call cop_gate and block on flag."""
 
-    async def test_valid_receipt_registers_without_rechecking_cop(self, deps):
-        """A valid approval receipt authorizes registration without another gate."""
+    @pytest.mark.parametrize(
+        ("receipt", "registered"),
+        [(ReceiptVerification.VALID, True), (ReceiptVerification.INVALID, False)],
+    )
+    async def test_receipt_controls_registration_without_rechecking_cop(
+        self, deps, receipt, registered
+    ):
+        """Verified receipts allow registration; invalid receipts reject it."""
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
                 new_callable=AsyncMock,
-                return_value=ReceiptVerification.VALID,
+                return_value=receipt,
             ),
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -361,7 +367,7 @@ class TestRegisterGroupCopGate:
             )
 
         mock_cop.assert_not_awaited()
-        assert deps.workspaces()["approved@g.us"].name == "Approved Group"
+        assert ("approved@g.us" in deps.workspaces()) is registered
 
     async def test_blocked_by_cop_skips_registration(self, deps):
         """When cop_gate returns False, register_workspace is not called."""
