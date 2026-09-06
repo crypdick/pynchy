@@ -9,7 +9,9 @@ The live Pynchy host and checkout path are deployment-specific. Public repo inst
 
 ## Deployment Mode Gate
 
-Identify the live deployment before running an operational command. A `pynchy`
+First check whether the authenticated local control-plane socket is available
+(see Quick Status Check below). Reading local status does not require an SSH
+profile. Identify the deployment before remote operations or changes. A `pynchy`
 Kubernetes namespace means the Kubernetes path applies:
 
 ```bash
@@ -40,13 +42,40 @@ Pynchy Deployment.
 Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
 1. **Git changes on `main`** — the polling mechanism detects new commits, pulls, and restarts (with container rebuild if source files changed).
-2. **Config file changes** — editing `config.toml`, `litellm_config.yaml`, or other settings files triggers an automatic deploy on the next host git-sync poll. The default interval is 300 seconds; check `[scheduler].git_sync_interval_seconds` before deciding it was missed.
+2. **Personalization changes** — the host sync loop validates the candidate and applies the required refresh, session replacement, or host restart. See [apply configuration changes](../../../docs/usage/personalization.md#apply-configuration-changes); do not assume every edit restarts the service.
 
 **Do not manually restart containers or the service.** This includes `docker restart`, `systemctl restart`, and direct container management (`docker kill/stop/rm`). Manual restarts bypass lifecycle management and can leave things in a bad state.
 
 Only use manual commands when the service is unhealthy and needs fixing. See [references/server-debug.md](references/server-debug.md) for diagnostic steps.
 
 ## Quick Status Check
+
+Inside the production Kubernetes container, use its authenticated Unix socket:
+
+```bash
+/opt/pynchy/.venv/bin/pynchy --socket /srv/pynchy/app/data/pynchy.sock status --summary
+```
+
+On another live-host installation, use `uv run pynchy status --summary` from
+its checkout. Confirm the socket exists and is accessible before selecting this
+path. Do not require a remote `[ops]` profile when local status works.
+
+`--summary` covers service, deployment, and queue state. For task health, project
+only the fields needed in the same command; never print full status first:
+
+```bash
+/opt/pynchy/.venv/bin/pynchy --socket /srv/pynchy/app/data/pynchy.sock status |
+  jq '{task_counts: (.tasks | group_by(.status) | map({status: .[0].status, count: length})),
+       active_missing_next: [.tasks[] | select(.status == "active" and .next_run == null) | .id],
+       task_issues: [.tasks[] | select(.status == "active" and (.health_reasons | length > 0)) |
+         {id, health_reasons, last_status: .run_health.last_status}],
+       database_host_job_count: (.host_jobs | length),
+       temporal: (.temporal | {cluster_healthy, worker_running, last_error})}'
+```
+
+An empty `host_jobs` list means no database-backed host jobs; config/plugin
+schedules require separate inspection. Keep prompts, message bodies, credentials,
+and unrelated result text out of diagnostic output.
 
 From an operator checkout with a private `[ops]` host and namespace profile, use
 the fixed bounded commands instead of constructing SSH, kubectl, or SQLite input:
@@ -65,7 +94,7 @@ Kubernetes deployment:
 
 ```bash
 ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get pods -o wide'
-ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status --summary'
 ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy logs deploy/pynchy -c pynchy --since=30m'
 ```
 
@@ -188,7 +217,7 @@ Kubernetes deployment:
 
 ```bash
 ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy get pods -l app=pynchy-temporal'
-ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status'
+ssh "$PYNCHY_HOST" 'sudo k3s kubectl -n pynchy exec deploy/pynchy -c pynchy -- /opt/pynchy/.venv/bin/pynchy status' | jq '.temporal'
 ```
 
 The Kubernetes manifests provide a dedicated PostgreSQL-backed Temporal
