@@ -259,6 +259,7 @@ class TestRunScheduledAgent:
         """Human input runs next while the scheduled checkpoint remains resumable."""
         mock_deps.groups[sample_group.jid] = sample_group
         interactive_ran = asyncio.Event()
+        interactive_owner = None
 
         async def process_messages(_chat_jid: str) -> TurnOutcome:
             interactive_ran.set()
@@ -268,7 +269,11 @@ class TestRunScheduledAgent:
         mock_deps.queue.set_process_messages_fn(process_messages)
 
         async def scheduled_run(_group, _chat_jid, _messages, on_output, **_kwargs):
+            nonlocal interactive_owner
             mock_deps.queue.defer_interrupt_until_tool_result(RuntimeId(sample_group.folder))
+            interactive_owner = asyncio.create_task(
+                mock_deps.queue.run_message_turn(RuntimeTarget.from_workspace(sample_group))
+            )
             await on_output(
                 ContainerOutput(
                     type="tool_result",
@@ -307,6 +312,7 @@ class TestRunScheduledAgent:
                 ),
             )
             await interactive_ran.wait()
+            assert await interactive_owner is TurnOutcome.COMPLETED
 
         assert completed is TurnOutcome.RETRY
         checkpoint = await get_in_flight_turn_for_task(sample_task.id)

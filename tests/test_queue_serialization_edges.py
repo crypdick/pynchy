@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from pynchy.host.orchestrator.queue_serialization import await_message_turn, await_queued_task
+from pynchy.host.orchestrator.queue_serialization import await_queued_task
 from tests.group_queue_support import _target
 
 
@@ -56,7 +56,7 @@ async def test_queued_task_does_not_set_result_after_waiter_cancellation() -> No
 
     async def fn() -> None:
         await asyncio.sleep(0)
-        queued["task"].cancel_waiter()  # type: ignore[union-attr]
+        queued["task"].cancel()  # type: ignore[union-attr]
 
     waiter = asyncio.create_task(
         await_queued_task(
@@ -73,11 +73,3 @@ async def test_queued_task_does_not_set_result_after_waiter_cancellation() -> No
     await queued["task"].fn()  # type: ignore[union-attr]
     with pytest.raises(asyncio.CancelledError):
         await waiter
-
-
-@pytest.mark.asyncio
-async def test_message_turn_rejects_shutdown() -> None:
-    with pytest.raises(RuntimeError, match="queue is shutting down"):
-        await await_message_turn(
-            Mock(), Mock(), _target("channel@g.us", "project"), shutting_down=True
-        )

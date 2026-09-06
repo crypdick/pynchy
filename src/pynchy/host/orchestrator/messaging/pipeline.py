@@ -294,10 +294,6 @@ async def _continue_after_host_turn(
         )
         return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
 
-    if agent_run.agent_result == "success_with_pending_input":
-        await _finalize_cursor_and_retry(deps, group, batch, turn, agent_run)
-        return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
-
     return None
 
 

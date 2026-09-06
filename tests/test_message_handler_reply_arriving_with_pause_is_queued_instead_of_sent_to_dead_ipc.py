@@ -35,9 +35,6 @@ from pynchy.state import (
     message_cursor,
     store_message,
 )
-from pynchy.workspace.api import (
-    RuntimeTarget,
-)
 from tests.message_handler_support import (
     _make_deps,
     _make_group,
@@ -128,9 +125,7 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
         await _run_loop_once(deps)
 
     deps.queue.send_message.assert_not_called()
-    deps.queue.enqueue_message_check.assert_called_once_with(
-        RuntimeTarget.from_binding(group.folder, jid)
-    )
+    deps.start_interactive_turn.assert_awaited_once_with(jid)
     checkpoint = await get_in_flight_turn("turn-pausing-with-reply")
     assert checkpoint is not None
     assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
@@ -194,9 +189,7 @@ class TestBtwNonInterruptingMessages:
             "Alice: btw here's some extra context",
         )
         # Marked for reprocessing after task exits
-        deps.queue.enqueue_message_check.assert_called_once_with(
-            RuntimeTarget.from_binding(group.folder, jid)
-        )
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
 
         # Task NOT interrupted
         deps.queue.stop_active_process.assert_not_awaited()
@@ -236,7 +229,7 @@ class TestBtwNonInterruptingMessages:
 
         # Still forwarded, not interrupted
         deps.queue.send_message.assert_called_once()
-        deps.queue.enqueue_message_check.assert_called_once()
+        deps.start_interactive_turn.assert_awaited_once()
         deps.queue.stop_active_process.assert_not_awaited()
         deps.queue.clear_pending_tasks.assert_not_called()
 
@@ -382,7 +375,7 @@ class TestBtwNonInterruptingMessages:
 
         # Last message starts with "btw " → non-interrupting path
         deps.queue.send_message.assert_called_once()
-        deps.queue.enqueue_message_check.assert_called_once()
+        deps.start_interactive_turn.assert_awaited_once()
         deps.queue.stop_active_process.assert_not_awaited()
         deps.queue.clear_pending_tasks.assert_not_called()
 
@@ -426,9 +419,7 @@ class TestBtwNonInterruptingMessages:
         # IPC forwarded
         deps.queue.send_message.assert_called_once()
         # Marked for reprocessing after agent turn ends
-        deps.queue.enqueue_message_check.assert_called_once_with(
-            RuntimeTarget.from_binding(group.folder, jid)
-        )
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
         # Cursor NOT advanced
         assert deps.last_agent_timestamp.get(jid) == "old-ts"
         # No reaction sent (non-interrupting, will be reprocessed)
@@ -469,7 +460,7 @@ class TestBtwNonInterruptingMessages:
             await _run_loop_once(deps)
 
         # Agent NOT woken up
-        deps.queue.enqueue_message_check.assert_not_called()
+
         deps.queue.send_message.assert_not_called()
         # Cursor NOT advanced (notice will be included in next real session)
         assert deps.last_agent_timestamp.get(jid) == "old-ts"
@@ -561,7 +552,6 @@ class TestBtwNonInterruptingMessages:
 
         # Agent SHOULD be woken up because there's a real user message.
         deps.start_interactive_turn.assert_awaited_once_with(jid)
-        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_btw_routed_normally_when_no_active_container(self):
@@ -596,7 +586,6 @@ class TestBtwNonInterruptingMessages:
 
         # Falls through to normal Temporal wake-up.
         deps.start_interactive_turn.assert_awaited_once_with(jid)
-        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_sunrise_reaction_on_wake(self):
@@ -635,4 +624,3 @@ class TestBtwNonInterruptingMessages:
         )
         # Still starts the durable turn
         deps.start_interactive_turn.assert_awaited_once_with(jid)
-        deps.queue.enqueue_message_check.assert_not_called()

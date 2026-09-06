@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -22,10 +21,7 @@ from pynchy.linear_plan_types import (
     LinearPlanReviewResult,
 )
 from pynchy.plugins.integrations.linear_boot import LinearIssueControl
-from pynchy.workspace.api import WorkspaceProfile
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 
 def _learning_packet() -> LearningPacket:
@@ -180,34 +176,23 @@ async def test_learning_review_drops_queued_callback_after_waiter_cancellation(
 ) -> None:
     app = PynchyApp()
     group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
-    run_agent = AsyncMock(return_value="late result")
-    app.run_agent = run_agent
-    callbacks: list[Callable[[], Awaitable[None]]] = []
+    app.run_agent = AsyncMock(return_value="late result")
+    target = RuntimeTarget.from_workspace(group)
+    await app.queue.pause_runtime_policy((target,))
 
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        callbacks.append(callback)
-        return True
+    async def review(_packet, run_agent_via_queue, _prompt):
+        return await run_agent_via_queue(group, "chat", [])
 
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        waiting = asyncio.create_task(run_agent_via_queue(group, "chat", []))
-        await asyncio.sleep(0)
-        waiting.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await waiting
-        await callbacks[0]()
-        return "cancelled"
-
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
     monkeypatch.setattr(app_module, "run_host_learning_review", review)
     monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
-    assert await app.run_learning_review(_learning_packet()) == "cancelled"
-    run_agent.assert_not_awaited()
+    owner = asyncio.create_task(app.run_learning_review(_learning_packet()))
+    await asyncio.sleep(0)
+    assert app.queue.has_activity(target.id)
+    owner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await owner
+    app.queue.resume_runtime_policy((target.id,))
+    await app.queue.run_serialized_task(target, "barrier", lambda: asyncio.sleep(0))
+    app.run_agent.assert_not_awaited()
+    assert not app.queue.has_activity(target.id)
+    await app.queue.shutdown()

@@ -18,7 +18,7 @@ from pynchy.config.api import (
     JobConfig,
     SchedulerConfig,
 )
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.scheduler_deps import (
     ConfigHostCronJob,
     SchedulerRuntimeConfig,
@@ -110,7 +110,7 @@ class NullSchedulerDeps:
 
     queue: GroupQueue = field(
         default_factory=lambda: GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            10,
             make_container_runtime_operations(),
         )
     )

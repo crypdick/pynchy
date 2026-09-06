@@ -58,7 +58,7 @@ class TestHandleReaction:
         """Reactions with unmapped emoji should be no-ops."""
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP})
         await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "thumbsup")
-        deps.queue.enqueue_message_check.assert_not_called()
+        deps.start_interactive_turn.assert_not_awaited()
         deps.queue.stop_active_process.assert_not_called()
 
     @pytest.mark.asyncio
@@ -66,7 +66,7 @@ class TestHandleReaction:
         """Reactions from unregistered groups should be no-ops."""
         deps = FakeReactionDeps(groups={})  # no registered groups
         await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "eyes")
-        deps.queue.enqueue_message_check.assert_not_called()
+        deps.start_interactive_turn.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_eyes_triggers_retry(self):
@@ -74,7 +74,6 @@ class TestHandleReaction:
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP})
         await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "eyes")
         deps.start_interactive_turn.assert_awaited_once_with(TEST_JID)
-        deps.queue.enqueue_message_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_x_interrupt_when_active(self):
@@ -111,4 +110,4 @@ class TestHandleReaction:
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP})
         # other_jid is not registered, so this should be a no-op
         await handle_reaction(deps, other_jid, "msg-ts", "user-1", "eyes")
-        deps.queue.enqueue_message_check.assert_not_called()
+        deps.start_interactive_turn.assert_not_awaited()

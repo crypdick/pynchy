@@ -107,7 +107,7 @@ async def test_clears_started_turn_when_processing_announcement_fails(tmp_path) 
 
 
 @pytest.mark.asyncio
-async def test_completed_host_boundary_continues_when_input_arrived_during_run(tmp_path) -> None:
+async def test_completed_host_boundary_commits_its_input_cursor(tmp_path) -> None:
     jid = "g@g.us"
     group = _make_group(is_admin=True)
     deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
@@ -115,7 +115,7 @@ async def test_completed_host_boundary_continues_when_input_arrived_during_run(t
 
     async def host_run(_group, _jid, _messages, on_output, *_args, **_kwargs):
         await on_output(ContainerOutput(status="success", type="result", result="done"))
-        return "success_with_pending_input"
+        return "success"
 
     deps.run_agent = AsyncMock(side_effect=host_run)
     with (
@@ -124,7 +124,7 @@ async def test_completed_host_boundary_continues_when_input_arrived_during_run(t
         _patch_intercept(),
         _patch_fmt_sdk(),
     ):
-        assert await process_group_messages(deps, jid) is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
+        assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
     assert deps.last_agent_timestamp[jid] == "new-ts"
 

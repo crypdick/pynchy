@@ -13,9 +13,9 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.turn_outcomes import TurnOutcome
 from tests.group_queue_support import (
     _patch_settings,
-    _queue_policy,
     _runtime,
     _target,
+    start_queued,
 )
 
 pytest_plugins = ("tests.group_queue_support",)
@@ -50,7 +50,9 @@ class TestIsActiveTask:
             completions.append(event)
             await event.wait()
 
-        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        )
         await asyncio.sleep(0.02)
 
         assert queue.is_active_task(_runtime("test-group")) is True
@@ -69,7 +71,7 @@ class TestIsActiveTask:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         assert queue.is_active_task(_runtime("group1@g.us")) is False
@@ -83,7 +85,9 @@ class TestIsActiveTask:
         def task_fn() -> Awaitable[None]:
             return asyncio.sleep(0)
 
-        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        )
         await asyncio.sleep(0.1)
 
         assert queue.is_active_task(_runtime("test-group")) is False
@@ -99,40 +103,15 @@ class TestTaskExceptionHandling:
         def failing_task() -> Awaitable[None]:
             raise RuntimeError(TASK_EXPLODED_MESSAGE)
 
-        queue.enqueue_task(_target("group1@g.us"), "task-crash", failing_task)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us"), "task-crash", failing_task)
+        )
         await asyncio.sleep(0.1)
 
         # Queue should still be functional
         snapshot = queue.snapshot()
         assert snapshot["_meta"]["active_count"] == 0
         assert snapshot["group1@g.us"]["active"] is False
-
-    async def test_exception_in_process_messages_schedules_retry(self):
-        """When process_messages raises, the queue schedules a retry."""
-        call_count = 0
-
-        def process_messages(group_jid: str) -> Awaitable[TurnOutcome]:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise RuntimeError("boom")
-            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
-
-        with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
-            queue = GroupQueue(
-                _queue_policy(base_retry_seconds=0.05), make_container_runtime_operations()
-            )
-            queue.set_process_messages_fn(process_messages)
-            queue.enqueue_message_check(_target("group1@g.us"))
-
-            await asyncio.sleep(0.02)
-            assert call_count == 1
-            # State should be cleaned up after exception
-            assert queue.snapshot()["group1@g.us"]["active"] is False
-
-            # Retry should fire
-            await asyncio.sleep(0.15)
-            assert call_count >= 2
 
 
 class TestStopActiveProcess:
@@ -154,7 +133,9 @@ class TestStopActiveProcess:
             completions.append(event)
             await event.wait()
 
-        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        )
         await asyncio.sleep(0.02)
 
         # Register a mock process
@@ -197,7 +178,7 @@ class TestDeferredToolBoundaryInterrupt:
             assert await queue.interrupt_after_tool_result(_runtime("group1@g.us")) is True
 
         stop.assert_awaited_once_with(_runtime("group1@g.us"))
-        assert queue.release_host_process(lease) is True
+        assert queue.release_host_process(lease) is False
 
     async def test_stops_host_runner_without_container_cleanup(self, queue: GroupQueue):
         lease = queue.acquire_host_process(_target("group1@g.us", "pynchy-dev"))
@@ -229,7 +210,9 @@ class TestDeferredToolBoundaryInterrupt:
             completions.append(event)
             await event.wait()
 
-        queue.enqueue_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        await start_queued(
+            queue.run_serialized_task(_target("group1@g.us", "test-group"), "task-1", task_fn)
+        )
         await asyncio.sleep(0.02)
 
         mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
@@ -257,14 +240,14 @@ class TestClearPendingTasks:
             return TurnOutcome.COMPLETED
 
         queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check(_target("group1@g.us"))
+        await start_queued(queue.run_message_turn(_target("group1@g.us")))
         await asyncio.sleep(0.02)
 
         async def task_fn():
             pass
 
-        queue.enqueue_task(_target("group1@g.us"), "task-1", task_fn)
-        queue.enqueue_task(_target("group1@g.us"), "task-2", task_fn)
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-1", task_fn))
+        await start_queued(queue.run_serialized_task(_target("group1@g.us"), "task-2", task_fn))
 
         assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 2
 
@@ -286,8 +269,8 @@ class TestDrainGroupTaskOrdering:
 
     async def test_tasks_queued_at_concurrency_limit_drain_correctly(self):
         """Tasks queued when at concurrency limit drain when slots free up."""
-        with _patch_settings(max_concurrent=1):
-            queue = GroupQueue(_queue_policy(max_concurrent=1), make_container_runtime_operations())
+        with _patch_settings():
+            queue = GroupQueue(1, make_container_runtime_operations())
             execution: list[str] = []
             completions: list[asyncio.Event] = []
 
@@ -301,7 +284,7 @@ class TestDrainGroupTaskOrdering:
             queue.set_process_messages_fn(process_messages)
 
             # Fill the single slot
-            queue.enqueue_message_check(_target("group1@g.us"))
+            await start_queued(queue.run_message_turn(_target("group1@g.us")))
             await asyncio.sleep(0.02)
 
             # Queue a task for a different group while at limit
@@ -309,7 +292,7 @@ class TestDrainGroupTaskOrdering:
                 execution.append("task-group2")
                 return asyncio.sleep(0)
 
-            queue.enqueue_task(_target("group2@g.us"), "task-1", task_fn)
+            await start_queued(queue.run_serialized_task(_target("group2@g.us"), "task-1", task_fn))
 
             # Free the slot
             completions[0].set()
@@ -334,7 +317,7 @@ class TestCleanupIpcInput:
         (input_dir / "002.json").write_text('{"type": "message", "text": "also stale"}')
         (input_dir / "_close").write_text("")
 
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+        with _patch_settings(data_dir=tmp_path):
             clean_ipc_input_dir("test-group")
 
         assert list(input_dir.iterdir()) == []
@@ -345,5 +328,5 @@ class TestCleanupIpcInput:
 
     def test_noop_when_dir_doesnt_exist(self, tmp_path):
         """Should silently do nothing when IPC input dir doesn't exist."""
-        with _patch_settings(max_concurrent=2, data_dir=tmp_path):
+        with _patch_settings(data_dir=tmp_path):
             clean_ipc_input_dir("nonexistent-group")

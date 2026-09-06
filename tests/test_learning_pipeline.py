@@ -79,7 +79,6 @@ def _make_deps(
     deps.queue = MagicMock()
     deps.queue.is_active_task = MagicMock(return_value=False)
     deps.queue.send_message = MagicMock(return_value=False)
-    deps.queue.enqueue_message_check = MagicMock()
     deps.queue.clear_pending_tasks = MagicMock()
     deps.queue.stop_active_process = AsyncMock()
     deps.queue.close_stdin = MagicMock()

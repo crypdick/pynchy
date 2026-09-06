@@ -36,7 +36,6 @@ from pynchy.work_items.api import WorkItemExecutionStatus
 from pynchy.workspace.api import WorkspaceProfile
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
     from pathlib import Path
 
 from conftest import make_settings
@@ -468,218 +467,91 @@ async def test_application_runs_learning_review_through_the_workspace_queue(
     app = PynchyApp()
     group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
     packet = _learning_packet()
-    run_agent = AsyncMock(return_value="success")
-    tasks: list[asyncio.Task[None]] = []
+    app.run_agent = AsyncMock(return_value="success")
 
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        tasks.append(asyncio.create_task(callback()))
-        return True
-
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        await run_agent_via_queue(group, "chat", [])
+    async def review(_packet, run_agent_via_queue, _prompt):
+        assert await run_agent_via_queue(group, "chat", []) == "success"
         return "completed"
 
-    app.run_agent = run_agent
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
     monkeypatch.setattr(app_module, "run_host_learning_review", review)
     monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
     assert await app.run_learning_review(packet) == "completed"
-    run_agent.assert_awaited_once()
+    app.run_agent.assert_awaited_once()
+    assert app.queue.snapshot()["_meta"]["active_count"] == 0
+    await app.queue.shutdown()
 
     start_review = AsyncMock()
     monkeypatch.setattr(
-        app_module.temporal_scheduler,
-        "start_learning_review_workflow",
-        start_review,
+        app_module.temporal_scheduler, "start_learning_review_workflow", start_review
     )
     await app.start_learning_review_workflow(packet)
     start_review.assert_awaited_once_with(packet)
 
 
-async def test_learning_review_surfaces_queue_rejection(
+async def test_learning_review_surfaces_queue_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    await app.queue.shutdown()
+
+    async def review(_packet, run_agent_via_queue, _prompt):
+        return await run_agent_via_queue(group, "chat", [])
+
+    monkeypatch.setattr(app_module, "run_host_learning_review", review)
+    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
+    with pytest.raises(RuntimeError, match="Thread queue rejected scheduled task"):
+        await app.run_learning_review(_learning_packet())
+
+
+@pytest.mark.parametrize("error", [RuntimeError("agent failed"), asyncio.CancelledError()])
+async def test_learning_review_propagates_agent_failure_or_cancellation(
+    monkeypatch: pytest.MonkeyPatch, error: BaseException
+) -> None:
+    app = PynchyApp()
+    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    app.run_agent = AsyncMock(side_effect=error)
+
+    async def review(_packet, run_agent_via_queue, _prompt):
+        return await run_agent_via_queue(group, "chat", [])
+
+    monkeypatch.setattr(app_module, "run_host_learning_review", review)
+    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
+    with pytest.raises(type(error)) as raised:
+        await app.run_learning_review(_learning_packet())
+    assert raised.value is error
+    app.run_agent.assert_awaited_once()
+    assert app.queue.snapshot()["_meta"]["active_count"] == 0
+    await app.queue.shutdown()
+
+
+async def test_cancelling_learning_review_stops_its_active_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = PynchyApp()
     group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
+    started = asyncio.Event()
+    stopped = asyncio.Event()
 
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        await run_agent_via_queue(group, "chat", [])
-        return "unexpected"
+    async def run_agent(*_args, **_kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
 
-    monkeypatch.setattr(app.queue, "enqueue_task", lambda *_args: False)
+    async def review(_packet, run_agent_via_queue, _prompt):
+        return await run_agent_via_queue(group, "chat", [])
+
+    app.run_agent = run_agent
     monkeypatch.setattr(app_module, "run_host_learning_review", review)
     monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
+    owner = asyncio.create_task(app.run_learning_review(_learning_packet()))
+    await started.wait()
+    owner.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await app.run_learning_review(_learning_packet())
-
-
-async def test_learning_review_propagates_queued_agent_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = PynchyApp()
-    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
-    run_agent = AsyncMock(side_effect=RuntimeError("agent failed"))
-    app.run_agent = run_agent
-    tasks: list[asyncio.Task[None]] = []
-
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        tasks.append(asyncio.create_task(callback()))
-        return True
-
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        await run_agent_via_queue(group, "chat", [])
-        return "unexpected"
-
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
-    monkeypatch.setattr(app_module, "run_host_learning_review", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
-    with pytest.raises(RuntimeError, match="agent failed"):
-        await app.run_learning_review(_learning_packet())
-    run_agent.assert_awaited_once()
-
-
-async def test_learning_review_propagates_queued_agent_cancellation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = PynchyApp()
-    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
-    run_agent = AsyncMock(side_effect=asyncio.CancelledError())
-    app.run_agent = run_agent
-    tasks: list[asyncio.Task[None]] = []
-
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        tasks.append(asyncio.create_task(callback()))
-        return True
-
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        await run_agent_via_queue(group, "chat", [])
-        return "unexpected"
-
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
-    monkeypatch.setattr(app_module, "run_host_learning_review", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
-    with pytest.raises(asyncio.CancelledError):
-        await app.run_learning_review(_learning_packet())
-    await asyncio.gather(*tasks, return_exceptions=True)
-    run_agent.assert_awaited_once()
-
-
-async def test_learning_review_cancels_waiter_when_queued_agent_is_cancelled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app = PynchyApp()
-    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
-    run_agent = AsyncMock(side_effect=asyncio.CancelledError())
-    app.run_agent = run_agent
-    tasks: list[asyncio.Task[None]] = []
-
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        tasks.append(asyncio.create_task(callback()))
-        return True
-
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        with pytest.raises(asyncio.CancelledError):
-            await run_agent_via_queue(group, "chat", [])
-        return "cancelled"
-
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
-    monkeypatch.setattr(app_module, "run_host_learning_review", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
-    assert await app.run_learning_review(_learning_packet()) == "cancelled"
-    await asyncio.gather(*tasks, return_exceptions=True)
-    run_agent.assert_awaited_once()
-
-
-@pytest.mark.parametrize("outcome", ["success", "error", "late_cancel"])
-async def test_learning_review_ignores_late_queue_callback_result(
-    monkeypatch: pytest.MonkeyPatch, outcome: str
-) -> None:
-    app = PynchyApp()
-    group = WorkspaceProfile(jid="chat", name="Chat", folder="chat", trigger="@Pynchy")
-    callbacks: list[Callable[[], Awaitable[None]]] = []
-    if outcome == "success":
-        run_agent = AsyncMock(side_effect=["success", "success"])
-    elif outcome == "error":
-        run_agent = AsyncMock(side_effect=[RuntimeError("agent failed")] * 2)
-    else:
-        run_agent = AsyncMock(side_effect=["success", asyncio.CancelledError()])
-    app.run_agent = run_agent
-    tasks: list[asyncio.Task[None]] = []
-
-    def enqueue_task(
-        _target: object,
-        _task_id: str,
-        callback: Callable[[], Awaitable[None]],
-    ) -> bool:
-        callbacks.append(callback)
-        tasks.append(asyncio.create_task(callback()))
-        return True
-
-    async def review(
-        _packet: LearningPacket,
-        run_agent_via_queue: Callable[..., Awaitable[str]],
-        _prompt: str,
-    ) -> str:
-        await run_agent_via_queue(group, "chat", [])
-        return "done"
-
-    monkeypatch.setattr(app.queue, "enqueue_task", enqueue_task)
-    monkeypatch.setattr(app_module, "run_host_learning_review", review)
-    monkeypatch.setattr(app_module, "_read_current_prompt", lambda _: "review prompt")
-
-    if outcome == "error":
-        with pytest.raises(RuntimeError):
-            await app.run_learning_review(_learning_packet())
-    else:
-        assert await app.run_learning_review(_learning_packet()) == "done"
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    if outcome == "late_cancel":
-        with pytest.raises(asyncio.CancelledError):
-            await callbacks[0]()
-    else:
-        await callbacks[0]()
+        await owner
+    await stopped.wait()
+    assert app.queue.snapshot()["_meta"]["active_count"] == 0
+    await app.queue.shutdown()
 
 
 async def test_application_runs_declared_canaries_through_the_canary_adapter(

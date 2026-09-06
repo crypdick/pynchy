@@ -216,7 +216,7 @@ async def test_todo_during_active_task_updates_local_board_and_notifies_agent(tm
     assert [todo["content"] for todo in todos] == ["check coverage"]
     deps.queue.send_message.assert_called_once()
     assert "your local list" in deps.queue.send_message.call_args.args[1]
-    deps.queue.enqueue_message_check.assert_called_once()
+    deps.start_interactive_turn.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -236,7 +236,7 @@ async def test_linear_todo_failure_notifies_user_and_preserves_pending_input() -
     warning = deps.broadcast_to_channels.await_args.args[1]
     assert "could not create the Linear todo" in warning.content
     deps.queue.send_message.assert_not_called()
-    deps.queue.enqueue_message_check.assert_called_once()
+    deps.start_interactive_turn.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -368,6 +368,5 @@ async def test_active_turn_defers_lifecycle_control_for_drain() -> None:
     ):
         await _run_loop_once(deps)
 
-    deps.queue.enqueue_message_check.assert_called_once()
-    deps.start_interactive_turn.assert_not_awaited()
+    deps.start_interactive_turn.assert_awaited_once_with(jid)
     assert message.metadata == {"deferred_host_control": True}

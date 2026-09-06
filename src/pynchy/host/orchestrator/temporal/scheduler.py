@@ -544,6 +544,7 @@ class TemporalSchedulerRuntime:
             workflow_id=interactive_message_workflow_id(chat_jid),
             status_id=chat_jid,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            start_signal="request_turn",
         )
 
     async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None:
@@ -656,7 +657,7 @@ class TemporalSchedulerRuntime:
             id_reuse_policy=id_reuse_policy,
         )
 
-    async def _start_workflow(
+    async def _start_workflow(  # noqa: PLR0913 - maps the supported Temporal workflow start options.
         self,
         workflow: Callable[..., object],
         *args: object,
@@ -664,6 +665,7 @@ class TemporalSchedulerRuntime:
         status_id: str,
         start_delay: timedelta | None = None,
         id_reuse_policy: WorkflowIDReusePolicy = WorkflowIDReusePolicy.REJECT_DUPLICATE,
+        start_signal: str | None = None,
     ) -> None:
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
@@ -676,6 +678,8 @@ class TemporalSchedulerRuntime:
         }
         if start_delay is not None:
             start_kwargs["start_delay"] = start_delay
+        if start_signal is not None:
+            start_kwargs["start_signal"] = start_signal
 
         try:
             await self.client.start_workflow(cast("Any", workflow), **start_kwargs)

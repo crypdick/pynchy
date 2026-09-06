@@ -7,18 +7,13 @@ from collections.abc import (  # noqa: TC003 - beartype resolves queue annotatio
     Awaitable,
     Callable,
 )
-from typing import cast
 
 from pynchy.host.orchestrator.queue_state import (
     # beartype resolves queue annotations at runtime.
-    GroupState,
     QueuedTask,
 )
 from pynchy.identifiers import (
     RuntimeId,  # noqa: TC001 - beartype resolves queue annotations at runtime.
-)
-from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves queue annotations at runtime.
-    TurnOutcome,
 )
 from pynchy.workspace.api import (
     RuntimeTarget,  # noqa: TC001 - beartype resolves queue annotations at runtime.
@@ -32,8 +27,10 @@ async def await_queued_task[ResultT](  # noqa: PLR0913 - queue adapters keep ind
     target: RuntimeTarget,
     task_id: str,
     fn: Callable[[], Awaitable[ResultT]],
+    *,
+    is_interactive: bool = False,
 ) -> ResultT:
-    """Run autonomous work through the runtime queue with linked cancellation."""
+    """Run one owned operation through the queue with linked cancellation."""
     future: asyncio.Future[ResultT] = asyncio.get_running_loop().create_future()
     runner: asyncio.Task[None] | None = None
 
@@ -46,17 +43,16 @@ async def await_queued_task[ResultT](  # noqa: PLR0913 - queue adapters keep ind
             result = await fn()
             if not future.done():
                 future.set_result(result)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - allow: exception-handling; relay failures and cancellation to the awaiting owner.
             if not future.done():
                 future.set_exception(exc)
-            raise
         finally:
             runner = None
 
     def cancel_waiter() -> None:
         future.cancel()
 
-    task = QueuedTask(id=task_id, fn=queued, cancel_waiter=cancel_waiter)
+    task = QueuedTask(id=task_id, fn=queued, cancel=cancel_waiter, is_interactive=is_interactive)
     if not enqueue_task(target, task):
         raise RuntimeError(f"Thread queue rejected scheduled task {task_id}")
     try:
@@ -64,25 +60,10 @@ async def await_queued_task[ResultT](  # noqa: PLR0913 - queue adapters keep ind
     except asyncio.CancelledError:
         future.cancel()
         cancel_task(target.id, task)
-        if runner is not None:
+        cancelled_runner = runner
+        if cancelled_runner is not None:
             try:
                 await stop_active_process(target.id)
             finally:
-                runner.cancel()
+                cancelled_runner.cancel()
         raise
-
-
-async def await_message_turn(
-    get_group: Callable[[RuntimeTarget], GroupState],
-    enqueue_message_check: Callable[[RuntimeTarget], None],
-    target: RuntimeTarget,
-    *,
-    shutting_down: bool,
-) -> TurnOutcome:
-    """Wait until a thread's queued interactive turn has executed."""
-    if shutting_down:
-        raise RuntimeError("Thread queue is shutting down")
-    future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
-    get_group(target).message_waiters.append(future)
-    enqueue_message_check(target)
-    return cast("TurnOutcome", await future)

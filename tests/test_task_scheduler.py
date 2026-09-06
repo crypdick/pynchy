@@ -150,8 +150,7 @@ class TestStartSchedulerLoop:
         self, mock_deps
     ):
         """The scheduler loop reconciles Temporal schedules instead of running due work."""
-        enqueued = []
-        mock_deps.queue.enqueue_task = lambda group_jid, task_id, fn: enqueued.append(task_id)
+        mock_deps.queue.run_serialized_task = AsyncMock()
 
         scheduler = SchedulerConfig(
             poll_interval=0.01,
@@ -177,7 +176,7 @@ class TestStartSchedulerLoop:
             with contextlib.suppress(asyncio.CancelledError):
                 await start_scheduler_loop(mock_deps)
 
-        assert enqueued == []
+        mock_deps.queue.run_serialized_task.assert_not_awaited()
         assert len(runtime_cls.instances) == 1
         assert runtime_cls.instances[0].reconcile_count == 1
         mock_spawn.assert_not_awaited()
@@ -353,12 +352,7 @@ class TestStartSchedulerLoop:
     @pytest.mark.asyncio
     async def test_scheduler_does_not_enqueue_due_tasks_locally(self, mock_deps):
         """Due work is Temporal schedule state, not local GroupQueue work."""
-        enqueued = []
-
-        def track_enqueue(group_jid, task_id, fn):
-            enqueued.append((group_jid, task_id))
-
-        mock_deps.queue.enqueue_task = track_enqueue
+        mock_deps.queue.run_serialized_task = AsyncMock()
 
         with _patch_scheduler_temporal_runtime() as runtime_cls:
             with patch(
@@ -369,5 +363,5 @@ class TestStartSchedulerLoop:
                     with contextlib.suppress(asyncio.CancelledError):
                         await start_scheduler_loop(mock_deps)
 
-        assert enqueued == []
+        mock_deps.queue.run_serialized_task.assert_not_awaited()
         assert len(runtime_cls.instances) == 1

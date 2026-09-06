@@ -55,9 +55,4 @@ class RuntimeRegistry:
 
     @staticmethod
     def has_activity(state: GroupState) -> bool:
-        return bool(
-            state.active
-            or state.pending_messages
-            or state.pending_tasks
-            or state.host_process_lease is not None
-        )
+        return bool(state.active or state.pending_tasks or state.host_process_lease is not None)

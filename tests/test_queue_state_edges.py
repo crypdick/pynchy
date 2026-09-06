@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from pynchy.host.orchestrator.queue_state import GroupState, HostProcessLease
@@ -27,19 +25,3 @@ def test_host_process_lease_cannot_be_acquired_twice() -> None:
 
     with pytest.raises(RuntimeError, match="A host process is already registered"):
         state.acquire_host_process(2)
-
-
-@pytest.mark.asyncio
-async def test_cancel_message_waiters_preserves_completed_waiters() -> None:
-    state = GroupState(RuntimeTarget.from_binding("group", "chat"))
-    completed = asyncio.get_running_loop().create_future()
-    completed.set_result("done")
-    pending = asyncio.get_running_loop().create_future()
-    state.message_waiters = [completed, pending]
-
-    state.cancel_message_waiters()
-
-    assert state.message_waiters == []
-    assert completed.result() == "done"
-    assert pending.cancelled()
-    await asyncio.sleep(0)

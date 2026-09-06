@@ -35,7 +35,7 @@ async def test_immediate_host_only_control_does_not_enqueue_more_input() -> None
         result = await intercept_immediate_checkpoint_controls(deps, "g@g.us", group, [pending])
 
     assert result is True
-    deps.queue.enqueue_message_check.assert_not_called()
+    deps.start_interactive_turn.assert_not_awaited()
 
 
 @pytest.mark.asyncio

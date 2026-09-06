@@ -27,7 +27,7 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.host.orchestrator import agent_runner
-from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.identifiers import RuntimeId
 from pynchy.workspace.api import (
     RuntimeTarget,
@@ -57,7 +57,7 @@ class _FakeDeps:
         self.session_cleared: set[str] = set()
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue(
-            QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0),
+            10,
             make_container_runtime_operations(),
         )
         self.plugin_manager = None
