@@ -140,7 +140,7 @@ class TestInboundReconciliation:
             content="hello",
             timestamp="2024-06-01T12:00:00",
         )
-        ch = _make_channel(inbound=[msg])
+        ch = _make_channel(inbound=[msg], high_water_mark="2024-01-01T00:00:00")
         deps = _make_deps(
             channels=[ch],
             workspaces={"group@g.us": TEST_GROUP},

@@ -75,7 +75,6 @@ def _messages_are_allowed(
 class _ReconcileInboundRequest:
     ch: Channel
     canonical_jid: str
-    target_jid: str
     group: WorkspaceProfile
     inbound: _InboundCursor
     deps: ReconcilerDeps
@@ -85,16 +84,6 @@ class _ReconcileInboundRequest:
 class _InboundCursor:
     fetch_since: str
     empty_fetch_cursor: str | None
-
-
-@dataclass(frozen=True)
-class _AdvancePairCursorsRequest:
-    channel_name: str
-    canonical_jid: str
-    inbound_cursor: str
-    new_inbound_cursor: str
-    outbound_cursor: str
-    new_outbound_cursor: str
 
 
 @runtime_checkable
@@ -139,7 +128,7 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         cursor=request.inbound.fetch_since[:30],
     )
     result = await request.ch.fetch_inbound_since(
-        request.target_jid,
+        request.canonical_jid,
         request.inbound.fetch_since,
     )
 
@@ -154,22 +143,17 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
     )
     # Seed with high-water mark so the cursor advances past bot-only
     # pages even when no user messages are found.
-    new_inbound_cursor = (
-        result.high_water_mark
-        if result.high_water_mark > request.inbound.fetch_since
-        else request.inbound.fetch_since
-    )
+    new_inbound_cursor = max(result.high_water_mark, request.inbound.fetch_since)
     if (
         not remote_messages
         and not result.high_water_mark
         and request.inbound.empty_fetch_cursor is not None
     ):
         new_inbound_cursor = request.inbound.empty_fetch_cursor
-    new_inbound_cursor, recovered = await _ingest_remote_messages(
-        request,
-        remote_messages,
-        new_inbound_cursor,
-    )
+    recovered = 0
+    for msg in remote_messages:
+        recovered += int(await _ingest_remote_message(request, msg))
+        new_inbound_cursor = max(new_inbound_cursor, msg.timestamp)
 
     logger.debug(
         "reconciler_trace",
@@ -182,27 +166,10 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
     return new_inbound_cursor, recovered
 
 
-async def _ingest_remote_messages(
-    request: _ReconcileInboundRequest,
-    remote_messages: list[NewMessage],
-    new_inbound_cursor: str,
-) -> tuple[str, int]:
-    recovered = 0
-    for msg in remote_messages:
-        new_inbound_cursor, did_recover = await _ingest_remote_message(
-            request,
-            msg,
-            new_inbound_cursor,
-        )
-        recovered += int(did_recover)
-    return new_inbound_cursor, recovered
-
-
 async def _ingest_remote_message(
     request: _ReconcileInboundRequest,
     msg: NewMessage,
-    new_inbound_cursor: str,
-) -> tuple[str, bool]:
+) -> bool:
     # Remap chat_jid to canonical (the channel returned channel-native JIDs)
     msg.chat_jid = request.canonical_jid
     exists = await message_exists(msg.id, request.canonical_jid)
@@ -216,7 +183,7 @@ async def _ingest_remote_message(
         sender=msg.sender,
     )
     if exists:
-        return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
+        return False
 
     if not _messages_are_allowed([msg], request.group, request.ch.name):
         logger.debug(
@@ -225,20 +192,16 @@ async def _ingest_remote_message(
             jid=request.canonical_jid,
             sender=msg.sender,
         )
-        return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
+        return False
 
     logger.debug("reconciler_trace", step="ingesting", jid=request.canonical_jid, msg_id=msg.id)
     await request.deps.ingest_user_message(msg, source_channel=request.ch.name)
     await request.deps.start_interactive_turn(request.canonical_jid)
-    return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), True
-
-
-def _advance_inbound_cursor(cursor: str, timestamp: str) -> str:
-    return timestamp if timestamp > cursor else cursor
+    return True
 
 
 async def _deliver_pending_outbound_row(
-    ch: Channel, target_jid: str, row: PendingDelivery, outbound_cursor: str
+    ch: Channel, chat_jid: str, row: PendingDelivery, outbound_cursor: str
 ) -> str:
     event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
     update_event = getattr(ch, "update_event", None)
@@ -248,20 +211,13 @@ async def _deliver_pending_outbound_row(
         and callable(update_event)
     ):
         try:
-            await update_event(target_jid, row.remote_message_id, event)
+            await update_event(chat_jid, row.remote_message_id, event)
         except Exception as exc:  # noqa: BLE001 - a stale or unavailable edit target falls back to a visible post.
             logger.warning(
                 "Outbound edit retry failed, falling back to a post",
                 channel=ch.name,
                 ledger_id=row.ledger_id,
                 error=str(exc),
-            )
-            await ch.send_event(target_jid, event)
-            await mark_delivery_succeeded(
-                row.ledger_id,
-                ch.name,
-                OutboundDeliveryOperation.FALLBACK_POST,
-                None,
             )
         else:
             await mark_delivery_succeeded(
@@ -270,24 +226,23 @@ async def _deliver_pending_outbound_row(
                 OutboundDeliveryOperation.EDIT,
                 row.remote_message_id,
             )
+            return max(row.timestamp, outbound_cursor)
+
+    await ch.send_event(chat_jid, event)
+    if row.operation is OutboundDeliveryOperation.POST:
+        await mark_delivered(row.ledger_id, ch.name)
     else:
-        await ch.send_event(target_jid, event)
-        if row.operation is OutboundDeliveryOperation.POST:
-            await mark_delivered(row.ledger_id, ch.name)
-        else:
-            await mark_delivery_succeeded(
-                row.ledger_id,
-                ch.name,
-                OutboundDeliveryOperation.FALLBACK_POST,
-                None,
-            )
-    if row.timestamp > outbound_cursor:
-        outbound_cursor = row.timestamp
-    return outbound_cursor
+        await mark_delivery_succeeded(
+            row.ledger_id,
+            ch.name,
+            OutboundDeliveryOperation.FALLBACK_POST,
+            None,
+        )
+    return max(row.timestamp, outbound_cursor)
 
 
 async def _retry_outbound(
-    ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
+    ch: Channel, canonical_jid: str, outbound_cursor: str
 ) -> tuple[str, int, str | None]:
     """Retry pending outbound deliveries and report an exhausted failure."""
     async with outbound_delivery_lock(canonical_jid):
@@ -299,7 +254,7 @@ async def _retry_outbound(
             try:
                 new_outbound_cursor = await _deliver_pending_outbound_row(
                     ch,
-                    target_jid,
+                    canonical_jid,
                     row,
                     new_outbound_cursor,
                 )
@@ -379,43 +334,36 @@ async def _reconcile_channel_pair(
     if _is_on_cooldown(ch, canonical_jid, now):
         return None
 
-    target_jid = canonical_jid
     logger.debug(
         "reconciler_trace",
         step="past_cooldown",
         channel=ch.name,
         jid=canonical_jid,
-        target_jid=target_jid,
+        target_jid=canonical_jid,
     )
 
     inbound = await _inbound_cursor(ch.name, canonical_jid, now)
-    inbound_result = await _reconcile_inbound(
+    new_inbound_cursor, pair_recovered = await _reconcile_inbound(
         _ReconcileInboundRequest(
             ch=ch,
             canonical_jid=canonical_jid,
-            target_jid=target_jid,
             group=group,
             inbound=inbound,
             deps=deps,
         )
     )
-    new_inbound_cursor, pair_recovered = inbound_result
 
     outbound_cursor = await get_channel_cursor(
         ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
     )
     new_outbound_cursor, pair_retried, pair_failure = await _retry_outbound(
-        ch, canonical_jid, target_jid, outbound_cursor
+        ch, canonical_jid, outbound_cursor
     )
-    await _advance_pair_cursors(
-        _AdvancePairCursorsRequest(
-            channel_name=ch.name,
-            canonical_jid=canonical_jid,
-            inbound_cursor=inbound.fetch_since,
-            new_inbound_cursor=new_inbound_cursor,
-            outbound_cursor=outbound_cursor,
-            new_outbound_cursor=new_outbound_cursor,
-        )
+    await advance_cursors_atomic(
+        ChannelName(ch.name),
+        ChatJid(canonical_jid),
+        inbound=new_inbound_cursor if new_inbound_cursor != inbound.fetch_since else None,
+        outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
     )
     if pair_failure is None:
         _last_reconciled[ch.name, canonical_jid] = now
@@ -438,23 +386,6 @@ async def _inbound_cursor(
     return _InboundCursor(
         fetch_since=(poll_started_at - _INITIAL_LOOKBACK).isoformat(),
         empty_fetch_cursor=poll_started_at.isoformat(),
-    )
-
-
-async def _advance_pair_cursors(request: _AdvancePairCursorsRequest) -> None:
-    await advance_cursors_atomic(
-        ChannelName(request.channel_name),
-        ChatJid(request.canonical_jid),
-        inbound=(
-            request.new_inbound_cursor
-            if request.new_inbound_cursor != request.inbound_cursor
-            else None
-        ),
-        outbound=(
-            request.new_outbound_cursor
-            if request.new_outbound_cursor != request.outbound_cursor
-            else None
-        ),
     )
 
 
