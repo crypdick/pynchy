@@ -163,6 +163,22 @@ def test_pynchy_startup_probe_allows_workspace_recovery() -> None:
     }
 
 
+def test_litellm_startup_probe_protects_cold_migrations() -> None:
+    deployment = _documents("deploy/k3s/application/pynchy.yaml")[0]
+    container = next(
+        item
+        for item in deployment["spec"]["template"]["spec"]["containers"]
+        if item["name"] == "litellm"
+    )
+
+    assert container["startupProbe"] == {
+        "tcpSocket": {"port": "litellm"},
+        "failureThreshold": 36,
+        "periodSeconds": 5,
+    }
+    assert container["livenessProbe"]["periodSeconds"] == 10
+
+
 def test_main_workflow_publishes_both_images_after_tests() -> None:
     workflow = Path(".github/workflows/test.yml").read_text(encoding="utf-8")
 

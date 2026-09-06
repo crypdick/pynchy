@@ -455,7 +455,7 @@ class TestLiteLLMGatewayStart:
         request = wait_healthy_mock.await_args.args[0]
         assert isinstance(request, HealthCheckRequest)
         assert request.url == "http://localhost:4000/health/readiness"
-        assert isinstance(request.health_timeout_seconds, float)
+        assert request.health_timeout_seconds == pytest.approx(180.0)
 
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:
