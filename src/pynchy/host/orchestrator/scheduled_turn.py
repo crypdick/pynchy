@@ -6,11 +6,13 @@ import asyncio
 from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
     Awaitable,
     Callable,
+    Iterator,
 )
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves request annotations.
-from typing import Any, cast
+from typing import Any
 
 from pynchy.agent_protocol.api import (
     CheckpointControlState,
@@ -51,33 +53,11 @@ from pynchy.workspace.api import (
 SCHEDULED_TURN_INTERRUPTED = "__scheduled_turn_interrupted__"
 
 
-class _IdleTimer:
-    """Resettable scheduled-turn idle timer."""
-
-    def __init__(self, timeout: float, callback: Callable[[], None]) -> None:
-        self._timeout = timeout
-        self._callback = callback
-        self._handle: asyncio.TimerHandle | None = None
-        self._loop = asyncio.get_running_loop()
-
-    def reset(self) -> None:
-        """Cancel any pending timer and start a fresh countdown."""
-        if self._handle is not None:
-            self._handle.cancel()
-        self._handle = self._loop.call_later(self._timeout, self._callback)
-
-    def cancel(self) -> None:
-        """Cancel the timer without firing the callback."""
-        cast("asyncio.TimerHandle", self._handle).cancel()
-        self._handle = None
-
-
 @dataclass(frozen=True)
 class TaskAgentRequest:
     task: ScheduledTask
     deps: ScheduledTurnDeps
     group: WorkspaceProfile
-    idle_enabled: bool
     idle_timeout: float
     automation_memory_dir: Path | None = None
     resume_turn: InFlightTurn | None = None
@@ -100,15 +80,6 @@ class TaskAgentResult:
     result: str | None
     error: str | None
     terminal_outcome: TurnOutcome | None = None
-
-
-@dataclass(frozen=True)
-class _TaskAgentRun:
-    request: TaskAgentRequest
-    state: _TaskAgentStreamState
-    turn_id: str
-    input_messages: list[dict[str, Any]]
-    is_new_turn: bool
 
 
 def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
@@ -156,25 +127,26 @@ async def pause_queued_once_task(
     return True
 
 
-def _scheduled_idle_timer(
-    request: TaskAgentRequest,
-) -> _IdleTimer | None:
-    if not request.idle_enabled:
-        return None
+@contextmanager
+def _scheduled_idle_timer(request: TaskAgentRequest) -> Iterator[Callable[[], None]]:
+    """Close idle stdin and cancel the timer when this invocation exits."""
 
     def _idle_timeout_callback() -> None:
         logger.debug("Scheduled task idle timeout, closing stdin", task_id=request.task.id)
         request.deps.queue.close_stdin(RuntimeId(request.group.folder))
 
-    return _IdleTimer(request.idle_timeout, _idle_timeout_callback)
+    loop = asyncio.get_running_loop()
+    handle = loop.call_later(request.idle_timeout, _idle_timeout_callback)
 
+    def reset() -> None:
+        nonlocal handle
+        handle.cancel()
+        handle = loop.call_later(request.idle_timeout, _idle_timeout_callback)
 
-def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
-    return (
-        semantic_resume_messages(request.resume_turn)
-        if request.resume_turn
-        else [_scheduled_task_message(request.task)]
-    )
+    try:
+        yield reset
+    finally:
+        handle.cancel()
 
 
 async def _checkpoint_new_task(
@@ -207,7 +179,7 @@ def _task_output_handler(
     request: TaskAgentRequest,
     state: _TaskAgentStreamState,
     turn_id: str,
-    idle_timer: _IdleTimer | None,
+    reset_idle_timer: Callable[[], None],
 ) -> OnOutput:
     async def _on_output(streamed: ContainerOutput) -> None:
         sent = await request.deps.handle_streamed_output(
@@ -219,8 +191,7 @@ def _task_output_handler(
         if sent and not state.output_sent:
             state.output_sent = True
             await mark_in_flight_output_sent(turn_id)
-        if idle_timer:
-            idle_timer.reset()
+        reset_idle_timer()
         if streamed.result:
             state.result = streamed.result
         if streamed.status == "error":
@@ -231,20 +202,20 @@ def _task_output_handler(
     return _on_output
 
 
-async def _run_target_agent(run: _TaskAgentRun) -> None:
-    request = run.request
-    state = run.state
-    if request.on_started is not None and run.is_new_turn:
+async def _run_target_agent(
+    request: TaskAgentRequest,
+    state: _TaskAgentStreamState,
+    turn_id: str,
+    input_messages: list[dict[str, Any]],
+) -> None:
+    if request.on_started is not None and request.resume_turn is None:
         await request.on_started(request.group.jid)
-    idle_timer = _scheduled_idle_timer(request)
-    on_output = _task_output_handler(request, state, run.turn_id, idle_timer)
-    if idle_timer:
-        idle_timer.reset()
-    try:
+    with _scheduled_idle_timer(request) as reset_idle_timer:
+        on_output = _task_output_handler(request, state, turn_id, reset_idle_timer)
         agent_result = await request.deps.run_agent(
             request.group,
             request.group.jid,
-            run.input_messages,
+            input_messages,
             on_output,
             extra_system_notices=(
                 [
@@ -264,12 +235,12 @@ async def _run_target_agent(run: _TaskAgentRun) -> None:
                 if request.resume_turn is not None
                 else request.task.input_source
             ),
-            turn_id=run.turn_id,
+            turn_id=turn_id,
             resume_session_id=request.resume_turn.session_id if request.resume_turn else None,
             automation_memory_dir=request.automation_memory_dir,
         )
         state.terminal_outcome = await requested_control_outcome(
-            run.turn_id,
+            turn_id,
             agent_succeeded=agent_result == "success" and state.error is None,
         )
         if state.terminal_outcome is not None:
@@ -279,9 +250,6 @@ async def _run_target_agent(run: _TaskAgentRun) -> None:
             state.error = SCHEDULED_TURN_INTERRUPTED
         elif agent_result == "error":
             state.error = state.error or "Agent returned error"
-    finally:
-        if idle_timer:
-            idle_timer.cancel()
 
 
 async def _finish_checkpoint(
@@ -292,9 +260,7 @@ async def _finish_checkpoint(
     error: str | None,
     terminal_outcome: TurnOutcome | None,
 ) -> None:
-    if interrupted:
-        return
-    if terminal_outcome is not None:
+    if interrupted or terminal_outcome is not None:
         return
     if error:
         # Keep the checkpoint for a first attempt as well as a resumed one.
@@ -310,7 +276,11 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
     """Run or semantically resume one checkpointed scheduled agent invocation."""
     resume_turn = request.resume_turn
     turn_id = resume_turn.turn_id if resume_turn else new_turn_id()
-    input_messages = _task_agent_messages(request)
+    input_messages = (
+        semantic_resume_messages(resume_turn)
+        if resume_turn
+        else [_scheduled_task_message(request.task)]
+    )
     state = _TaskAgentStreamState(output_sent=resume_turn.output_sent if resume_turn else False)
     interrupted = False
     checkpoint_started = resume_turn is not None
@@ -319,15 +289,7 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
         if resume_turn is None:
             await _checkpoint_new_task(request, turn_id, input_messages)
         checkpoint_started = True
-        await _run_target_agent(
-            _TaskAgentRun(
-                request=request,
-                state=state,
-                turn_id=turn_id,
-                input_messages=input_messages,
-                is_new_turn=resume_turn is None,
-            ),
-        )
+        await _run_target_agent(request, state, turn_id, input_messages)
     except asyncio.CancelledError:
         interrupted = True
         raise
@@ -344,19 +306,6 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
         if state.terminal_outcome is None:
             state.error = str(exc)
             logger.error("Task failed", task_id=request.task.id, error=state.error)
-        return TaskAgentResult(
-            turn_id,
-            state.result,
-            state.error,
-            terminal_outcome=state.terminal_outcome,
-        )
-    else:
-        return TaskAgentResult(
-            turn_id,
-            state.result,
-            state.error,
-            terminal_outcome=state.terminal_outcome,
-        )
     finally:
         if checkpoint_started:
             await _finish_checkpoint(
@@ -366,3 +315,9 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
                 error=state.error,
                 terminal_outcome=state.terminal_outcome,
             )
+    return TaskAgentResult(
+        turn_id,
+        state.result,
+        state.error,
+        terminal_outcome=state.terminal_outcome,
+    )
