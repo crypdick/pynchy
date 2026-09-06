@@ -55,7 +55,7 @@ async def test_reconciler_skips_message_already_stored_in_canonical_chat():
         content=msg.content,
         timestamp=msg.timestamp,
     )
-    ch = _make_channel(inbound=[remote])
+    ch = _make_channel(inbound=[remote], high_water_mark="2024-01-01T00:00:00")
     deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
     await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
 
@@ -63,6 +63,7 @@ async def test_reconciler_skips_message_already_stored_in_canonical_chat():
 
     deps.ingest_user_message.assert_not_awaited()
     deps.start_interactive_turn.assert_not_awaited()
+    assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01T12:00:00"
 
 
 @pytest.mark.usefixtures("_db")
@@ -203,7 +204,7 @@ async def test_reconciler_sender_filter_rejection_skips_recovered_message(monkey
         content="blocked",
         timestamp="2024-06-01T00:00:00",
     )
-    ch = _make_channel(inbound=[msg])
+    ch = _make_channel(inbound=[msg], high_water_mark="2024-01-01T00:00:00")
     deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
     await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
     monkeypatch.setattr(
@@ -215,6 +216,7 @@ async def test_reconciler_sender_filter_rejection_skips_recovered_message(monkey
 
     deps.ingest_user_message.assert_not_awaited()
     deps.start_interactive_turn.assert_not_awaited()
+    assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01T00:00:00"
 
 
 @pytest.mark.usefixtures("_db")
