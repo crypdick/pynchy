@@ -243,7 +243,7 @@ def test_reports_verified_base_copy_failures(tmp_path, failure: str) -> None:
     index_error = OSError("index failed") if failure == "index" else None
     with (
         patch(
-            "pynchy.host.git_ops.managed_feature._ManagedGitTransport", autospec=True
+            "pynchy.host.git_ops.managed_feature_rebase._ManagedGitTransport", autospec=True
         ) as transport_type,
         patch(
             "pynchy.host.git_ops.managed_feature_rebase._resolve_managed_feature",
