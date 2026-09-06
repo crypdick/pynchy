@@ -101,19 +101,19 @@ setup = [
     "uv sync --locked",
 ]
 pre_merge = [
-    "uv run python scripts/runtime_harness.py stop",
-    "uv run python scripts/runtime_harness.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
+    "env -u VIRTUAL_ENV uv run python scripts/runtime_harness.py stop",
+    "env -u VIRTUAL_ENV uv run python scripts/runtime_harness.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
     # The allocated runtime values are required above, but ordinary unit tests
     # deliberately assert the default host resource names and ports.
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx prek run --all-files",
+    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; env -u VIRTUAL_ENV uvx prek run --all-files",
 ]
 post_merge = [
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run pytest --cov=pynchy --cov-report=term-missing",
-    "uv run python scripts/prek_hooks/check_coverage_ratchet.py --update",
+    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; env -u VIRTUAL_ENV uv run pytest --cov=pynchy --cov-report=term-missing",
+    "env -u VIRTUAL_ENV uv run python scripts/prek_hooks/check_coverage_ratchet.py --update",
     "git add pyproject.toml",
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run --directory src/pynchy/agent/agent_runner --locked pytest",
+    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; env -u VIRTUAL_ENV uv run --directory src/pynchy/agent/agent_runner --locked pytest",
 ]
-teardown = ["uv run python scripts/runtime_harness.py stop"]
+teardown = ["env -u VIRTUAL_ENV uv run python scripts/runtime_harness.py stop"]
 
 [tool.new-feature.env]
 SERVER__PORT = { allocate = "port", min = 18484, max = 18583 }
