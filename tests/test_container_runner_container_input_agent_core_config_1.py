@@ -31,7 +31,6 @@ from pynchy.workspace.api import (
     WorkspaceProfile,
 )
 from tests.container_runner_support import (
-    FakeProcess,
     _agent_runtime,
     _AgentRunnerDeps,
     _patch_settings,
@@ -264,15 +263,12 @@ class TestContainerInputAgentCoreConfig:
             TEST_GROUP.folder: WorkspaceConfig(profiles=["multi-repo"]),
         }
         deps = _AgentRunnerDeps()
-        proc = FakeProcess()
         session = MagicMock()
         runtime = MagicMock(cli="docker")
         runtime.name = "docker"
         deps.container_agent_operations = replace(
             deps.container_agent_operations,
-            fresh_container_name=AsyncMock(return_value="pynchy-test-group"),
-            spawn=AsyncMock(return_value=(proc, "pynchy-test-group", [], ())),
-            create_session=AsyncMock(return_value=session),
+            start_session=AsyncMock(return_value=(session, ())),
             destroy_session=AsyncMock(),
         )
 
@@ -353,7 +349,7 @@ class TestContainerInputAgentCoreConfig:
             )
 
         assert result == "success"
-        spawn = deps.container_agent_operations.spawn
+        spawn = deps.container_agent_operations.start_session
         spawn.assert_awaited_once()
         assert spawn.await_args.args[1].repo_access == selected_slug
         get_repo_context.assert_not_called()

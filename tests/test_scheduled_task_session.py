@@ -1,7 +1,7 @@
 """Tests that scheduled work uses the thread's durable provider session.
 
 These tests verify the session-based orchestration in the public agent entry point
-(create_session → IPC watcher streams events in real-time), NOT the
+(owned session and IPC watcher stream events in real-time), not the
 end-to-end output routing (which is tested via the IPC watcher tests).
 """
 
@@ -167,8 +167,9 @@ class TestScheduledTaskUsesSession:
         self.ctx = _make_pre_container_result()
         self.fake_proc = _make_fake_proc()
         self.fake_session = _make_fake_session()
-        self.spawn = AsyncMock(return_value=(self.fake_proc, "c-123", [], ()))
-        self.create_session = AsyncMock(return_value=self.fake_session)
+        self.fake_session.proc = self.fake_proc
+        self.fake_session.container_name = "c-123"
+        self.start_session = AsyncMock(return_value=(self.fake_session, ()))
         self.destroy_session = AsyncMock()
 
         async def wait_for_query(session: ContainerSession, query_timeout_seconds: float) -> bool:
@@ -180,9 +181,7 @@ class TestScheduledTaskUsesSession:
 
         self.deps.container_agent_operations = replace(
             self.deps.container_agent_operations,
-            fresh_container_name=AsyncMock(return_value="c-123"),
-            spawn=self.spawn,
-            create_session=self.create_session,
+            start_session=self.start_session,
             destroy_session=self.destroy_session,
             wait_for_query=wait_for_query,
         )
@@ -212,10 +211,10 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        self.create_session.assert_awaited_once()
-        _, kwargs = self.create_session.call_args
-        assert kwargs["idle_timeout"] > 0
-        assert kwargs["data_dir"] == self.deps.agent_execution_runtime.data_dir
+        self.start_session.assert_awaited_once()
+        runtime = self.start_session.call_args.args[2]
+        assert runtime.idle_timeout > 0
+        assert runtime.data_dir == self.deps.agent_execution_runtime.data_dir
 
     @pytest.mark.asyncio
     async def test_resumes_a_persisted_provider_session_when_spawning_worker(self):
@@ -266,7 +265,7 @@ class TestScheduledTaskUsesSession:
         session.proc = self.fake_proc
         driver_tasks: list[asyncio.Task[None]] = []
 
-        async def create_progressing_session(*_args: object, **_kwargs: object) -> ContainerSession:
+        async def create_progressing_session(*_args: object, **_kwargs: object):
             async def drive_query() -> None:
                 await asyncio.sleep(0.06)
                 session.signal_query_progress("query-test")
@@ -275,9 +274,9 @@ class TestScheduledTaskUsesSession:
 
             driver_tasks.append(asyncio.create_task(drive_query()))
             await asyncio.sleep(0)
-            return session
+            return session, ()
 
-        self.create_session.side_effect = create_progressing_session
+        self.start_session.side_effect = create_progressing_session
         with (
             patch(_P_BUILD, return_value=input_data),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -350,8 +349,8 @@ class TestScheduledTaskUsesSession:
 
     @pytest.mark.asyncio
     async def test_spawn_failure_returns_error(self):
-        """If _spawn_container raises OSError, should return 'error' gracefully."""
-        self.spawn.side_effect = OSError("docker not found")
+        """If session startup raises OSError, return 'error' gracefully."""
+        self.start_session.side_effect = OSError("docker not found")
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),

@@ -18,6 +18,8 @@ from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves public runner annotations.
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
+import pluggy  # noqa: TC002 - beartype resolves startup operation contracts.
+
 from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
     AgentExecutionRuntime,
     ContainerInput,
@@ -57,8 +59,6 @@ from pynchy.workspace.api import (
 )
 
 if TYPE_CHECKING:
-    import pluggy
-
     from pynchy.host.orchestrator.concurrency import GroupQueue
     from pynchy.host.orchestrator.host_execution import HostRuntimeOperations
 
@@ -106,19 +106,10 @@ class ContainerAgentOperations:
     """Container capabilities selected by the application composition root."""
 
     get_session: Callable[[GroupFolder], object | None]
-    fresh_container_name: Callable[[str], Awaitable[str]]
-    spawn: Callable[
-        ...,
-        Awaitable[
-            tuple[
-                asyncio.subprocess.Process,
-                str,
-                object,
-                tuple[McpStartupFailure, ...],
-            ]
-        ],
+    start_session: Callable[
+        [WorkspaceProfile, ContainerInput, AgentExecutionRuntime, pluggy.PluginManager | None],
+        Awaitable[tuple[object, tuple[McpStartupFailure, ...]]],
     ]
-    create_session: Callable[..., Awaitable[object]]
     destroy_session: Callable[[str], Awaitable[None]]
     ensure_workspace_mcp: Callable[[str], Awaitable[tuple[McpStartupFailure, ...]]]
     wait_for_query: Callable[[object, float], Awaitable[bool]]
@@ -165,20 +156,6 @@ class AgentRunnerDeps(Protocol):
     def admin_repo_notices(
         self, group_folder: str, *, is_admin: bool, repo_access: str | None
     ) -> list[str]: ...
-
-
-@dataclass(frozen=True)
-class _SpawnAndAwaitRequest:
-    deps: AgentRunnerDeps
-    operations: ContainerAgentOperations
-    group: WorkspaceProfile
-    chat_jid: str
-    input_data: ContainerInput
-    container_name: str
-    ctx: PreContainerResult
-    idle_timeout: float
-    label: str
-    runtime: AgentExecutionRuntime
 
 
 @dataclass(frozen=True)
@@ -257,70 +234,6 @@ async def _await_query(
 
 
 # ---------------------------------------------------------------------------
-# Shared: spawn container → create session → register → await
-# ---------------------------------------------------------------------------
-
-
-async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
-    """Spawn a container, create a session, and wait for the query to complete.
-
-    Keeps the spawn → register → create_session → set_handler → await-query
-    sequence together for every durable cold start.
-    """
-    try:
-        proc, container_name, _mounts, mcp_startup_failures = await request.operations.spawn(
-            request.group,
-            request.input_data,
-            request.container_name,
-            request.runtime,
-            request.deps.plugin_manager,
-        )
-    except OSError as exc:
-        logger.error("Failed to spawn container", error=str(exc), container=request.container_name)
-        return "error"
-
-    if mcp_startup_failures:
-        await notify_mcp_startup_failures(
-            request.deps.broadcast_host_message,
-            request.chat_jid,
-            mcp_startup_failures,
-        )
-
-    session = cast(
-        "AgentSession",
-        await request.operations.create_session(
-            request.group.folder,
-            container_name,
-            proc,
-            data_dir=request.runtime.data_dir,
-            idle_timeout=request.idle_timeout,
-            invocation_ts=request.input_data.invocation_ts,
-        ),
-    )
-    registered = request.deps.queue.register_process(
-        RuntimeId(request.group.folder),
-        proc,
-        container_name,
-        request.input_data.invocation_ts,
-    )
-    if not registered:
-        await request.operations.destroy_session(request.group.folder)
-        return "interrupted"
-    session.set_output_handler(
-        request.ctx.wrapped_on_output,
-        query_id=request.input_data.query_id,
-    )
-
-    return await _await_query(
-        request.operations,
-        session,
-        request.group,
-        request.ctx.config_timeout,
-        request.label,
-    )
-
-
-# ---------------------------------------------------------------------------
 # Warm path — reuse existing session
 # ---------------------------------------------------------------------------
 
@@ -389,27 +302,24 @@ async def _cold_start(  # noqa: PLR0913 - cold-start values remain explicit at t
     build_input: BuildContainerInput,
 ) -> str:
     """Spawn a container, create a persistent session, and wait for the first query."""
-    container_name = await operations.fresh_container_name(group.folder)
     input_data = build_input(messages, ctx, chat_jid, group, runtime=runtime)
-
-    # Remove stale container with the same name before spawning.
-    # After a service restart or container crash, a dead Docker container may
-    # still exist with this stable name, causing `docker run` to fail with
-    # exit code 125 (name conflict).
-    return await _spawn_and_await(
-        _SpawnAndAwaitRequest(
-            deps=deps,
-            operations=operations,
-            group=group,
-            chat_jid=chat_jid,
-            input_data=input_data,
-            container_name=container_name,
-            ctx=ctx,
-            idle_timeout=runtime.idle_timeout,
-            label="cold start",
-            runtime=runtime,
+    try:
+        started, failures = await operations.start_session(
+            group, input_data, runtime, deps.plugin_manager
         )
-    )
+    except OSError as exc:
+        logger.error("Failed to start container session", error=str(exc), group=group.folder)
+        return "error"
+    session = cast("AgentSession", started)
+    if not deps.queue.register_process(
+        RuntimeId(group.folder), session.proc, session.container_name, input_data.invocation_ts
+    ):
+        await operations.destroy_session(group.folder)
+        return "interrupted"
+    session.set_output_handler(ctx.wrapped_on_output, query_id=input_data.query_id)
+    if failures:
+        await notify_mcp_startup_failures(deps.broadcast_host_message, chat_jid, failures)
+    return await _await_query(operations, session, group, ctx.config_timeout, "cold start")
 
 
 # ---------------------------------------------------------------------------

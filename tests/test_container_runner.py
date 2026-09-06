@@ -403,9 +403,9 @@ class TestWriteInitialInput:
 
 
 class TestCleanIpcInputDir:
-    """clean_ipc_input_dir should respect preserve_initial flag."""
+    """IPC cleanup removes all input belonging to the retired worker."""
 
-    def test_preserves_initial_json(self, tmp_path: Path) -> None:
+    def test_deletes_all_worker_input(self, tmp_path: Path) -> None:
         settings = make_settings(data_dir=tmp_path)
         input_dir = tmp_path / "ipc" / "test-group" / "input"
         input_dir.mkdir(parents=True)
@@ -416,24 +416,7 @@ class TestCleanIpcInputDir:
         with patch(
             "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
         ):
-            clean_ipc_input_dir("test-group", preserve_initial=True)
-
-        assert (input_dir / "initial.json").exists()
-        assert not (input_dir / "stale-msg.json").exists()
-        assert not (input_dir / "_close").exists()
-
-    def test_deletes_everything_when_not_preserving(self, tmp_path: Path) -> None:
-        settings = make_settings(data_dir=tmp_path)
-        input_dir = tmp_path / "ipc" / "test-group" / "input"
-        input_dir.mkdir(parents=True)
-        (input_dir / "initial.json").write_text('{"messages": []}')
-        (input_dir / "stale-msg.json").write_text('{"type": "message"}')
-        (input_dir / "_close").write_text("")
-
-        with patch(
-            "pynchy.host.container_manager.ipc.write._ipc_base_dir", settings.data_dir / "ipc"
-        ):
-            clean_ipc_input_dir("test-group", preserve_initial=False)
+            clean_ipc_input_dir("test-group")
 
         assert not (input_dir / "initial.json").exists()
         assert not (input_dir / "stale-msg.json").exists()

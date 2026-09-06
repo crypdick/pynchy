@@ -6,9 +6,10 @@ import asyncio
 import contextlib
 import json
 from contextvars import ContextVar
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from conftest import (
     configure_learning_paths_for,
@@ -21,6 +22,7 @@ from pydantic import SecretStr
 
 from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,
+    ContainerInput,
     ContainerOutput,
     parse_container_output,
 )
@@ -35,6 +37,7 @@ from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.mounts import (
     build_volume_mounts as _build_volume_mounts,
 )
+from pynchy.host.container_manager.session import start_session
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.host.learning.skills import configure_personalized_skills_root
 from pynchy.host.orchestrator.concurrency import GroupQueue
@@ -387,3 +390,31 @@ def _parsed_output_with_all_fields() -> ContainerOutput:
             }
         )
     )
+
+
+async def create_session(
+    group_folder, container_name, proc, *, data_dir, idle_timeout, invocation_ts=0.0
+):
+    """Start a real session around a supplied process instead of spawning a container."""
+    group = replace(TEST_GROUP, folder=group_folder)
+    runtime = replace(_agent_runtime(make_settings()), data_dir=data_dir, idle_timeout=idle_timeout)
+    input_data = ContainerInput(
+        messages=[],
+        group_folder=group_folder,
+        chat_jid=group.jid,
+        is_admin=False,
+        invocation_ts=invocation_ts,
+    )
+    with (
+        patch(
+            "pynchy.host.container_manager.session.stable_container_name",
+            return_value=container_name,
+        ),
+        patch(
+            "pynchy.host.container_manager.session._spawn_container",
+            new=AsyncMock(return_value=(proc, ())),
+        ),
+        patch("pynchy.host.container_manager.session.docker_rm_force", new=AsyncMock()),
+    ):
+        session, _failures = await start_session(group, input_data, runtime)
+        return session

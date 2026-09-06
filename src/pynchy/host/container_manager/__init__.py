@@ -22,11 +22,11 @@ from pynchy.host.container_manager.session import (
     ContainerSession,
     SessionDiedError,
     active_session_container_names,
-    create_session,
     destroy_all_sessions,
     destroy_session,
     get_session,
     get_session_output_handler,
+    start_session,
 )
 
 __all__ = [
@@ -34,10 +34,10 @@ __all__ = [
     "OnOutput",
     "SessionDiedError",
     "active_session_container_names",
-    "create_session",
     "destroy_all_sessions",
     "destroy_session",
     "get_session",
     "get_session_output_handler",
     "has_api_credentials",
+    "start_session",
 ]

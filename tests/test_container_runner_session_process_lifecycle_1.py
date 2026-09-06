@@ -17,6 +17,7 @@ from pynchy.workspace.api import (
 )
 from tests.container_runner_support import (
     FakeProcess,
+    create_session,
 )
 
 # ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ class TestSessionProcessLifecycle:
 
     async def test_get_session_removes_a_dead_registered_session(self):
         proc = FakeProcess()
-        session = await session_mod.create_session(
+        session = await create_session(
             "dead-registered-test",
             "pynchy-dead-registered-test",
             proc,

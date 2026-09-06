@@ -21,7 +21,12 @@ from pathlib import (
 )
 from typing import Any
 
+import pluggy  # noqa: TC002 - beartype resolves startup plugin annotations.
+
 from pynchy.agent_protocol.api import (
+    AgentExecutionRuntime,  # noqa: TC001 - beartype resolves startup contracts.
+    ContainerInput,  # noqa: TC001 - beartype resolves startup contracts.
+    McpStartupFailure,  # noqa: TC001 - beartype resolves startup contracts.
     OnOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 from pynchy.async_tasks import create_background_task
@@ -31,6 +36,7 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_close_sentinel,
     write_ipc_message,
 )
+from pynchy.host.container_manager.orchestrator import _spawn_container, stable_container_name
 from pynchy.host.container_manager.process import (
     docker_rm_force,
     graceful_stop,
@@ -43,6 +49,7 @@ from pynchy.identifiers import (
 )
 from pynchy.logger import logger
 from pynchy.progress_wait import ProgressTimeoutError, wait_for_progress
+from pynchy.workspace.api import WorkspaceProfile  # noqa: TC001 - beartype resolves startup inputs.
 
 
 class SessionDiedError(Exception):
@@ -429,53 +436,42 @@ def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     return session.output_handler
 
 
-async def create_session(  # noqa: PLR0913 - session creation needs explicit process, path, and timeout inputs.
-    group_folder: str,
-    container_name: str,
-    proc: asyncio.subprocess.Process,
-    *,
-    data_dir: Path,
-    idle_timeout: float,
-    invocation_ts: float = 0.0,
-) -> ContainerSession:
-    """Create and register a session for a group.
+async def start_session(
+    group: WorkspaceProfile,
+    input_data: ContainerInput,
+    runtime: AgentExecutionRuntime,
+    plugin_manager: pluggy.PluginManager | None = None,
+) -> tuple[ContainerSession, tuple[McpStartupFailure, ...]]:
+    """Retire stale resources, then spawn and register one owned worker.
 
-    Assumes the caller has already cleared any stale container with the
-    same name *before* spawning ``proc``.  Stale IPC files are cleaned here.
-
-    IMPORTANT: Do NOT call ``docker_rm_force(container_name)`` here.
-    By this point the container is already running — force-removing it
-    would race with (and potentially kill) the just-spawned process.
-    The existing session's ``stop()`` call below handles its container,
-    and the caller (``_cold_start``) handles stale-name cleanup pre-spawn.
+    IPC cleanup precedes spawning so it cannot delete the worker's first output.
+    Rollback owns security and process cleanup until registration succeeds.
     """
-    # TODO: Retire the old session and clean IPC before spawning; failure here
-    # leaves the caller's spawned process without a registered owner.
-    old = _sessions.pop(group_folder, None)
-    if old is not None:
-        await old.stop()
+    await destroy_session(group.folder)
+    container_name = stable_container_name(group.folder)
+    await docker_rm_force(container_name)
+    clean_ipc_input_dir(group.folder)
+    _clean_ipc_output(runtime.data_dir, group.folder)
 
-    # Clean stale IPC files before the starting container reads them.
-    # preserve_initial=True because the container is still starting and
-    # reads initial.json on boot.
-    clean_ipc_input_dir(group_folder, preserve_initial=True)
-    _clean_ipc_output(data_dir, group_folder)
+    session = ContainerSession(group.folder, container_name)
+    session.set_idle_timeout(runtime.idle_timeout)
+    async with contextlib.AsyncExitStack() as rollback:
+        rollback.push_async_callback(session.stop)
+        try:
+            proc, failures = await _spawn_container(
+                group, input_data, container_name, runtime, plugin_manager
+            )
+        finally:
+            # Spawn allocates the gate before preparing mounts, credentials, and MCP.
+            session.invocation_ts = input_data.invocation_ts
+        # Retain the process for rollback even if attaching its readers fails.
+        session.proc = proc
+        session.start(proc)
+        _sessions[group.folder] = session
+        rollback.pop_all()
 
-    session = ContainerSession(
-        group_folder,
-        container_name,
-        invocation_ts=invocation_ts,
-    )
-    session.set_idle_timeout(idle_timeout)
-    session.start(proc)
-    _sessions[group_folder] = session
-
-    logger.info(
-        "Session created",
-        group=group_folder,
-        container=container_name,
-    )
-    return session
+    logger.info("Session created", group=group.folder, container=container_name)
+    return session, failures
 
 
 async def destroy_session(group_folder: str) -> None:
