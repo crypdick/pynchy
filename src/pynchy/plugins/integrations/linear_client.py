@@ -286,7 +286,7 @@ class LinearClient:
                 """
                 query GetIssue($issue_id: String!) {
                   issue(id: $issue_id) {
-                    id identifier title description url updatedAt
+                    id identifier title description url updatedAt archivedAt
                     state { id name type }
                     project { id name }
                   }

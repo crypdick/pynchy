@@ -381,6 +381,7 @@ The Linear MCP server provides ordinary provider tools:
 | `linear_create_issue` | Creates an ordinary issue without an approval-bearing state; optionally sets priority (`0` none, `1` urgent, `2` high, `3` medium, `4` low). |
 | `linear_list_todos` | Lists open items on the current workspace board. |
 | `linear_create_todo` | Creates an unapproved workspace proposal. |
+| `linear_archive_issue` | Archives an authorized issue by stable ID without trashing it; requires a matching archived provider receipt. |
 | `linear_create_attachment` | Attaches an external URL, including every pull request produced by the work, to an issue. |
 | `linear_find_issues_by_attachment_url` | Resolves an exact external URL, such as a PR URL from a GitHub event, back to attached issues. |
 

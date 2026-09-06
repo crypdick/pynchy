@@ -124,6 +124,12 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="linear.workspace.round.trip",
     ),
     mcp_action(
+        "linear.issue.archive",
+        "linear",
+        "Archive an authorized Linear issue without trashing it.",
+        "linear_archive_issue",
+    ),
+    mcp_action(
         "linear.issue.create",
         "linear",
         "Create an issue in a selected Linear team.",

@@ -47,6 +47,10 @@ class GetIssueArguments(_StrictModel):
     issue_id: str = Field(min_length=1)
 
 
+class ArchiveIssueArguments(_StrictModel):
+    issue_id: str = Field(min_length=1, pattern=r"\S")
+
+
 class CreateIssueArguments(_StrictModel):
     team_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
@@ -114,6 +118,11 @@ class GetIssueCall(_StrictModel):
     arguments: GetIssueArguments
 
 
+class ArchiveIssueCall(_StrictModel):
+    name: Literal["linear_archive_issue"]
+    arguments: ArchiveIssueArguments
+
+
 class CreateIssueCall(_StrictModel):
     name: Literal["linear_create_issue"]
     arguments: CreateIssueArguments
@@ -144,6 +153,7 @@ type LinearToolCall = Annotated[
     | ListIssuesCall
     | SearchIssuesCall
     | GetIssueCall
+    | ArchiveIssueCall
     | CreateIssueCall
     | ListTodosCall
     | CreateTodoCall
@@ -158,6 +168,7 @@ _TOOL_NAMES = frozenset(
         "linear_list_issues",
         "linear_search_issues",
         "linear_get_issue",
+        "linear_archive_issue",
         "linear_create_issue",
         "linear_list_todos",
         "linear_create_todo",
@@ -231,6 +242,18 @@ def tool_specs() -> list[dict[str, object]]:
             "inputSchema": {
                 "type": "object",
                 "properties": {"issue_id": {"type": "string"}},
+                "required": ["issue_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "linear_archive_issue",
+            "description": (
+                "Archive one authorized Linear issue by its stable id without trashing it."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"issue_id": {"type": "string", "minLength": 1, "pattern": r"\S"}},
                 "required": ["issue_id"],
                 "additionalProperties": False,
             },

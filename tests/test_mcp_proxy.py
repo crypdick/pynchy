@@ -6,6 +6,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -111,12 +112,15 @@ class TestMcpProxyRouting:
         finally:
             await client.close()
 
-    async def test_proxy_uses_configured_service_for_hashed_capability(self, mock_backend):
+    @pytest.mark.parametrize("tool_name", ["linear_create_todo", "linear_archive_issue"])
+    async def test_proxy_uses_configured_service_for_hashed_capability(
+        self, mock_backend, tool_name
+    ):
         """Capability rules target configured names, never generated instance IDs."""
         security = WorkspaceSecurity(
             services={"linear": _SAFE_TRUST},
             capabilities={
-                "mcp.linear.linear_create_todo": CapabilityRule(decision="deny"),
+                f"mcp.linear.{tool_name}": CapabilityRule(decision="deny"),
             },
         )
         create_gate("test-ws", 1000.0, security)
@@ -136,11 +140,11 @@ class TestMcpProxyRouting:
                     "jsonrpc": "2.0",
                     "method": "tools/call",
                     "id": 1,
-                    "params": {"name": "linear_create_todo", "arguments": {}},
+                    "params": {"name": tool_name, "arguments": {}},
                 },
             )
             assert resp.status == 403
-            assert "mcp.linear.linear_create_todo" in (await resp.json())["error"]
+            assert f"mcp.linear.{tool_name}" in (await resp.json())["error"]
         finally:
             await client.close()
 

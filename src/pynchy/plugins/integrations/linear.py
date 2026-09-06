@@ -42,12 +42,14 @@ from pynchy.plugins.integrations.linear_boards import (
     list_workspace_todos,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_issue_mutations import archive_issue
 from pynchy.plugins.integrations.linear_session_reset import (
     LinearSessionResetState,
     cancel_linear_execution_for_reset,
 )
 from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import (
+    ArchiveIssueCall,
     CreateAttachmentCall,
     CreateIssueCall,
     CreateTodoCall,
@@ -269,6 +271,8 @@ async def _execute_tool(  # noqa: PLR0911 - discriminated calls each execute one
             )
         case GetIssueCall(arguments=arguments):
             return await client.get_issue(arguments.issue_id)
+        case ArchiveIssueCall(arguments=arguments):
+            return await archive_issue(client, arguments.issue_id)
         case CreateIssueCall(arguments=arguments):
             return await client.create_issue(
                 team_id=arguments.team_id,
