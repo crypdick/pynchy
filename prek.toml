@@ -1,5 +1,5 @@
-# Run with:      uvx prek run --all-files
-# Install hooks: uvx prek install
+# Run with:      uvx prek==0.4.10 run --all-files
+# Install hooks: uvx prek==0.4.10 install
 
 minimum_prek_version = "0.3.2"
 default_language_version.python = "python3"
