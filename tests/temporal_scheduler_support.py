@@ -231,7 +231,7 @@ class FakeScheduleClient:
     def get_schedule_handle(self, schedule_id):
         return self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
 
-    def list_schedules(self):
+    async def list_schedules(self):
         return _ScheduleIterator(self.schedule_ids)
 
     def list_workflows(self, query):
@@ -263,11 +263,6 @@ class DeduplicatingFakeScheduleClient(FakeScheduleClient):
             raise WorkflowAlreadyStartedError(workflow_id, workflow.__qualname__)
         self.workflow_ids.add(workflow_id)
         await super().start_workflow(workflow, *posargs, **kwargs)
-
-
-class AwaitableScheduleListClient(FakeScheduleClient):
-    def list_schedules(self):
-        return asyncio.sleep(0, result=super().list_schedules())
 
 
 class _ScheduleIterator:

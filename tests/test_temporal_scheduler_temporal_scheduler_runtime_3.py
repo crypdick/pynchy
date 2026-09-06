@@ -39,7 +39,6 @@ from pynchy.state import (
 from pynchy.turn_outcomes import TurnOutcome
 from pynchy.workspace.api import WorkspaceProfile
 from tests.temporal_scheduler_support import (
-    AwaitableScheduleListClient,
     FakeScheduleClient,
     NullSchedulerDeps,
     _scheduler_runtime,
@@ -122,16 +121,18 @@ class TestTemporalSchedulerRuntime:
             SchedulerConfig(
                 git_sync_interval_seconds=120,
                 channel_reconciliation_interval_seconds=180,
-            )
+            ),
+            external_repo_sync_slugs=("owner/project",),
         )
+        desired = temporal_schedules.desired_recurring_schedules([], [], runtime)
         schedules = (
-            (temporal_schedules.schedule_for_host_git_sync(runtime), timedelta(seconds=120)),
+            (desired["pynchy-git-sync-host"], timedelta(seconds=120)),
             (
-                temporal_schedules.schedule_for_external_git_sync("owner/project", runtime),
+                desired["pynchy-git-sync-repo-owner-project"],
                 timedelta(seconds=120),
             ),
             (
-                temporal_schedules.schedule_for_channel_reconciliation(runtime),
+                desired["pynchy-channel-reconciliation"],
                 timedelta(seconds=180),
             ),
         )
@@ -156,9 +157,9 @@ class TestTemporalSchedulerRuntime:
         assert "pynchy-git-sync-repo-owner-project" not in schedule_ids
 
     @pytest.mark.asyncio
-    async def test_reconcile_accepts_awaitable_schedule_list(self, monkeypatch):
+    async def test_reconcile_deletes_stale_schedule(self, monkeypatch):
 
-        client = AwaitableScheduleListClient()
+        client = FakeScheduleClient()
         stale_schedule_id = "pynchy-agent-schedule-stale"
         client.schedule_ids = [stale_schedule_id]
         runtime = temporal_scheduler.TemporalSchedulerRuntime(

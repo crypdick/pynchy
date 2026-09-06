@@ -531,12 +531,13 @@ class TestTemporalSchedulerRuntime:
         assert work_items.policy.catchup_window == timedelta(minutes=1)
 
     def test_poller_schedules_bound_default_catchup_to_their_intervals(self):
-        runtime = _scheduler_runtime()
+        runtime = _scheduler_runtime(external_repo_sync_slugs=("owner/project",))
+        desired = temporal_schedules.desired_recurring_schedules([], [], runtime)
         schedules = (
-            temporal_schedules.schedule_for_host_git_sync(runtime),
-            temporal_schedules.schedule_for_external_git_sync("owner/project", runtime),
-            temporal_schedules.schedule_for_channel_reconciliation(runtime),
-            temporal_schedules.schedule_for_linear_work_item_reconciliation(runtime),
+            desired["pynchy-git-sync-host"],
+            desired["pynchy-git-sync-repo-owner-project"],
+            desired["pynchy-channel-reconciliation"],
+            desired["pynchy-linear-work-item-reconciliation"],
         )
 
         expected_intervals = (
