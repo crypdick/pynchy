@@ -1,14 +1,4 @@
-"""LiteLLM MCP sync — endpoint registration and team management.
-
-Extracted from ``mcp_manager.py``.  These functions push MCP state to
-LiteLLM via its HTTP API: registering/deregistering server endpoints,
-managing per-workspace teams and virtual keys, and persisting the
-team cache to disk.
-
-All functions take explicit parameters rather than reaching into a
-manager instance, keeping the boundary between orchestration (McpManager)
-and I/O (this module) clean.
-"""
+"""Synchronize MCP endpoints and workspace teams with LiteLLM."""
 
 from __future__ import annotations
 
@@ -31,17 +21,6 @@ from pynchy.logger import logger
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class _ApiRequestContext:
-    session: aiohttp.ClientSession
-    method: str
-    url: str
-    headers: dict[str, str]
-    json_data: dict[str, Any] | None
-    log_event: str
-    log_kwargs: dict[str, object]
-
-
 async def api_request(  # noqa: PLR0913 - stable request helper; call sites already pass these transport knobs explicitly.
     session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
@@ -61,17 +40,8 @@ async def api_request(  # noqa: PLR0913 - stable request helper; call sites alre
     url = f"http://localhost:{gateway.port}{path}"
     headers = {"Authorization": f"Bearer {gateway.key}"}
     try:
-        return await _api_response_data(
-            _ApiRequestContext(
-                session=session,
-                method=method,
-                url=url,
-                headers=headers,
-                json_data=json_data,
-                log_event=log_event,
-                log_kwargs=log_kwargs,
-            )
-        )
+        async with session.request(method, url, json=json_data, headers=headers) as response:
+            return await _api_response_data(response, log_event, log_kwargs)
     except (aiohttp.ClientError, OSError) as exc:
         if log_event:
             logger.warning(log_event, error=str(exc), **log_kwargs)
@@ -79,28 +49,19 @@ async def api_request(  # noqa: PLR0913 - stable request helper; call sites alre
 
 
 async def _api_response_data(
-    request: _ApiRequestContext,
+    response: aiohttp.ClientResponse,
+    log_event: str,
+    log_kwargs: dict[str, object],
 ) -> object | None:
-    async with request.session.request(
-        request.method,
-        request.url,
-        json=request.json_data,
-        headers=request.headers,
-    ) as resp:
-        if 200 <= resp.status < 300:
-            try:
-                return cast("object", await resp.json())
-            except (aiohttp.ContentTypeError, ValueError):
-                return True  # 2xx but no JSON body
-        if request.log_event:
-            body = await resp.text()
-            logger.warning(
-                request.log_event,
-                status=resp.status,
-                body=body[:500],
-                **request.log_kwargs,
-            )
-        return None
+    if 200 <= response.status < 300:
+        try:
+            return cast("object", await response.json())
+        except (aiohttp.ContentTypeError, ValueError):
+            return True  # 2xx but no JSON body
+    if log_event:
+        body = await response.text()
+        logger.warning(log_event, status=response.status, body=body[:500], **log_kwargs)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +114,7 @@ def _registration_partition(
 
 
 async def _delete_registrations(
-    session: object,
+    session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     *,
     server_ids: list[str],
@@ -164,7 +125,7 @@ async def _delete_registrations(
         if not server_id:
             continue
         if await api_request(
-            cast("aiohttp.ClientSession", session),
+            session,
             gateway,
             "DELETE",
             f"/v1/mcp/server/{server_id}",
@@ -196,14 +157,13 @@ def _registration_payload(instance_id: str, instance: McpInstance) -> dict[str, 
 
 
 async def _sync_instance_endpoint(
-    session: object,
+    session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     *,
     instance_id: str,
     instance: McpInstance,
     existing: dict[str, list[_EndpointRegistration]],
 ) -> None:
-    session_client = cast("aiohttp.ClientSession", session)
     sanitized_id = _sanitized_instance_id(instance_id)
     registrations = existing.pop(sanitized_id, [])
     keep, to_delete = _registration_partition(registrations, instance.endpoint_url)
@@ -220,7 +180,7 @@ async def _sync_instance_endpoint(
         return
 
     result = await api_request(
-        session_client,
+        session,
         gateway,
         "POST",
         "/v1/mcp/server",
@@ -233,7 +193,7 @@ async def _sync_instance_endpoint(
 
 
 async def _delete_stale_endpoints(
-    session: object,
+    session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     existing: dict[str, list[_EndpointRegistration]],
 ) -> None:
@@ -248,14 +208,14 @@ async def _delete_stale_endpoints(
 
 
 async def _verify_empty_inventory(
-    session: object,
+    session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     instances: dict[str, McpInstance],
 ) -> None:
     """Prune registrations omitted by LiteLLM's first post-startup inventory."""
     existing = _registered_endpoints(
         await api_request(
-            cast("aiohttp.ClientSession", session),
+            session,
             gateway,
             "GET",
             "/v1/mcp/server",
@@ -337,7 +297,7 @@ async def sync_teams(
 
             # Create team if it doesn't exist
             if existing_team is None:
-                team_id = await _create_team(session, gateway, folder, instance_ids)
+                team_id = await _create_team(session, gateway, folder)
                 if team_id is None:
                     continue
 
@@ -366,7 +326,6 @@ async def _create_team(
     session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     folder: str,
-    _instance_ids: list[str],
 ) -> str | None:
     """Create a LiteLLM team.  Returns team_id or None on failure."""
     data = await api_request(

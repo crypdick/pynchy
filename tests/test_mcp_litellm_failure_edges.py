@@ -16,14 +16,6 @@ from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceT
 from pynchy.plugins.api import McpServerConfig
 
 
-class _LiteLLMSession:
-    async def __aenter__(self) -> _LiteLLMSession:
-        return self
-
-    async def __aexit__(self, *_exc_info: object) -> None:
-        return None
-
-
 def _gateway(tmp_path: Path, *, port: int = 4000) -> LiteLLMGateway:
     config = tmp_path / "litellm.yaml"
     config.write_text("model_list: []\n")
@@ -87,10 +79,12 @@ async def test_api_request_suppresses_unlogged_connection_failure(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_api_request_logs_and_returns_none_for_rejected_response(tmp_path: Path) -> None:
+async def test_api_request_logs_and_returns_none_for_rejected_response(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     async def rejected(_request: web.Request) -> web.Response:
         await asyncio.sleep(0)
-        return web.Response(status=503, text="temporarily unavailable")
+        return web.Response(status=503, text="x" * 500 + "discarded-tail")
 
     app = web.Application()
     app.router.add_get("/rejected", rejected)
@@ -105,11 +99,18 @@ async def test_api_request_logs_and_returns_none_for_rejected_response(tmp_path:
                 "GET",
                 "/rejected",
                 log_event="MCP request rejected",
+                workspace="ops",
+                response="retryable",
             )
     finally:
         await runner.cleanup()
 
     assert result is None
+    assert "MCP request rejected" in caplog.text
+    assert "workspace=ops" in caplog.text
+    assert "response=retryable" in caplog.text
+    assert "x" * 500 in caplog.text
+    assert "discarded-tail" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -130,15 +131,9 @@ async def test_endpoint_sync_survives_litellm_list_and_register_failures(
             return [None, {"server_name": 123}]
         return None
 
-    with (
-        patch(
-            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-            return_value=_LiteLLMSession(),
-        ),
-        patch(
-            "pynchy.host.container_manager.mcp.litellm.api_request",
-            side_effect=failed_request,
-        ),
+    with patch(
+        "pynchy.host.container_manager.mcp.litellm.api_request",
+        side_effect=failed_request,
     ):
         await litellm.sync_mcp_endpoints(gateway, {"browser": _instance("browser")})
 
@@ -157,15 +152,9 @@ async def test_endpoint_sync_treats_non_list_server_response_as_empty(tmp_path: 
         await asyncio.sleep(0)
         return {} if method == "GET" else None
 
-    with (
-        patch(
-            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-            return_value=_LiteLLMSession(),
-        ),
-        patch(
-            "pynchy.host.container_manager.mcp.litellm.api_request",
-            side_effect=malformed_list,
-        ),
+    with patch(
+        "pynchy.host.container_manager.mcp.litellm.api_request",
+        side_effect=malformed_list,
     ):
         await litellm.sync_mcp_endpoints(gateway, {})
 
@@ -199,13 +188,7 @@ async def test_endpoint_sync_keeps_exact_registration_and_skips_blank_stale_ids(
             ]
         return method != "DELETE"
 
-    with (
-        patch(
-            "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-            return_value=_LiteLLMSession(),
-        ),
-        patch("pynchy.host.container_manager.mcp.litellm.api_request", side_effect=request),
-    ):
+    with patch("pynchy.host.container_manager.mcp.litellm.api_request", side_effect=request):
         await litellm.sync_mcp_endpoints(gateway, {"browser": instance})
 
     assert ("POST", "/v1/mcp/server") not in calls

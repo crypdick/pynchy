@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import aiohttp
 import pytest
 from aiohttp import ClientSession, web
 
@@ -45,14 +44,6 @@ def _make_instance(
         project_root=Path("/project"),
         port=port,
     )
-
-
-class _LiteLLMSession:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_exc_info):
-        return None
 
 
 def _make_gateway(tmp_path, *, port: int = 4000) -> LiteLLMGateway:
@@ -137,13 +128,7 @@ class TestLiteLLMSyncRuntimeTypes:
         def api_request(*_args, **_kwargs):
             return asyncio.sleep(0, result=[])
 
-        with (
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=_LiteLLMSession(),
-            ),
-            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
-        ):
+        with patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request):
             await litellm.sync_mcp_endpoints(gateway, {"gdrive": _make_instance("gdrive")})
 
 
@@ -249,13 +234,7 @@ class TestLiteLLMSyncEndpoints:
             "gdrive.team": _make_instance("gdrive", instance_id="gdrive.team"),
         }
 
-        with (
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=_LiteLLMSession(),
-            ),
-            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
-        ):
+        with patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request):
             await litellm.sync_mcp_endpoints(gateway, instances)
 
         assert ("DELETE", "/v1/mcp/server/drop-me", None) in calls
@@ -283,10 +262,6 @@ class TestLiteLLMSyncEndpoints:
 
         with (
             patch.dict(os.environ, {"NOTEBOOK_TOKEN": "secret-token"}),
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=_LiteLLMSession(),
-            ),
             patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
         ):
             await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
@@ -333,13 +308,7 @@ class TestLiteLLMSyncEndpoints:
                 },
             ]
 
-        with (
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=_LiteLLMSession(),
-            ),
-            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
-        ):
+        with patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request):
             await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
 
         assert list_calls == 2
@@ -363,13 +332,7 @@ class TestLiteLLMSyncEndpoints:
         )
         monkeypatch.delenv("NOTEBOOK_TOKEN", raising=False)
 
-        with (
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=_LiteLLMSession(),
-            ),
-            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
-        ):
+        with patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request):
             await litellm.sync_mcp_endpoints(gateway, {instance.instance_id: instance})
 
         payload = next(json_data for method, path, json_data in calls if method == "POST")
@@ -386,7 +349,6 @@ class TestLiteLLMWorkspaceTeams:
             "current": WorkspaceTeam(team_id="team-current", virtual_key="key-current"),
             "stale": WorkspaceTeam(team_id="team-stale", virtual_key="key-stale"),
         }
-        session = aiohttp.ClientSession()
 
         def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
             calls.append((method, path, json_data))
@@ -396,13 +358,7 @@ class TestLiteLLMWorkspaceTeams:
                 return asyncio.sleep(0, result={"key": "key-new"})
             return asyncio.sleep(0, result=True)
 
-        with (
-            patch(
-                "pynchy.host.container_manager.mcp.litellm.aiohttp.ClientSession",
-                return_value=session,
-            ),
-            patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request),
-        ):
+        with patch("pynchy.host.container_manager.mcp.litellm.api_request", api_request):
             await litellm.sync_teams(
                 gateway,
                 {"new": ["gdrive"], "current": ["notebook"]},
@@ -429,7 +385,6 @@ class TestLiteLLMWorkspaceTeams:
             {"team_id": "team-current", "metadata": {"allowed_mcp_servers": ["notebook"]}},
         ) in calls
         assert ("POST", "/team/delete", {"team_ids": ["team-stale"]}) in calls
-        await session.close()
 
     def test_team_cache_round_trips_and_discards_malformed_data(self, tmp_path):
         cache_path = tmp_path / "mcp" / "teams.json"
