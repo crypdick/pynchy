@@ -19,7 +19,7 @@ def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
     assert "storage.example.yaml" not in kustomization
 
 
-def test_temporal_retention_is_reconciled_in_cluster() -> None:
+def test_temporal_retention_is_reconciled_in_cluster(tmp_path: Path) -> None:
     deployment = _documents("deploy/k3s/application/temporal.yaml")[0]
     pod = deployment["spec"]["template"]["spec"]
     server = next(container for container in pod["containers"] if container["name"] == "temporal")
@@ -36,6 +36,32 @@ def test_temporal_retention_is_reconciled_in_cluster() -> None:
     )
     assert '"workflowExecutionRetentionTtl": "691200s"' in reconciler["args"][0]
     assert "sleep 300" in reconciler["args"][0]
+    readiness_probe = reconciler["readinessProbe"]
+    assert readiness_probe["initialDelaySeconds"] == 1
+    assert readiness_probe["periodSeconds"] == 5
+
+    temporal = tmp_path / "temporal"
+    temporal.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$TEMPORAL_DESCRIBE"\n',
+        encoding="utf-8",
+    )
+    temporal.chmod(0o755)
+    environment = os.environ | {"PATH": f"{tmp_path}:{os.environ['PATH']}"}
+    command = readiness_probe["exec"]["command"]
+
+    pending = subprocess.run(  # noqa: S603 - test runs the repository-owned probe command.
+        command,
+        env=environment | {"TEMPORAL_DESCRIBE": '"workflowExecutionRetentionTtl": "86400s"'},
+        check=False,
+    )
+    ready = subprocess.run(  # noqa: S603 - test runs the repository-owned probe command.
+        command,
+        env=environment | {"TEMPORAL_DESCRIBE": '"workflowExecutionRetentionTtl": "691200s"'},
+        check=False,
+    )
+
+    assert pending.returncode != 0
+    assert ready.returncode == 0
     assert reconciler["securityContext"] == {
         "allowPrivilegeEscalation": False,
         "capabilities": {"drop": ["ALL"]},
