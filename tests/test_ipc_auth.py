@@ -15,7 +15,6 @@ from pynchy.scheduling.api import (
 from pynchy.state import (
     create_host_job,
     create_task,
-    get_all_tasks,
     get_host_job_by_id,
     get_task_by_id,
     get_task_run_logs,
@@ -535,60 +534,6 @@ class TestResetContextExecution:
             assert "admin-1@g.us" in deps.cleared_chats
             reset_file = tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json"
             assert not reset_file.exists()
-
-
-class TestCreatePeriodicAgentAuth:
-    """Tests for create_periodic_agent authorization and validation."""
-
-    async def test_non_admin_cannot_create_periodic_agent(self, deps):
-        await dispatch(
-            {
-                "type": "create_periodic_agent",
-                "name": "my-agent",
-                "schedule": "0 9 * * *",
-                "prompt": "do something",
-            },
-            "other-group",
-            False,
-            deps,
-        )
-
-        # No tasks should be created
-        tasks = await get_all_tasks()
-        assert len(tasks) == 0
-
-    async def test_rejects_missing_required_fields(self, deps):
-        """create_periodic_agent without name/schedule/prompt should bail."""
-        await dispatch(
-            {
-                "type": "create_periodic_agent",
-                "name": "my-agent",
-                # missing schedule and prompt
-            },
-            "admin-1",
-            True,
-            deps,
-        )
-
-        tasks = await get_all_tasks()
-        assert len(tasks) == 0
-
-    async def test_rejects_invalid_cron_expression(self, deps):
-        """create_periodic_agent with invalid cron should bail."""
-        await dispatch(
-            {
-                "type": "create_periodic_agent",
-                "name": "bad-cron-agent",
-                "schedule": "not valid cron",
-                "prompt": "do something",
-            },
-            "admin-1",
-            True,
-            deps,
-        )
-
-        tasks = await get_all_tasks()
-        assert len(tasks) == 0
 
 
 class TestHostJobPauseAuth:

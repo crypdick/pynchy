@@ -302,8 +302,6 @@ class NullIpcDeps:
 
     async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
 
-    async def create_periodic_agent(self, request) -> None: ...
-
     async def get_scheduled_work_status(self, *, source_group, is_admin) -> tuple[list, list]:
         return [], []
 

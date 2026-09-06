@@ -12,7 +12,7 @@ from collections.abc import (
     Iterable,  # noqa: TC003 - beartype resolves workspace config annotations at runtime.
 )
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - beartype resolves publication callback annotations.
 from typing import Any, NoReturn, cast
 
 import pluggy  # noqa: TC002 - beartype resolves plugin-manager annotations at runtime.
@@ -20,7 +20,6 @@ import tomlkit
 
 from pynchy.atomic_json import write_text_atomic
 from pynchy.conversation.api import conversation_id_from_folder, parent_workspace_name
-from pynchy.host.orchestrator import automation_config
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.pipeline_context import (
     prompt_ids_for_context as _prompt_ids_for_context,
@@ -57,7 +56,6 @@ from pynchy.workspace.api import (  # beartype resolves workspace config annotat
 
 type Settings = Any
 type WorkspaceConfig = Any
-type JobConfig = Any
 
 
 def _unconfigured_runtime(*_args: object, **_kwargs: object) -> NoReturn:
@@ -72,7 +70,6 @@ class WorkspaceConfigRuntime:
     apply_tool_access: Callable[..., tuple[ResolvedWorkspaceConfig, ResolvedToolAccess]]
     resolve_tool_access: Callable[..., ResolvedToolAccess]
     mutate_config_toml: Callable[..., object]
-    validate_settings_mapping: Callable[[dict[str, Any]], Any]
     reset_settings: Callable[[], None]
 
 
@@ -83,7 +80,6 @@ _runtime = WorkspaceConfigRuntime(
     apply_tool_access=_unconfigured_runtime,
     resolve_tool_access=_unconfigured_runtime,
     mutate_config_toml=_unconfigured_runtime,
-    validate_settings_mapping=_unconfigured_runtime,
     reset_settings=_unconfigured_runtime,
 )
 
@@ -435,27 +431,6 @@ async def reconcile_workspaces(  # noqa: PLR0913 - lifecycle cleanup joins exist
 # ---------------------------------------------------------------------------
 
 
-def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
-    """Programmatically write one versioned workspace declaration."""
-    if Path(folder).name != folder or not folder or folder.startswith("."):
-        raise ValueError(f"Invalid workspace name: {folder!r}")
-    data = config.model_dump(exclude_none=True, exclude_defaults=True)
-    candidate = get_settings().model_dump(mode="python")
-    candidate["workspaces"][folder] = data
-    _runtime.validate_settings_mapping(candidate)
-
-    workspace_path = Path("data/personalization/workspaces") / f"{folder}.toml"
-    workspace_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = tomlkit.document()
-    doc.add("schema_version", tomlkit.item(1))
-    workspace_table = tomlkit.table()
-    for key, value in data.items():
-        workspace_table.add(key, value)
-    doc.add("workspace", workspace_table)
-    write_text_atomic(workspace_path, tomlkit.dumps(doc))
-    reset_settings()
-
-
 def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bool) -> None:
     """Persist a named learned-skill decision in one workspace profile."""
     toml_path = get_settings().project_root / "data" / "personalization" / "pynchy.toml"
@@ -534,13 +509,3 @@ def update_workspace_capability_policy(
     if publication not in {"idle", "pushed"}:
         restore()
         raise ValueError("Personalization publication failed")
-
-
-def add_job_to_toml(job_name: str, config: JobConfig, *, project_root: Path | None = None) -> None:
-    """Write one job definition through workspace configuration."""
-    automation_config.add_job_to_toml(
-        job_name,
-        config.model_dump(exclude_none=True, exclude_defaults=True),
-        project_root=project_root,
-    )
-    reset_settings()

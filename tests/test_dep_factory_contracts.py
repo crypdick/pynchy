@@ -11,7 +11,6 @@ from conftest import NullChannel, make_host_action_catalog, make_settings
 
 import pynchy.host.orchestrator.dep_factory as dep_factory
 from pynchy.config.api import BuiltinTool, JobConfig, ProfileConfig, WorkspaceConfig
-from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.redaction import GatewayRedactionPosture
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
@@ -390,50 +389,19 @@ def test_ipc_adapter_projects_skill_access_status(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ipc_adapter_deploy_paths_and_periodic_agent(tmp_path: Path) -> None:
+async def test_ipc_adapter_deploy_paths(tmp_path: Path) -> None:
     app = PynchyApp()
     profile = _workspace()
     app.workspaces[profile.jid] = profile
     settings = _settings(tmp_path, admin_workspace="admin")
-    settings.command_center = _CommandCenter("discord")
-
-    class CreateGroupChannel(NullChannel):
-        name = "discord"
-
-        def __init__(self) -> None:
-            self.create_group = AsyncMock(return_value="discord:new")
-
-    channel = CreateGroupChannel()
-    app.channels = [channel]
-    request = CreatePeriodicAgentRequest(
-        name="nightly",
-        profile="default",
-        schedule="0 2 * * *",
-        prompt="Check the project.",
-        claude_md="# Nightly",
-        chat=None,
-        memory_enabled=True,
-    )
-    created_tasks: list[object] = []
-    create_task = AsyncMock()
-
     with (
         patch.object(dep_factory, "get_settings", return_value=settings),
-        patch.object(dep_factory.workspace_config, "add_workspace_to_toml") as add_workspace,
-        patch.object(dep_factory.workspace_config, "add_job_to_toml") as add_job,
-        patch.object(dep_factory, "create_task", create_task),
-        patch.object(
-            dep_factory,
-            "create_background_task",
-            lambda coro, name: (created_tasks.append(name), coro.close()),
-        ),
         patch.object(dep_factory, "start_deploy_workflow", new_callable=AsyncMock) as start_deploy,
         patch.object(dep_factory, "get_head_sha", return_value="head"),
         patch.object(dep_factory, "get_deploy_config_hash", return_value="config"),
         patch.object(app, "broadcast_host_message", new_callable=AsyncMock) as broadcast,
     ):
         deps = dep_factory.make_ipc_deps(app)
-        await deps.create_periodic_agent(request)
         await deps.request_deploy(
             chat_jid="discord:explicit",
             commit_sha="abc",
@@ -442,11 +410,6 @@ async def test_ipc_adapter_deploy_paths_and_periodic_agent(tmp_path: Path) -> No
         )
         await deps.trigger_deploy("old", rebuild=False)
 
-    add_workspace.assert_called_once()
-    add_job.assert_called_once()
-    channel.create_group.assert_awaited_once_with("nightly")
-    create_task.assert_awaited_once()
-    assert created_tasks == ["register-workspace-nightly"]
     assert start_deploy.await_count == 2
     assert start_deploy.await_args_list[0].args[0].chat_jid == "discord:explicit"
     assert start_deploy.await_args_list[1].args[0].chat_jid == profile.jid
@@ -476,21 +439,11 @@ async def test_trigger_deploy_without_admin_workspace_skips_notification(
 
 
 @pytest.mark.asyncio
-async def test_ipc_adapter_handles_missing_command_center_and_target(tmp_path: Path) -> None:
+async def test_ipc_adapter_handles_missing_deploy_target(tmp_path: Path) -> None:
     app = PynchyApp()
     settings = _settings(tmp_path)
     with patch.object(dep_factory, "get_settings", return_value=settings):
         deps = dep_factory.make_ipc_deps(app)
-        request = CreatePeriodicAgentRequest(
-            name="ignored",
-            profile="default",
-            schedule="0 2 * * *",
-            prompt="prompt",
-            claude_md="docs",
-            chat=None,
-            memory_enabled=False,
-        )
-        await deps.create_periodic_agent(request)
         await deps.request_deploy(
             chat_jid=None,
             commit_sha="abc",

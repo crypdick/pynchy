@@ -7,24 +7,20 @@ import subprocess  # noqa: S404 - status adapter catches Docker command timeouts
 from collections.abc import (
     Awaitable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
     Callable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves channel collections at runtime.
 )
 from datetime import UTC, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.agent_home import is_skill_selected, parse_skill_tier
 from pynchy.async_tasks import create_background_task
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
-from pynchy.config.api import JobConfig, Settings, WorkspaceConfig, apply_tool_access, get_settings
+from pynchy.config.api import JobConfig, Settings, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
-)
-from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
-    CreatePeriodicAgentRequest,
 )
 from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
@@ -104,7 +100,7 @@ from pynchy.identifiers import (  # noqa: TC001 - beartype resolves nested adapt
 )
 from pynchy.ipc_snapshots import write_groups_snapshot as _write_groups_snapshot
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # beartype resolves dependency adapter annotations at runtime.
+from pynchy.plugins.api import (
     Channel,
     HostActionDescriptor,
     NewMessage,
@@ -115,10 +111,9 @@ from pynchy.plugins.integrations.api import work_item_execution_to_dict
 from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.scheduling.api import (  # beartype resolves dependency adapter annotations at runtime.
+from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves dependency adapter annotations at runtime.
     HostJob,
     ScheduledTask,
-    SessionPolicy,
 )
 from pynchy.state.api import (
     approve_action_intent,
@@ -148,7 +143,7 @@ from pynchy.state.api import (
 from pynchy.work_items.api import (  # noqa: TC001 - beartype resolves factory annotations.
     WorkItemExecution,
 )
-from pynchy.workspace.api import (  # beartype resolves dependency adapter annotations at runtime.
+from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves dependency adapter annotations at runtime.
     WorkspaceProfile,
     WorkspaceSecurity,
 )
@@ -215,30 +210,6 @@ def _capability_status_operations(settings: Settings) -> CapabilityStatusOperati
         workspace_configuration=workspace_configuration,
         evaluate_action_policy=evaluate_action_policy,
     )
-
-
-@runtime_checkable
-class _GroupCreationChannel(Protocol):
-    name: str
-
-    async def create_group(self, name: str) -> str | None: ...
-
-
-def _command_center_channel(
-    channels: Sequence[object], command_center: str
-) -> _GroupCreationChannel | None:
-    return next(
-        (
-            cast("_GroupCreationChannel", channel)
-            for channel in channels
-            if getattr(channel, "name", None) == command_center and hasattr(channel, "create_group")
-        ),
-        None,
-    )
-
-
-def _valid_jid(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 class _PendingQuestionStore:
@@ -629,85 +600,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
                 commit_sha=commit_sha,
                 rebuild=rebuild,
                 resume_prompt=resume_prompt,
-            )
-
-        async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None:
-            settings = get_settings()
-            group_dir = settings.groups_dir / request.name
-            group_dir.mkdir(parents=True, exist_ok=True)
-
-            command_center = settings.command_center.connection
-            if not command_center:
-                logger.warning("create_periodic_agent requires command_center.connection")
-                return
-
-            workspace_config.add_workspace_to_toml(
-                request.name,
-                WorkspaceConfig.model_validate({"profiles": [request.profile]}),
-            )
-            workspace_config.add_job_to_toml(
-                request.name,
-                JobConfig.model_validate(
-                    {
-                        "workspace": request.name,
-                        "schedule": request.schedule,
-                        "prompt": request.prompt,
-                        "memory": request.memory_enabled,
-                    }
-                ),
-            )
-
-            claude_md_path = group_dir / "CLAUDE.md"
-            if not claude_md_path.exists():
-                claude_md_path.write_text(request.claude_md)
-
-            channel = _command_center_channel(channels, command_center)
-            if channel is None:
-                logger.warning(
-                    "Command center does not support create_group; "
-                    "periodic agent was created without chat"
-                )
-                return
-
-            jid = _valid_jid(await channel.create_group(request.chat or request.name))
-            if jid is None:
-                logger.warning(
-                    "Command center returned invalid jid for periodic agent",
-                    name=request.name,
-                    chat=request.chat or request.name,
-                )
-                return
-
-            self.register_workspace(
-                WorkspaceProfile(
-                    jid=jid,
-                    name=request.name.replace("-", " ").title(),
-                    folder=request.name,
-                    trigger="@pynchy",
-                    added_at=datetime.now(UTC).isoformat(),
-                )
-            )
-            task_id = f"periodic-{request.name}-{uuid4().hex[:8]}"
-            await create_task(
-                ScheduledTask(
-                    id=task_id,
-                    group_folder=request.name,
-                    chat_jid=jid,
-                    prompt=request.prompt,
-                    schedule_type="cron",
-                    schedule_value=request.schedule,
-                    session_policy=SessionPolicy.RESET_BEFORE_RUN,
-                    memory_enabled=request.memory_enabled,
-                    status="active",
-                    created_at=datetime.now(UTC).isoformat(),
-                )
-            )
-            logger.info(
-                "Periodic agent created via IPC",
-                name=request.name,
-                schedule=request.schedule,
-                task_id=task_id,
-                jid=jid,
             )
 
         async def get_scheduled_work_status(

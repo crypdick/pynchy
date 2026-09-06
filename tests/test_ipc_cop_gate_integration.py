@@ -1,13 +1,12 @@
 """Integration tests: cop_gate wired into host-mutating IPC handlers.
 
-Verifies that each of the five host-mutating IPC handlers calls cop_gate()
+Verifies that the host-mutating IPC handlers calls cop_gate()
 before executing its side effects.  When cop_gate returns False (flagged),
 the handler must bail without performing the mutation.
 
 Tested handlers:
   - sync_worktree_to_main  (_handlers_lifecycle.py)
   - register_group          (_handlers_groups.py)
-  - create_periodic_agent   (_handlers_groups.py)
   - schedule_host_job       (_handlers_tasks.py)
 """
 
@@ -20,11 +19,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
-from pynchy.config.api import CommandCenterConfig
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import RepoContext
-from pynchy.state import get_all_host_jobs, get_all_tasks
+from pynchy.state import get_all_host_jobs
 from pynchy.workspace.api import WorkspaceProfile
 
 # ---------------------------------------------------------------------------
@@ -122,9 +120,6 @@ class MockDeps(NullIpcDeps):
         del chat_jid, commit_sha, rebuild, resume_prompt
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
-        pass
-
-    async def create_periodic_agent(self, request) -> None:
         pass
 
 
@@ -445,140 +440,7 @@ class TestRegisterGroupCopGate:
 
 
 # ---------------------------------------------------------------------------
-# 3. create_periodic_agent
-# ---------------------------------------------------------------------------
-
-
-class TestCreatePeriodicAgentCopGate:
-    """create_periodic_agent should call cop_gate and block on flag."""
-
-    async def test_valid_receipt_creates_without_rechecking_cop(self, deps):
-        """A valid approval receipt authorizes creation without another gate."""
-        deps.create_periodic_agent = AsyncMock()
-        with (
-            patch(
-                "pynchy.host.container_manager.security.cop_gate.verify_approval_receipt",
-                new_callable=AsyncMock,
-                return_value=ReceiptVerification.VALID,
-            ),
-            patch(
-                "pynchy.host.container_manager.security.cop_gate.cop_gate",
-                new_callable=AsyncMock,
-            ) as mock_cop,
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "approved-agent",
-                    "profile": "pynchy-worker",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Do good things",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-
-        mock_cop.assert_not_awaited()
-        deps.create_periodic_agent.assert_awaited_once()
-
-    async def test_blocked_by_cop_creates_nothing(self, deps, tmp_path):
-        """When cop_gate returns False, no folder, config, or task is created."""
-        with patch(
-            "pynchy.host.container_manager.security.cop_gate.cop_gate",
-            new_callable=AsyncMock,
-            return_value=False,
-        ) as mock_cop:
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "evil-agent",
-                    "profile": "pynchy-worker",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Do evil things",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-
-        mock_cop.assert_called_once()
-        assert mock_cop.call_args.args[0] == "create_periodic_agent"
-        # No tasks should exist
-        assert len(await get_all_tasks()) == 0
-        # No new workspaces registered
-        assert len(deps.registered) == 0
-
-    async def test_summary_includes_agent_identity(self, deps):
-        """cop_gate summary should include name, profile, schedule, and prompt preview."""
-        with patch(
-            "pynchy.host.container_manager.security.cop_gate.cop_gate",
-            new_callable=AsyncMock,
-            return_value=False,
-        ) as mock_cop:
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "briefing-bot",
-                    "profile": "pynchy-worker",
-                    "schedule": "0 8 * * 1",
-                    "prompt": "Compile a weekly briefing of all recent changes",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-
-        summary = mock_cop.call_args.args[1]
-        assert "briefing-bot" in summary
-        assert "pynchy-worker" in summary
-        assert "0 8 * * 1" in summary
-        assert "weekly briefing" in summary
-
-    async def test_caller_asserted_approval_does_not_skip_gate(self, deps, tmp_path):
-        """An untrusted caller boolean cannot bypass Cop inspection."""
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value="agent@g.us")
-        mock_channel.name = "main"
-        deps._channels = [mock_channel]
-
-        with (
-            patch(
-                "pynchy.host.container_manager.security.cop_gate.cop_gate",
-                new_callable=AsyncMock,
-                return_value=False,
-            ) as mock_cop,
-            patch(
-                "pynchy.host.orchestrator.dep_factory.get_settings",
-                return_value=make_settings(
-                    groups_dir=tmp_path,
-                    project_root=tmp_path,
-                    command_center=CommandCenterConfig(connection="main"),
-                ),
-            ),
-            patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
-            patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml"),
-        ):
-            await dispatch(
-                {
-                    "type": "create_periodic_agent",
-                    "name": "approved-agent",
-                    "profile": "pynchy-worker",
-                    "schedule": "0 9 * * *",
-                    "prompt": "Do good things",
-                    "_cop_approved": True,
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-
-        mock_cop.assert_awaited_once()
-        assert len(await get_all_tasks()) == 0
-
-
-# ---------------------------------------------------------------------------
-# 4. schedule_host_job
+# schedule_host_job
 # ---------------------------------------------------------------------------
 
 
