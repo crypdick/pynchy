@@ -18,7 +18,7 @@ uv run pynchy            # Run the app
 uv run pytest tests/     # Run tests
 uv run ruff check --fix src/  # Lint + autofix
 uv run ruff format src/       # Format
-uvx prek run --all-files  # Run all repository hooks
+uvx prek==0.4.10 run --all-files  # Run all repository hooks
 ./src/pynchy/agent/build.sh     # Rebuild agent container
 ```
 
