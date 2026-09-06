@@ -58,3 +58,30 @@ async def update_issue_state(
             state_id=state_id,
         )
         return issue
+
+
+async def archive_issue(client: LinearQueryClient, issue_id: str) -> dict[str, Any]:
+    """Archive an issue without trashing it and require its exact provider receipt."""
+    data = await client.query(
+        """
+        mutation ArchiveIssue($issue_id: String!) {
+          issueArchive(id: $issue_id, trash: false) {
+            success
+            entity { id identifier title archivedAt }
+          }
+        }
+        """,
+        issue_id=issue_id,
+    )
+    result = data.get("issueArchive")
+    if not isinstance(result, dict) or result.get("success") is not True:
+        raise LinearError("Linear did not archive the issue")
+    issue = result.get("entity")
+    if (
+        not isinstance(issue, dict)
+        or issue.get("id") != issue_id
+        or not isinstance(issue.get("archivedAt"), str)
+        or not issue["archivedAt"].strip()
+    ):
+        raise LinearError("Linear archive response did not confirm the requested issue")
+    return issue

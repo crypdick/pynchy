@@ -48,6 +48,7 @@ class TestLinearMcpServer:
                 "linear_list_issues",
                 "linear_search_issues",
                 "linear_get_issue",
+                "linear_archive_issue",
                 "linear_create_issue",
                 "linear_list_todos",
                 "linear_create_todo",
