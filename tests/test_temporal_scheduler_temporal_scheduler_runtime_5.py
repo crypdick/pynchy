@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowFailureError
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ActivityError, ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -195,6 +195,7 @@ class TestTemporalSchedulerRuntime:
             activity_id="activity-1",
             retry_state=None,
         )
+        terminal_error.__cause__ = ApplicationError("WorkerShutdown", type="worker_shutdown")
         execute_activity = AsyncMock(side_effect=[terminal_error, "recorded", "cleared"])
         monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
         workflow_info = type("WorkflowInfo", (), {"workflow_id": "workflow-1", "run_id": "run-1"})()
@@ -218,12 +219,41 @@ class TestTemporalSchedulerRuntime:
                 "task_id": "task-1",
                 "workflow_id": "workflow-1",
                 "workflow_run_id": "run-1",
-                "error": "scheduled task failed",
+                "error": "ApplicationError: worker_shutdown: WorkerShutdown",
             },
         )
         assert execute_activity.await_args_list[2].args == (
             "clear_terminal_scheduled_turn",
             "task-1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_scheduled_agent_workflow_preserves_checkpoint_when_recording_fails(
+        self, monkeypatch
+    ):
+        terminal_error = ActivityError(
+            "scheduled task failed",
+            scheduled_event_id=1,
+            started_event_id=2,
+            identity="test-worker",
+            activity_type="run_scheduled_agent_task",
+            activity_id="activity-1",
+            retry_state=None,
+        )
+        execute_activity = AsyncMock(side_effect=[terminal_error, RuntimeError("recording failed")])
+        monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
+
+        def fake_workflow_info():
+            return type("WorkflowInfo", (), {"workflow_id": "workflow-1", "run_id": "run-1"})()
+
+        monkeypatch.setattr(temporal_workflows.workflow, "info", fake_workflow_info)
+
+        with pytest.raises(RuntimeError, match="recording failed"):
+            await temporal_workflows.ScheduledAgentTaskWorkflow().run("task-1")
+
+        assert execute_activity.await_count == 2
+        assert execute_activity.await_args_list[1].args[0] == (
+            "record_terminal_scheduled_task_failure"
         )
 
     @pytest.mark.asyncio
@@ -240,6 +270,8 @@ class TestTemporalSchedulerRuntime:
         )
         await create_task(task)
         attempts = 0
+        terminal_payload: dict[str, str] = {}
+        recording_activity_identity: dict[str, str] = {}
         task_queue = f"pynchy-temporal-test-{uuid4()}"
 
         @activity.defn(name="run_scheduled_agent_task")
@@ -247,7 +279,17 @@ class TestTemporalSchedulerRuntime:
             nonlocal attempts
             attempts += 1
             await asyncio.sleep(0)
-            raise RuntimeError("WorkerShutdown")
+            raise ApplicationError("WorkerShutdown", type="worker_shutdown")
+
+        @activity.defn(name="record_terminal_scheduled_task_failure")
+        async def record_terminal_failure(payload: dict[str, str]) -> str:
+            terminal_payload.update(payload)
+            info = activity.info()
+            recording_activity_identity.update(
+                workflow_id=info.workflow_id,
+                workflow_run_id=info.workflow_run_id,
+            )
+            return await temporal_scheduler.record_terminal_scheduled_task_failure_activity(payload)
 
         env = await WorkflowEnvironment.start_time_skipping()
         try:
@@ -257,7 +299,7 @@ class TestTemporalSchedulerRuntime:
                 workflows=[temporal_workflows.ScheduledAgentTaskWorkflow],
                 activities=[
                     fail_scheduled_task,
-                    temporal_scheduler.record_terminal_scheduled_task_failure_activity,
+                    record_terminal_failure,
                     temporal_scheduler.clear_terminal_scheduled_turn,
                 ],
                 workflow_runner=temporal_scheduler.scheduler_workflow_runner(),
@@ -276,8 +318,11 @@ class TestTemporalSchedulerRuntime:
         assert attempts == 3
         assert len(logs) == 1
         assert logs[0].status == "error"
-        assert logs[0].temporal_workflow_id is not None
-        assert logs[0].temporal_workflow_run_id is not None
+        assert logs[0].error == "ApplicationError: worker_shutdown: WorkerShutdown"
+        assert logs[0].temporal_workflow_id == terminal_payload["workflow_id"]
+        assert logs[0].temporal_workflow_id == recording_activity_identity["workflow_id"]
+        assert logs[0].temporal_workflow_run_id == terminal_payload["workflow_run_id"]
+        assert logs[0].temporal_workflow_run_id == recording_activity_identity["workflow_run_id"]
         assert logs[0].escalation_reason == "temporal_retry_exhausted"
 
     @pytest.mark.asyncio
