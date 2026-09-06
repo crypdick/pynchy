@@ -61,7 +61,6 @@ from pynchy.host.container_manager.security.approval_binding import approval_bin
 from pynchy.host.container_manager.security.approved_ipc import execute_approved_ipc
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
-    ResolvedSecurityConfig,
     SecurityGate,
     SecuritySettings,
     build_workspace_security,
@@ -70,6 +69,7 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.logger import logger
 from pynchy.plugins.api import HostActionDescriptor  # noqa: TC001 - beartype resolves annotations.
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
     WorkspaceSecurity,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
 
@@ -77,7 +77,7 @@ from pynchy.workspace.api import (
 class ApprovalSettings(SecuritySettings, Protocol):
     data_dir: Path
 
-    def resolved_workspace_config(self, group_folder: str) -> ResolvedSecurityConfig | None: ...
+    def resolved_workspace_config(self, group_folder: str) -> ResolvedWorkspaceConfig | None: ...
 
 
 def _unconfigured_settings() -> ApprovalSettings:
