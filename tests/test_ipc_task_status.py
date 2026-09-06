@@ -118,7 +118,7 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
     monkeypatch, tmp_path
 ) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
         "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
@@ -145,7 +145,7 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
 
 async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
         "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
@@ -185,7 +185,7 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
 
 async def test_admin_status_includes_rows_beyond_former_agent_caps(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
         "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
@@ -228,7 +228,7 @@ async def test_admin_status_includes_rows_beyond_former_agent_caps(monkeypatch, 
 
 async def test_task_status_without_request_id_produces_no_response(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
 
     await dispatch(
         {"type": "task_status"},

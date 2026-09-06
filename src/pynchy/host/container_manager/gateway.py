@@ -37,7 +37,6 @@ from collections.abc import (  # noqa: TC003 - beartype resolves gateway runtime
     Callable,
     Mapping,
 )
-from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003 - beartype resolves gateway runtime annotations.
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -180,21 +179,17 @@ class GatewayProto(Protocol):
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _GatewayState:
-    gateway: LiteLLMGateway | BuiltinGateway | None = None
-
-
-_state = _GatewayState()
+_gateway: LiteLLMGateway | BuiltinGateway | None = None
 
 
 def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
     """Return the active gateway, or ``None`` if not started."""
-    return _state.gateway
+    return _gateway
 
 
 def _set_gateway(gateway: LiteLLMGateway | BuiltinGateway | None) -> None:
-    _state.gateway = gateway
+    global _gateway  # noqa: PLW0603 - process-wide singleton.
+    _gateway = gateway
 
 
 def resolve_container_host(container_host: str) -> str:

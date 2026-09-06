@@ -480,7 +480,7 @@ async def test_scheduled_linear_binding_restores_webhook_conversation_repo_polic
         },
         workspaces={"owner": WorkspaceConfig(profiles=["owner"])},
     )
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    monkeypatch.setattr("pynchy.config.settings._settings", settings)
     owner = _profile()
     await set_workspace_profile(owner)
     subject = ConversationSubject(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves plugin-job runtime annotations.
 )
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, NoReturn, cast
 
 from pynchy.logger import logger
@@ -40,12 +40,7 @@ def get_settings() -> object:
     return _runtime.get_settings()
 
 
-@dataclass
-class _PluginJobState:
-    jobs: dict[str, JobConfig] = field(default_factory=dict)
-
-
-_state = _PluginJobState()
+_plugin_jobs: dict[str, JobConfig] = {}
 
 
 def _validate_workspace_references(job_name: str, job: JobConfig) -> None:
@@ -58,10 +53,10 @@ def _validate_workspace_references(job_name: str, job: JobConfig) -> None:
 
 def _clear_previous_contributions() -> None:
     settings = cast("Any", get_settings())
-    for name, job in _state.jobs.items():
+    for name, job in _plugin_jobs.items():
         if settings.jobs.get(name) == job:
             settings.jobs.pop(name)
-    _state.jobs.clear()
+    _plugin_jobs.clear()
 
 
 def _install_plugin_spec(spec: object, configured_names: set[str]) -> None:
@@ -82,7 +77,7 @@ def _install_plugin_spec(spec: object, configured_names: set[str]) -> None:
         return
     settings = cast("Any", get_settings())
     settings.jobs[name] = job
-    _state.jobs[name] = job
+    _plugin_jobs[name] = job
     configured_names.add(name)
 
 

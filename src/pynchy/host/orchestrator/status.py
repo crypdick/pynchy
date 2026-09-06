@@ -45,13 +45,7 @@ from pynchy.state.api import (
     get_task_run_logs,
 )
 
-
-@dataclass
-class _StatusState:
-    started_at: datetime | None = None
-
-
-_state = _StatusState()
+_started_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +74,8 @@ class RepoStatusContext(Protocol):
 
 def record_start_time() -> None:
     """Called once at service startup to record the wall-clock start time."""
-    _state.started_at = datetime.now(UTC)
+    global _started_at  # noqa: PLW0603 - process-wide singleton.
+    _started_at = datetime.now(UTC)
 
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
@@ -213,7 +208,7 @@ def _collect_service(deps: StatusDeps, start_time_monotonic: float) -> dict[str,
     status = "shutting_down" if deps.is_shutting_down() else "ok"
     return {
         "status": status,
-        "started_at": _state.started_at.isoformat() if _state.started_at else None,
+        "started_at": _started_at.isoformat() if _started_at else None,
         "uptime_seconds": round(time.monotonic() - start_time_monotonic),
     }
 

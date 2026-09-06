@@ -45,17 +45,12 @@ class AgentToolRuntime:
         )
 
 
-@dataclass
-class _AgentToolRuntimeState:
-    runtime: AgentToolRuntime
-
-
-_state = _AgentToolRuntimeState(AgentToolRuntime.from_environment())
+_runtime: AgentToolRuntime = AgentToolRuntime.from_environment()
 
 
 def get_agent_tool_runtime() -> AgentToolRuntime:
     """Return the context currently used by the agent-tools MCP server."""
-    return _state.runtime
+    return _runtime
 
 
 @contextmanager
@@ -67,12 +62,13 @@ def use_agent_tool_runtime(runtime: AgentToolRuntime) -> Iterator[None]:
     Calls must not overlap because MCP tool registration has process-global
     context today.
     """
+    global _runtime  # noqa: PLW0603 - process-wide singleton.
     previous = get_agent_tool_runtime()
-    _state.runtime = runtime
+    _runtime = runtime
     try:
         yield
     finally:
-        _state.runtime = previous
+        _runtime = previous
 
 
 def write_ipc_file(directory: Path, data: dict[str, Any]) -> str:

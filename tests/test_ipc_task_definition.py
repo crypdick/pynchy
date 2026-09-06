@@ -62,7 +62,7 @@ async def _dispatch(tmp_path, request: dict[str, object], *, group: str, admin: 
 
 async def test_owner_reads_editable_definition(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     response = await _dispatch(
@@ -88,7 +88,7 @@ async def test_owner_reads_editable_definition(monkeypatch, tmp_path) -> None:
 
 async def test_non_admin_cannot_read_or_update_foreign_task(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     read_response = await _dispatch(
@@ -120,7 +120,7 @@ async def test_update_returns_reconciled_task_and_resumes_through_state_api(
     monkeypatch, tmp_path
 ) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     response = await _dispatch(
@@ -147,7 +147,7 @@ async def test_update_returns_reconciled_task_and_resumes_through_state_api(
 
 async def test_update_rejects_unknown_fields_without_persisting(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     response = await _dispatch(
@@ -171,7 +171,7 @@ async def test_update_rejects_unknown_fields_without_persisting(monkeypatch, tmp
 
 async def test_update_rejects_automation_managed_task(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     response = await _dispatch(
@@ -196,7 +196,7 @@ async def test_task_definition_rejects_host_jobs_and_missing_request_id(
     monkeypatch, tmp_path
 ) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     host_response = await _dispatch(
@@ -218,7 +218,7 @@ async def test_task_definition_rejects_host_jobs_and_missing_request_id(
 
 async def test_update_rejects_empty_values_and_missing_request_id(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     blank_prompt = await _dispatch(
@@ -259,7 +259,7 @@ async def test_update_pauses_active_task_and_leaves_active_task_active(
     monkeypatch, tmp_path
 ) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     await _seed_tasks()
 
     active = await _dispatch(
@@ -291,7 +291,7 @@ async def test_update_pauses_active_task_and_leaves_active_task_active(
 
 async def test_task_definition_fails_closed_for_invalid_store_result(monkeypatch, tmp_path) -> None:
     await init_test_database()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings(data_dir=tmp_path))
     deps = make_ipc_deps(PynchyApp())
 
     store = MagicMock(spec=ScheduledWorkStore)
