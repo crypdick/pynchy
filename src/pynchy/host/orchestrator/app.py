@@ -17,6 +17,7 @@ from collections.abc import (  # noqa: TC003 - beartype resolves composition cal
     Mapping,
     Sequence,
 )
+from contextlib import AsyncExitStack
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
@@ -1406,8 +1407,10 @@ class PynchyApp(ThreadRouting):
         self._observers = observers
 
     async def close_observers(self) -> None:
-        for observer in self._observers:
-            await observer.close()
+        observers, self._observers = self._observers, []
+        async with AsyncExitStack() as cleanup:
+            for observer in reversed(observers):
+                cleanup.push_async_callback(observer.close)
 
     def set_speech_synthesizer(self, speech_synthesizer: SpeechSynthesizer | None) -> None:
         """Set the host-side provider used for spoken channel replies."""

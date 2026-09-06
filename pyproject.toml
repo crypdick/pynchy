@@ -288,6 +288,8 @@ pretty = true
 # Pragmatic exceptions for this project's frameworks:
 #   attr-defined/union-attr/override — pluggy hooks use dynamic attrs
 #   call-arg — Pydantic model constructors trip false positives
+# TODO: Scope these exceptions to adapter boundaries; they also suppress invalid
+# first-party attribute access and call contracts throughout the application.
 disable_error_code = [
     "attr-defined",
     "union-attr",
