@@ -146,6 +146,7 @@ async def reconcile_provider_work_item_state(
             latest_by_issue[execution.linear_issue_id] = execution
     terminal_repair_ids: set[str] = set()
     retired = 0
+    failures: list[Exception] = []
     for execution in await runtime.list_terminal_repair_candidates():
         latest = latest_by_issue.get(execution.linear_issue_id)
         if latest is None:
@@ -155,7 +156,8 @@ async def reconcile_provider_work_item_state(
             continue
         try:
             retired += await runtime.retire_terminal_execution_if_unowned(execution)
-        except Exception:  # noqa: BLE001 - one stale runtime must not strand the account.
+        except Exception as exc:  # noqa: BLE001 - one stale runtime must not strand the account.
+            failures.append(exc)
             logger.exception(
                 "Superseded Linear execution retirement failed",
                 issue=execution.linear_issue_identifier,
@@ -185,12 +187,15 @@ async def reconcile_provider_work_item_state(
                     unavailable_probes=unavailable_probes,
                 ),
             )
-        except Exception:  # noqa: BLE001 - one provider item must not strand the account.
+        except Exception as exc:  # noqa: BLE001 - one provider item must not strand the account.
+            failures.append(exc)
             logger.exception(
                 "Linear provider-state reconciliation failed",
                 issue=execution.linear_issue_identifier,
                 workspace=execution.workspace,
             )
+    if failures:
+        raise ExceptionGroup("Linear provider-state reconciliation failed", failures)
     return retired
 
 

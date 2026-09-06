@@ -219,6 +219,7 @@ async def reconcile_all_linear_work_items(
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
+    failures: list[Exception] = []
     boards_by_account = _boards_by_account(boards)
     accounts = {account.name: account for account in configured_linear_accounts()}
     for account_boards in boards_by_account.values():
@@ -262,7 +263,8 @@ async def reconcile_all_linear_work_items(
                             defer_plan_review=defer_plan_review,
                         )
                     )
-        except Exception:  # noqa: BLE001 - one optional account must not stop other accounts.
+        except Exception as exc:  # noqa: BLE001 - one optional account must not stop other accounts.
+            failures.append(exc)
             logger.exception(
                 "Linear work item reconciliation failed",
                 account=account_name,
@@ -274,6 +276,8 @@ async def reconcile_all_linear_work_items(
                 await retire_globally_unavailable_work_item(probe.execution)
     if admitted:
         logger.info("Linear work item tasks admitted", count=len(admitted))
+    if failures:
+        raise ExceptionGroup("Linear account reconciliation failed", failures)
     return admitted
 
 
