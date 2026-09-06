@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 
 import aiohttp
 from aiohttp import web
@@ -35,15 +36,18 @@ async def stream_response(
             if key.lower() not in ("content-length", "transfer-encoding")
         },
     )
-    await response.prepare(request)
-    event = bytearray()
-    async for line in backend_response.content:
-        event.extend(line)
-        if line not in (b"\n", b"\r\n"):
-            continue
-        await response.write(await _transform_event(bytes(event), transform_data))
-        event.clear()
-    if event:
-        await response.write(await _transform_event(bytes(event), transform_data))
-    await response.write_eof()
+    # A client may close its SSE listener before deleting the MCP session.
+    # Only downstream resets are normal teardown; upstream read errors propagate.
+    with suppress(aiohttp.ClientConnectionResetError):
+        await response.prepare(request)
+        event = bytearray()
+        async for line in backend_response.content:
+            event.extend(line)
+            if line not in (b"\n", b"\r\n"):
+                continue
+            await response.write(await _transform_event(bytes(event), transform_data))
+            event.clear()
+        if event:
+            await response.write(await _transform_event(bytes(event), transform_data))
+        await response.write_eof()
     return response

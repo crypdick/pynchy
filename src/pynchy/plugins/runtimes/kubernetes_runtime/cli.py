@@ -197,7 +197,9 @@ def _mount_spec(  # noqa: PLR0912 - mount translation handles Docker's supported
             )
         for directory in writable_directories:
             mode = stat.S_IMODE(directory.stat().st_mode)
-            directory.chmod(mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP)
+            shared_mode = mode | stat.S_ISGID | stat.S_IWGRP | stat.S_IXGRP
+            if mode != shared_mode:
+                directory.chmod(shared_mode)
     mount: dict[str, object] = {"name": mount_name, "mountPath": target}
     if relative.parts:
         mount["subPath"] = relative.as_posix()

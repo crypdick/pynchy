@@ -345,8 +345,9 @@ class MockHttpDeps:
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
 
-    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> None:
+    async def broadcast_synthetic_user_input(self, jid: str, content: str) -> bool:
         self.synthetic_user_inputs.append((jid, content))
+        return True
 
     def admin_chat_jid(self) -> str:
         return self._admin_jid

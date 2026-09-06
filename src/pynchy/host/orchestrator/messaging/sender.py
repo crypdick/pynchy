@@ -113,7 +113,10 @@ async def broadcast(  # noqa: PLR0913 - outbound delivery keeps routing and erro
     targets = [plan for plan in plans if plan.message_id is not None or plan.channel.is_connected()]
     caught = (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
     async with outbound_delivery_lock(chat_jid):
-        await _record_deliveries(chat_jid, source, plans)
+        # Synthetic ingress must retain its marker and report immediate admission.
+        # The ordinary retry ledger stores content only, so cannot replay it safely.
+        if event.metadata.get("synthetic_user_input") is not True:
+            await _record_deliveries(chat_jid, source, plans)
         delivered = False
         for plan in targets:
             result = await _deliver(plan, chat_jid, caught=caught)
