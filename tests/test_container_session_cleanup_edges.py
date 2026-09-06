@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from pynchy.host.container_manager import session as session_mod
-from tests.container_runner_support import FakeProcess
+from tests.container_runner_support import FakeProcess, create_session
 
 
 async def test_idle_expiry_destroys_session_without_an_idle_callback():
@@ -129,7 +129,7 @@ async def test_create_session_stops_existing_session_before_replacing_it():
         patch("pynchy.host.container_manager.session.docker_rm_force", new=AsyncMock()),
         patch("pynchy.host.container_manager.session.graceful_stop", new=AsyncMock()),
     ):
-        first = await session_mod.create_session(
+        first = await create_session(
             "replace-group",
             "pynchy-first",
             first_proc,
@@ -140,7 +140,7 @@ async def test_create_session_stops_existing_session_before_replacing_it():
         await asyncio.sleep(0)
 
         with patch.object(first, "stop", new=AsyncMock()) as stop_old:
-            second = await session_mod.create_session(
+            second = await create_session(
                 "replace-group",
                 "pynchy-second",
                 second_proc,
@@ -169,7 +169,7 @@ async def test_create_session_keeps_startup_alive_when_stale_output_cannot_be_de
         patch("pynchy.host.container_manager.session.graceful_stop", new=AsyncMock()),
         patch("pynchy.host.container_manager.session.docker_rm_force", new=AsyncMock()),
     ):
-        session = await session_mod.create_session(
+        session = await create_session(
             "stale-group",
             "pynchy-stale-group",
             FakeProcess(),

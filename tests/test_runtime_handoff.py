@@ -172,7 +172,6 @@ async def test_cold_handoff_destroys_session_when_terminal_boundary_rejects_proc
         is_admin=False,
     )
     session = MagicMock()
-    proc = MagicMock(spec=asyncio.subprocess.Process)
 
     with (
         patch(
@@ -187,18 +186,8 @@ async def test_cold_handoff_destroys_session_when_terminal_boundary_rejects_proc
         ),
         patch.object(
             deps.container_agent_operations,
-            "fresh_container_name",
-            new=AsyncMock(return_value="cold"),
-        ),
-        patch.object(
-            deps.container_agent_operations,
-            "spawn",
-            new=AsyncMock(return_value=(proc, "cold", [], ())),
-        ),
-        patch.object(
-            deps.container_agent_operations,
-            "create_session",
-            new=AsyncMock(return_value=session),
+            "start_session",
+            new=AsyncMock(return_value=(session, ())),
         ),
         patch.object(
             deps.container_agent_operations,

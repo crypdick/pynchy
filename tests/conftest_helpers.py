@@ -104,11 +104,7 @@ def make_container_agent_operations() -> ContainerAgentOperations:
 
     return ContainerAgentOperations(
         get_session=no_session,
-        fresh_container_name=AsyncMock(
-            side_effect=AssertionError("test must provide a container name")
-        ),
-        spawn=AsyncMock(side_effect=AssertionError("test must provide a container spawn")),
-        create_session=AsyncMock(
+        start_session=AsyncMock(
             side_effect=AssertionError("test must provide a container session")
         ),
         destroy_session=AsyncMock(),

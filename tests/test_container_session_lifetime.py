@@ -10,11 +10,10 @@ import pytest
 from pynchy.host.container_manager.session import (
     ContainerSession,
     RuntimeMonitorPolicy,
-    create_session,
     destroy_session,
     get_session,
 )
-from tests.container_runner_support import FakeProcess
+from tests.container_runner_support import FakeProcess, create_session
 
 
 async def test_cancelled_idle_expiry_does_not_notify_or_stop_a_new_query(tmp_path):

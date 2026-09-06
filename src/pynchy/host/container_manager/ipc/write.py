@@ -91,27 +91,14 @@ def write_ipc_response(path: Path, data: dict[str, Any]) -> None:
     write_json_atomic(path, data)
 
 
-def clean_ipc_input_dir(group_folder: str | None, *, preserve_initial: bool = False) -> None:
-    """Remove stale IPC input files for a group.
-
-    Cleans up stale message files and the ``_close`` sentinel. Used by
-    session creation (preserve initial.json since the
-    container is still reading it) and post-task cleanup (delete
-    everything since the container has exited).
-
-    Args:
-        group_folder: Group folder name. No-op if None.
-        preserve_initial: When True, keep ``initial.json`` — safe to
-            call while the container is still starting up.
-    """
+def clean_ipc_input_dir(group_folder: str | None) -> None:
+    """Remove stale IPC input before spawning or after stopping the worker."""
     if not group_folder:
         return
     input_dir = _configured_ipc_base_dir() / group_folder / "input"
     if not input_dir.is_dir():
         return
     for f in input_dir.iterdir():
-        if preserve_initial and f.name == "initial.json":
-            continue
         with contextlib.suppress(OSError):
             f.unlink()
 

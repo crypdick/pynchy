@@ -16,7 +16,6 @@ from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,
     ContainerInput,
     McpStartupFailure,
-    VolumeMount,
     input_to_dict,
 )
 from pynchy.host.container_manager.contracts import RepoMount, RepoMountResolution
@@ -131,11 +130,10 @@ async def _spawn_container(
     container_name: str,
     runtime: AgentExecutionRuntime,
     plugin_manager: pluggy.PluginManager | None = None,
-) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount], tuple[McpStartupFailure, ...]]:
+) -> tuple[asyncio.subprocess.Process, tuple[McpStartupFailure, ...]]:
     """Resolve environment, build mounts, and spawn a container subprocess.
 
-    Shared by the cold-start and scheduled-task paths in ``agent_runner``.
-    Returns (proc, container_name, mounts, mcp_startup_failures).
+    Returns the process and optional MCP startup failures to the session owner.
 
     Raises OSError if the subprocess fails to start.
     """
@@ -272,4 +270,4 @@ async def _spawn_container(
         env=filtered_process_environment(agent_env),
     )
 
-    return proc, container_name, mounts, mcp_startup_failures
+    return proc, mcp_startup_failures

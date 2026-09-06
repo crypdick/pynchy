@@ -486,12 +486,9 @@ class TestContainerInputAgentCoreConfig:
         session = MagicMock()
         operations = replace(
             deps.container_agent_operations,
-            fresh_container_name=AsyncMock(return_value="pynchy-test-group"),
-            spawn=AsyncMock(
+            start_session=AsyncMock(
                 return_value=(
-                    MagicMock(),
-                    "pynchy-test-group",
-                    [],
+                    session,
                     (
                         McpStartupFailure(
                             instance_id="calendar",
@@ -501,7 +498,6 @@ class TestContainerInputAgentCoreConfig:
                     ),
                 )
             ),
-            create_session=AsyncMock(return_value=session),
         )
         deps.container_agent_operations = operations
 

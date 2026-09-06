@@ -29,6 +29,7 @@ from tests.container_runner_support import (
     FakeProcess,
     _parsed_output_with_all_fields,
     _patch_settings,
+    create_session,
 )
 
 # ---------------------------------------------------------------------------
@@ -577,7 +578,7 @@ class TestGetSessionOutputHandler:
 
     async def test_returns_handler_when_session_active(self):
         """Should return the session's _on_output when an active session exists."""
-        session = await session_mod.create_session(
+        session = await create_session(
             "handler-test",
             "pynchy-handler-test",
             FakeProcess(),
@@ -600,7 +601,7 @@ class TestGetSessionOutputHandler:
 
     async def test_returns_none_when_no_handler_set(self):
         """Should return None when session exists but no handler is set."""
-        await session_mod.create_session(
+        await create_session(
             "no-handler-test",
             "pynchy-no-handler-test",
             FakeProcess(),

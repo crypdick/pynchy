@@ -120,13 +120,10 @@ from pynchy.host.container_manager.mcp.resolution import (
 )
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
 from pynchy.host.container_manager.orchestrator import (
-    _spawn_container,
     configure_container_spawn_runtime,
-    stable_container_name,
 )
 from pynchy.host.container_manager.process import (
     configure_container_process_runtime,
-    docker_rm_force,
     graceful_stop,
 )
 from pynchy.host.container_manager.security.approval import (
@@ -155,10 +152,10 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.host.container_manager.session import (
     SessionDiedError,
     active_session_group_folders,
-    create_session,
     destroy_all_sessions,
     destroy_session,
     get_session,
+    start_session,
 )
 from pynchy.host.git_ops.api import (
     GitSyncRuntime,
@@ -396,13 +393,6 @@ from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pynchy.workspace.api import ResolvedWorkspaceConfig
-
-
-async def _fresh_container_name(group_folder: str) -> str:
-    """Remove a stale durable worker before replacing it with the same name."""
-    container_name = stable_container_name(group_folder)
-    await docker_rm_force(container_name)
-    return container_name
 
 
 async def _ensure_workspace_mcp(group_folder: str) -> tuple[McpStartupFailure, ...]:
@@ -877,9 +867,7 @@ class PynchyApp(ThreadRouting):
         )
         self.container_agent_operations = agent_runner.ContainerAgentOperations(
             get_session=get_session,
-            fresh_container_name=_fresh_container_name,
-            spawn=_spawn_container,
-            create_session=create_session,
+            start_session=start_session,
             destroy_session=destroy_session,
             ensure_workspace_mcp=_ensure_workspace_mcp,
             wait_for_query=_wait_for_agent_query,
