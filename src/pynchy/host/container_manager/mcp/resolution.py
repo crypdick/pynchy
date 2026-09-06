@@ -13,7 +13,6 @@ import subprocess  # noqa: S404, TC003 - beartype resolves tracked MCP process a
 from collections.abc import (  # noqa: TC003 - beartype resolves MCP resolution annotations at runtime.
     Callable,
     Mapping,
-    Sequence,
 )
 from dataclasses import dataclass, field
 from pathlib import (
@@ -24,14 +23,9 @@ from typing import Any, Protocol, cast, runtime_checkable
 from pynchy.plugins.api import McpServerConfig
 from pynchy.runtime_names import runtime_container_name
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
     ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
-
-
-@runtime_checkable
-class ResolvedMcpWorkspace(Protocol):
-    @property
-    def tools(self) -> Sequence[str]: ...
 
 
 @runtime_checkable
@@ -73,7 +67,7 @@ class McpSettings(Protocol):
 
 def _unconfigured_tool_access(
     _tools: Mapping[str, object], _resolved: object
-) -> tuple[ResolvedMcpWorkspace, object]:
+) -> tuple[ResolvedWorkspaceConfig, object]:
     raise RuntimeError("MCP tool access has not been composed")
 
 
@@ -82,7 +76,7 @@ def _unconfigured_tool_environment(_tool: object) -> dict[str, str]:
 
 
 _apply_tool_access: Callable[
-    [Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]
+    [Mapping[str, object], object], tuple[ResolvedWorkspaceConfig, object]
 ] = _unconfigured_tool_access
 _tool_process_environment: Callable[[object], dict[str, str]] = _unconfigured_tool_environment
 
@@ -90,7 +84,7 @@ _tool_process_environment: Callable[[object], dict[str, str]] = _unconfigured_to
 def configure_mcp_resolution_runtime(
     *,
     apply_tool_access: Callable[
-        [Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]
+        [Mapping[str, object], object], tuple[ResolvedWorkspaceConfig, object]
     ],
     tool_process_environment: Callable[[object], dict[str, str]],
 ) -> None:
@@ -177,7 +171,7 @@ class _SyncState:
 def _resolved_workspace_config(
     settings: object,
     group_folder: str,
-) -> ResolvedMcpWorkspace | None:
+) -> ResolvedWorkspaceConfig | None:
     """Resolve workspace config before reading selected MCP tool declarations."""
     settings_view = _settings(settings)
     resolved = settings_view.resolved_workspace_config(group_folder)

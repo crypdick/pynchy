@@ -54,7 +54,6 @@ from pynchy.host.container_manager.mcp.litellm import (
 from pynchy.host.container_manager.mcp.proxy import McpBackendUnavailableError, McpProxy
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
-    ResolvedMcpWorkspace,
     WorkspaceTeam,
     build_trust_map,
     merged_mcp_servers,
@@ -66,6 +65,7 @@ from pynchy.plugins.api import (
     McpServerConfig,  # noqa: TC001 - beartype resolves MCP manager signatures at runtime.
 )
 from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,
     ServiceTrustConfig,
     capability_pattern_matches,
     most_restrictive_capability_rule,
@@ -85,12 +85,12 @@ def _unconfigured_workspace_folder(_group_folder: str) -> str:
 
 def _unconfigured_workspace_config(
     _group_folder: str, _settings: object
-) -> ResolvedMcpWorkspace | None:
+) -> ResolvedWorkspaceConfig | None:
     raise RuntimeError("MCP workspace policy has not been composed")
 
 
 _static_workspace_folder: Callable[[str], str] = _unconfigured_workspace_folder
-_load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | None] = (
+_load_resolved_workspace_config: Callable[[str, object], ResolvedWorkspaceConfig | None] = (
     _unconfigured_workspace_config
 )
 
@@ -98,7 +98,7 @@ _load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | 
 def configure_mcp_manager_runtime(
     *,
     static_workspace_folder: Callable[[str], str],
-    load_resolved_workspace_config: Callable[[str, object], ResolvedMcpWorkspace | None],
+    load_resolved_workspace_config: Callable[[str, object], ResolvedWorkspaceConfig | None],
 ) -> None:
     """Bind workspace policy lookups at host composition."""
     global _static_workspace_folder, _load_resolved_workspace_config  # noqa: PLW0603 - one host process owns these MCP policy operations.

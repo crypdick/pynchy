@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
 from threading import Lock
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
 
@@ -116,7 +116,6 @@ from pynchy.host.container_manager.mcp.manager import (
     get_mcp_manager,
 )
 from pynchy.host.container_manager.mcp.resolution import (
-    ResolvedMcpWorkspace,
     configure_mcp_resolution_runtime,
 )
 from pynchy.host.container_manager.mounts import MountOperations, configure_mount_operations
@@ -390,10 +389,11 @@ from pynchy.state.api import (
 from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
     TurnOutcome,
 )
-from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from pynchy.workspace.api import ResolvedWorkspaceConfig
+from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,
+    RuntimeTarget,
+    WorkspaceProfile,
+)
 
 
 async def _ensure_workspace_mcp(group_folder: str) -> tuple[McpStartupFailure, ...]:
@@ -494,12 +494,9 @@ def _resolve_security_workspace_config(
 def _resolve_mcp_workspace_config(
     folder: str,
     settings: object,
-) -> ResolvedMcpWorkspace | None:
+) -> ResolvedWorkspaceConfig | None:
     """Resolve effective MCP tools from the manager's configuration snapshot."""
-    return cast(
-        "ResolvedMcpWorkspace | None",
-        load_resolved_config(folder, settings=cast("Settings", settings)),
-    )
+    return load_resolved_config(folder, settings=cast("Settings", settings))
 
 
 def _read_selected_prompts(names: list[str]) -> str | None:
@@ -574,7 +571,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     )
     configure_mcp_resolution_runtime(
         apply_tool_access=cast(
-            "Callable[[Mapping[str, object], object], tuple[ResolvedMcpWorkspace, object]]",
+            "Callable[[Mapping[str, object], object], tuple[ResolvedWorkspaceConfig, object]]",
             apply_tool_access,
         ),
         tool_process_environment=cast(
