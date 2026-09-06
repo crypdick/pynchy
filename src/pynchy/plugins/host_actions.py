@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import pluggy  # noqa: TC002 - plugin-manager annotations are used at runtime.
+import pluggy
 
 from pynchy.actions.api import ACTION_SPECS, ActionSpec, validate_action_specs
 from pynchy.plugins.capabilities import (

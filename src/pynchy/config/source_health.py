@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003 - Pydantic resolves this runtime annotation.
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 

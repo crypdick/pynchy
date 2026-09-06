@@ -5,8 +5,8 @@ from __future__ import annotations
 # allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
 import subprocess  # noqa: S404 - status adapter catches Docker command timeouts.
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves factory annotations at runtime.
+    Awaitable,
+    Callable,
 )
 from datetime import UTC, datetime
 from functools import partial
@@ -19,7 +19,7 @@ from pynchy.async_tasks import create_background_task
 from pynchy.canaries.api import canary_run_to_dict, get_canary_report
 from pynchy.config.api import JobConfig, Settings, apply_tool_access, get_settings
 from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,
 )
 from pynchy.host.container_manager.security.cop import (
@@ -58,7 +58,7 @@ from pynchy.host.orchestrator.adapters import (
     has_active_session,
     resolve_admin_notification_jid,
 )
-from pynchy.host.orchestrator.app import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.app import (
     PynchyApp,
 )
 from pynchy.host.orchestrator.capability_status import (
@@ -79,7 +79,7 @@ from pynchy.host.orchestrator.status import (
     GitStatusOperations,
     StatusDeps,
 )
-from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
@@ -94,7 +94,7 @@ from pynchy.host.orchestrator.terminal_task_retirement import (
     retire_conversation_tasks,
     retire_provider_work_item_execution,
 )
-from pynchy.identifiers import (  # noqa: TC001 - beartype resolves nested adapter annotations.
+from pynchy.identifiers import (
     GroupFolder,
     SessionId,
 )
@@ -108,10 +108,10 @@ from pynchy.plugins.api import (
     OutboundEventType,
 )
 from pynchy.plugins.integrations.api import work_item_execution_to_dict
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
+from pynchy.plugins.speech.api import (
     SpeechSynthesizer,
 )
-from pynchy.scheduling.api import (  # noqa: TC001 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.scheduling.api import (
     HostJob,
     ScheduledTask,
 )
@@ -140,10 +140,10 @@ from pynchy.state.api import (
     update_host_job,
     update_task,
 )
-from pynchy.work_items.api import (  # noqa: TC001 - beartype resolves factory annotations.
+from pynchy.work_items.api import (
     WorkItemExecution,
 )
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves dependency adapter annotations at runtime.
+from pynchy.workspace.api import (
     WorkspaceProfile,
     WorkspaceSecurity,
 )

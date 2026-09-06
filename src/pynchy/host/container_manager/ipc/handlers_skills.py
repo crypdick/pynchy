@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001 - beartype resolves handler annotations at runtime.
+    IpcDeps,
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response

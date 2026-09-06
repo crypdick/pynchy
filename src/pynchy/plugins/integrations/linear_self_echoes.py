@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves configured ledger callbacks at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from pynchy.conversation.api import notify_conversation_delivery_completed
 from pynchy.plugins.integrations.linear_client import LinearSelfEchoRecorder
-from pynchy.webhook_effects import (  # noqa: TC001 - beartype resolves recorder callbacks.
+from pynchy.webhook_effects import (
     WebhookEffectEvidence,
     WebhookEffectId,
     WebhookEffectResolution,

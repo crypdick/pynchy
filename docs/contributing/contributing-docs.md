@@ -70,14 +70,8 @@ Adjust the relative link depth as needed. Keep the CTA brief — two sentences m
 
 ## Doc-Code Coupling
 
-When a specific value in code is also documented (env var allowlists, blocked patterns,
-mount tables, user names, etc.), add a comment at the code site:
-
-    # NOTE: Update docs/architecture/security.md § Credential Handling if you change this list
-    allowed_vars = [...]
-
-This keeps docs in sync without making developers memorize which docs reference which code.
-Reference the specific doc file and section.
+Follow [the design convention](https://github.com/crypdick/pynchy/blob/main/CONVENTIONS.md#keep-code-and-its-documentation-coupled)
+when code and prose describe the same value. Keep the rule in `CONVENTIONS.md`.
 
 ## No Hard-Coded Usernames
 

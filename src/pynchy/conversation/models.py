@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from pynchy.conversation_primitives import (  # noqa: F401, TC001 - public runtime re-exports preserve the established conversation surface.
+from pynchy.conversation_primitives import (  # noqa: F401 - public runtime re-exports preserve the established conversation surface.
     ConversationClaimId,
     ConversationDeliveryCompletion,
     ConversationId,
@@ -17,7 +17,7 @@ from pynchy.conversation_primitives import (  # noqa: F401, TC001 - public runti
     ExternalProvider,
     ExternalRoute,
 )
-from pynchy.identifiers import (  # noqa: TC001 - public runtime re-exports preserve the established conversation surface.
+from pynchy.identifiers import (
     ChatJid,
     GroupFolder,
     SessionId,

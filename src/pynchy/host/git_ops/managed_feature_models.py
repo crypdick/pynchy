@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves managed-feature model annotations at runtime.
+    Path,
 )
 
 from pynchy.host.git_ops.repo import (
-    RepoContext,  # noqa: TC001 - beartype resolves managed-feature model annotations at runtime.
+    RepoContext,
 )
 
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from pynchy.state.connection import atomic_write
 from pynchy.state.work_items import get_work_item_execution
-from pynchy.work_items.api import WorkItemExecution  # noqa: TC001 - beartype resolves annotations.
+from pynchy.work_items.api import WorkItemExecution
 
 
 async def bind_work_item_execution_to_turn(

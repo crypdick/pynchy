@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import json as json_mod
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves service runtime annotations.
+    Callable,
 )
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.action_intents import ActionIntent  # noqa: TC001 - beartype resolves dataclass.
+from pynchy.action_intents import ActionIntent
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -38,7 +38,7 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     missing_workspace_tool,
 )
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
+    ResolvedWorkspaceConfig,
 )
 
 

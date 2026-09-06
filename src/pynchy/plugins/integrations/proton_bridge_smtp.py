@@ -6,7 +6,7 @@ import smtplib
 import ssl
 from collections.abc import Callable
 from dataclasses import dataclass
-from email.message import EmailMessage  # noqa: TC003 - runtime type validation resolves it
+from email.message import EmailMessage
 from typing import Protocol, runtime_checkable
 
 from pydantic import SecretStr

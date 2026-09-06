@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves sender-policy annotations at runtime.
+    Callable,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -39,7 +39,7 @@ from pynchy.state.api import (  # beartype resolves this runtime annotation.
     prune_stale_cursors,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 RECONCILE_COOLDOWN = timedelta(seconds=30)

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import (
-    Mapping,  # noqa: TC003 - beartype resolves gateway header signatures at runtime.
+    Mapping,
 )
 from dataclasses import dataclass
 from typing import cast

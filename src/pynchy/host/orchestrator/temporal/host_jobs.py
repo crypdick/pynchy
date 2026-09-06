@@ -10,9 +10,9 @@ from temporalio import activity
 
 from pynchy.host.orchestrator.host_shell import ShellResult, log_shell_result, run_shell_command
 from pynchy.host.orchestrator.scheduler_deps import (
-    ConfigHostCronJob,  # noqa: TC001 - beartype resolves config host-job annotations at runtime.
-    SchedulerDependencies,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
-    SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves host-job annotations at runtime.
+    ConfigHostCronJob,
+    SchedulerDependencies,
+    SchedulerRuntimeConfig,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
@@ -24,7 +24,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    HostJob,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    HostJob,
 )
 from pynchy.state.api import get_host_job_by_id, record_host_job_completion
 

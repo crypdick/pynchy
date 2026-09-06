@@ -9,18 +9,18 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import (  # noqa: TC003 - beartype resolves container-operation annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path  # noqa: TC003 - beartype resolves public runner annotations.
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
-import pluggy  # noqa: TC002 - beartype resolves startup operation contracts.
+import pluggy
 
-from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
+from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,
     ContainerInput,
     McpStartupFailure,
@@ -55,7 +55,7 @@ from pynchy.identifiers import (
 from pynchy.logger import logger
 from pynchy.state.api import clear_session
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves agent-runner annotations at runtime.
+    WorkspaceProfile,
 )
 
 if TYPE_CHECKING:

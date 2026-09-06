@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves cancellation annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import aiohttp
 
-from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves contract annotations at runtime.
+from pynchy.conversation.api import (
     Conversation,
     ConversationControlBinding,
     ConversationId,
@@ -28,7 +28,7 @@ from pynchy.work_items.api import (
     WorkItemTransitionRequest,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 _RESET_BLOCKER = (

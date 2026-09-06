@@ -5,14 +5,14 @@ from __future__ import annotations
 # allow: file-length - Protocol methods share this connection's live client state.
 # Splitting them would obscure the connection-level lifecycle.
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
     Iterable,
 )
 from dataclasses import replace
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves this constructor annotation at runtime.
+    Path,
 )
 from typing import Any, cast
 
@@ -34,11 +34,11 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     OutboundEvent,
     OutboundEventType,
 )
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.speech.api import (
     SpeechSynthesisProvider,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves these runtime annotations.
+    WorkspaceProfile,
 )
 
 from ._access import DiscordAccess, interaction_context

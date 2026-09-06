@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path  # noqa: TC003 - beartype resolves IPC ledger paths at runtime.
+from pathlib import Path
 
 from pynchy.host.container_manager.ipc.protocol import (
     IpcRequestEnvelope,

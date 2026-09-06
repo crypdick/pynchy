@@ -39,7 +39,7 @@ from pynchy.plugins.api import (
 )
 from pynchy.state.api import clear_chat_pause, is_chat_paused
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 RuntimeWorkspacePolicyRegistrar = Callable[[ConversationId, GroupFolder, str], None]

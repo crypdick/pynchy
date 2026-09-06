@@ -16,7 +16,7 @@ from pynchy.state.webhook_effect_decisions import (
     set_webhook_effect_decision,
     webhook_effect_decision,
 )
-from pynchy.state.webhook_models import (  # noqa: TC001 - beartype resolves admission inputs.
+from pynchy.state.webhook_models import (
     WebhookReceipt,
 )
 from pynchy.webhook_effects import (

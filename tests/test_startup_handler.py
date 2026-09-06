@@ -349,6 +349,7 @@ class FakeQueue:
 
 class FakeDeps:
     def __init__(self, ws: dict[str, WorkspaceProfile]):
+        self.filter_allowed_messages = MagicMock(side_effect=lambda messages, *_args: messages)
         self._workspaces = ws
         self.queue = FakeQueue()
         self.last_agent_timestamp: dict[str, str] = {}

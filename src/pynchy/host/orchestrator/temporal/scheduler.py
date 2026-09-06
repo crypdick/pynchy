@@ -6,14 +6,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
+    Callable,
 )
 from dataclasses import replace
 from datetime import (
-    timedelta,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
+    timedelta,
 )
 from types import (
-    TracebackType,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
+    TracebackType,
 )
 from typing import Any, Protocol, cast, runtime_checkable
 
@@ -25,7 +25,7 @@ from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from pynchy.canary_contracts import (
-    CanaryRun,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    CanaryRun,
 )
 from pynchy.deployments import (
     DeployClaim,
@@ -37,7 +37,7 @@ from pynchy.host.orchestrator.api import (
     ensure_scheduled_task_conversation_open,
     run_scheduled_agent,
 )
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001 - beartype resolves Temporal scheduler annotations at runtime.
+from pynchy.host.orchestrator.scheduler_deps import (
     SchedulerDependencies,
     SchedulerRuntimeConfig,
 )
@@ -125,12 +125,12 @@ from pynchy.learning_packets import (
     LearningPacket,  # beartype resolves Temporal scheduler annotations at runtime.
     packet_to_payload,
 )
-from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves this annotation at runtime.
+from pynchy.linear_plan_types import (
     LinearPlanReviewAdmission,
 )
 from pynchy.logger import logger
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ScheduledTask,
 )
 from pynchy.state.api import (
     claim_deployment,
@@ -140,7 +140,7 @@ from pynchy.state.api import (
     get_all_tasks,
     get_task_by_id,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves nested activity annotations.
+from pynchy.turn_outcomes import (
     TurnOutcome,
 )
 from pynchy.workspace.api import RuntimeTarget, WorkspaceProfile

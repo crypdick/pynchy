@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 import secrets
 import time
-from pathlib import Path  # noqa: TC003 - beartype resolves IPC write signatures at runtime.
+from pathlib import Path
 from typing import Any
 
 from pynchy.atomic_json import write_json_atomic, write_text_atomic

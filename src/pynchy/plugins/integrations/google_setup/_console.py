@@ -11,7 +11,7 @@ import json
 import re
 import tempfile
 import time
-from collections.abc import (  # noqa: TC003 - beartype resolves these runtime annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )

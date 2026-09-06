@@ -7,7 +7,7 @@ containers that may read them at any time during warm-path queries.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves snapshot paths at runtime.
+from pathlib import Path
 from typing import Any
 
 from pynchy.atomic_json import write_json_atomic

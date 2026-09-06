@@ -7,7 +7,7 @@ from pynchy.conversation.api import (
     ConversationId,
     ConversationSubjectKey,  # beartype resolves lookup annotations at runtime.
 )
-from pynchy.identifiers import GroupFolder  # noqa: TC001 - beartype resolves annotations
+from pynchy.identifiers import GroupFolder
 from pynchy.state.connection import _get_db
 from pynchy.state.conversation_routing import get_conversation
 

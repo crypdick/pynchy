@@ -27,7 +27,7 @@ from pynchy.host.container_manager.security.cop_client import (
 )
 from pynchy.logger import logger
 from pynchy.redaction import RedactionSession
-from pynchy.security_context import (  # noqa: TC001 - beartype resolves Cop context loader annotations at runtime.
+from pynchy.security_context import (
     RecentSecurityContext,
     SecurityExecutionAuthority,
 )

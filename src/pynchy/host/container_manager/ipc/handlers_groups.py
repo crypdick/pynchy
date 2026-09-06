@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001 - beartype resolves group handler signatures at runtime.
+    IpcDeps,
 )
 from pynchy.host.container_manager.ipc.protocol import (
     RegisterGroupRequest,

@@ -16,10 +16,10 @@ to the collaborators (see ``self.lifecycle``/``allowlist``/``events``/``interact
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003 - beartype resolves task annotations at runtime.
+import asyncio
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves this runtime annotation.
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Awaitable,
+    Callable,
 )
 from datetime import datetime
 from typing import ClassVar, Protocol, cast, runtime_checkable

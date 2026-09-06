@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from pynchy.scheduling.api import (
-    TaskRunLog,  # noqa: TC001 - beartype resolves policy annotations.
+    TaskRunLog,
 )
 
 STAGNATION_THRESHOLD = 3

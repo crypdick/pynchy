@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 - beartype resolves IPC protocol paths at runtime.
+from pathlib import Path
 from typing import Any, cast
 
 from pynchy.identifiers import (

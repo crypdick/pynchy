@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001 - beartype resolves protocol annotations.
+from pynchy.host.orchestrator.messaging.deps import (
     ApprovalRuntimeOperations,
 )
 from pynchy.logger import logger

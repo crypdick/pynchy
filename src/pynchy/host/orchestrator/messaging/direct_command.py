@@ -10,7 +10,7 @@ from pynchy.host.orchestrator.messaging.deps import DirectCommandDeps, DirectCom
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves direct-command annotations at runtime.
+    WorkspaceProfile,
 )
 
 

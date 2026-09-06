@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.conversation.api import (
-    ConversationEvent,  # noqa: TC001 - beartype resolves annotations.
+    ConversationEvent,
 )
 from pynchy.state.connection import _get_db, atomic_write
 

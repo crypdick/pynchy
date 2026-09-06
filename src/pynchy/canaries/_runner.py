@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves canary runtime annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves canary runtime annotations at runtime.
-    Collection,  # noqa: TC003 - beartype resolves canary runner annotations at runtime.
-    Mapping,  # noqa: TC003 - beartype resolves canary runner annotations at runtime.
+    Awaitable,
+    Callable,
+    Collection,
+    Mapping,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime

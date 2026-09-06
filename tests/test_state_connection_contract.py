@@ -7,13 +7,16 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiosqlite
 import pytest
+from beartype.roar import BeartypeWarning
 
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state import (
     close_test_database,
     create_task,
     get_all_chats,
+    get_session,
     get_task_by_id,
     init_database,
     init_test_database,
@@ -63,7 +66,7 @@ async def test_init_test_database_does_not_wait_past_worker_stop_deadline() -> N
 async def test_init_database_fails_when_foreign_keys_remain_disabled(tmp_path: Path) -> None:
     cursor = MagicMock()
     cursor.fetchone = AsyncMock(return_value=(0,))
-    database = MagicMock()
+    database = MagicMock(spec=aiosqlite.Connection)
     database.execute = AsyncMock(side_effect=[None, cursor])
 
     with (
@@ -158,3 +161,9 @@ async def test_cancelled_transaction_cannot_rollback_a_competing_task_write(
         assert await get_all_chats() == []
     finally:
         close_test_database()
+
+
+@pytest.mark.asyncio
+async def test_runtime_type_violation_fails_before_database_access() -> None:
+    with pytest.raises(BeartypeWarning, match="get_session"):
+        await get_session(123)

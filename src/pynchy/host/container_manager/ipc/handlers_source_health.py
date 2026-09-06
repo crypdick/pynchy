@@ -19,7 +19,7 @@ from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves this runtime annotation.
+    Channel,
 )
 
 _CHANNEL_CONNECTION_TYPES = frozenset({"discord", "slack", "whatsapp"})

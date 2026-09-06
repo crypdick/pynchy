@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from aiosqlite import (  # noqa: TC002 - beartype resolves annotations at runtime.
+from aiosqlite import (
     Connection,
 )
 

@@ -24,7 +24,7 @@ from pynchy.plugins.api import (
     missing_workspace_tool,
 )
 from pynchy.workspace.api import (
-    WorkspaceSecurity,  # noqa: TC001 - beartype resolves runtime annotations.
+    WorkspaceSecurity,
 )
 
 

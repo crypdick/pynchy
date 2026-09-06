@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pynchy.host.git_ops.repo import github_slug_from_origin

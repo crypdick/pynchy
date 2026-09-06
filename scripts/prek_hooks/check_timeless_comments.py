@@ -20,6 +20,7 @@ Exit codes:
   1 - Violations found
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -174,24 +175,16 @@ def main(filenames: list[str]) -> int:
                     f"not history (or mark with # temporal-ok)"
                 )
 
-    if exit_code != 0:
-        print("\n" + "=" * 70)
-        print(f"Found {total_violations} non-timeless comment(s).")
-        print()
-        print("  FIX the comment (preferred):")
-        print("     BAD:  # Temporary function for a separate code path")
-        print("     GOOD: # Calculates total cost including tax")
-        print("     If the comment only explains repository history, delete it.")
-        print()
-        print("  EXEMPT with '# temporal-ok' or '# allow: timeless-comments'")
-        print("  ONLY when:")
-        print("     - Temporal word is domain-specific (e.g., 'old logs' = stale)")
-        print("     - Describing current state, not history (e.g., 'has been configured')")
-        print("     - SQL/technical keywords (e.g., 'REPLACE', 'new connection')")
-        print("=" * 70)
+    if exit_code:
+        print(f"Found {total_violations} comment(s) to review; temporal words may be domain terms.")
 
     return exit_code
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--advisory", action="store_true", help="Report findings without blocking")
+    parser.add_argument("filenames", nargs="*")
+    args = parser.parse_args()
+    result = main(args.filenames)
+    sys.exit(0 if args.advisory else result)

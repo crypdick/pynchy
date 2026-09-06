@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pynchy.plugins.integrations.matrix_gateway_client import (  # noqa: TC001 - beartype resolves event annotations.
+from pynchy.plugins.integrations.matrix_gateway_client import (
     MatrixSyncEvent,
 )
 

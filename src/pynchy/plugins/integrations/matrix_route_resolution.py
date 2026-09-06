@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves Matrix route annotations.
+from collections.abc import (
     Callable,
     Iterable,
     Mapping,
 )
 from dataclasses import dataclass
 
-from pynchy.integration_contracts import (  # noqa: TC001 - beartype resolves Matrix route annotations.
+from pynchy.integration_contracts import (
     MatrixActivation,
     MatrixConnection,
     MatrixEndpoint,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pynchy.config.profiles import (
-    ProfileConfig,  # noqa: TC001 - beartype resolves annotations at runtime.
+    ProfileConfig,
 )
 from pynchy.workspace.api import (
     CapabilityRule,

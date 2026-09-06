@@ -13,11 +13,11 @@ from pynchy.config.models import ChannelOverrideConfig, ConnectionConfig, OwnerC
 from pynchy.config.refs import channel_platform_from_name
 from pynchy.config.settings import get_settings
 from pynchy.plugins.api import (
-    NewMessage,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    NewMessage,
 )
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations at runtime.
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves access annotations at runtime.
+    ResolvedWorkspaceConfig,
+    WorkspaceProfile,
 )
 
 _KNOWN_CHANNEL_PLATFORMS = {"slack", "whatsapp", "discord"}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import aiosqlite  # noqa: TC002 - beartype resolves row annotations at runtime.
+import aiosqlite
 
 from pynchy.deployments import (
     DeployChangeKind,

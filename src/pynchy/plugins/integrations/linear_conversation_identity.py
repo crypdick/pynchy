@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves configured state callbacks at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -18,7 +18,7 @@ from pynchy.conversation.api import (
 )
 from pynchy.identifiers import GroupFolder
 from pynchy.work_items.api import (
-    WorkItemExecution,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkItemExecution,
 )
 
 

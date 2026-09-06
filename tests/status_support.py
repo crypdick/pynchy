@@ -201,6 +201,7 @@ class MockStatusDeps:
 class MockHttpDeps:
     """Inert HTTP dependencies for exercising route registration."""
 
+    broadcast_synthetic_user_input = AsyncMock()
     data_dir = None
     project_root = None
     capability_status_operations = Mock()

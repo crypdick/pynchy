@@ -7,7 +7,7 @@ import fcntl
 import os
 import sys
 import time
-from collections.abc import Iterator  # noqa: TC003 - beartype validates contextmanager annotations.
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 

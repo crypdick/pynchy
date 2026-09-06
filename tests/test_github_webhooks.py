@@ -594,6 +594,7 @@ async def test_linked_issue_provider_failures_are_reported(
 
 class _WebhookDeps:
     def __init__(self) -> None:
+        self.broadcast_synthetic_user_input = AsyncMock()
         self.capability_status_operations = AsyncMock()
         self.deploy_operations = object()
         self.canary_run_to_dict = lambda *_args, **_kwargs: {}

@@ -19,7 +19,7 @@ import signal
 import subprocess  # noqa: S404 - MCP lifecycle starts configured no-shell processes.
 import sys
 import time
-from collections.abc import (  # noqa: TC003 - beartype resolves MCP environment annotations at runtime.
+from collections.abc import (
     Mapping,
 )
 from pathlib import Path
@@ -38,11 +38,11 @@ from pynchy.host.container_manager.docker import (
     wait_healthy,
 )
 from pynchy.host.container_manager.mcp.resolution import (
-    McpInstance,  # noqa: TC001 - beartype resolves MCP lifecycle signatures at runtime.
+    McpInstance,
 )
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    McpServerConfig,  # noqa: TC001 - beartype resolves MCP lifecycle signatures at runtime.
+    McpServerConfig,
 )
 from pynchy.process_environment import filtered_process_environment
 from pynchy.runtime_names import runtime_network_name

@@ -23,7 +23,7 @@ from pynchy.host.orchestrator.webhook_event_rendering import (
     prompt_for_event,
 )
 from pynchy.identifiers import GroupFolder
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves processing annotations at runtime.
+from pynchy.plugins.api import (
     WebhookEvent,
     WebhookRoute,
 )

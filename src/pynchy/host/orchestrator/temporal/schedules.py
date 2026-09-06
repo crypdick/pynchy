@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves builder annotations.
+from collections.abc import (
     Awaitable,
     Callable,
     Sequence,
@@ -19,7 +19,7 @@ from temporalio.client import (
 )
 
 from pynchy.host.orchestrator.scheduler_deps import (
-    SchedulerRuntimeConfig,  # noqa: TC001 - beartype resolves Temporal schedule annotations at runtime.
+    SchedulerRuntimeConfig,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
     CanaryRunWorkflow,

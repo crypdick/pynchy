@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import subprocess  # noqa: S404 - used only for subprocess exception types.
-from collections.abc import (  # noqa: TC003 - beartype resolves runtime configuration annotations.
+from collections.abc import (
     Callable,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves git sync helpers at runtime.
+from pathlib import Path
 
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import (
@@ -24,10 +24,10 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.host.git_ops.worktree_sync import (
-    GitSyncDeps,  # noqa: TC001 - beartype resolves git sync helpers at runtime.
+    GitSyncDeps,
 )
 from pynchy.host.orchestrator.scheduler_deps import (
-    HostSyncState,  # noqa: TC001 - beartype resolves the scheduler port at runtime.
+    HostSyncState,
 )
 from pynchy.logger import logger
 

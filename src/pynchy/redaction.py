@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import cast
 
-from pynchy.identifiers import (  # noqa: TC001 - beartype resolves restoration capability IDs at runtime.
+from pynchy.identifiers import (
     CapabilityId,
 )
 

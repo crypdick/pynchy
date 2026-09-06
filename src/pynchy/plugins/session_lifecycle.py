@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable  # noqa: TC003 - cast resolves awaitable annotations.
+from collections.abc import Awaitable
 from typing import Protocol, cast, runtime_checkable
 
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

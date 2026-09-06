@@ -21,11 +21,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves approval runtime annotations.
+    Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves approval decision paths at runtime.
+    Path,
 )
 from typing import Any, Protocol, cast
 
@@ -52,7 +52,7 @@ from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error as _approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.deps import (
-    IpcDeps,  # noqa: TC001 - beartype resolves approval replay dependencies at runtime.
+    IpcDeps,
 )
 from pynchy.host.container_manager.ipc.file_claims import claim_ipc_file, release_ipc_file
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -67,10 +67,10 @@ from pynchy.host.container_manager.security.gate import (
     evaluate_host_action_policy,
 )
 from pynchy.logger import logger
-from pynchy.plugins.api import HostActionDescriptor  # noqa: TC001 - beartype resolves annotations.
+from pynchy.plugins.api import HostActionDescriptor
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
-    WorkspaceSecurity,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ResolvedWorkspaceConfig,
+    WorkspaceSecurity,
 )
 
 

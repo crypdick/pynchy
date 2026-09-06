@@ -5,8 +5,8 @@ from __future__ import annotations
 import posixpath
 import re
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves learning runtime annotations at runtime.
-    Iterator,  # noqa: TC003 - beartype resolves learning runtime annotations at runtime.
+    Callable,
+    Iterator,
 )
 from contextlib import contextmanager
 from dataclasses import dataclass

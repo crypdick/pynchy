@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.action_intents import (
-    ActionIntent,  # noqa: TC001 - beartype resolves runtime annotations.
+    ActionIntent,
 )
 from pynchy.conversation.api import parent_workspace_name
 from pynchy.plugins.api import ActionIntentDraft, ActionIntentReceipt

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001 - beartype resolves router annotations at runtime.
+    ContainerOutput,
 )
 from pynchy.conversation.api import new_turn_id
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
@@ -44,7 +44,7 @@ from pynchy.plugins.api import (  # beartype resolves router annotations at runt
 )
 from pynchy.state.api import mark_work_item_delivery_delivered_for_turn, store_message_direct
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves router annotations at runtime.
+    WorkspaceProfile,
 )
 
 # Re-export for consumers that import from this module (app.py uses these)

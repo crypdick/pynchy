@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003 - beartype resolves this runtime annotation.
+    AsyncIterator,
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 from typing import Any, cast
 
 import aiosqlite

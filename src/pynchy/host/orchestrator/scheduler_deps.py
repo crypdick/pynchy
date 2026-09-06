@@ -2,40 +2,40 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 from contextlib import (
-    AbstractContextManager,  # noqa: TC003 - beartype resolves protocol annotations.
+    AbstractContextManager,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves runtime config annotations.
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.turn_outcomes import TurnOutcome
 
-from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.agent_protocol.api import (
     ContainerOutput,
     OnOutput,
 )
-from pynchy.canary_contracts import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.canary_contracts import (
     CanaryRun,
 )
-from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.learning_packets import (
     LearningPacket,
 )
-from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.linear_plan_types import (
     LinearPlanReviewAdmission,
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
 )
-from pynchy.plugins.api import OutboundEvent  # noqa: TC001 - beartype resolves annotations.
+from pynchy.plugins.api import OutboundEvent
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves annotations.
+    ScheduledTask,
 )
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves annotations.
+from pynchy.workspace.api import (
     RuntimeTarget,
     WorkspaceProfile,
 )

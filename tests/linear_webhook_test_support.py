@@ -182,6 +182,7 @@ class DiscordThreadChannel:
 
 class LinearWebhookHarness:
     def __init__(self, *, admin: bool = False) -> None:
+        self.broadcast_synthetic_user_input = AsyncMock()
         self.workspace = WorkspaceProfile(
             jid="discord:channel:project",
             name="Project",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path  # noqa: TC003 - beartype resolves annotations at runtime.
+from pathlib import Path
 from typing import Any
 
 from pynchy.host.paths import PYNCHY_IPC_CONTAINER_PATH

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from pynchy.identifiers import (  # noqa: TC001 - beartype resolves these runtime annotations.
+from pynchy.identifiers import (
     ChannelName,
     ChatJid,
 )

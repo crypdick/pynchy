@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404 - cleanup catches fixed-runtime subprocess failures.
 from collections.abc import (
-    Sequence,  # noqa: TC003 - beartype resolves cleanup annotations at runtime.
+    Sequence,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from pynchy.identifiers import OrphanReapAgeMs  # noqa: TC001 - public cleanup contract
+from pynchy.identifiers import OrphanReapAgeMs
 from pynchy.logger import logger
 from pynchy.runtime_names import runtime_namespace
 

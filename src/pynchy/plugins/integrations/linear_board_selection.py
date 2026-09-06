@@ -7,7 +7,7 @@ from typing import Any
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_board_payloads import norm_name, projects_for_workspace
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
-from pynchy.plugins.integrations.linear_workspace_names import (  # noqa: TC001 - beartype resolves this runtime annotation.
+from pynchy.plugins.integrations.linear_workspace_names import (
     WorkspaceIdentity,
 )
 

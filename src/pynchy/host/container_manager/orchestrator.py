@@ -9,7 +9,7 @@ from pathlib import (
     Path,  # beartype resolves container orchestration signatures at runtime.
 )
 
-import pluggy  # noqa: TC002 - beartype resolves agent core lookup signatures at runtime.
+import pluggy
 
 from pynchy.agent_protocol.api import (
     # beartype resolves container orchestration signatures at runtime.
@@ -31,7 +31,7 @@ from pynchy.plugins.api import collect_agent_hook_specs, container_agent_hook_co
 from pynchy.process_environment import filtered_process_environment
 from pynchy.runtime_names import runtime_container_name
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves container orchestration signatures at runtime.
+    WorkspaceProfile,
 )
 
 type EnsureAgentImage = Callable[..., None]

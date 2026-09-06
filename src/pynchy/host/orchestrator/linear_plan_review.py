@@ -7,7 +7,7 @@ import json
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ContainerOutput,
 )
 
 if TYPE_CHECKING:

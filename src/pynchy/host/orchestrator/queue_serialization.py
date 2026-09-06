@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import (  # noqa: TC003 - beartype resolves queue annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -13,10 +13,10 @@ from pynchy.host.orchestrator.queue_state import (
     QueuedTask,
 )
 from pynchy.identifiers import (
-    RuntimeId,  # noqa: TC001 - beartype resolves queue annotations at runtime.
+    RuntimeId,
 )
 from pynchy.workspace.api import (
-    RuntimeTarget,  # noqa: TC001 - beartype resolves queue annotations at runtime.
+    RuntimeTarget,
 )
 
 

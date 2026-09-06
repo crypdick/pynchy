@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves Gog runtime callbacks at runtime.
+    Callable,
 )
 from dataclasses import dataclass
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves Gog runtime annotations at runtime.
+    Path,
 )
 from typing import Annotated
 

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves notification callback signatures at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
 
-from pynchy.agent_protocol.api import (  # noqa: TC001 - beartype resolves notification callback signatures at runtime.
+from pynchy.agent_protocol.api import (
     McpStartupFailure,
 )
 from pynchy.logger import logger

@@ -6,7 +6,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from typing import Any
 
-from aiosqlite import (  # noqa: TC002 - beartype resolves state boundary annotations at runtime.
+from aiosqlite import (
     Connection,
     Row,
 )

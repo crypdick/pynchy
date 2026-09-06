@@ -24,7 +24,7 @@ from pynchy.state.api import (
     store_message_direct,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    WorkspaceProfile,
 )
 
 

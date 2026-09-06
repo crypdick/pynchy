@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import (  # noqa: TC003 - beartype resolves context manager annotations.
+from collections.abc import (
     AsyncIterator,
 )
 from contextlib import asynccontextmanager

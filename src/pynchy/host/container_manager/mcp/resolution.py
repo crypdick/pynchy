@@ -9,22 +9,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess  # noqa: S404, TC003 - beartype resolves tracked MCP process annotations at runtime.
-from collections.abc import (  # noqa: TC003 - beartype resolves MCP resolution annotations at runtime.
+import subprocess  # noqa: S404 - beartype resolves tracked MCP process annotations at runtime.
+from collections.abc import (
     Callable,
     Mapping,
 )
 from dataclasses import dataclass, field
 from pathlib import (
-    Path,  # noqa: TC003 - beartype resolves MCP instance annotations at runtime.
+    Path,
 )
 from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.plugins.api import McpServerConfig
 from pynchy.runtime_names import runtime_container_name
 from pynchy.workspace.api import (
-    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
-    ServiceTrustConfig,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ResolvedWorkspaceConfig,
+    ServiceTrustConfig,
 )
 
 

@@ -15,8 +15,8 @@ from pynchy.config.caldav import CalDAVConfig
 from pynchy.config.permissions import PermissionConfig
 from pynchy.config.refs import parse_chat_ref
 from pynchy.config.workspace_layout import (
-    WorkspaceScopeConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
-    WorkspaceThreadConfig,  # noqa: TC001 - Pydantic resolves workspace annotations at runtime.
+    WorkspaceScopeConfig,
+    WorkspaceThreadConfig,
 )
 from pynchy.discord import (
     DiscordAccessSettings,
@@ -24,7 +24,7 @@ from pynchy.discord import (
     DiscordConnectionSettings,
     DiscordGuildSettings,
 )
-from pynchy.integration_contracts import (  # noqa: TC001 - Pydantic resolves Matrix annotations at runtime.
+from pynchy.integration_contracts import (
     MatrixActivation,
     MatrixOutbound,
 )

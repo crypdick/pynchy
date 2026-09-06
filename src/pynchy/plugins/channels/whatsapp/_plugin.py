@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import sys
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,
 )
 from typing import Protocol, cast, runtime_checkable
 
 import pluggy
 
 from pynchy.logger import logger
-from pynchy.plugins.api import (  # noqa: TC001 - beartype resolves hook annotations at runtime.
+from pynchy.plugins.api import (
     Channel,  # beartype resolves annotations at runtime.
     ChannelPluginContext,
 )

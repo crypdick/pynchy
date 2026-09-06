@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves workspace registration annotations at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves sequence annotations.
+    Awaitable,
+    Callable,
+    Sequence,
 )
 from dataclasses import replace
 from datetime import UTC, datetime

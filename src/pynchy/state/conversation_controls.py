@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from aiosqlite import Connection  # noqa: TC002 - beartype resolves state annotations at runtime.
+from aiosqlite import Connection
 
 from pynchy.conversation.api import (
     ControlSurface,

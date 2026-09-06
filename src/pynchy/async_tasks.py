@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Coroutine  # noqa: TC003 - beartype resolves this runtime annotation.
+from collections.abc import Coroutine
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)

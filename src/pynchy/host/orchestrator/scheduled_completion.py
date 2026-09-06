@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001 - beartype resolves completion annotations.
+from pynchy.host.orchestrator.scheduler_deps import (
     ScheduledCompletionDeps,
 )
 from pynchy.logger import logger

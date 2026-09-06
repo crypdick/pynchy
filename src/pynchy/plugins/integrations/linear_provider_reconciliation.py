@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import (  # noqa: TC003 - beartype resolves these annotations at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
     Mapping,
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves controller annotations.
+from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
 )
 from pynchy.plugins.integrations.linear_statuses import (

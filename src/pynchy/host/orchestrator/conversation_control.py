@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import (  # noqa: TC003 - beartype resolves context callbacks.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -27,7 +27,7 @@ from pynchy.identifiers import (
     SessionId,
 )
 from pynchy.plugins.api import (
-    Channel,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    Channel,
 )
 from pynchy.state.api import (
     ConversationControlWorkspaceChangedError,

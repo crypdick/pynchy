@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import (  # noqa: TC003 - beartype resolves configured task callbacks at runtime.
+from collections.abc import (
     Awaitable,
     Callable,
 )
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pynchy.content_fencing import fence_untrusted_content
-from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001 - beartype resolves task annotations.
+from pynchy.plugins.integrations.linear_boards import (
     WorkspaceLike,
 )
 from pynchy.plugins.integrations.linear_work_item_tasks import (

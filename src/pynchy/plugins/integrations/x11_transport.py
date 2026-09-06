@@ -6,7 +6,7 @@ import asyncio
 import base64
 import binascii
 import json
-from pathlib import Path  # noqa: TC003 - beartype resolves runtime annotations.
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel

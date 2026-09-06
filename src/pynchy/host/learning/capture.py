@@ -6,13 +6,13 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001 - beartype resolves learning annotations at runtime.
+    ContainerOutput,
 )
 from pynchy.host.learning import packets as learning_packets
 from pynchy.logger import logger
 from pynchy.plugins.api import NewMessage
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves learning annotations at runtime.
+    WorkspaceProfile,
 )
 
 FetchMessagesSince = Callable[[str, str], Awaitable[list[NewMessage]]]

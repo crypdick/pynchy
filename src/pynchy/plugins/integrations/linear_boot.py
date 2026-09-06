@@ -8,9 +8,9 @@ avoid a plugin -> webhook -> boot import cycle.
 from __future__ import annotations
 
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves Linear boot callbacks at runtime.
-    Callable,  # noqa: TC003 - beartype resolves Linear boot callbacks at runtime.
-    Iterable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Awaitable,
+    Callable,
+    Iterable,
 )
 from dataclasses import dataclass, field
 
@@ -18,7 +18,7 @@ import aiohttp
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import (
-    LinearAccount,  # noqa: TC001 - beartype resolves Linear boot runtime callbacks at runtime.
+    LinearAccount,
 )
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
@@ -29,7 +29,7 @@ from pynchy.plugins.integrations.linear_boards import (
 )
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves this runtime annotation.
+    WorkspaceProfile,
 )
 
 LINEAR_BOOT_TIMEOUT_SECONDS = 30

@@ -169,6 +169,7 @@ class MockSchedulerDeps:
     """Mock implementation of SchedulerDependencies protocol."""
 
     def __init__(self):
+        self.reset_linear_plan_review_context = AsyncMock()
         self.groups: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue(
             10,

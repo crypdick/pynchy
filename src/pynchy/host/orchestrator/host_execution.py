@@ -21,8 +21,8 @@ from pynchy.host.orchestrator.codex_rollouts import (
 from pynchy.host.orchestrator.codex_rollouts import prepare_rollout_resume
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
-from pynchy.identifiers import RuntimeId  # noqa: TC001
-from pynchy.workspace.api import RuntimeTarget  # noqa: TC001
+from pynchy.identifiers import RuntimeId
+from pynchy.workspace.api import RuntimeTarget
 
 if TYPE_CHECKING:
     import asyncio

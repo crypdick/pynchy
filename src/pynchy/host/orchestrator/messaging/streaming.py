@@ -25,7 +25,7 @@ from pynchy.plugins.api import (  # beartype resolves streaming annotations at r
     OutboundEventType,
 )
 from pynchy.workspace.api import (
-    WorkspaceProfile,  # noqa: TC001 - beartype resolves streaming annotations at runtime.
+    WorkspaceProfile,
 )
 
 if TYPE_CHECKING:

@@ -46,7 +46,7 @@ from pynchy.host.orchestrator.messaging.turn_control import (
 from pynchy.identifiers import GroupFolder
 from pynchy.logger import logger
 from pynchy.plugins.api import (
-    NewMessage,  # noqa: TC001 - beartype resolves pipeline annotations at runtime.
+    NewMessage,
 )
 from pynchy.state.api import (
     clear_in_flight_turn,

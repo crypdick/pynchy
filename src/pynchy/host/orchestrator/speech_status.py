@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.logger import logger
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves runtime annotations.
+from pynchy.plugins.speech.api import (
     SpeechSynthesizer,
 )
 

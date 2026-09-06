@@ -19,7 +19,7 @@ See docs/plans/2026-02-22-ask-user-blocking-design.md
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves callback annotations.
+    Callable,
 )
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable

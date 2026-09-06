@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import (
-    Mapping,  # noqa: TC003 - config validation annotations resolve at runtime.
+    Mapping,
 )
 from typing import Any, Literal, cast
 

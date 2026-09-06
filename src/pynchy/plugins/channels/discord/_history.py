@@ -10,7 +10,7 @@ import discord
 from pynchy.plugins.api import NewMessage
 
 from ._events import build_message_metadata, normalized_message_content
-from ._models import DiscordInboundMessage  # noqa: TC001 - beartype resolves it.
+from ._models import DiscordInboundMessage
 
 MESSAGE_ID_PREFIX = "discord-"
 

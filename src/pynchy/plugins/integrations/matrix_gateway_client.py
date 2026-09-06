@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess  # noqa: S404 - command is a host-owned local gateway path.
-from pathlib import Path  # noqa: TC003 - beartype resolves gateway path annotations.
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import quote
 

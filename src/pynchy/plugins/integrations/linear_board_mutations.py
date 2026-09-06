@@ -9,7 +9,7 @@ from pynchy.plugins.integrations.linear_board_payloads import payload_entity
 from pynchy.plugins.integrations.linear_board_queries import (
     MOVE_WORKSPACE_TODO_MUTATION,
 )
-from pynchy.plugins.integrations.linear_client import (  # noqa: TC001 - beartype resolves helper annotations at runtime.
+from pynchy.plugins.integrations.linear_client import (
     LinearQueryClient,
 )
 from pynchy.plugins.integrations.linear_webhook_evidence import (

@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404 - worktree helper uses fixed no-shell hook-runner argv.
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves worktree signatures at runtime.
-    Sequence,  # noqa: TC003 - beartype resolves worktree signatures at runtime.
+    Callable,
+    Sequence,
 )
 from dataclasses import dataclass
 from pathlib import Path  # beartype resolves worktree signatures at runtime.

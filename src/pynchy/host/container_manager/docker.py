@@ -14,7 +14,7 @@ import os
 import shutil
 import subprocess  # noqa: S404 - Docker helpers use fixed no-shell argv.
 import time
-from collections.abc import (  # noqa: TC003 - beartype resolves Docker environment annotations at runtime.
+from collections.abc import (
     Mapping,
 )
 from dataclasses import dataclass

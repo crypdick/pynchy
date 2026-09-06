@@ -9,10 +9,10 @@ from pathlib import (
 )
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pynchy.plugins.mcp_server import (  # noqa: TC001 - beartype resolves dataclass annotations at runtime.
+from pynchy.plugins.mcp_server import (
     McpServerConfig,
 )
-from pynchy.workspace.api import (  # noqa: TC001 - beartype resolves dataclass annotations at runtime.
+from pynchy.workspace.api import (
     ServiceTrustConfig,
 )
 

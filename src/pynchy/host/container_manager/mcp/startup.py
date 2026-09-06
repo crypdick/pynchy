@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pynchy.agent_protocol.api import (
-    McpStartupFailure,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    McpStartupFailure,
 )
 
 

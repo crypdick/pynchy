@@ -13,12 +13,12 @@ import contextlib
 import os
 import signal
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves this runtime annotation.
+    Callable,
 )
 from dataclasses import dataclass
 
 from pynchy.agent_protocol.api import (
-    ContainerOutput,  # noqa: TC001 - beartype validates query-done output at runtime.
+    ContainerOutput,
 )
 from pynchy.async_tasks import create_background_task
 from pynchy.logger import logger

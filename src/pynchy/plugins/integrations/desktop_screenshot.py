@@ -8,7 +8,7 @@ import platform
 import re
 import subprocess  # noqa: S404 - uses PIPE constants with fixed screencapture argv.
 from collections.abc import (
-    Callable,  # noqa: TC003 - lifecycle-supplied gateway callback is stored at runtime.
+    Callable,
 )
 from dataclasses import dataclass, field
 from datetime import UTC, datetime

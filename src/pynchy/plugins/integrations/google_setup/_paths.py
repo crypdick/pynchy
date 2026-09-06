@@ -7,10 +7,10 @@ scope registry mapping MCP server template names to OAuth scopes + API IDs.
 from __future__ import annotations
 
 from collections.abc import (
-    Callable,  # noqa: TC003 - beartype resolves Google setup runtime callbacks at runtime.
+    Callable,
 )
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype resolves this runtime annotation.
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Constants

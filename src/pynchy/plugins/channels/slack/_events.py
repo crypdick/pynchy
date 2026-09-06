@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import (
-    Awaitable,  # noqa: TC003 - beartype resolves Slack Bolt callback annotations at runtime.
-    Callable,  # noqa: TC003 - beartype resolves Slack Bolt callback annotations at runtime.
+    Awaitable,
+    Callable,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime

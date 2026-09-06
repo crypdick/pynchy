@@ -10,7 +10,7 @@ import asyncio
 import json
 import time
 import uuid
-from collections.abc import (  # noqa: TC003 - beartype resolves composition callback annotations.
+from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
@@ -21,11 +21,11 @@ from contextlib import AsyncExitStack
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
-from pathlib import Path  # noqa: TC003 - beartype resolves application method annotations.
+from pathlib import Path
 from threading import Lock
 from typing import Any, cast
 
-import pluggy  # noqa: TC002 - beartype resolves app annotations at runtime.
+import pluggy
 
 from pynchy.agent_protocol.api import (
     AgentExecutionRuntime,
@@ -34,7 +34,7 @@ from pynchy.agent_protocol.api import (
 )
 from pynchy.atomic_json import write_json_atomic
 from pynchy.canaries.api import CanaryRuntime, configure_canary_runtime, run_declared_canaries
-from pynchy.canary_contracts import (  # noqa: TC001 - beartype resolves method annotations.
+from pynchy.canary_contracts import (
     CanaryRun,
 )
 from pynchy.config.api import (
@@ -106,7 +106,7 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_message,
     write_ipc_response,
 )
-from pynchy.host.container_manager.mcp.approval import (  # noqa: TC001 - beartype resolves callback request annotations at runtime.
+from pynchy.host.container_manager.mcp.approval import (
     McpApprovalRequest,
 )
 from pynchy.host.container_manager.mcp.manager import (
@@ -312,10 +312,10 @@ from pynchy.identifiers import (
     RuntimeId,
     SessionId,
 )
-from pynchy.learning_packets import (  # noqa: TC001 - beartype resolves method annotations.
+from pynchy.learning_packets import (
     LearningPacket,
 )
-from pynchy.linear_plan_types import (  # noqa: TC001 - beartype resolves app annotations at runtime.
+from pynchy.linear_plan_types import (
     LinearPlanReviewAdmission,
     LinearPlanReviewRequest,
     LinearPlanReviewResult,
@@ -347,11 +347,11 @@ from pynchy.plugins.runtimes.api import (
     ensure_agent_image_available,
     get_runtime,
 )
-from pynchy.plugins.speech.api import (  # noqa: TC001 - beartype resolves app annotations at runtime.
+from pynchy.plugins.speech.api import (
     SpeechSynthesizer,
 )
 from pynchy.scheduling.api import (
-    ScheduledTask,  # noqa: TC001 - beartype resolves contract annotations at runtime.
+    ScheduledTask,
 )
 from pynchy.state.api import (
     cancel_task_and_checkpoint,
@@ -382,7 +382,7 @@ from pynchy.state.api import (
     update_task,
     upgrade_message_cursor,
 )
-from pynchy.turn_outcomes import (  # noqa: TC001 - beartype resolves this result annotation.
+from pynchy.turn_outcomes import (
     TurnOutcome,
 )
 from pynchy.workspace.api import (

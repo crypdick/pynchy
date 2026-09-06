@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from threading import Timer
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -662,8 +663,9 @@ async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled
     app.queue = cast("Any", _RecordingQueue())
     timers: list[Any] = []
 
-    class FakeTimer:
+    class FakeTimer(Timer):
         def __init__(self, interval: float, callback: Callable[[], None]) -> None:
+            super().__init__(interval, callback)
             self.interval = interval
             self.callback = callback
             self.daemon = False
@@ -699,10 +701,7 @@ async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch)
     app.queue = cast("Any", _RecordingQueue())
     exit_codes: list[int] = []
 
-    class FakeTimer:
-        def __init__(self, _interval: float, _callback: Callable[[], None]) -> None:
-            self.daemon = False
-
+    class FakeTimer(Timer):
         def start(self) -> None:
             return None
 

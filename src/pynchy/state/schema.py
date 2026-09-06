@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import aiosqlite  # noqa: TC002 - beartype resolves database annotations at runtime.
+import aiosqlite
 
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
 from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
