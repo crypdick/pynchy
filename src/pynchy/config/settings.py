@@ -9,7 +9,7 @@ import warnings
 from collections.abc import (  # noqa: TC003 - beartype resolves annotations at runtime.
     Sequence,
 )
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -595,26 +595,24 @@ def _detect_timezone() -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _SettingsState:
-    settings: Settings | None = None
-
-
-_state = _SettingsState()
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
     """Lazy cached singleton."""
-    if _state.settings is None:
-        _state.settings = Settings()
-    return _state.settings
+    global _settings  # noqa: PLW0603 - process-wide singleton.
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def publish_settings(settings: Settings) -> None:
     """Atomically publish the validated runtime settings snapshot."""
-    _state.settings = settings
+    global _settings  # noqa: PLW0603 - process-wide singleton.
+    _settings = settings
 
 
 def reset_settings() -> None:
     """Clear the cached singleton (for tests)."""
-    _state.settings = None
+    global _settings  # noqa: PLW0603 - process-wide singleton.
+    _settings = None

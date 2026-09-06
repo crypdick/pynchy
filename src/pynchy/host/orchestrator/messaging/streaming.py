@@ -262,40 +262,37 @@ class TraceBatcher:
             timer.cancel()
 
 
-@dataclass
-class _TraceBatcherState:
-    trace_batcher: TraceBatcher | None = None
-
-
-_state = _TraceBatcherState()
+_trace_batcher: TraceBatcher | None = None
 
 
 def init_trace_batcher(deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
     """Initialise the module-level TraceBatcher. Called once at startup."""
-    _state.trace_batcher = TraceBatcher(deps, cooldown)
+    global _trace_batcher  # noqa: PLW0603 - process-wide singleton.
+    _trace_batcher = TraceBatcher(deps, cooldown)
 
 
 def get_trace_batcher() -> TraceBatcher | None:
     """Return the current TraceBatcher (or None before init)."""
-    return _state.trace_batcher
+    return _trace_batcher
 
 
 def reset_trace_batcher() -> None:  # noqa: V103
     """Clear the process-wide trace batcher before a fresh app lifecycle."""
-    if _state.trace_batcher is not None:
-        _state.trace_batcher.cancel()
-    _state.trace_batcher = None
+    global _trace_batcher  # noqa: PLW0603 - process-wide singleton.
+    if _trace_batcher is not None:
+        _trace_batcher.cancel()
+    _trace_batcher = None
 
 
 async def enqueue_tool_trace(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
     """Enqueue one tool trace, or broadcast when startup has no batcher."""
-    if _state.trace_batcher is not None:
-        _state.trace_batcher.enqueue(chat_jid, event)
+    if _trace_batcher is not None:
+        _trace_batcher.enqueue(chat_jid, event)
     else:
         await deps.broadcast_to_channels(chat_jid, event)
 
 
 async def close_trace_run(chat_jid: str) -> None:
     """Close the current consecutive tool run, if batching is active."""
-    if _state.trace_batcher is not None:
-        await _state.trace_batcher.close(chat_jid)
+    if _trace_batcher is not None:
+        await _trace_batcher.close(chat_jid)

@@ -8,7 +8,7 @@ import contextlib
 from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import (
     timedelta,  # noqa: TC003 - beartype resolves Temporal scheduler annotations at runtime.
 )
@@ -154,12 +154,7 @@ class _CanaryNotificationDeps(Protocol):
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
 
-@dataclass
-class _ActiveRuntimeState:
-    active_runtime: TemporalSchedulerRuntime | None = None
-
-
-_state = _ActiveRuntimeState()
+_active_runtime: TemporalSchedulerRuntime | None = None
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
 _TURN_OUTCOMES_MODULE = "pynchy.turn_outcomes"
 _TEMPORAL_SCHEDULER_NOT_STARTED_ERROR = "Temporal scheduler runtime has not been started"
@@ -193,7 +188,7 @@ __all__ = [
 
 def temporal_scheduler_runtime_active() -> bool:
     """Return whether this process currently has an active Temporal runtime."""
-    return _state.active_runtime is not None
+    return _active_runtime is not None
 
 
 async def reconcile_schedules_with_config(config: SchedulerRuntimeConfig) -> None:
@@ -204,7 +199,7 @@ async def reconcile_schedules_with_config(config: SchedulerRuntimeConfig) -> Non
 
 def publish_scheduler_config(config: SchedulerRuntimeConfig) -> None:
     """Publish a reconciled scheduler snapshot to the active runtime."""
-    runtime = _state.active_runtime
+    runtime = _active_runtime
     if runtime is None:
         raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
     runtime.scheduler_config = config
@@ -228,11 +223,11 @@ def get_temporal_scheduler_status() -> dict[str, Any]:
 async def _require_active_runtime() -> TemporalSchedulerRuntime:
     """Return the active runtime, waiting briefly for startup to finish."""
     deadline = asyncio.get_running_loop().time() + 10.0
-    while _state.active_runtime is None:
+    while _active_runtime is None:
         if asyncio.get_running_loop().time() >= deadline:
             raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         await asyncio.sleep(0.05)
-    return _state.active_runtime
+    return _active_runtime
 
 
 async def start_learning_review_workflow(packet: LearningPacket) -> None:
@@ -430,6 +425,7 @@ class TemporalSchedulerRuntime:
         self._worker_stack = contextlib.AsyncExitStack()
 
     async def __aenter__(self) -> TemporalSchedulerRuntime:
+        global _active_runtime  # noqa: PLW0603 - process-wide singleton.
         bind_scheduler_deps(self.deps)
         try:
             self.client = await Client.connect(
@@ -476,14 +472,14 @@ class TemporalSchedulerRuntime:
             await self._worker_stack.enter_async_context(self._worker)
         except BaseException as exc:  # allow: exception-handling; startup cleanup then re-raise.
             await self._worker_stack.aclose()
-            current_runtime = _state.active_runtime
+            current_runtime = _active_runtime
             bind_scheduler_deps(current_runtime.deps if current_runtime is not None else None)
             _update_temporal_scheduler_status(
                 worker_running=current_runtime is not None,
                 last_error=str(exc),
             )
             raise
-        _state.active_runtime = self
+        _active_runtime = self
         bind_workflow_client(self.client)
         _update_temporal_scheduler_status(worker_running=True, last_error=None)
         logger.info(
@@ -500,12 +496,13 @@ class TemporalSchedulerRuntime:
         exc: BaseException | None,
         _tb: TracebackType | None,
     ) -> None:
+        global _active_runtime  # noqa: PLW0603 - process-wide singleton.
         await self._worker_stack.aclose()
-        if _state.active_runtime is not self:
+        if _active_runtime is not self:
             return
         bind_scheduler_deps(None)
         unbind_workflow_client(self.client)
-        _state.active_runtime = None
+        _active_runtime = None
         _update_temporal_scheduler_status(worker_running=False)
 
     async def start_scheduled_agent_task(self, task: ScheduledTask) -> None:

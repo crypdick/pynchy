@@ -442,7 +442,7 @@ def reset_settings(monkeypatch):
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     with repository_settings_sources(enabled=False):
         safe = make_settings()
-        monkeypatch.setattr("pynchy.config.settings._state.settings", safe)
+        monkeypatch.setattr("pynchy.config.settings._settings", safe)
         configure_ipc_base_dir(safe.data_dir / "ipc")
         configure_approval_state_root(safe.data_dir / "approvals")
         configure_security_audit_storage(

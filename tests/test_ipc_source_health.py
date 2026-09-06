@@ -68,7 +68,7 @@ class _ConnectionHealthDeps(_SourceHealthDeps):
 
 
 def _configure_test_settings(monkeypatch, settings: Settings) -> None:
-    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    monkeypatch.setattr("pynchy.config.settings._settings", settings)
     configure_ipc_base_dir(settings.data_dir / "ipc")
 
 

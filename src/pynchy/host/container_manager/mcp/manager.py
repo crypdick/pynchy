@@ -595,19 +595,15 @@ class McpManager:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _McpManagerState:
-    mcp_manager: McpManager | None = None
-
-
-_state = _McpManagerState()
+_mcp_manager: McpManager | None = None
 
 
 def get_mcp_manager() -> McpManager | None:
     """Return the active MCP manager, or ``None`` if not initialized."""
-    return _state.mcp_manager
+    return _mcp_manager
 
 
 def set_mcp_manager(manager: McpManager | None) -> None:
     """Set the module-level MCP manager singleton."""
-    _state.mcp_manager = manager
+    global _mcp_manager  # noqa: PLW0603 - process-wide singleton.
+    _mcp_manager = manager

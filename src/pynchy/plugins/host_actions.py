@@ -35,12 +35,7 @@ class HostActionCatalog:
         return next((action for action in self.actions if action.tool_name == tool_name), None)
 
 
-@dataclass
-class _CatalogState:
-    catalog: HostActionCatalog | None = None
-
-
-_state = _CatalogState()
+_catalog: HostActionCatalog | None = None
 
 
 def get_host_action_catalog(
@@ -49,8 +44,9 @@ def get_host_action_catalog(
     action_specs: tuple[ActionSpec, ...] | None = None,
 ) -> HostActionCatalog:
     """Collect, validate, and cache the effective host-action catalog."""
-    if pm is None and action_specs is None and _state.catalog is not None:
-        return _state.catalog
+    global _catalog  # noqa: PLW0603 - process-wide singleton.
+    if pm is None and action_specs is None and _catalog is not None:
+        return _catalog
     plugin_manager = pm or get_plugin_manager()
     effective_action_specs = (
         action_specs if action_specs is not None else get_effective_action_specs(plugin_manager)
@@ -73,19 +69,21 @@ def get_host_action_catalog(
         action_specs=effective_action_specs,
     )
     if pm is None and action_specs is None:
-        _state.catalog = catalog
+        _catalog = catalog
     return catalog
 
 
 def clear_host_action_catalog_cache() -> None:
     """Clear the process cache after plugin/config changes and between tests."""
-    _state.catalog = None
+    global _catalog  # noqa: PLW0603 - process-wide singleton.
+    _catalog = None
 
 
 def initialize_host_action_catalog(pm: pluggy.PluginManager) -> HostActionCatalog:
     """Validate plugin declarations during startup and install the effective catalog."""
+    global _catalog  # noqa: PLW0603 - process-wide singleton.
     catalog = get_host_action_catalog(pm)
-    _state.catalog = catalog
+    _catalog = catalog
     return catalog
 
 

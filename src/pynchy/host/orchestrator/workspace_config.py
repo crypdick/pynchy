@@ -106,12 +106,7 @@ def reset_settings() -> None:
     _runtime.reset_settings()
 
 
-@dataclass
-class _WorkspaceConfigState:
-    plugin_workspace_specs: dict[str, WorkspaceSpec] = field(default_factory=dict)
-
-
-_state = _WorkspaceConfigState()
+_plugin_workspace_specs: dict[str, WorkspaceSpec] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +165,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
 
     Plugin workspace configs are merged with layered settings in `load_workspace_config`.
     """
-    _state.plugin_workspace_specs.clear()
+    _plugin_workspace_specs.clear()
     if plugin_manager is None:
         return
 
@@ -178,7 +173,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
         if not isinstance(spec, WorkspaceSpec):
             logger.warning("Ignoring invalid workspace plugin spec", spec_type=type(spec).__name__)
             continue
-        _state.plugin_workspace_specs[spec.folder] = spec
+        _plugin_workspace_specs[spec.folder] = spec
 
 
 def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpec]:
@@ -187,7 +182,7 @@ def _workspace_specs(settings: Settings | None = None) -> dict[str, WorkspaceSpe
     User config always wins when both sources define the same workspace folder.
     """
     s = settings or get_settings()
-    merged = dict(_state.plugin_workspace_specs)
+    merged = dict(_plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
         merged[folder] = WorkspaceSpec(folder=folder, config=cfg.model_dump())
     return merged

@@ -95,7 +95,7 @@ def _reset_cooldowns():
 @pytest.fixture(autouse=True)
 def _permissive_sender_defaults(monkeypatch):
     """Default to current composable workspace settings."""
-    monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings())
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -608,7 +608,7 @@ class TestSenderFilter:
             workspaces={"group@g.us": TEST_GROUP},
         )
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
-        monkeypatch.setattr("pynchy.config.settings._state.settings", _owner_settings())
+        monkeypatch.setattr("pynchy.config.settings._settings", _owner_settings())
 
         await reconcile_all_channels(deps)
 
@@ -631,7 +631,7 @@ class TestSenderFilter:
             workspaces={"group@g.us": TEST_GROUP},
         )
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
-        monkeypatch.setattr("pynchy.config.settings._state.settings", _owner_settings())
+        monkeypatch.setattr("pynchy.config.settings._settings", _owner_settings())
 
         await reconcile_all_channels(deps)
 
@@ -655,7 +655,7 @@ class TestSenderFilter:
         )
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
         monkeypatch.setattr(
-            "pynchy.config.settings._state.settings",
+            "pynchy.config.settings._settings",
             _owner_settings(owner=OwnerConfig(slack="alice")),
         )
 
@@ -682,7 +682,7 @@ class TestSenderFilter:
         await set_channel_cursor("slack", "admin@g.us", "inbound", "2024-01-01T00:00:00")
         # Even with restrictive owner-only settings, admin groups pass everything
         monkeypatch.setattr(
-            "pynchy.config.settings._state.settings",
+            "pynchy.config.settings._settings",
             _owner_settings(workspace_folder="admin"),
         )
 
