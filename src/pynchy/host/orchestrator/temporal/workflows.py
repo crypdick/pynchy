@@ -15,6 +15,14 @@ from temporalio.exceptions import ActivityError
 from pynchy.turn_outcomes import TurnOutcome
 
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
+_TERMINAL_FAILURE_ERROR_LIMIT = 1_000
+
+
+def _terminal_failure_error(exc: ActivityError) -> str:
+    """Keep the actionable activity cause without allowing unbounded task logs."""
+    cause = exc.__cause__
+    source = cause if cause is not None else exc
+    return f"{type(source).__name__}: {source}"[:_TERMINAL_FAILURE_ERROR_LIMIT]
 
 
 @workflow.defn
@@ -267,10 +275,22 @@ class ScheduledAgentTaskWorkflow:
                     ),
                 ),
             )
-        except ActivityError:
+        except ActivityError as exc:
             # Activity retries reuse the checkpoint. Once Temporal exhausts
-            # them, remove only an unclaimed checkpoint so a concurrent
-            # restart-recovery workflow retains ownership.
+            # them, record terminal evidence before removing only an unclaimed
+            # checkpoint so a concurrent restart-recovery workflow retains ownership.
+            info = workflow.info()
+            await workflow.execute_activity(
+                "record_terminal_scheduled_task_failure",
+                {
+                    "task_id": task_id,
+                    "workflow_id": info.workflow_id,
+                    "workflow_run_id": info.run_id,
+                    "error": _terminal_failure_error(exc),
+                },
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
             await workflow.execute_activity(
                 "clear_terminal_scheduled_turn",
                 task_id,

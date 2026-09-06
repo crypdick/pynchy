@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+from pynchy.agent_protocol.api import InFlightTurn, InFlightWorkKind
 from pynchy.config.api import CanaryConfig
 from pynchy.deployments import DeployChangeKind, DeployClaim, DeployClaimStatus
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskTerminalError
@@ -20,6 +21,13 @@ from pynchy.host.orchestrator.temporal.workflow_control import (
 from pynchy.learning_packets import LearningPacket
 from pynchy.linear_plan_types import LinearPlanReviewAdmission
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
+from pynchy.state import (
+    begin_in_flight_turn,
+    claim_in_flight_turn,
+    create_task,
+    get_in_flight_turn,
+    init_test_database,
+)
 from pynchy.turn_outcomes import TurnOutcome
 from tests.temporal_scheduler_support import NullSchedulerDeps, _scheduler_runtime
 
@@ -448,6 +456,34 @@ async def test_terminal_scheduled_turn_reports_cleanup_result(
     result = await temporal_scheduler.clear_terminal_scheduled_turn("task-1")
 
     assert result == ("cleared" if cleared else "preserved")
+
+
+@pytest.mark.asyncio
+async def test_terminal_scheduled_turn_preserves_claimed_checkpoint() -> None:
+    await init_test_database()
+    task = _scheduled_task()
+    await create_task(task)
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="claimed-scheduled-turn",
+            chat_jid=task.chat_jid,
+            group_folder=task.group_folder,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-09-06T20:00:00+00:00",
+            task_id=task.id,
+        )
+    )
+    assert await claim_in_flight_turn("claimed-scheduled-turn") is True
+
+    result = await temporal_scheduler.clear_terminal_scheduled_turn(task.id)
+    checkpoint = await get_in_flight_turn("claimed-scheduled-turn")
+
+    assert result == "preserved"
+    assert checkpoint is not None
+    assert checkpoint.claimed_at is not None
 
 
 @pytest.mark.asyncio
