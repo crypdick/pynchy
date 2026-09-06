@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 from collections.abc import Callable
 from email.utils import parseaddr
 from typing import Annotated, Literal, cast
@@ -171,10 +172,8 @@ class ProtonMailMcpPlugin:  # noqa: V102
                 name="proton-mail",
                 config=McpServerConfig(
                     type="script",
-                    command="uv",
+                    command=sys.executable,
                     args=[
-                        "run",
-                        "python",
                         "-m",
                         "pynchy.plugins.integrations.proton_mail",
                         "--port",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import (
     Awaitable,
     Callable,
@@ -130,10 +131,8 @@ class LinearMcpPlugin:
                 name=account.name,
                 config=McpServerConfig(
                     type="script",
-                    command="uv",
+                    command=sys.executable,
                     args=[
-                        "run",
-                        "python",
                         "-m",
                         "pynchy.plugins.integrations.linear",
                         "--port",

@@ -90,8 +90,6 @@ class TestProtonMailMcpPlugin:
         assert spec.name == "proton-mail"
         assert spec.config.type == "script"
         assert spec.config.args == [
-            "run",
-            "python",
             "-m",
             "pynchy.plugins.integrations.proton_mail",
             "--port",
