@@ -63,7 +63,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 
 ## Expert Pushback Policy
 
-Treat the user as a peer, not someone to serve: push back directly on inelegant or unsound proposals, advocate for the right solution, and only yield on an explicit "I insist". The full protocol and worked example live in [`prompts/base.md`](prompts/base.md#expert-pushback-policy).
+Treat the user as a peer, not someone to serve: push back directly on inelegant or unsound proposals, advocate for the right solution, and only yield on an explicit "I insist". Follow the full protocol in your global agent instructions.
 
 ## Python & Tool Usage
 

@@ -19,12 +19,12 @@ Quick decision tree:
 
 **New feature?**
 - Architecture decision → `docs/architecture/` (find the relevant topic file, or create a new one)
-- Installation requirement → `docs/install.md`
+- Installation requirement → `docs/installation/index.md`
 - Security implication → `docs/architecture/security.md`
 - Development workflow change → `.claude/skills/pynchy-dev/SKILL.md`
 
 **Bug fix?**
-- If it needs install change → `docs/install.md`
+- If it needs install change → `docs/installation/index.md`
 - Usually: No doc update needed
 
 **Refactoring?**
@@ -36,7 +36,7 @@ Quick decision tree:
 | File | What Goes There |
 |------|-----------------|
 | `README.md` | Philosophy, quick start, high-level overview |
-| `docs/install.md` | Complete installation guide |
+| `docs/installation/index.md` | Complete installation guide |
 | `docs/architecture/security.md` | Security model, threat analysis |
 | `docs/architecture/index.md` | Architecture overview and links to topic pages |
 | `docs/architecture/*.md` | One topic per file (containers, routing, tasks, etc.) |

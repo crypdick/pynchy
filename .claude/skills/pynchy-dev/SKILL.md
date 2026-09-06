@@ -46,7 +46,7 @@ Write tests that validate **actual business logic**, not just line coverage. See
 
 ## Known Issues
 
-- **Transcript branching is closed by construction, not to be reopened casually** — native Teams tools (`TeamCreate`/`TeamDelete`/`SendMessage`) are not allow-listed in either core, so nothing can branch the leader's session transcript. `Task` sidechains remain allowed (they write off the main chain and resume safely). Reintroducing Teams requires per-teammate session isolation first — tracked in [`backlog/0-proposed/reintroduce-teams-session-isolation.md`](../../../backlog/0-proposed/reintroduce-teams-session-isolation.md).
+- **Transcript branching is closed by construction, not to be reopened casually** — native Teams tools (`TeamCreate`/`TeamDelete`/`SendMessage`) are not allow-listed in either core, so nothing can branch the leader's session transcript. `Task` sidechains remain allowed (they write off the main chain and resume safely). Reintroducing Teams requires per-teammate session isolation first — see [session transcript constraints](references/session-transcript.md).
 
 ## Debugging Agent Behavior
 
