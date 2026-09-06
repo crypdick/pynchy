@@ -1,6 +1,6 @@
-"""Tests for SecurityPolicy — the trust-based gating engine."""
+"""Tests for SecurityGate — the trust-based gating engine."""
 
-from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
+from pynchy.host.container_manager.security.gate import PolicyDecision, SecurityGate
 from pynchy.workspace.api import (
     CapabilityRule,
     ServiceTrustConfig,
@@ -10,13 +10,13 @@ from pynchy.workspace.api import (
 # --- Helpers ---
 
 
-def _make_policy(**services: ServiceTrustConfig) -> SecurityPolicy:
-    """Create a SecurityPolicy with given services."""
-    return SecurityPolicy(WorkspaceSecurity(services=dict(services)))
+def _make_policy(**services: ServiceTrustConfig) -> SecurityGate:
+    """Create a SecurityGate with given services."""
+    return SecurityGate(WorkspaceSecurity(services=dict(services)))
 
 
-def _make_policy_with_secrets(**services: ServiceTrustConfig) -> SecurityPolicy:
-    return SecurityPolicy(WorkspaceSecurity(services=dict(services), contains_secrets=True))
+def _make_policy_with_secrets(**services: ServiceTrustConfig) -> SecurityGate:
+    return SecurityGate(WorkspaceSecurity(services=dict(services), contains_secrets=True))
 
 
 # --- PolicyDecision ---
@@ -32,7 +32,7 @@ def test_policy_decision_defaults():
 
 
 def test_capability_deny_blocks_exact_match():
-    policy = SecurityPolicy(
+    policy = SecurityGate(
         WorkspaceSecurity(capabilities={"mcp.email.send": CapabilityRule(decision="deny")})
     )
 
@@ -43,7 +43,7 @@ def test_capability_deny_blocks_exact_match():
 
 
 def test_capability_needs_human_matches_wildcard():
-    policy = SecurityPolicy(
+    policy = SecurityGate(
         WorkspaceSecurity(capabilities={"mcp.email.*": CapabilityRule(decision="needs_human")})
     )
 
@@ -54,7 +54,7 @@ def test_capability_needs_human_matches_wildcard():
 
 
 def test_capability_wildcard_deny_beats_exact_allow():
-    policy = SecurityPolicy(
+    policy = SecurityGate(
         WorkspaceSecurity(
             capabilities={
                 "mcp.email.*": CapabilityRule(decision="deny"),
@@ -71,7 +71,7 @@ def test_capability_wildcard_deny_beats_exact_allow():
 
 
 def test_missing_capability_rule_requires_approval_without_an_override():
-    decision = SecurityPolicy(WorkspaceSecurity()).evaluate_capability("mcp.email.send")
+    decision = SecurityGate(WorkspaceSecurity()).evaluate_capability("mcp.email.send")
 
     assert decision.allowed
     assert decision.needs_human

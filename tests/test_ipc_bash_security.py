@@ -372,7 +372,7 @@ async def test_artifact_check_sets_workspace_secret_taint_before_safe_shell_read
             deps,
         )
 
-    assert gate.policy.secret_tainted is True
+    assert gate.secret_tainted is True
     inspect_taint.assert_not_awaited()
     response_path = tmp_path / "ipc" / "test-ws" / "responses" / "artifact-request.json"
     assert json.loads(response_path.read_text(encoding="utf-8")) == {
@@ -436,7 +436,7 @@ async def test_cop_rejects_incidental_credential_keyword_before_secret_taint(tmp
             deps,
         )
 
-    assert gate.policy.secret_tainted is False
+    assert gate.secret_tainted is False
     candidate = inspect_taint.await_args.args[1][0]
     assert candidate.artifact_value == "rg credentials docs/"
     decisions = [
@@ -495,7 +495,7 @@ async def test_cop_confirms_real_credential_read_before_secret_taint(tmp_path):
             deps,
         )
 
-    assert gate.policy.secret_tainted is True
+    assert gate.secret_tainted is True
     entries = await state.get_chat_history("discord:channel:1")
     assert entries[0].metadata is not None
     assert entries[0].metadata["decision"] == "credential_taint_confirmed"
@@ -547,7 +547,7 @@ async def test_structured_credential_read_is_confirmed_without_cop_veto(tmp_path
             deps,
         )
 
-    assert gate.policy.secret_tainted is True
+    assert gate.secret_tainted is True
     inspect_taint.assert_not_awaited()
     entries = await state.get_chat_history("discord:channel:1")
     assert entries[0].metadata is not None
@@ -591,7 +591,7 @@ async def test_missing_cop_taint_evidence_confirms_conservatively(tmp_path):
             deps,
         )
 
-    assert gate.policy.secret_tainted is True
+    assert gate.secret_tainted is True
     inspect_taint.assert_not_awaited()
     entries = await state.get_chat_history("discord:channel:1")
     assert entries[0].metadata is not None

@@ -147,7 +147,7 @@ add `--json` for the unmodified snapshot. The CLI is a client of the running
 service and does not resolve a second local view.
 
 The snapshot is not an authorization token. Dispatch and approved replay look
-up the current descriptor and re-run `SecurityPolicy`; provider handlers still
+up the current descriptor and re-run `SecurityGate`; provider handlers still
 perform their real operation-time checks. A stale `ready` result cannot grant
 access.
 

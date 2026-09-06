@@ -125,7 +125,7 @@ for operator setup.
 
 ### 5. Service Trust Policy (Lethal Trifecta Defenses)
 
-Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent with simultaneous access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
+Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityGate`, which prevents the *lethal trifecta*: an agent with simultaneous access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
 
 Each service declares four trust properties in
 `data/personalization/pynchy.toml`:
@@ -164,7 +164,7 @@ descriptors without the existing IPC idempotency and terminal-audit contracts.
 
 Descriptors do not define a second permission system. The capability snapshot
 shown by `/capabilities` and `/status` is read-only diagnostic state.
-`SecurityPolicy` evaluates current semantic permissions and service trust again
+`SecurityGate` evaluates current semantic permissions and service trust again
 at each dispatch. Selected tools default to `ask`. Explicit profile, workspace,
 and runtime rules intersect with `deny` more restrictive than `ask`, and `ask`
 more restrictive than `allow`. An explicit `allow` suppresses human approval
@@ -238,7 +238,7 @@ The agent tool security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hoo
 
 **Semantic artifact normalization.** The gate parses core-specific tool names and input shapes into owned artifact types: commands, read and write paths, written content, URLs, and package references. Policy therefore follows the operation when an SDK renames a shell or patch tool. Free-form patch payloads remain written content even when a CLI hook transports them through a field named `command`; prose and file contents never become shell commands merely because of that transport shape. Stable deterministic rules then block destructive system commands (`CMD001`), reverse shells (`NET001`), remote content piped directly into a shell (`NET002`), writes to persistence or autostart paths (`PERSIST001`), and mutations of generated Codex skill registries (`SKILL001`). The latter must use `$PYNCHY_SKILLS_ROOT` for durable authoring. Persistence detection covers structured writes and shell redirection, append, `tee`, `cp`, and `install` destinations. Credential-looking command arguments and read paths emit `CRED001`, including `.env.*` variants. A structured read path is conclusive evidence; a command-token match is a heuristic candidate. Audits retain the rule ID and adjudication verdict without copying matched file content.
 
-**File taint notification.** Every normalized file operation and every shell operation notifies the host before execution. The host calls `SecurityPolicy.notify_file_access()`, so a workspace with `contains_secrets = true` becomes secret-tainted even when the later Bash classifier considers a command such as `cat .env` or `ls` provably local. That profile declaration is a host-owned fact.
+**File taint notification.** Every normalized file operation and every shell operation notifies the host before execution. The host calls `SecurityGate.notify_file_access()`, so a workspace with `contains_secrets = true` becomes secret-tainted even when the later Bash classifier considers a command such as `cat .env` or `ls` provably local. That profile declaration is a host-owned fact.
 
 Command-token `CRED001` matches are different: they are heuristic evidence, not taint facts. Before one can set sticky secret taint, a dedicated Cop prompt receives the tool name and bounded normalized command and decides whether the proposed operation can actually expose secret contents. Reading or loading `.env` confirms taint. Merely searching for the word `credentials`, mentioning `.env`, writing documentation, or using a matched path only as an output destination rejects the candidate. The prompt classifies data flow only; user intent and dangerousness are irrelevant. Detected sensitive literal values are locally redacted from the evidence sent to the Cop. Invalid evidence, Cop failure, invalid output, genuine ambiguity, or a profile with Cop disabled confirms taint conservatively. A rejection is audited but does not mutate session state. Structured `Read` calls targeting recognized credential paths are already unambiguous and establish taint without an LLM veto.
 

@@ -139,24 +139,6 @@ async def _spawn_container(
     """
     start_time = time.monotonic()
 
-    # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
-    # Must exist before the container starts so IPC/MCP handlers can look it up.
-    from pynchy.host.container_manager.security.gate import (  # noqa: PLC0415 - security gate setup is only needed during container spawn.
-        create_gate,
-        resolve_security,
-    )
-
-    security = resolve_security(group.folder, is_admin=input_data.is_admin)
-    invocation_ts = start_time
-    create_gate(
-        group.folder,
-        invocation_ts,
-        security,
-        public_source_input=input_data.corruption_tainted,
-        secret_source_input=input_data.secret_tainted,
-    )
-    input_data.invocation_ts = invocation_ts
-
     # The harness deliberately defers this expensive check at host startup,
     # but an agent container must never be spawned without its image.
     container_cli, ensure_agent_image, resolve_repo_mounts = _configured_container_runtime()

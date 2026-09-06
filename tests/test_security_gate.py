@@ -104,7 +104,7 @@ class TestSecurityGateCreation:
             public_source_input=True,
         )
 
-        assert gate.policy.corruption_tainted
+        assert gate.corruption_tainted
         assert gate.evaluate_write("slack", {}).needs_cop
 
     def test_private_external_input_gates_a_public_sink(self):
@@ -124,8 +124,8 @@ class TestSecurityGateCreation:
         )
 
         decision = gate.evaluate_write("slack", {})
-        assert gate.policy.corruption_tainted is True
-        assert gate.policy.secret_tainted is True
+        assert gate.corruption_tainted is True
+        assert gate.secret_tainted is True
         assert decision.needs_cop is True
         assert decision.needs_human is True
 
@@ -143,7 +143,7 @@ class TestSecurityGateTaintPersistence:
         # Reading from browser sets corruption taint
         result = gate.evaluate_read("browser")
         assert result.needs_cop
-        assert gate.policy.corruption_tainted
+        assert gate.corruption_tainted
 
         # Writing to slack should now need cop (because corruption tainted)
         result = gate.evaluate_write("slack", {})
@@ -157,10 +157,10 @@ class TestSecurityGateTaintPersistence:
         gate = SecurityGate(security)
 
         gate.evaluate_read("passwords")
-        assert gate.policy.secret_tainted
+        assert gate.secret_tainted
 
         # Taint persists for subsequent evaluations
-        assert gate.policy.secret_tainted
+        assert gate.secret_tainted
 
     def test_taint_does_not_cross_gates(self):
         security = _make_security(
@@ -170,8 +170,8 @@ class TestSecurityGateTaintPersistence:
         gate2 = create_gate("ws2", 2.0, security)
 
         gate1.evaluate_read("browser")
-        assert gate1.policy.corruption_tainted
-        assert not gate2.policy.corruption_tainted
+        assert gate1.corruption_tainted
+        assert not gate2.corruption_tainted
 
     def test_admin_resolved_trust_keeps_forbidden_writes(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "configured")
@@ -256,34 +256,6 @@ class TestGetGateForGroup:
         gate_b = create_gate("ws-b", 2000.0, security)
         create_gate("ws-a", 3000.0, security)
         assert get_gate_for_group("ws-b") is gate_b
-
-
-class TestSecurityGateEvaluate:
-    def test_evaluate_read_delegates_to_policy(self):
-        security = _make_security(
-            browser=ServiceTrustConfig(public_source=True),
-        )
-        gate = SecurityGate(security)
-        result = gate.evaluate_read("browser")
-        assert result.allowed
-        assert result.needs_cop
-
-    def test_evaluate_write_delegates_to_policy(self):
-        security = _make_security(
-            slack=ServiceTrustConfig(public_sink=True, dangerous_writes=True),
-        )
-        gate = SecurityGate(security)
-        result = gate.evaluate_write("slack", {})
-        assert result.allowed
-        assert result.needs_human
-
-    def test_evaluate_read_forbidden(self):
-        security = _make_security(
-            blocked=ServiceTrustConfig(public_source="forbidden"),
-        )
-        gate = SecurityGate(security)
-        result = gate.evaluate_read("blocked")
-        assert not result.allowed
 
 
 class TestResolveSecurity:
@@ -414,25 +386,6 @@ class TestResolveSecurity:
 
         assert security.contains_secrets is True
         assert security.services == {}
-
-
-# ---------------------------------------------------------------------------
-# Lifecycle tests (merged from test_gate_lifecycle.py)
-# ---------------------------------------------------------------------------
-
-
-class TestGateCreatedAtSpawn:
-    def test_spawn_creates_gate(self):
-        """Simulate what _spawn_container should do -- verify gate exists after."""
-        gate = create_gate("test-ws", 12345.0, WorkspaceSecurity())
-        assert gate is not None
-        assert get_gate("test-ws", 12345.0) is gate
-
-    def test_gate_accessible_by_group(self):
-        """IPC handlers should find the gate by group folder."""
-        create_gate("test-ws", 12345.0, WorkspaceSecurity())
-        gate = get_gate_for_group("test-ws")
-        assert gate is not None
 
 
 class TestGateLifecycle:

@@ -194,10 +194,8 @@ def approval_replay_gate(
         if security is None:
             return None
         gate = SecurityGate(security)
-    if request_corruption_tainted or (
-        active_gate is not None and active_gate.policy.corruption_tainted
-    ):
+    if request_corruption_tainted or (active_gate is not None and active_gate.corruption_tainted):
         gate.notify_public_source_input()
-    if request_secret_tainted or (active_gate is not None and active_gate.policy.secret_tainted):
+    if request_secret_tainted or (active_gate is not None and active_gate.secret_tainted):
         gate.notify_secret_source_input()
     return gate

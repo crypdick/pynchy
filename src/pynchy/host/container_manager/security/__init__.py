@@ -9,14 +9,14 @@ circular imports.
 """
 
 from pynchy.host.container_manager.security.audit import prune_security_audit, record_security_event
-from pynchy.host.container_manager.security.middleware import (
+from pynchy.host.container_manager.security.gate import (
     PolicyDecision,
-    SecurityPolicy,
+    SecurityGate,
 )
 
 __all__ = [
     "PolicyDecision",
-    "SecurityPolicy",
+    "SecurityGate",
     "prune_security_audit",
     "record_security_event",
 ]

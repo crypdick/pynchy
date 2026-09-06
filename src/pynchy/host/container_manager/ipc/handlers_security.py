@@ -133,13 +133,11 @@ async def evaluate_bash_command(
         {"decision": "deny", "reason": "..."} or
         {"decision": "needs_human", "reason": "..."}
     """
-    policy = gate.policy
-
-    if not policy.cop_active:
+    if not gate.cop_active:
         return _allow()
 
     # Tier 1: No taint -> allow unconditionally
-    if not policy.corruption_tainted and not policy.secret_tainted:
+    if not gate.corruption_tainted and not gate.secret_tainted:
         return _allow()
 
     # Tiers 2 and 3: the Cop sees the host-owned classification and taint facts.
@@ -148,8 +146,8 @@ async def evaluate_bash_command(
         inspection_context=inspection_context,
         risk=CopCommandRisk(
             network_capable=_is_network_command(command),
-            corruption_tainted=policy.corruption_tainted,
-            secret_tainted=policy.secret_tainted,
+            corruption_tainted=gate.corruption_tainted,
+            secret_tainted=gate.secret_tainted,
         ),
     )
 
@@ -210,8 +208,8 @@ async def _handle_bash_security_check(
             approval_chat_jid=chat_jid,
             request_data={"command": command},
             handler_type="security_bash",
-            corruption_tainted=gate.policy.corruption_tainted,
-            secret_tainted=gate.policy.secret_tainted,
+            corruption_tainted=gate.corruption_tainted,
+            secret_tainted=gate.secret_tainted,
         )
 
         await deps.broadcast_to_channels(
@@ -229,8 +227,8 @@ async def _handle_bash_security_check(
             workspace=source_group,
             tool_name="Bash",
             decision="approval_requested",
-            corruption_tainted=gate.policy.corruption_tainted,
-            secret_tainted=gate.policy.secret_tainted,
+            corruption_tainted=gate.corruption_tainted,
+            secret_tainted=gate.secret_tainted,
             reason=decision.get("reason"),
             request_id=request_id,
         )
@@ -246,8 +244,8 @@ async def _handle_bash_security_check(
             if decision.get("reviewed_by") == "cop"
             else decision["decision"]
         ),
-        corruption_tainted=gate.policy.corruption_tainted,
-        secret_tainted=gate.policy.secret_tainted,
+        corruption_tainted=gate.corruption_tainted,
+        secret_tainted=gate.secret_tainted,
         reason=decision.get("reason"),
         request_id=request_id,
     )

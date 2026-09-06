@@ -554,13 +554,13 @@ class TestMcpProxyFencing:
         await client.start_server()
 
         try:
-            assert not gate.policy.corruption_tainted
+            assert not gate.corruption_tainted
 
             await client.post(
                 "/mcp/test-ws/1000.0/browser",
                 json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
             )
 
-            assert gate.policy.corruption_tainted
+            assert gate.corruption_tainted
         finally:
             await client.close()

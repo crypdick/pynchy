@@ -122,7 +122,7 @@ async def _adjudicate_credential_taint(
     rule_ids: tuple[str, ...],
     gate: SecurityGate,
 ) -> _TaintAdjudication | None:
-    if "CRED001" not in rule_ids or gate.policy.secret_tainted:
+    if "CRED001" not in rule_ids or gate.secret_tainted:
         return None
     evidence = _taint_evidence(data.get("taint_evidence"))
     if evidence is not None and any(item.artifact_kind == "path_read" for item in evidence):
@@ -131,7 +131,7 @@ async def _adjudicate_credential_taint(
             audit_decision="credential_taint_confirmed_by_rule",
             reason="A structured read targets a recognized credential path",
         )
-    if not gate.policy.cop_active:
+    if not gate.cop_active:
         gate.confirm_credential_access()
         return _TaintAdjudication(
             audit_decision="credential_taint_confirmed_by_policy",
@@ -257,8 +257,8 @@ async def handle_artifact_security_check(
                 workspace=source_group,
                 tool_name=safe_tool_name,
                 decision=taint_adjudication.audit_decision,
-                corruption_tainted=gate.policy.corruption_tainted,
-                secret_tainted=gate.policy.secret_tainted,
+                corruption_tainted=gate.corruption_tainted,
+                secret_tainted=gate.secret_tainted,
                 reason=taint_adjudication.reason,
                 request_id=request_id,
                 rule_ids=("CRED001",),
@@ -283,8 +283,8 @@ async def handle_artifact_security_check(
         workspace=source_group,
         tool_name=safe_tool_name,
         decision=_artifact_audit_decision(decision, package_rule_ids),
-        corruption_tainted=gate.policy.corruption_tainted,
-        secret_tainted=gate.policy.secret_tainted,
+        corruption_tainted=gate.corruption_tainted,
+        secret_tainted=gate.secret_tainted,
         request_id=request_id,
         reason=decision.get("reason"),
         rule_ids=audited_rule_ids,
@@ -365,8 +365,8 @@ async def _request_package_approval(  # noqa: PLR0913 - approval boundary fields
         workspace=source_group,
         tool_name=tool_name,
         decision="approval_requested",
-        corruption_tainted=gate.policy.corruption_tainted,
-        secret_tainted=gate.policy.secret_tainted,
+        corruption_tainted=gate.corruption_tainted,
+        secret_tainted=gate.secret_tainted,
         reason=reason,
         request_id=request_id,
         rule_ids=rule_ids,

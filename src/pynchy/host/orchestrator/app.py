@@ -1361,8 +1361,8 @@ class PynchyApp(ThreadRouting):
             handler_type="mcp_proxy",
             capability_id=request.capability_id,
             origin_conversation_id=(str(control.conversation_id) if control is not None else None),
-            corruption_tainted=bool(gate and gate.policy.corruption_tainted),
-            secret_tainted=bool(gate and gate.policy.secret_tainted),
+            corruption_tainted=bool(gate and gate.corruption_tainted),
+            secret_tainted=bool(gate and gate.secret_tainted),
         )
         await self.broadcast_to_channels(
             chat_jid,
@@ -1378,8 +1378,8 @@ class PynchyApp(ThreadRouting):
             workspace=request.group_folder,
             tool_name=request.tool_name,
             decision="approval_requested",
-            corruption_tainted=bool(gate and gate.policy.corruption_tainted),
-            secret_tainted=bool(gate and gate.policy.secret_tainted),
+            corruption_tainted=bool(gate and gate.corruption_tainted),
+            secret_tainted=bool(gate and gate.secret_tainted),
             reason=request.reason,
             request_id=request.request_id,
             capability_id=request.capability_id,
