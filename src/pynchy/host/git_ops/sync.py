@@ -76,11 +76,24 @@ def host_create_pr_from_worktree(
         PrPublication(
             source_label=f"workspace `{group_folder}`",
             fallback_title=f"Changes from {group_folder}",
-            branch_name=publication_branch,
+            branch_name=_existing_issue_branch(ctx, publication_branch),
             title=pr_title,
             body=pr_body,
         ),
     )
+
+
+def _existing_issue_branch(ctx: _WorktreeContext, proposed: str | None) -> str | None:
+    """Retain the origin branch established by an issue's first publication."""
+    parts = proposed.split("/", 2) if proposed is not None else []
+    if len(parts) != 3 or not parts[1].isdigit():
+        return proposed
+    upstream = run_git("rev-parse", "--symbolic-full-name", "@{upstream}", cwd=ctx.worktree_path)
+    prefix = f"refs/remotes/origin/{parts[0]}/{parts[1]}/"
+    branch = upstream.stdout.strip()
+    if upstream.returncode == 0 and branch.startswith(prefix):
+        return branch.removeprefix("refs/remotes/origin/")
+    return proposed
 
 
 def host_create_pr_from_managed_feature(
