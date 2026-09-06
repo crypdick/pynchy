@@ -513,6 +513,69 @@ class TestCooldown:
 @pytest.mark.usefixtures("_db")
 class TestCursorGC:
     @pytest.mark.asyncio
+    async def test_removed_workspace_is_not_kept_active_after_pair_failure(self):
+        fetch_started = asyncio.Event()
+        release_fetch = asyncio.Event()
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def fetch_then_fail(*_args: object) -> InboundFetchResult:
+            fetch_started.set()
+            await release_fetch.wait()
+            raise OSError("provider unavailable")
+
+        slack.fetch_inbound_since.side_effect = fetch_then_fail
+        reconcile_task = asyncio.create_task(reconcile_all_channels(deps))
+        await fetch_started.wait()
+        workspaces.pop("group@g.us")
+        release_fetch.set()
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            await reconcile_task
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_after_inbound_cursor_lookup(self, monkeypatch):
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+
+        async def inbound_cursor_then_retire(*_args: object) -> str:
+            await asyncio.sleep(0)
+            workspaces.pop("group@g.us")
+            return ""
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.get_channel_cursor",
+            inbound_cursor_then_retire,
+        )
+        await reconcile_all_channels(deps)
+
+        slack.fetch_inbound_since.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retired_workspace_stops_after_outbound_cursor_lookup(self, monkeypatch):
+        slack = _make_channel(name="slack")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack], workspaces=workspaces)
+        cursor_lookups = 0
+
+        async def cursor_lookup(*_args: object) -> str:
+            nonlocal cursor_lookups
+            cursor_lookups += 1
+            await asyncio.sleep(0)
+            if cursor_lookups == 2:
+                workspaces.pop("group@g.us")
+            return ""
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.messaging.reconciler.get_channel_cursor",
+            cursor_lookup,
+        )
+        await reconcile_all_channels(deps)
+
+        slack.send_event.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_retired_workspace_stops_after_pending_delivery_lookup(self, monkeypatch):
         pending_lookup_started = asyncio.Event()
         release_pending_lookup = asyncio.Event()
