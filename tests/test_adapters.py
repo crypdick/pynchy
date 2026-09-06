@@ -14,7 +14,7 @@ from freezegun import freeze_time
 from pynchy.agent_protocol.api import CheckpointControlState, InFlightTurn, InFlightWorkKind
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
-    SessionManager,
+    get_active_sessions,
     resolve_admin_notification_jid,
 )
 from pynchy.host.orchestrator.app import PynchyApp
@@ -266,22 +266,23 @@ class TestChannelBroadcast:
         await app.broadcast_to_channels("group@g.us", _make_event("hello"))
 
 
-# ---------------------------------------------------------------------------
-# SessionManager
-# ---------------------------------------------------------------------------
+def test_active_sessions_filters_cleared_unregistered_and_empty_bindings():
+    sessions = {
+        "active": "session-1",
+        "cleared": "session-2",
+        "unknown": "session-3",
+        "empty": "",
+        "anonymous": "session-4",
+    }
+    groups = {
+        "chat:alias": _group(folder="active"),
+        "chat:active": _group(folder="active"),
+        "chat:cleared": _group(folder="cleared"),
+        "chat:empty": _group(folder="empty"),
+        "": _group(folder="anonymous"),
+    }
 
-
-class TestSessionManager:
-    """Test session state management."""
-
-    def test_active_sessions_excludes_cleared_and_unregistered_groups(self):
-        manager = SessionManager(
-            {"active": "session-1", "cleared": "session-2", "unknown": "session-3"},
-            {"cleared"},
-        )
-        groups = {"chat:active": _group(folder="active")}
-
-        assert manager.get_active_sessions(groups) == {"chat:active": "session-1"}
+    assert get_active_sessions(sessions, {"cleared"}, groups) == {"chat:active": "session-1"}
 
 
 @pytest.mark.parametrize(

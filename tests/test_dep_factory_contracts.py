@@ -265,6 +265,15 @@ async def test_ipc_adapter_projects_sessions_snapshot_and_context_reset(tmp_path
         assert deps.workspaces() is app.workspaces
         assert deps.channels() is app.channels
         assert deps.get_active_sessions() == {profile.jid: "session-1"}
+        assert deps.has_active_session("project")
+        assert not deps.has_active_session("missing")
+        app.sessions["project"] = ""
+        assert deps.has_active_session("project")
+        assert deps.get_active_sessions() == {}
+        app.sessions["project"] = "session-1"
+        app.session_cleared.add("project")
+        assert not deps.has_active_session("project")
+        assert deps.get_active_sessions() == {}
         assert deps.connection_statuses() == {}
         await deps.clear_session("project")
         deps.write_groups_snapshot("project", [{"jid": "x"}], {profile.jid}, is_admin=False)

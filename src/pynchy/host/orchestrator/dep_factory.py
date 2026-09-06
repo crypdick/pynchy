@@ -58,7 +58,8 @@ from pynchy.host.orchestrator.action_intents import (
     prepare_action_intent,
 )
 from pynchy.host.orchestrator.adapters import (
-    SessionManager,
+    get_active_sessions,
+    has_active_session,
     resolve_admin_notification_jid,
 )
 from pynchy.host.orchestrator.app import (  # noqa: TC001 - beartype resolves dependency factory annotations at runtime.
@@ -527,7 +528,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
     snapshot_data_dir = get_settings().data_dir
     workspaces, channels = app.workspaces, app.channels
     register_workspace = app.register_workspace
-    session_manager = SessionManager(app.sessions, app.session_cleared)
 
     class IpcDeps:
         broadcast_to_channels = app.broadcast_to_channels
@@ -569,7 +569,8 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
                 is_admin=is_admin,
             )
 
-        has_active_session = session_manager.has_active_session
+        def has_active_session(self, group_folder: str) -> bool:
+            return has_active_session(app.sessions, app.session_cleared, group_folder)
 
         wake_worktree_conflict = app.start_interactive_turn
         pending_question_store = staticmethod(_PendingQuestionStore)
@@ -609,7 +610,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
             _schedule_interactive_turn(app, group_jid)
 
         def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(app.workspaces)
+            return get_active_sessions(app.sessions, app.session_cleared, app.workspaces)
 
         def connection_statuses(self) -> dict[str, bool]:
             return app.connection_runtime_owner.status()
@@ -766,7 +767,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:  # noqa: C901 - IPC composition ow
 
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
-    session_manager = SessionManager(app.sessions, app.session_cleared)
     channels = app.channels
     settings = get_settings()
     configured_repo_slugs = tuple(
@@ -835,8 +835,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             return result.stdout.strip() if result.returncode == 0 else "not_found"
 
         def get_active_sessions_count(self) -> int:
-            active = session_manager.get_active_sessions(app.workspaces)
-            return len(active)
+            return len(get_active_sessions(app.sessions, app.session_cleared, app.workspaces))
 
         def get_workspace_count(self) -> int:
             return len(app.workspaces)

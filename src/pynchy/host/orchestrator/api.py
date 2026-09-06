@@ -9,7 +9,7 @@ from pynchy.host.orchestrator.action_intents import (
     policy_approval_timestamp,
     prepare_action_intent,
 )
-from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
+from pynchy.host.orchestrator.adapters import has_active_session, resolve_admin_notification_jid
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.config_refresh import (
     ConfigRefreshResult,
@@ -122,7 +122,6 @@ __all__ = [
     "RenderedMessage",
     "RuntimeWorkspacePolicy",
     "ScheduledTaskTerminalError",
-    "SessionManager",
     "TextFormatter",
     "build_container_image",
     "cancel_scheduled_host_job",
@@ -139,6 +138,7 @@ __all__ = [
     "find_pending_for_jid",
     "format_internal_tags",
     "format_tool_preview",
+    "has_active_session",
     "load_resolved_config",
     "load_resolved_tool_access",
     "policy_approval_timestamp",
