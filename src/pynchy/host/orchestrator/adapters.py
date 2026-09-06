@@ -132,37 +132,25 @@ def resolve_admin_notification_jid(
     return workspace.jid
 
 
-class SessionManager:
-    """Projects active sessions; context resets belong to session_handler."""
+def get_active_sessions(
+    sessions: dict[str, str],
+    session_cleared: set[str],
+    groups: dict[str, WorkspaceProfile],
+) -> dict[str, str]:
+    """Join folder-keyed sessions to JIDs for deploy continuations.
 
-    def __init__(
-        self,
-        sessions_dict: dict[str, str],
-        session_cleared_set: set[str],
-    ) -> None:
-        self._sessions = sessions_dict
-        self._session_cleared = session_cleared_set
+    Exclude cleared sessions so deploys cannot resume wiped context.
+    """
+    folder_to_jid = {g.folder: jid for jid, g in groups.items()}
+    return {
+        jid: session_id
+        for folder, session_id in sessions.items()
+        if folder not in session_cleared and (jid := folder_to_jid.get(folder)) and session_id
+    }
 
-    def get_active_sessions(self, groups: dict[str, WorkspaceProfile]) -> dict[str, str]:
-        """Build a {chat_jid: session_id} map from sessions and registered groups.
 
-        ``self._sessions`` is keyed by group folder. This helper joins with the
-        group registry (keyed by JID) to produce a JID-keyed mapping suitable
-        for the deploy continuation file.
-
-        Sessions that have been cleared (context reset) are excluded so deploy
-        continuations don't inject resume messages for wiped sessions.
-        """
-        folder_to_jid: dict[str, str] = {g.folder: jid for jid, g in groups.items()}
-        result: dict[str, str] = {}
-        for folder, session_id in self._sessions.items():
-            if folder in self._session_cleared:
-                continue
-            jid = folder_to_jid.get(folder, "")
-            if jid and session_id:
-                result[jid] = session_id
-        return result
-
-    def has_active_session(self, group_folder: str) -> bool:
-        """Check if a group has an active (non-cleared) session."""
-        return group_folder in self._sessions and group_folder not in self._session_cleared
+def has_active_session(
+    sessions: dict[str, str], session_cleared: set[str], group_folder: str
+) -> bool:
+    """Check for a non-cleared session binding, including an empty session ID."""
+    return group_folder in sessions and group_folder not in session_cleared

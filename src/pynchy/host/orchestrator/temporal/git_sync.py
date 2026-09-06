@@ -18,7 +18,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from pynchy.deployments import DeployRevision
-from pynchy.host.orchestrator.api import SessionManager, resolve_admin_notification_jid
+from pynchy.host.orchestrator.api import has_active_session, resolve_admin_notification_jid
 from pynchy.host.orchestrator.config_refresh import ConfigRefreshStatus
 from pynchy.host.orchestrator.scheduler_deps import HostSyncState
 from pynchy.host.orchestrator.temporal.deploy import (
@@ -190,11 +190,11 @@ class _TemporalGitSyncDeps:
     def has_active_session(self, group_folder: str) -> bool:
         if hasattr(self._deps, "has_active_session"):
             return bool(self._deps.has_active_session(group_folder))
-        manager = SessionManager(
+        return has_active_session(
             getattr(self._deps, "sessions", {}),
             getattr(self._deps, "session_cleared", set()),
+            group_folder,
         )
-        return manager.has_active_session(group_folder)
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return _workspace_map(self._deps)
