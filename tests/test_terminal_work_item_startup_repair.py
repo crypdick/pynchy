@@ -36,7 +36,6 @@ from pynchy.plugins.integrations.linear_provider_reconciliation import (
 )
 from pynchy.scheduling.api import ScheduledTask, SessionPolicy
 from pynchy.state.api import (
-    WorkItemClaimRequest,
     apply_conversation_control_state,
     begin_in_flight_turn,
     cancel_work_item_execution,
@@ -63,6 +62,7 @@ from pynchy.state.api import (
     set_workspace_profile,
 )
 from pynchy.work_items.api import (
+    WorkItemClaimRequest,
     WorkItemExecution,
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,

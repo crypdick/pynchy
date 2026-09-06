@@ -198,9 +198,6 @@ from pynchy.plugins.integrations.vaultwarden import (
 from pynchy.plugins.observers.sqlite_observer import SqliteObserverPlugin
 from pynchy.process_environment import filtered_process_environment
 from pynchy.state.api import (
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
-    WorkItemTransitionResolution,
     admit_conversation_delivery,
     admit_external_delivery_receipt,
     apply_conversation_control_state,
@@ -491,9 +488,7 @@ def configure_linear_plugin(
             get_execution=get_work_item_execution,
             get_active_execution=get_active_work_item_execution,
             create_claim=create_work_item_claim,
-            claim_request=WorkItemClaimRequest,
             begin_transition=begin_work_item_transition,
-            transition_resolution=WorkItemTransitionResolution,
             resolve_transition=resolve_work_item_transition,
             resolve_transition_if_lifecycle_current=resolve_work_item_transition_if_lifecycle_current,
         )
@@ -503,7 +498,6 @@ def configure_linear_plugin(
             get_execution_for_issue=get_work_item_execution_for_issue,
             get_transition_by_request=get_work_item_transition_by_request,
             get_latest_unresolved_transition=get_latest_unresolved_work_item_transition,
-            transition_request=WorkItemTransitionRequest,
             begin_transition=begin_work_item_transition,
             begin_transition_if_lifecycle_current=begin_work_item_transition_if_lifecycle_current,
         )
@@ -555,7 +549,6 @@ def configure_linear_plugin(
                 get_active_execution=get_active_work_item_execution,
                 cancel_task=cancel_task_and_checkpoint,
                 cancel_execution=cancel_work_item_execution,
-                transition_request=WorkItemTransitionRequest,
             ),
         )
 

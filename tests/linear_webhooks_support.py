@@ -24,7 +24,6 @@ from pynchy.identifiers import (
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.state import (
-    WorkItemClaimRequest,
     create_work_item_claim,
     get_work_item_transition_by_request,
     init_test_database,
@@ -34,6 +33,7 @@ from pynchy.state import (
     set_conversation_session,
 )
 from pynchy.work_items.api import (
+    WorkItemClaimRequest,
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
 )

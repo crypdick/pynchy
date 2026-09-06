@@ -45,8 +45,6 @@ from pynchy.scheduling.api import (
     SessionPolicy,
 )
 from pynchy.state import (
-    WorkItemClaimRequest,
-    WorkItemTransitionResolution,
     admit_conversation_delivery,
     admit_webhook_receipt,
     apply_conversation_control_state,
@@ -73,9 +71,11 @@ from pynchy.state import (
     set_workspace_profile,
 )
 from pynchy.state.webhook_models import WebhookReceipt
-from pynchy.state.work_item_models import WorkItemTransitionRequest
 from pynchy.work_items.api import (
+    WorkItemClaimRequest,
     WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
     WorkItemTransitionStatus,
 )
 from pynchy.workspace.api import WorkspaceProfile

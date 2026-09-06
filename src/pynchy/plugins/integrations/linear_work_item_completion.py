@@ -7,7 +7,6 @@ from collections.abc import (  # noqa: TC003 - beartype resolves configured comp
     Callable,
 )
 from dataclasses import dataclass
-from typing import Any
 
 from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves annotations.
     ConversationLifecycleFence,
@@ -20,6 +19,8 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 from pynchy.work_items.api import (
     WorkItemExecution,
     WorkItemExecutionStatus,
+    WorkItemTransition,
+    WorkItemTransitionRequest,
 )
 
 
@@ -28,11 +29,10 @@ class LinearWorkItemCompletionRuntime:
     """Durable transition operations selected during Linear plugin composition."""
 
     get_execution_for_issue: Callable[..., Awaitable[WorkItemExecution | None]]
-    get_transition_by_request: Callable[[str], Awaitable[Any]]
-    get_latest_unresolved_transition: Callable[[str], Awaitable[Any]]
-    transition_request: Callable[..., Any]
-    begin_transition: Callable[[Any], Awaitable[Any]]
-    begin_transition_if_lifecycle_current: Callable[..., Awaitable[Any]]
+    get_transition_by_request: Callable[[str], Awaitable[WorkItemTransition | None]]
+    get_latest_unresolved_transition: Callable[[str], Awaitable[WorkItemTransition | None]]
+    begin_transition: Callable[[WorkItemTransitionRequest], Awaitable[WorkItemTransition]]
+    begin_transition_if_lifecycle_current: Callable[..., Awaitable[WorkItemTransition | None]]
 
 
 @dataclass
@@ -86,7 +86,7 @@ async def complete_reviewed_work_item(
         WorkItemExecutionStatus.BLOCKED,
     }:
         if transition is None:
-            request = runtime.transition_request(
+            request = WorkItemTransitionRequest(
                 execution=execution,
                 request_id=request_id,
                 operation="complete_after_linear_done",

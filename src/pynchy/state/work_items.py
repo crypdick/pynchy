@@ -11,16 +11,14 @@ from typing import Any
 import aiosqlite
 
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.state.work_item_models import (
-    WorkItemClaimConflictError,
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
-)
 from pynchy.state.work_item_rows import row_to_execution
 from pynchy.state.work_item_transition_records import insert_work_item_transition
 from pynchy.work_items.api import (
+    WorkItemClaimConflictError,
+    WorkItemClaimRequest,
     WorkItemExecution,
     WorkItemExecutionStatus,
+    WorkItemTransitionRequest,
 )
 
 

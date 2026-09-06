@@ -22,7 +22,7 @@ from pynchy.host.container_manager.security.identity import ReceiptVerification
 from pynchy.host.git_ops.api import RepoContext
 from pynchy.identifiers import GroupFolder
 from pynchy.state import begin_in_flight_turn, create_work_item_claim, resolve_conversation
-from pynchy.state.api import WorkItemClaimRequest
+from pynchy.work_items.api import WorkItemClaimRequest
 
 pytest_plugins = ("tests.git_policy_support",)
 

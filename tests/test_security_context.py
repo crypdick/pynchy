@@ -19,6 +19,7 @@ from pynchy.scheduling.api import (
     SessionPolicy,
 )
 from pynchy.work_items.api import (
+    WorkItemClaimRequest,
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
 )
@@ -116,7 +117,7 @@ async def _seed_linear_execution(
         "state": {"id": "human-approved", "name": "Human Approved"},
     }
     execution = await state.create_work_item_claim(
-        state.WorkItemClaimRequest(
+        WorkItemClaimRequest(
             workspace="pynchy",
             issue=issue,
             turn_id=None,

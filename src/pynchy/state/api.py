@@ -245,12 +245,6 @@ from pynchy.state.work_item_cancellation import (
     cancel_work_item_execution,
     cancel_work_item_execution_if_lifecycle_current,
 )
-from pynchy.state.work_item_models import (
-    WorkItemClaimConflictError,
-    WorkItemClaimRequest,
-    WorkItemTransitionRequest,
-    WorkItemTransitionResolution,
-)
 from pynchy.state.work_item_terminal_recovery import (
     retire_latest_terminal_work_item_conversation,
     retire_terminal_execution_resources_if_unowned,
@@ -455,10 +449,6 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "resume_paused_in_flight_turn",
     "update_in_flight_session",
     # work_items
-    "WorkItemClaimConflictError",
-    "WorkItemClaimRequest",
-    "WorkItemTransitionResolution",
-    "WorkItemTransitionRequest",
     "begin_work_item_transition",
     "begin_work_item_transition_if_lifecycle_current",
     "bind_work_item_execution_to_turn",
