@@ -96,7 +96,6 @@ from pynchy.host.container_manager.ipc.handlers_managed_feature import (
     configure_managed_feature_runtime,
 )
 from pynchy.host.container_manager.ipc.handlers_service import (
-    ServiceSettings,
     configure_service_runtime,
 )
 from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
@@ -141,7 +140,6 @@ from pynchy.host.container_manager.security.audit import (
 from pynchy.host.container_manager.security.cop import configure_cop_prompt_provider
 from pynchy.host.container_manager.security.cop_client import configure_cop_gateway
 from pynchy.host.container_manager.security.gate import (
-    ResolvedSecurityConfig,
     SecuritySettings,
     configure_security_resolution,
     create_gate,
@@ -160,7 +158,6 @@ from pynchy.host.container_manager.session import (
 from pynchy.host.git_ops.api import (
     GitSyncRuntime,
     RepoSettings,
-    ResolvedRepoWorkspace,
     RoutedHostWorktreeError,
     check_local_head_drift,
     check_origin_drift,
@@ -477,26 +474,12 @@ def _workspace_environment(
     return env_vars
 
 
-def _resolve_security_workspace_config(
-    folder: str,
-    settings: SecuritySettings | None,
-) -> ResolvedSecurityConfig | None:
-    """Resolve container security from the exact configuration snapshot in use."""
-    return cast(
-        "ResolvedSecurityConfig | None",
-        load_resolved_config(
-            folder,
-            settings=cast("Settings | None", settings),
-        ),
-    )
-
-
-def _resolve_mcp_workspace_config(
+def _resolve_container_workspace_config(
     folder: str,
     settings: object,
 ) -> ResolvedWorkspaceConfig | None:
-    """Resolve effective MCP tools from the manager's configuration snapshot."""
-    return load_resolved_config(folder, settings=cast("Settings", settings))
+    """Resolve container policy from the exact configuration snapshot in use."""
+    return load_resolved_config(folder, settings=cast("Settings | None", settings))
 
 
 def _read_selected_prompts(names: list[str]) -> str | None:
@@ -565,9 +548,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     )
     configure_repo_runtime(
         get_settings=cast("Callable[[], RepoSettings]", get_settings),
-        resolve_workspace_config=cast(
-            "Callable[[str], ResolvedRepoWorkspace | None]", load_resolved_config
-        ),
+        resolve_workspace_config=load_resolved_config,
     )
     configure_mcp_resolution_runtime(
         apply_tool_access=cast(
@@ -580,7 +561,7 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     )
     configure_mcp_manager_runtime(
         static_workspace_folder=static_workspace_folder,
-        load_resolved_workspace_config=_resolve_mcp_workspace_config,
+        load_resolved_workspace_config=_resolve_container_workspace_config,
     )
     configure_gateway_runtime(
         is_apple_container=is_apple_container,
@@ -588,12 +569,12 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
     )
     configure_security_resolution(
         get_settings=cast("Callable[[], SecuritySettings]", get_settings),
-        resolve_workspace_config=_resolve_security_workspace_config,
+        resolve_workspace_config=_resolve_container_workspace_config,
     )
     configure_approval_runtime(get_settings=cast("Callable[[], ApprovalSettings]", get_settings))
     configure_service_runtime(
-        get_settings=cast("Callable[[], ServiceSettings]", get_settings),
-        resolve_workspace_config=_resolve_security_workspace_config,
+        get_settings=cast("Callable[[], SecuritySettings]", get_settings),
+        resolve_workspace_config=_resolve_container_workspace_config,
         active_matrix_route=get_active_matrix_route,
     )
 

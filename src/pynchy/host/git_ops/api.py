@@ -28,7 +28,6 @@ from pynchy.host.git_ops.personalization import sync_personalization_repo
 from pynchy.host.git_ops.repo import (
     RepoContext,
     RepoSettings,
-    ResolvedRepoWorkspace,
     check_token_expiry,
     configure_repo_runtime,
     ensure_repo_cloned,
@@ -123,7 +122,6 @@ __all__ = [
     "ManagedFeatureResolution",
     "RepoContext",
     "RepoSettings",
-    "ResolvedRepoWorkspace",
     "RoutedHostWorktreeError",
     "RoutedHostWorktreeResult",
     "WorktreeError",

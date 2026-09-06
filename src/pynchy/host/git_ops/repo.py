@@ -15,7 +15,6 @@ import uuid
 from collections.abc import (  # noqa: TC003 - beartype resolves repository runtime annotations.
     Callable,
     Mapping,
-    Sequence,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,9 @@ from urllib.parse import urlsplit
 
 from pynchy.host.paths import AGENT_SOURCE_CONTAINER_ROOT
 from pynchy.logger import logger
+from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
+)
 
 # Warn when a token expires within this many days
 _EXPIRY_WARNING_DAYS = 30
@@ -61,28 +63,22 @@ class RepoSettings(Protocol):
     worktrees_dir: Path
 
 
-@runtime_checkable
-class ResolvedRepoWorkspace(Protocol):
-    @property
-    def repo(self) -> Sequence[str]: ...
-
-
 def _unconfigured_settings() -> RepoSettings:
     raise RuntimeError("Repository settings have not been composed")
 
 
-def _unconfigured_workspace(_group_folder: str) -> ResolvedRepoWorkspace | None:
+def _unconfigured_workspace(_group_folder: str) -> ResolvedWorkspaceConfig | None:
     raise RuntimeError("Repository workspace resolution has not been composed")
 
 
 _get_settings: Callable[[], RepoSettings] = _unconfigured_settings
-load_resolved_config: Callable[[str], ResolvedRepoWorkspace | None] = _unconfigured_workspace
+load_resolved_config: Callable[[str], ResolvedWorkspaceConfig | None] = _unconfigured_workspace
 
 
 def configure_repo_runtime(
     *,
     get_settings: Callable[[], RepoSettings],
-    resolve_workspace_config: Callable[[str], ResolvedRepoWorkspace | None],
+    resolve_workspace_config: Callable[[str], ResolvedWorkspaceConfig | None],
 ) -> None:
     """Bind repository paths and workspace access at host composition."""
     global _get_settings, load_resolved_config  # noqa: PLW0603 - one host process owns this repository configuration.

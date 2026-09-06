@@ -21,7 +21,6 @@ from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
-    ResolvedSecurityConfig,
     SecurityGate,
     SecuritySettings,
     build_workspace_security,
@@ -38,10 +37,9 @@ from pynchy.plugins.api import (  # beartype resolves these runtime annotations.
     get_host_action_catalog,
     missing_workspace_tool,
 )
-
-
-class ServiceSettings(SecuritySettings, Protocol):
-    pass
+from pynchy.workspace.api import (
+    ResolvedWorkspaceConfig,  # noqa: TC001 - beartype resolves workspace policy annotations.
+)
 
 
 @runtime_checkable
@@ -55,13 +53,13 @@ class _McpTool(Protocol):
     mcp: _McpRuntime
 
 
-def _unconfigured_settings() -> ServiceSettings:
+def _unconfigured_settings() -> SecuritySettings:
     raise RuntimeError("Service configuration has not been composed")
 
 
 def _unconfigured_resolved_config(
     _source_group: str, _settings: SecuritySettings | None
-) -> ResolvedSecurityConfig | None:
+) -> ResolvedWorkspaceConfig | None:
     raise RuntimeError("Service workspace resolution has not been composed")
 
 
@@ -69,8 +67,8 @@ def _unconfigured_matrix_route(_source_group: str) -> object | None:
     raise RuntimeError("Service route policy has not been composed")
 
 
-_get_settings: Callable[[], ServiceSettings] = _unconfigured_settings
-load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedSecurityConfig | None] = (
+_get_settings: Callable[[], SecuritySettings] = _unconfigured_settings
+load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedWorkspaceConfig | None] = (
     _unconfigured_resolved_config
 )
 get_active_matrix_route: Callable[[str], object | None] = _unconfigured_matrix_route
@@ -78,9 +76,9 @@ get_active_matrix_route: Callable[[str], object | None] = _unconfigured_matrix_r
 
 def configure_service_runtime(
     *,
-    get_settings: Callable[[], ServiceSettings],
+    get_settings: Callable[[], SecuritySettings],
     resolve_workspace_config: Callable[
-        [str, SecuritySettings | None], ResolvedSecurityConfig | None
+        [str, SecuritySettings | None], ResolvedWorkspaceConfig | None
     ],
     active_matrix_route: Callable[[str], object | None],
 ) -> None:
@@ -91,7 +89,7 @@ def configure_service_runtime(
     get_active_matrix_route = active_matrix_route
 
 
-def get_settings() -> ServiceSettings:
+def get_settings() -> SecuritySettings:
     return _get_settings()
 
 

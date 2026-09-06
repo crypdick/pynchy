@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import (  # noqa: TC003 - beartype resolves security resolution annotations.
     Callable,
     Mapping,
-    Sequence,
 )
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
@@ -26,6 +25,7 @@ from pynchy.plugins.api import (
 from pynchy.secrets_scanner import scan_payload_for_secrets
 from pynchy.workspace.api import (
     CapabilityRule,
+    ResolvedWorkspaceConfig,
     ServiceTrustConfig,
     WorkspaceSecurity,
     capability_pattern_matches,
@@ -47,21 +47,6 @@ class SecurityToolConfig(Protocol):
 
 
 @runtime_checkable
-class ResolvedSecurityConfig(Protocol):
-    @property
-    def tools(self) -> Sequence[str]: ...
-
-    @property
-    def contains_secrets(self) -> bool: ...
-
-    @property
-    def cop_active(self) -> bool: ...
-
-    @property
-    def capabilities(self) -> Mapping[str, CapabilityRule]: ...
-
-
-@runtime_checkable
 class SecuritySettings(Protocol):
     @property
     def tools(self) -> Mapping[str, object]: ...
@@ -73,12 +58,12 @@ def _unconfigured_settings() -> SecuritySettings:
 
 def _unconfigured_resolved_config(
     _source_group: str, _settings: SecuritySettings | None
-) -> ResolvedSecurityConfig | None:
+) -> ResolvedWorkspaceConfig | None:
     raise RuntimeError("Security workspace resolution has not been composed")
 
 
 _get_settings: Callable[[], SecuritySettings] = _unconfigured_settings
-load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedSecurityConfig | None] = (
+load_resolved_config: Callable[[str, SecuritySettings | None], ResolvedWorkspaceConfig | None] = (
     _unconfigured_resolved_config
 )
 
@@ -87,7 +72,7 @@ def configure_security_resolution(
     *,
     get_settings: Callable[[], SecuritySettings],
     resolve_workspace_config: Callable[
-        [str, SecuritySettings | None], ResolvedSecurityConfig | None
+        [str, SecuritySettings | None], ResolvedWorkspaceConfig | None
     ],
 ) -> None:
     """Bind the security policy projection at host composition."""
@@ -481,7 +466,7 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
 def build_workspace_security(
     settings: SecuritySettings,
-    resolved: ResolvedSecurityConfig,
+    resolved: ResolvedWorkspaceConfig,
 ) -> WorkspaceSecurity:
     """Build dispatch-equivalent security from an already resolved workspace."""
 
