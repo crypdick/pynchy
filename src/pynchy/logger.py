@@ -10,18 +10,13 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 import structlog
-
-if TYPE_CHECKING:
-    from structlog.typing import BindableLogger
-
 
 _ERROR_LOG_HANDLER_NAME = "pynchy-error-log"
 
 
-def _setup_logging() -> object:
+def _setup_logging() -> None:
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
@@ -49,10 +44,9 @@ def _setup_logging() -> object:
         cache_logger_on_first_use=True,
     )
 
-    return structlog.get_logger()
 
-
-logger: BindableLogger = cast("BindableLogger", _setup_logging())
+_setup_logging()
+logger = structlog.stdlib.get_logger()
 
 
 def configure_error_log(log_path: Path) -> None:
