@@ -28,7 +28,6 @@ from pynchy.config.api import (
     repository_settings_sources,
     resolve_tool_access,
     tool_process_environment,
-    validate_settings_mapping,
 )
 from pynchy.config.api import (
     reset_settings as reset_config_settings,
@@ -536,7 +535,6 @@ def reset_settings(monkeypatch):
                 apply_tool_access=apply_tool_access,
                 resolve_tool_access=resolve_tool_access,
                 mutate_config_toml=mutate_config_toml,
-                validate_settings_mapping=validate_settings_mapping,
                 reset_settings=reset_config_settings,
             )
         )

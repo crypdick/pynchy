@@ -57,7 +57,6 @@ from pynchy.config.api import (
     restart_fingerprint,
     runtime_policy_changes,
     tool_process_environment,
-    validate_settings_mapping,
 )
 from pynchy.conversation.api import (
     Conversation,
@@ -505,7 +504,6 @@ def _configure_container_policy_runtime(*, is_apple_container: bool) -> None:
             apply_tool_access=apply_tool_access,
             resolve_tool_access=resolve_tool_access,
             mutate_config_toml=mutate_config_toml,
-            validate_settings_mapping=validate_settings_mapping,
             reset_settings=reset_settings,
         )
     )

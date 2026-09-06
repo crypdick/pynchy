@@ -38,7 +38,6 @@ TIER2_TYPES = frozenset(
         "schedule_host_job",
         "deploy",
         "register_group",
-        "create_periodic_agent",
         "automation_status",
         "automation_definition",
         "create_automation",
@@ -311,48 +310,6 @@ class RegisterGroupRequest:
             folder=GroupFolder(folder),
             trigger=trigger,
             container_config=ContainerConfig.from_dict(raw_config) if raw_config else None,
-        )
-
-
-@dataclass(frozen=True)
-class CreatePeriodicAgentRequest:
-    """A validated ``create_periodic_agent`` request.
-
-    Cron validity of ``schedule`` is checked by the handler (which owns the
-    ``croniter`` dependency and the distinct log message), not here.
-    """
-
-    name: str
-    profile: str
-    schedule: str
-    prompt: str
-    claude_md: str
-    chat: str | None
-    memory_enabled: bool
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CreatePeriodicAgentRequest | None:
-        name = data.get("name")
-        profile = data.get("profile")
-        schedule = data.get("schedule")
-        prompt = data.get("prompt")
-        memory_enabled = data.get("memory", True)
-        if (
-            not name
-            or not profile
-            or not schedule
-            or not prompt
-            or not isinstance(memory_enabled, bool)
-        ):
-            return None
-        return cls(
-            name=name,
-            profile=profile,
-            schedule=schedule,
-            prompt=prompt,
-            claude_md=data.get("claude_md", f"You are the {name} periodic agent."),
-            chat=data.get("chat"),
-            memory_enabled=memory_enabled,
         )
 
 

@@ -14,9 +14,6 @@ from pynchy.conversation.api import (  # noqa: TC001 - beartype resolves IPC dep
     ConversationControlBinding,
     ConversationId,
 )
-from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
-    CreatePeriodicAgentRequest,
-)
 from pynchy.host.container_manager.security.cop import (  # noqa: TC001 - beartype resolves IPC dependency protocol signatures at runtime.
     CopInspectionContext,
 )
@@ -88,8 +85,6 @@ class IpcDeps(Protocol):
     ) -> None: ...
 
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None: ...
-
-    async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None: ...
 
     async def get_scheduled_work_status(
         self,

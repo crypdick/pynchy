@@ -50,3 +50,9 @@ def test_ops_config_rejects_command_shaped_target_values(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         OpsConfig(**values)
+
+
+def test_ops_config_accepts_explicitly_unconfigured_targets() -> None:
+    config = OpsConfig(ssh_host=None, namespace=None)
+    assert config.ssh_host is None
+    assert config.namespace is None
