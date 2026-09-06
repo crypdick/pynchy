@@ -48,20 +48,12 @@ def _once_task(
     )
 
 
-class _AwaitableListsClient(FakeScheduleClient):
-    def list_workflows(self, query: str):
-        return asyncio.sleep(0, result=super().list_workflows(query))
-
-    def list_schedules(self):
-        return asyncio.sleep(0, result=super().list_schedules())
-
-
 class _DeleteErrorHandle(FakeScheduleHandle):
     async def delete(self):
         raise RPCError("missing", RPCStatusCode.NOT_FOUND, b"")
 
 
-class _DeleteErrorClient(_AwaitableListsClient):
+class _DeleteErrorClient(FakeScheduleClient):
     def get_schedule_handle(self, schedule_id):
         return self.handles.setdefault(schedule_id, _DeleteErrorHandle(schedule_id))
 
@@ -71,7 +63,7 @@ class _DeleteFailureHandle(FakeScheduleHandle):
         raise RPCError("unavailable", RPCStatusCode.INTERNAL, b"")
 
 
-class _DeleteFailureClient(_AwaitableListsClient):
+class _DeleteFailureClient(FakeScheduleClient):
     def get_schedule_handle(self, schedule_id):
         return self.handles.setdefault(schedule_id, _DeleteFailureHandle(schedule_id))
 
@@ -87,6 +79,31 @@ class _ScheduleErrorClient(FakeScheduleClient):
             self.failed = True
             raise self.error
         return await super().create_schedule(schedule_id, schedule, **kwargs)
+
+
+async def test_invalid_recurring_definition_leaves_temporal_unchanged(monkeypatch):
+    task = _once_task("invalid")
+    task.schedule_type = "interval"
+    task.schedule_value = "not an interval"
+    client = FakeScheduleClient()
+    runtime = temporal_scheduler.TemporalSchedulerRuntime(
+        deps=NullSchedulerDeps(), scheduler_config=_scheduler_runtime()
+    )
+    runtime.client = client
+    monkeypatch.setattr(
+        temporal_scheduler, "get_all_tasks", lambda: asyncio.sleep(0, result=[task])
+    )
+    monkeypatch.setattr(
+        temporal_scheduler, "get_all_host_jobs", lambda: asyncio.sleep(0, result=[])
+    )
+
+    with pytest.raises(ValueError, match="invalid literal"):
+        await runtime.reconcile_schedules()
+
+    assert client.created_schedules == []
+    assert client.started_workflows == []
+    assert client.handles == {}
+    assert client.workflow_handles == {}
 
 
 @pytest.mark.asyncio
@@ -189,7 +206,7 @@ async def test_reconcile_cleans_orphaned_workflows_and_stale_schedules() -> None
 async def test_reconcile_propagates_orphan_cancellation_failure() -> None:
     due_at = datetime.now(UTC) + timedelta(minutes=5)
     workflow_id = "pynchy-agent-task-orphan"
-    client = _AwaitableListsClient()
+    client = FakeScheduleClient()
     client.workflow_executions = [
         _WorkflowListEntry(workflow_id, "orphan-run", "ScheduledAgentTaskWorkflow", due_at)
     ]
@@ -220,7 +237,7 @@ async def test_reconcile_defers_one_resumed_owner_and_ignores_ambiguous_ones() -
     ambiguous_b = _once_task("ambiguous-a", due_at=due_at, superseded=True)
     solo_workflow_id = agent_task_occurrence_workflow_id("solo", due_at, 0)
     ambiguous_workflow_id = agent_task_occurrence_workflow_id("ambiguous/a", due_at, 0)
-    client = _AwaitableListsClient()
+    client = FakeScheduleClient()
     client.workflow_executions = [
         _WorkflowListEntry("wrong-type", "wrong-run", "OtherWorkflow", None),
         _WorkflowListEntry("unowned", "unowned-run", "ScheduledAgentTaskWorkflow", None),
@@ -266,7 +283,7 @@ async def test_reconcile_propagates_resumed_workflow_cancellation_failure() -> N
     due_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     task = _once_task("solo", due_at=due_at, superseded=True)
     workflow_id = agent_task_occurrence_workflow_id("solo", due_at, 0)
-    client = _AwaitableListsClient()
+    client = FakeScheduleClient()
     client.workflow_executions = [
         _WorkflowListEntry(
             workflow_id,

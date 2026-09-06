@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003 - beartype resolves builder annotations.
+    Awaitable,
+    Callable,
+    Sequence,
+)
 from datetime import UTC, datetime, timedelta
 
 from temporalio.client import (
@@ -127,131 +132,102 @@ def start_delay_until(due_at: datetime) -> timedelta:
     return max(due_at - datetime.now(UTC), timedelta())
 
 
-def schedule_for_agent_task(task: ScheduledTask, runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the Temporal Schedule for a recurring agent task."""
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
-            ScheduledAgentTaskWorkflow.run,
-            args=[task.id],
-            id=f"{agent_task_schedule_id(task)}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=_recurring_schedule_spec(
-            task.schedule_type,
-            task.schedule_value,
-            timezone=runtime.timezone,
-        ),
-        policy=_agent_task_schedule_policy(task),
-    )
+def desired_recurring_schedules(
+    tasks: list[ScheduledTask],
+    host_jobs: list[HostJob],
+    runtime: SchedulerRuntimeConfig,
+) -> dict[str, Schedule]:
+    """Build the complete recurring schedule projection before any Temporal writes."""
+    schedules: dict[str, Schedule] = {}
 
+    def add(
+        schedule_id: str,
+        workflow: Callable[..., Awaitable[str]],
+        spec: ScheduleSpec,
+        *,
+        args: Sequence[object] = (),
+        policy: SchedulePolicy | None = None,
+    ) -> None:
+        # Last definition wins for colliding normalized IDs, matching Temporal upserts.
+        # TODO: Digest source IDs and migrate deployed schedules to prevent collisions.
+        schedules[schedule_id] = Schedule(
+            action=ScheduleActionStartWorkflow(
+                workflow,
+                args=args,
+                id=f"{schedule_id}-workflow",
+                task_queue=runtime.temporal_task_queue,
+            ),
+            spec=spec,
+            policy=policy if policy is not None else _schedule_policy(),
+        )
 
-def schedule_for_database_host_job(job: HostJob, runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the Temporal Schedule for a recurring database host job."""
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
-            DatabaseHostJobWorkflow.run,
-            args=[job.id],
-            id=f"{database_host_job_schedule_id(job)}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=_recurring_schedule_spec(
-            job.schedule_type,
-            job.schedule_value,
-            timezone=runtime.timezone,
-        ),
-        policy=_schedule_policy(),
-    )
-
-
-def schedule_for_config_host_cron(
-    job_name: str, schedule_value: str, runtime: SchedulerRuntimeConfig
-) -> Schedule:
-    """Build the Temporal Schedule for a config-backed host cron job."""
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
-            ConfigHostCronWorkflow.run,
-            args=[job_name],
-            id=f"{config_host_cron_schedule_id(job_name)}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=_recurring_schedule_spec("cron", schedule_value, timezone=runtime.timezone),
-        policy=_schedule_policy(),
-    )
-
-
-def schedule_for_host_git_sync(runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the Temporal Schedule for host repository sync polling."""
-    interval = timedelta(seconds=runtime.git_sync_interval_seconds)
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
-            HostGitSyncWorkflow.run,
-            id=f"{host_git_sync_schedule_id()}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
-        policy=_poller_schedule_policy(interval),
-    )
-
-
-def schedule_for_external_git_sync(repo_slug: str, runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the Temporal Schedule for one external repository sync poller."""
-    schedule_id = external_git_sync_schedule_id(repo_slug)
-    interval = timedelta(seconds=runtime.git_sync_interval_seconds)
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
-            ExternalGitSyncWorkflow.run,
-            args=[repo_slug],
-            id=f"{schedule_id}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
-        policy=_poller_schedule_policy(interval),
-    )
-
-
-def schedule_for_channel_reconciliation(runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the Temporal Schedule for channel history reconciliation."""
-    interval = timedelta(seconds=runtime.channel_reconciliation_interval_seconds)
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
+    git_interval = timedelta(seconds=runtime.git_sync_interval_seconds)
+    pollers: list[tuple[str, Callable[..., Awaitable[str]], timedelta, list[str]]] = [
+        (host_git_sync_schedule_id(), HostGitSyncWorkflow.run, git_interval, []),
+        (
+            channel_reconciliation_schedule_id(),
             ChannelReconciliationWorkflow.run,
-            id=f"{channel_reconciliation_schedule_id()}-workflow",
-            task_queue=runtime.temporal_task_queue,
+            timedelta(seconds=runtime.channel_reconciliation_interval_seconds),
+            [],
         ),
-        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
-        policy=_poller_schedule_policy(interval),
-    )
-
-
-def schedule_for_linear_work_item_reconciliation(runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the periodic managed Linear work-item recovery schedule."""
-    interval = LINEAR_WORK_ITEM_RECONCILIATION_INTERVAL
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
+        (
+            linear_work_item_reconciliation_schedule_id(),
             LinearWorkItemReconciliationWorkflow.run,
-            id=f"{linear_work_item_reconciliation_schedule_id()}-workflow",
-            task_queue=runtime.temporal_task_queue,
+            LINEAR_WORK_ITEM_RECONCILIATION_INTERVAL,
+            [],
         ),
-        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
-        policy=_poller_schedule_policy(interval),
+    ]
+    pollers.extend(
+        (external_git_sync_schedule_id(slug), ExternalGitSyncWorkflow.run, git_interval, [slug])
+        for slug in runtime.external_repo_sync_slugs
     )
-
-
-def schedule_for_canaries(runtime: SchedulerRuntimeConfig) -> Schedule:
-    """Build the configured recurring schedule for external-service canaries."""
-    return Schedule(
-        action=ScheduleActionStartWorkflow(
+    for schedule_id, workflow, interval, args in pollers:
+        add(
+            schedule_id,
+            workflow,
+            ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+            args=args,
+            policy=SchedulePolicy(
+                overlap=ScheduleOverlapPolicy.SKIP,
+                catchup_window=interval,
+                pause_on_failure=False,
+            ),
+        )
+    if runtime.canary_enabled:
+        add(
+            canary_schedule_id(),
             CanaryRunWorkflow.run,
-            id=f"{canary_schedule_id()}-workflow",
-            task_queue=runtime.temporal_task_queue,
-        ),
-        spec=_recurring_schedule_spec(
-            "cron",
-            runtime.canary_schedule,
-            timezone=runtime.timezone,
-        ),
-        policy=_schedule_policy(),
-    )
+            _recurring_schedule_spec("cron", runtime.canary_schedule, timezone=runtime.timezone),
+        )
+    for task in tasks:
+        if task.status == "active" and task.schedule_type != "once":
+            add(
+                agent_task_schedule_id(task),
+                ScheduledAgentTaskWorkflow.run,
+                _recurring_schedule_spec(
+                    task.schedule_type, task.schedule_value, timezone=runtime.timezone
+                ),
+                args=[task.id],
+                policy=_agent_task_schedule_policy(task),
+            )
+    for job in host_jobs:
+        if job.status == "active" and job.enabled and job.schedule_type != "once":
+            add(
+                database_host_job_schedule_id(job),
+                DatabaseHostJobWorkflow.run,
+                _recurring_schedule_spec(
+                    job.schedule_type, job.schedule_value, timezone=runtime.timezone
+                ),
+                args=[job.id],
+            )
+    for job_name, cron_job in runtime.config_host_cron_jobs.items():
+        add(
+            config_host_cron_schedule_id(job_name),
+            ConfigHostCronWorkflow.run,
+            _recurring_schedule_spec("cron", cron_job.schedule, timezone=runtime.timezone),
+            args=[job_name],
+        )
+    return schedules
 
 
 def _recurring_schedule_spec(
@@ -272,15 +248,6 @@ def _recurring_schedule_spec(
 
 def _schedule_policy() -> SchedulePolicy:
     return SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP, pause_on_failure=False)
-
-
-def _poller_schedule_policy(interval: timedelta) -> SchedulePolicy:
-    """Prevent stale reconciliation polls from replaying after an outage."""
-    return SchedulePolicy(
-        overlap=ScheduleOverlapPolicy.SKIP,
-        catchup_window=interval,
-        pause_on_failure=False,
-    )
 
 
 def _agent_task_schedule_policy(task: ScheduledTask) -> SchedulePolicy:

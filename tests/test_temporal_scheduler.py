@@ -459,7 +459,10 @@ class TestTemporalSchedulerRuntime:
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         temporal_task.config_job_name = "fam_daily_checkin"
 
-        schedule = temporal_schedules.schedule_for_agent_task(temporal_task, _scheduler_runtime())
+        schedules = temporal_schedules.desired_recurring_schedules(
+            [temporal_task], [], _scheduler_runtime()
+        )
+        schedule = schedules["pynchy-agent-schedule-task-with-spaces"]
 
         assert schedule.policy.overlap is ScheduleOverlapPolicy.BUFFER_ONE
 
