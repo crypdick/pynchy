@@ -191,17 +191,44 @@ async def test_done_reconciliation_keeps_work_when_completion_evidence_is_missin
     retire_terminal.assert_not_awaited()
 
 
-async def test_provider_failure_isolated_to_one_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("superseded", [False, True])
+async def test_provider_failure_isolated_to_one_execution(
+    monkeypatch: pytest.MonkeyPatch, superseded: bool
+) -> None:
     execution = _execution()
-    _configure_runtime(execution)
+    healthy = replace(execution, id="execution-2", linear_issue_id="issue-2")
+    latest = replace(execution, id="execution-new", attempt=2)
+    cancelled = replace(healthy, status=WorkItemExecutionStatus.CANCELLED)
+    retire = AsyncMock()
+    configure_linear_decision_inbox_runtime(
+        LinearDecisionInboxRuntime(
+            list_executions=AsyncMock(return_value=[latest if superseded else execution, healthy]),
+            list_terminal_repair_candidates=AsyncMock(
+                return_value=[execution] if superseded else []
+            ),
+            get_latest_unresolved_transition=AsyncMock(return_value=None),
+            cancel_execution=AsyncMock(return_value=cancelled),
+            retire_execution=retire,
+            retire_terminal_execution_if_unowned=AsyncMock(
+                side_effect=RuntimeError("retirement unavailable")
+            ),
+            retire_terminal_execution=AsyncMock(),
+        )
+    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_provider_reconciliation.linear_account_for_workspace",
         lambda _workspace: None,
     )
-    client = _Client({"id": "issue-1", "project": {"id": "project-1"}})
-    client.get_issue = AsyncMock(side_effect=RuntimeError("provider unavailable"))  # type: ignore[method-assign]
+    client = _Client(None)
+    client.get_issue = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[None if superseded else RuntimeError("provider unavailable"), None]
+    )
 
-    assert await reconcile_provider_work_item_state(client, {"pynchy": _board()}) == 0
+    with pytest.raises(ExceptionGroup, match="Linear provider-state reconciliation failed"):
+        await reconcile_provider_work_item_state(client, {"pynchy": _board()})
+
+    assert client.get_issue.await_count == 2
+    retire.assert_any_await(cancelled)
 
 
 async def test_terminal_repair_candidate_without_latest_execution_is_ignored() -> None:

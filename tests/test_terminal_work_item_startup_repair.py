@@ -555,7 +555,8 @@ async def test_temporal_failure_preserves_retryable_exact_retirement() -> None:
         "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
         cancel_workflow,
     ):
-        assert await reconcile_provider_work_item_state(client, {"project": _board()}) == 0
+        with pytest.raises(ExceptionGroup, match="Linear provider-state reconciliation failed"):
+            await reconcile_provider_work_item_state(client, {"project": _board()})
         persisted_terminal_task = await get_task_by_id(terminal_task.id)
         assert persisted_terminal_task is not None
         assert persisted_terminal_task.status == "active"

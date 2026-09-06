@@ -282,6 +282,9 @@ async def test_reconcile_all_runs_provider_recovery_before_inbox_admission(monke
 
 async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
     account = _Account("primary", _AccountConfig(public_source=True))
+    secondary = _Account("secondary", _AccountConfig(public_source=True))
+    recovered = AsyncMock(return_value=0)
+    secondary_client = object()
 
     class FailingClientContext:
         async def __aenter__(self) -> object:
@@ -290,9 +293,19 @@ async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
         async def __aexit__(self, *_exc_info: object) -> None:
             return None
 
-    def failing_client(*, account_name: object) -> FailingClientContext:
-        del account_name
+    def failing_client(*, account_name: object) -> FailingClientContext | _ClientContext:
+        if account_name == "secondary":
+            return _ClientContext(secondary_client)
         return FailingClientContext()
+
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.configured_linear_accounts",
+        lambda: (account, secondary),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_decision_inbox.reconcile_provider_work_item_state",
+        recovered,
+    )
 
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_decision_inbox.linear_account_for_workspace",
@@ -303,15 +316,17 @@ async def test_reconcile_all_isolates_a_provider_failure(monkeypatch) -> None:
         failing_client,
     )
 
-    admitted = await reconcile_all_linear_work_items(
-        {"beta": _Workspace("beta", "Beta", "linear:beta")},
-        {"beta": _board("project-beta")},
-        review_plan=AsyncMock(),
-        broadcast_host_message=AsyncMock(),
-        defer_plan_review=AsyncMock(),
-    )
+    with pytest.raises(ExceptionGroup, match="Linear account reconciliation failed"):
+        await reconcile_all_linear_work_items(
+            {"beta": _Workspace("beta", "Beta", "linear:beta")},
+            {"beta": _board("project-beta")},
+            review_plan=AsyncMock(),
+            broadcast_host_message=AsyncMock(),
+            defer_plan_review=AsyncMock(),
+        )
 
-    assert admitted == []
+    recovered.assert_awaited_once()
+    assert recovered.await_args.args[0] is secondary_client
 
 
 async def test_removed_workspace_issue_retires_only_after_every_account_reports_missing(
