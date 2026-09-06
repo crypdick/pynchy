@@ -107,6 +107,14 @@ reapplies the previously rendered application manifests and restores the
 previous checkout SHA. Pynchy and desktop use `Recreate`, so rollback protects
 availability but does not guarantee zero downtime.
 
+## Temporal namespace retention
+
+The Temporal Deployment owns retention for the `default` namespace. Its
+auto-setup container creates new namespaces with a `192h` retention period,
+and its retention reconciler verifies and restores that value every five
+minutes. This is eight days, exceeding the seven-day audit-history minimum.
+Previously expired histories cannot be recovered.
+
 Check release state with:
 
 ```bash
@@ -121,6 +129,8 @@ kubectl -n pynchy get cronjob pynchy-release-monitor \
   -o 'jsonpath={.metadata.annotations.pynchy\.dev/release-sha}'
 kubectl -n pynchy exec deploy/pynchy -c pynchy -- \
   /opt/pynchy/.venv/bin/pynchy status
+kubectl -n pynchy exec deploy/pynchy-temporal -c retention-reconciler -- \
+  temporal operator namespace describe --namespace default --output json
 ```
 
 Application manifest changes deploy automatically with their successful image

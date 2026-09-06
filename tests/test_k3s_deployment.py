@@ -19,6 +19,37 @@ def test_k3s_base_leaves_local_storage_to_deployment_overlay() -> None:
     assert "storage.example.yaml" not in kustomization
 
 
+def test_temporal_retention_is_reconciled_in_cluster() -> None:
+    deployment = _documents("deploy/k3s/application/temporal.yaml")[0]
+    pod = deployment["spec"]["template"]["spec"]
+    server = next(container for container in pod["containers"] if container["name"] == "temporal")
+    reconciler = next(
+        container for container in pod["containers"] if container["name"] == "retention-reconciler"
+    )
+
+    assert {"name": "DEFAULT_NAMESPACE_RETENTION", "value": "192h"} in server["env"]
+    assert reconciler["image"] == server["image"]
+    assert reconciler["command"] == ["/bin/sh", "-ec"]
+    assert (
+        "temporal operator namespace update --namespace default --retention 192h"
+        in reconciler["args"][0]
+    )
+    assert '"workflowExecutionRetentionTtl": "691200s"' in reconciler["args"][0]
+    assert "sleep 300" in reconciler["args"][0]
+    assert reconciler["securityContext"] == {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+        "readOnlyRootFilesystem": True,
+        "runAsGroup": 1000,
+        "runAsNonRoot": True,
+        "runAsUser": 1000,
+    }
+    assert reconciler["resources"] == {
+        "requests": {"cpu": "10m", "memory": "32Mi"},
+        "limits": {"cpu": "100m", "memory": "128Mi"},
+    }
+
+
 def test_host_image_installs_locked_dependencies() -> None:
     dockerfile = Path("deploy/k3s/host.Dockerfile").read_text(encoding="utf-8")
 
