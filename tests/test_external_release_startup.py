@@ -9,7 +9,7 @@ from pynchy.host.orchestrator.startup_handler import auto_rollback
 
 
 @pytest.mark.asyncio
-async def test_external_release_preserves_checkout_and_continuation(self, tmp_path, monkeypatch):
+async def test_external_release_preserves_checkout_and_continuation(tmp_path, monkeypatch):
     monkeypatch.setenv("PYNCHY_RELEASE_SHA", "a" * 40)
     cont_path = tmp_path / "continuation.json"
     original = json.dumps({"previous_commit_sha": "prev-sha-1", "commit_sha": "a" * 40})

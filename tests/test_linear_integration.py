@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from io import StringIO
 from unittest.mock import AsyncMock, MagicMock
 
@@ -38,9 +39,8 @@ class TestLinearMcpPlugin:
 
         assert spec.name == "linear"
         assert spec.config.type == "script"
-        assert spec.config.command == "uv"
-        assert spec.config.args[:2] == ["run", "python"]
-        assert spec.config.args[2:] == [
+        assert spec.config.command == sys.executable
+        assert spec.config.args == [
             "-m",
             "pynchy.plugins.integrations.linear",
             "--port",

@@ -29,9 +29,10 @@ For Kubernetes deployments:
 - Do not manually patch the Deployment or delete a Pod for a normal release.
   Observe the monitor Job, rollout, exact release annotation, and application
   status.
-- Apply Kubernetes manifest, storage, Secret, RBAC, Pocket TTS, and private MCP
-  image changes manually after review; the application release monitor does
-  not apply infrastructure.
+- The monitor applies the selected release’s `deploy/k3s/application` manifests,
+  including probes, with its images. Namespace, storage, Secret, RBAC, Pocket TTS,
+  and private MCP image changes remain explicit operator work; follow the
+  [application release boundary](../../../docs/installation/kubernetes.md#release-from-main).
 - Keep unrelated Docker Compose and Dockge services outside Kubernetes.
 
 The standalone sections below apply only when the live host has no Kubernetes
