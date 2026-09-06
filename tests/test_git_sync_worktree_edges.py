@@ -5,9 +5,60 @@ from __future__ import annotations
 import subprocess  # noqa: S404 - tests construct CompletedProcess fixtures only.
 from unittest.mock import patch
 
+import pytest
+
 from pynchy.host.git_ops.api import ensure_worktree, host_create_pr_from_worktree, run_git
+from tests.git_policy_support import git
 
 pytest_plugins = ("tests.git_policy_support",)
+
+
+@pytest.mark.parametrize(
+    ("published", "proposed", "expected"),
+    [
+        ("syn/233/original-title", "syn/233/revised-title", "syn/233/original-title"),
+        ("syn/234/original-title", "syn/233/revised-title", "syn/233/revised-title"),
+        ("syn/233/original-title", "feature/revised", "feature/revised"),
+        ("syn/233/original-title", "team/feature/revised", "team/feature/revised"),
+        (None, "syn/233/revised-title", "syn/233/revised-title"),
+    ],
+)
+def test_revised_title_keeps_only_same_issue_upstream(
+    git_env: dict, published: str | None, proposed: str, expected: str
+):
+    repo_ctx = git_env["repo_ctx"]
+    worktree = ensure_worktree("agent-1", repo_ctx).path
+    git(worktree, "commit", "--allow-empty", "-m", "Initial work")
+    if published is not None:
+        git(worktree, "push", "-u", "origin", f"HEAD:{published}")
+    else:
+        git(worktree, "branch", "--unset-upstream")
+    git(worktree, "commit", "--allow-empty", "-m", "Review correction")
+    expected_head = git(worktree, "rev-parse", "HEAD").stdout.strip()
+    real_run = subprocess.run
+
+    def provider(args, **kwargs):
+        if args[0] != "gh":
+            return real_run(args, **kwargs)
+        assert args[1:3] == ["pr", "list"], "Review must not create a second PR"
+        assert f"--head={expected}" in args
+        return subprocess.CompletedProcess(args, 0, "https://github.com/owner/repo/pull/1\n", "")
+
+    with patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=provider):
+        result = host_create_pr_from_worktree(
+            "agent-1",
+            repo_ctx,
+            publication_branch=proposed,
+            pr_title="Revised title",
+            pr_body="Review correction",
+        )
+
+    assert result["pr_url"] == "https://github.com/owner/repo/pull/1"
+    assert git(git_env["origin"], "rev-parse", expected).stdout.strip() == expected_head
+    if expected != proposed:
+        assert proposed not in git(git_env["origin"], "branch").stdout
+    if published is not None and published != expected:
+        assert git(git_env["origin"], "rev-parse", published).stdout.strip() != expected_head
 
 
 class TestWorktreePublicationPreconditions:
