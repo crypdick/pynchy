@@ -41,7 +41,7 @@ def test_current_deploy_revision_requires_configured_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "pynchy.host.orchestrator.deploy._runtime.runtime",
+        "pynchy.host.orchestrator.deploy._runtime",
         None,
     )
 

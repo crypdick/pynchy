@@ -153,7 +153,7 @@ async def test_lifecycle_callback_ignores_empty_controller_workspace():
 async def test_lifecycle_callback_requires_composed_runtime_for_nonterminal_state(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_webhook_effects._runtime.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_webhook_effects._runtime", None)
 
     with pytest.raises(RuntimeError, match="effects runtime has not been configured"):
         await process_linear_webhook_lifecycle(

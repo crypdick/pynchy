@@ -103,23 +103,19 @@ class MarketplaceHealthRuntime:
     reader_environment: Callable[[str], dict[str, str] | None]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: MarketplaceHealthRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: MarketplaceHealthRuntime | None = None
 
 
 def configure_marketplace_health_runtime(runtime: MarketplaceHealthRuntime) -> None:
     """Set marketplace projection configuration before host actions run."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> MarketplaceHealthRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Marketplace health runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 def _options() -> MarketplaceHealthOptions:

@@ -57,23 +57,19 @@ class LinearBootRuntime:
     additional_workspaces: Callable[[list[WorkspaceProfile]], tuple[WorkspaceProfile, ...]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearBootRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearBootRuntime | None = None
 
 
 def configure_linear_boot_runtime(runtime: LinearBootRuntime) -> None:
     """Set resolved Linear boot dependencies before reconciliation."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearBootRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear boot runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 @dataclass(frozen=True)

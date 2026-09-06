@@ -77,17 +77,13 @@ class CalDAVRuntime:
     servers: Mapping[str, CalDAVServerOptions]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: CalDAVRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: CalDAVRuntime | None = None
 
 
 def configure_caldav_runtime(runtime: CalDAVRuntime) -> None:
     """Set CalDAV settings before service actions run."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def get_caldav_client(name: str, server_cfg: CalDAVServerOptions) -> object:
@@ -117,9 +113,9 @@ def _check_configured(cfg: CalDAVRuntime) -> str | None:
 
 
 def _caldav_config() -> CalDAVRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("CalDAV runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerOptions) -> bool:

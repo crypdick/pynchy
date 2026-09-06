@@ -74,23 +74,19 @@ class LinearWebhookRuntime:
     workspace_names_for_account: Callable[[str], tuple[str, ...]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWebhookRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWebhookRuntime | None = None
 
 
 def configure_linear_webhook_runtime(runtime: LinearWebhookRuntime) -> None:
     """Set resolved Linear webhook configuration before routes are collected."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWebhookRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear webhook runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 # allow: too-many-arguments - public parser keeps its authenticated transport boundary explicit.

@@ -320,7 +320,7 @@ async def test_reconcile_requires_an_execution_and_unresolved_transition(
 async def test_work_item_listing_requires_configured_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_items._runtime.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_work_items._runtime", None)
 
     with pytest.raises(RuntimeError, match="Linear work-items runtime has not been configured"):
         await handle_list_work_items({"source_group": "pynchy"})

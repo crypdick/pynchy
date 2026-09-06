@@ -110,23 +110,19 @@ class _AccountScope:
     unavailable_probes: dict[str, UnavailableExecutionProbe] | None
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearDecisionInboxRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearDecisionInboxRuntime | None = None
 
 
 def configure_linear_decision_inbox_runtime(runtime: LinearDecisionInboxRuntime) -> None:
     """Set durable cleanup operations for missed Linear callbacks."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearDecisionInboxRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear decision inbox runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def reconcile_provider_work_item_state(

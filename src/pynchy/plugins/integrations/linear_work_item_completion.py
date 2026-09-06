@@ -35,25 +35,21 @@ class LinearWorkItemCompletionRuntime:
     begin_transition_if_lifecycle_current: Callable[..., Awaitable[WorkItemTransition | None]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWorkItemCompletionRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWorkItemCompletionRuntime | None = None
 
 
 def configure_linear_work_item_completion_runtime(
     runtime: LinearWorkItemCompletionRuntime,
 ) -> None:
     """Set durable work-item transition operations for Linear Done callbacks."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWorkItemCompletionRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear work-item completion runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def complete_reviewed_work_item(

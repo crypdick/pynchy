@@ -99,23 +99,19 @@ class LinearWorkItemRuntime:
     resolve_transition_if_lifecycle_current: Callable[..., Awaitable[WorkItemExecution | None]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearWorkItemRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearWorkItemRuntime | None = None
 
 
 def configure_linear_work_item_runtime(runtime: LinearWorkItemRuntime) -> None:
     """Set durable work-item operations for Linear provider reconciliation."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearWorkItemRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear work-item runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 class LinearClientContext:

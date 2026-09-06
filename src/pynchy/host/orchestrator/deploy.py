@@ -57,23 +57,19 @@ class DeployGitRuntime:
     run_git: Callable[..., object]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: DeployGitRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: DeployGitRuntime | None = None
 
 
 def configure_deploy_git_runtime(runtime: DeployGitRuntime) -> None:
     """Set concrete Git operations before deploy handling starts."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> DeployGitRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Deploy Git runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 def current_deploy_revision() -> DeployRevision:

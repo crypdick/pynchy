@@ -11,7 +11,7 @@ from pynchy.plugins.integrations.linear_accounts import (
 
 
 def test_configured_linear_accounts_requires_composed_runtime(monkeypatch) -> None:
-    monkeypatch.setattr("pynchy.plugins.integrations.linear_accounts._state.runtime", None)
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_accounts._state", None)
 
     with pytest.raises(RuntimeError, match="Linear account runtime has not been configured"):
         configured_linear_accounts()

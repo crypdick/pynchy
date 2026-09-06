@@ -19,7 +19,7 @@ from collections.abc import (
     Callable,  # noqa: TC003 - beartype resolves worktree signatures at runtime.
     Sequence,  # noqa: TC003 - beartype resolves worktree signatures at runtime.
 )
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path  # beartype resolves worktree signatures at runtime.
 
 import pynchy.host.git_ops.repo as repo_manager
@@ -53,19 +53,13 @@ class WorktreeStartupRuntime:
     configured_tokens: dict[str, str | None]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: WorktreeStartupRuntime = field(
-        default_factory=lambda: WorktreeStartupRuntime(Path.home(), Path.cwd(), {})
-    )
-
-
-_runtime = _RuntimeState()
+_runtime: WorktreeStartupRuntime = WorktreeStartupRuntime(Path.home(), Path.cwd(), {})
 
 
 def configure_worktree_startup_runtime(runtime: WorktreeStartupRuntime) -> None:
     """Set worktree startup configuration from the composition root."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _safe_rebase(target_branch: str, *, cwd: Path) -> bool:
@@ -337,7 +331,7 @@ def reconcile_worktrees_at_startup(
     """
     repo_groups = repo_groups or {}
 
-    runtime = _runtime.runtime
+    runtime = _runtime
     for slug, folders in repo_groups.items():
         repo_ctx = _startup_repo_context(slug, repo_manager.get_repo_context)
         if repo_ctx is None:

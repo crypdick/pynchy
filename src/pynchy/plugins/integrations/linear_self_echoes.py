@@ -29,23 +29,19 @@ class LinearSelfEchoRuntime:
     mark_outcome_unknown: Callable[[WebhookEffectId], Awaitable[None]]
 
 
-@dataclass
-class _RuntimeState:
-    runtime: LinearSelfEchoRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: LinearSelfEchoRuntime | None = None
 
 
 def configure_linear_self_echo_runtime(runtime: LinearSelfEchoRuntime) -> None:
     """Set the durable ledger operations used for Linear self-echo correlation."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> LinearSelfEchoRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Linear self-echo runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 async def _notify_resolution(resolution: WebhookEffectResolution) -> None:

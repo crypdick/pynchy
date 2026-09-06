@@ -91,23 +91,19 @@ class MatrixGatewayRuntime:
     connection_operations: MatrixConnectionOperations
 
 
-@dataclass
-class _RuntimeState:
-    runtime: MatrixGatewayRuntime | None = None
-
-
-_runtime = _RuntimeState()
+_runtime: MatrixGatewayRuntime | None = None
 
 
 def configure_matrix_gateway_runtime(runtime: MatrixGatewayRuntime) -> None:
     """Set Matrix connection configuration before plugin runtime loading."""
-    _runtime.runtime = runtime
+    global _runtime  # noqa: PLW0603 - one host process owns this configured runtime.
+    _runtime = runtime
 
 
 def _configured_runtime() -> MatrixGatewayRuntime:
-    if _runtime.runtime is None:
+    if _runtime is None:
         raise RuntimeError("Matrix gateway runtime has not been configured")
-    return _runtime.runtime
+    return _runtime
 
 
 class _StrictModel(BaseModel):

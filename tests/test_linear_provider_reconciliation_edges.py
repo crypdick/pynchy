@@ -25,9 +25,7 @@ from tests.test_linear_provider_state_reconciliation import (
 
 
 async def test_reconciliation_requires_configured_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_provider_reconciliation._runtime.runtime", None
-    )
+    monkeypatch.setattr("pynchy.plugins.integrations.linear_provider_reconciliation._runtime", None)
 
     with pytest.raises(RuntimeError, match="runtime has not been configured"):
         await reconcile_provider_work_item_state(_Client(None), {})
