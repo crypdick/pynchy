@@ -514,7 +514,7 @@ async def _apply_fencing(
     contents = result.get("content", [])
     for item in contents:
         if item.get("type") == "text" and "text" in item:
-            if gate.policy.cop_active:
+            if gate.cop_active:
                 verdict = await inspect_inbound(
                     source=f"mcp:{instance_id}",
                     content=item["text"],

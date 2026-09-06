@@ -392,9 +392,7 @@ def _parsed_output_with_all_fields() -> ContainerOutput:
     )
 
 
-async def create_session(
-    group_folder, container_name, proc, *, data_dir, idle_timeout, invocation_ts=0.0
-):
+async def create_session(group_folder, container_name, proc, *, data_dir, idle_timeout):
     """Start a real session around a supplied process instead of spawning a container."""
     group = replace(TEST_GROUP, folder=group_folder)
     runtime = replace(_agent_runtime(make_settings()), data_dir=data_dir, idle_timeout=idle_timeout)
@@ -403,7 +401,6 @@ async def create_session(
         group_folder=group_folder,
         chat_jid=group.jid,
         is_admin=False,
-        invocation_ts=invocation_ts,
     )
     with (
         patch(

@@ -114,7 +114,7 @@ async def cop_gate(  # noqa: PLR0913 - gate boundary keeps the operation, payloa
     # Resolve chat_jid for audit and notifications
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
     gate = get_gate_for_group(source_group)
-    if gate is not None and not gate.policy.cop_active:
+    if gate is not None and not gate.cop_active:
         await record_security_event(
             chat_jid=chat_jid,
             workspace=source_group,

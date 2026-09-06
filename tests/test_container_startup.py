@@ -9,9 +9,8 @@ from conftest import make_settings
 
 from pynchy.agent_protocol.api import ContainerInput
 from pynchy.host.container_manager.security.gate import (
-    create_gate,
+    get_gate,
     get_gate_for_group,
-    resolve_security,
 )
 from pynchy.host.container_manager.session import destroy_session, get_session, start_session
 from tests.container_runner_support import TEST_GROUP, FakeProcess, _agent_runtime
@@ -48,8 +47,7 @@ async def test_failed_startup_retires_its_security_gate(startup, error):
     input_data, runtime = startup
 
     def spawn(*_args):
-        input_data.invocation_ts = 42.0
-        create_gate(TEST_GROUP.folder, 42.0, resolve_security(TEST_GROUP.folder))
+        assert get_gate(TEST_GROUP.folder, input_data.invocation_ts) is not None
         raise error
 
     with (
@@ -64,8 +62,13 @@ async def test_failed_startup_retires_its_security_gate(startup, error):
         clean.assert_called_once_with(TEST_GROUP.folder)
 
 
-async def test_first_worker_output_survives_registration(startup):
+@pytest.mark.parametrize(
+    ("public_source", "secret_source"), [(False, False), (True, False), (False, True), (True, True)]
+)
+async def test_first_worker_output_survives_registration(startup, public_source, secret_source):
     input_data, runtime = startup
+    input_data.corruption_tainted = public_source
+    input_data.secret_tainted = secret_source
     output = runtime.data_dir / "ipc" / TEST_GROUP.folder / "output" / "first.json"
     output.parent.mkdir(parents=True)
     stale = output.with_name("stale.json")
@@ -74,6 +77,10 @@ async def test_first_worker_output_survives_registration(startup):
 
     def spawn(_group, _input, name, *_args):
         assert not stale.exists()
+        gate = get_gate(TEST_GROUP.folder, input_data.invocation_ts)
+        assert gate is not None
+        assert gate.corruption_tainted is public_source
+        assert gate.secret_tainted is secret_source
         output.write_text('{"type": "text", "text": "hello"}')
         return proc, ()
 
@@ -85,10 +92,12 @@ async def test_first_worker_output_survives_registration(startup):
         session, failures = await start_session(TEST_GROUP, input_data, runtime)
         try:
             assert get_session(TEST_GROUP.folder) is session
+            assert get_gate(TEST_GROUP.folder, session.invocation_ts) is not None
             assert failures == ()
             assert output.read_text() == '{"type": "text", "text": "hello"}'
         finally:
             await destroy_session(TEST_GROUP.folder)
+        assert get_gate_for_group(TEST_GROUP.folder) is None
 
 
 async def test_failed_process_attachment_stops_the_worker(startup):

@@ -337,8 +337,8 @@ class TestProcessApprovalDecision:
             )
 
         assert gate is not None
-        assert gate.policy.corruption_tainted is True
-        assert gate.policy.secret_tainted is True
+        assert gate.corruption_tainted is True
+        assert gate.secret_tainted is True
 
     @pytest.mark.parametrize(
         "taint_evidence",
@@ -394,8 +394,8 @@ class TestProcessApprovalDecision:
             )
 
         assert context.gate is not None
-        assert context.gate.policy.corruption_tainted is True
-        assert context.gate.policy.secret_tainted is True
+        assert context.gate.corruption_tainted is True
+        assert context.gate.secret_tainted is True
 
     @pytest.mark.asyncio
     async def test_unknown_tool_writes_error(self, ipc_dir: Path, settings):

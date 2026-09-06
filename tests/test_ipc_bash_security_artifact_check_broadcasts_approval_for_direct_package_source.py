@@ -81,4 +81,4 @@ def test_confirmed_credential_path_taints_when_workspace_profile_is_misconfigure
 
     gate.confirm_credential_access()
 
-    assert gate.policy.secret_tainted is True
+    assert gate.secret_tainted is True

@@ -21,7 +21,7 @@ This lets agents interact with host resources (calendars, databases, network ser
 
 ## Security Policy
 
-All service tool requests pass through `SecurityPolicy` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control gating based on taint tracking.
+All service tool requests pass through `SecurityGate` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control gating based on taint tracking.
 
 All workspaces are gated by tool trust declarations. Admin workspaces are additionally protected by the clean-room rule that forbids public-source tools — see [Service Trust Policy](security.md#5-service-trust-policy-lethal-trifecta-defenses) for the architecture and [Tool Trust](../usage/security.md) for configuration.
 
@@ -47,7 +47,7 @@ Each handler receives the full IPC request dict and returns `{"result": ...}` on
 At startup, Pynchy composes built-in and plugin `ActionSpec` values, validates
 typed host-action registrations, and rejects unknown actions, duplicate
 capability or tool IDs, and write actions without idempotency or terminal audit contracts.
-The existing `SecurityPolicy` remains the authority: `/status` and
+The existing `SecurityGate` remains the authority: `/status` and
 `/capabilities` are diagnostic snapshots, while every dispatch and approved
 replay checks current policy again.
 

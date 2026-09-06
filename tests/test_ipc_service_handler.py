@@ -353,8 +353,8 @@ async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, reg
         await registry.dispatch(_make_request("matrix_route_read"), "test-ws", False, deps)
 
     mock_handler.assert_awaited_once()
-    assert registered_gate.policy.corruption_tainted is True
-    assert registered_gate.policy.secret_tainted is True
+    assert registered_gate.corruption_tainted is True
+    assert registered_gate.secret_tainted is True
 
 
 @pytest.mark.asyncio

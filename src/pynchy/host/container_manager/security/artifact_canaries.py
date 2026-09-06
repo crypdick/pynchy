@@ -81,7 +81,7 @@ class FileSecretTaintCanary:
                 response = json.loads(response_path.read_text(encoding="utf-8"))
             gate.notify_file_access()
             artifact = _FileTaintArtifact(
-                secret_tainted=gate.policy.secret_tainted,
+                secret_tainted=gate.secret_tainted,
                 response_decision=str(response["result"]["decision"]),
             )
             return CanaryExercise(artifact=artifact)

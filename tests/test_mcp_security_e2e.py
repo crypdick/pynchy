@@ -80,7 +80,7 @@ async def test_full_mcp_security_flow():
             },
         )
         gate = create_gate("e2e-ws", 42.0, security)
-        assert not gate.policy.corruption_tainted
+        assert not gate.corruption_tainted
 
         # 3. Create proxy pointing to backend
         proxy_app = create_proxy_app(
@@ -105,7 +105,7 @@ async def test_full_mcp_security_flow():
             assert "Hello from the web!" in text
 
             # 6. Gate should now have corruption taint
-            assert gate.policy.corruption_tainted
+            assert gate.corruption_tainted
 
         finally:
             await proxy_client.close()
@@ -167,7 +167,7 @@ async def test_no_fencing_without_public_source():
             text = data["result"]["content"][0]["text"]
             assert "EXTERNAL_UNTRUSTED_CONTENT" not in text
             assert text == "Private data"
-            assert not gate.policy.corruption_tainted
+            assert not gate.corruption_tainted
         finally:
             await proxy_client.close()
     finally:
@@ -185,5 +185,5 @@ def test_gate_isolation_between_sessions():
     gate2 = create_gate("ws2", 2.0, security)
 
     gate1.evaluate_read("browser")  # Taints gate1
-    assert gate1.policy.corruption_tainted
-    assert not gate2.policy.corruption_tainted  # gate2 unaffected
+    assert gate1.corruption_tainted
+    assert not gate2.corruption_tainted  # gate2 unaffected

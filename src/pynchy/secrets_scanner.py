@@ -2,7 +2,7 @@
 
 Scans outbound write payloads for leaked secrets (API keys, tokens,
 private keys, etc.). Non-LLM, non-AI — purely rule-based detection.
-Used by SecurityPolicy.evaluate_write() to escalate gating when
+Used by SecurityGate.evaluate_write() to escalate gating when
 secrets are found in payloads regardless of taint state.
 """
 

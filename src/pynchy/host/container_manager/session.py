@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+import time
 from collections.abc import (  # noqa: TC003 - beartype resolves session callback signatures at runtime.
     Awaitable,
     Callable,
@@ -43,7 +44,7 @@ from pynchy.host.container_manager.process import (
     reap_apple_runtime_orphans,
     runtime_container_running,
 )
-from pynchy.host.container_manager.security.gate import destroy_gate
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate, resolve_security
 from pynchy.identifiers import (
     GroupFolder,  # noqa: TC001 - beartype resolves contract annotations at runtime.
 )
@@ -453,17 +454,21 @@ async def start_session(
     clean_ipc_input_dir(group.folder)
     _clean_ipc_output(runtime.data_dir, group.folder)
 
-    session = ContainerSession(group.folder, container_name)
+    session = ContainerSession(group.folder, container_name, invocation_ts=time.monotonic())
+    input_data.invocation_ts = session.invocation_ts
     session.set_idle_timeout(runtime.idle_timeout)
     async with contextlib.AsyncExitStack() as rollback:
         rollback.push_async_callback(session.stop)
-        try:
-            proc, failures = await _spawn_container(
-                group, input_data, container_name, runtime, plugin_manager
-            )
-        finally:
-            # Spawn allocates the gate before preparing mounts, credentials, and MCP.
-            session.invocation_ts = input_data.invocation_ts
+        create_gate(
+            group.folder,
+            session.invocation_ts,
+            resolve_security(group.folder, is_admin=input_data.is_admin),
+            public_source_input=input_data.corruption_tainted,
+            secret_source_input=input_data.secret_tainted,
+        )
+        proc, failures = await _spawn_container(
+            group, input_data, container_name, runtime, plugin_manager
+        )
         # Retain the process for rollback even if attaching its readers fails.
         session.proc = proc
         session.start(proc)
