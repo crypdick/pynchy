@@ -267,10 +267,22 @@ class ScheduledAgentTaskWorkflow:
                     ),
                 ),
             )
-        except ActivityError:
+        except ActivityError as exc:
             # Activity retries reuse the checkpoint. Once Temporal exhausts
-            # them, remove only an unclaimed checkpoint so a concurrent
-            # restart-recovery workflow retains ownership.
+            # them, record terminal evidence before removing only an unclaimed
+            # checkpoint so a concurrent restart-recovery workflow retains ownership.
+            info = workflow.info()
+            await workflow.execute_activity(
+                "record_terminal_scheduled_task_failure",
+                {
+                    "task_id": task_id,
+                    "workflow_id": info.workflow_id,
+                    "workflow_run_id": info.run_id,
+                    "error": str(exc),
+                },
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
             await workflow.execute_activity(
                 "clear_terminal_scheduled_turn",
                 task_id,

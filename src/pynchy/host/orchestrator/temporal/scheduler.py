@@ -139,6 +139,7 @@ from pynchy.state.api import (
     get_all_host_jobs,
     get_all_tasks,
     get_task_by_id,
+    record_terminal_scheduled_task_failure,
 )
 from pynchy.turn_outcomes import (
     TurnOutcome,
@@ -362,6 +363,18 @@ async def clear_terminal_scheduled_turn(task_id: str) -> str:
     return result
 
 
+@activity.defn(name="record_terminal_scheduled_task_failure")
+async def record_terminal_scheduled_task_failure_activity(payload: dict[str, str]) -> str:
+    """Persist retry exhaustion before releasing an unclaimed checkpoint."""
+    inserted = await record_terminal_scheduled_task_failure(
+        task_id=payload["task_id"],
+        temporal_workflow_id=payload["workflow_id"],
+        temporal_workflow_run_id=payload["workflow_run_id"],
+        error=payload["error"],
+    )
+    return "recorded" if inserted else "already_recorded"
+
+
 @activity.defn(name="run_scheduled_canaries")
 async def run_scheduled_canaries() -> str:
     """Run configured external-service canaries without retrying side effects."""
@@ -460,6 +473,7 @@ class TemporalSchedulerRuntime:
                     run_interactive_runtime_turn,
                     run_interrupted_agent_turn,
                     run_scheduled_agent_task,
+                    record_terminal_scheduled_task_failure_activity,
                     clear_terminal_scheduled_turn,
                     run_database_host_job,
                     run_config_host_cron_job,
