@@ -230,7 +230,14 @@ async def recover_pending_messages(
 
 
 async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
-    """Roll back to the pre-deploy commit if startup fails after a deploy."""
+    """Roll back source deployments; immutable releases belong to their controller."""
+    if os.environ.get("PYNCHY_RELEASE_SHA"):
+        logger.error(
+            "External release startup failed; leaving rollback to release controller",
+            error=str(exc),
+        )
+        return
+
     try:
         continuation_text = await asyncio.to_thread(continuation_path.read_text, encoding="utf-8")
         continuation = json.loads(continuation_text)

@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 from collections.abc import Callable
 from email.utils import parseaddr
 from typing import Annotated, Literal, cast
@@ -171,10 +172,8 @@ class ProtonMailMcpPlugin:  # noqa: V102
                 name="proton-mail",
                 config=McpServerConfig(
                     type="script",
-                    command="uv",
+                    command=sys.executable,
                     args=[
-                        "run",
-                        "python",
                         "-m",
                         "pynchy.plugins.integrations.proton_mail",
                         "--port",
@@ -183,6 +182,8 @@ class ProtonMailMcpPlugin:  # noqa: V102
                     port=DEFAULT_PORT,
                     transport="streamable_http",
                     idle_timeout=600,
+                    # Concurrent host imports can consume nearly five seconds before HTTP binds.
+                    startup_timeout_seconds=10,
                 ),
                 trust=ServiceTrustConfig(),
             ),

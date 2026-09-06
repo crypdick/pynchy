@@ -127,6 +127,11 @@ spec:
           ports:
             - name: litellm
               containerPort: 4000
+          startupProbe:
+            tcpSocket:
+              port: litellm
+            failureThreshold: 36
+            periodSeconds: 5
           readinessProbe:
             tcpSocket:
               port: litellm

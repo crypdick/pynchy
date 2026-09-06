@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import (
     Awaitable,
     Callable,
@@ -130,10 +131,8 @@ class LinearMcpPlugin:
                 name=account.name,
                 config=McpServerConfig(
                     type="script",
-                    command="uv",
+                    command=sys.executable,
                     args=[
-                        "run",
-                        "python",
                         "-m",
                         "pynchy.plugins.integrations.linear",
                         "--port",
@@ -144,6 +143,8 @@ class LinearMcpPlugin:
                     port=DEFAULT_PORT,
                     transport="streamable_http",
                     idle_timeout=600,
+                    # Concurrent host imports can consume nearly five seconds before HTTP binds.
+                    startup_timeout_seconds=10,
                     inject_workspace=True,
                 ),
                 trust=ServiceTrustConfig(
