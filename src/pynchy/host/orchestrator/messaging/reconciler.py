@@ -110,6 +110,11 @@ def _owns_pair(ch: Channel, canonical_jid: str) -> bool:
     return True
 
 
+def _current_workspace(deps: ReconcilerDeps, canonical_jid: str) -> WorkspaceProfile | None:
+    """Return a candidate's current workspace, if it survived reconciliation I/O."""
+    return deps.workspaces.get(canonical_jid)
+
+
 def _is_on_cooldown(ch: Channel, canonical_jid: str, now: datetime) -> bool:
     key = (ch.name, canonical_jid)
     return now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN
@@ -131,6 +136,8 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         request.canonical_jid,
         request.inbound.fetch_since,
     )
+    if _current_workspace(request.deps, request.canonical_jid) is None:
+        return request.inbound.fetch_since, 0
 
     remote_messages = result.messages
     logger.debug(
@@ -170,6 +177,8 @@ async def _ingest_remote_message(
     request: _ReconcileInboundRequest,
     msg: NewMessage,
 ) -> bool:
+    if _current_workspace(request.deps, request.canonical_jid) is None:
+        return False
     # Remap chat_jid to canonical (the channel returned channel-native JIDs)
     msg.chat_jid = request.canonical_jid
     exists = await message_exists(msg.id, request.canonical_jid)
@@ -196,6 +205,8 @@ async def _ingest_remote_message(
 
     logger.debug("reconciler_trace", step="ingesting", jid=request.canonical_jid, msg_id=msg.id)
     await request.deps.ingest_user_message(msg, source_channel=request.ch.name)
+    if _current_workspace(request.deps, request.canonical_jid) is None:
+        return True
     await request.deps.start_interactive_turn(request.canonical_jid)
     return True
 
@@ -292,10 +303,13 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
             try:
                 if not _owns_pair(ch, canonical_jid):
                     continue
-                active_pairs.add((ChannelName(ch.name), ChatJid(canonical_jid)))
+                if _current_workspace(deps, canonical_jid) is None:
+                    continue
                 pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
             # allow: exception-handling - isolate remote pair failures until the pass is complete.
             except Exception as exc:  # noqa: BLE001
+                if _current_workspace(deps, canonical_jid) is not None:
+                    active_pairs.add((ChannelName(ch.name), ChatJid(canonical_jid)))
                 failure = f"{ch.name}/{canonical_jid}: {type(exc).__name__}: {exc}"
                 failures.append(failure)
                 logger.warning(
@@ -305,6 +319,9 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
                     error=str(exc),
                 )
                 continue
+            if _current_workspace(deps, canonical_jid) is None:
+                continue
+            active_pairs.add((ChannelName(ch.name), ChatJid(canonical_jid)))
             if pair_result is None:
                 continue
             pair_recovered, pair_retried, pair_failure = pair_result
@@ -330,8 +347,8 @@ async def _reconcile_channel_pair(
     canonical_jid: str,
     now: datetime,
 ) -> tuple[int, int, str | None] | None:
-    group = deps.workspaces[canonical_jid]
-    if _is_on_cooldown(ch, canonical_jid, now):
+    group = _current_workspace(deps, canonical_jid)
+    if group is None or _is_on_cooldown(ch, canonical_jid, now):
         return None
 
     logger.debug(
@@ -343,6 +360,9 @@ async def _reconcile_channel_pair(
     )
 
     inbound = await _inbound_cursor(ch.name, canonical_jid, now)
+    group = _current_workspace(deps, canonical_jid)
+    if group is None:
+        return None
     new_inbound_cursor, pair_recovered = await _reconcile_inbound(
         _ReconcileInboundRequest(
             ch=ch,
@@ -352,13 +372,19 @@ async def _reconcile_channel_pair(
             deps=deps,
         )
     )
+    if _current_workspace(deps, canonical_jid) is None:
+        return None
 
     outbound_cursor = await get_channel_cursor(
         ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
     )
+    if _current_workspace(deps, canonical_jid) is None:
+        return None
     new_outbound_cursor, pair_retried, pair_failure = await _retry_outbound(
         ch, canonical_jid, outbound_cursor
     )
+    if _current_workspace(deps, canonical_jid) is None:
+        return None
     await advance_cursors_atomic(
         ChannelName(ch.name),
         ChatJid(canonical_jid),
